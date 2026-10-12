@@ -70,7 +70,9 @@ export interface EventEdit {
 export type WarningType =
   | 'late_row' | 'changed_row' | 'missing_row' | 'unknown_code' | 'code_not_in_area'
   | 'unlisted_reason' | 'blank_reason' | 'end_before_start' | 'duration_mismatch'
-  | 'orphan_continuation' | 'overlap_in_area' | 'placeholder_code' | 'edited_in_app';
+  | 'orphan_continuation' | 'overlap_in_area' | 'placeholder_code' | 'edited_in_app'
+  | 'missing_code' | 'missing_classification' | 'invalid_classification' | 'unknown_area' | 'line_mismatch'
+  | 'late_month';
 export type WarningResolution = 'added' | 'skipped' | 'kept_stored' | 'accepted';
 
 export interface UploadWarning {
@@ -132,6 +134,14 @@ export interface Api {
   uploadStart(token: string, fileName: string, fileHash: string): Promise<{ batch_id: string }>;
   uploadChunk(token: string, batchId: string, rows: UploadRow[]): Promise<{ added: number; identical: number; rejected: { source_row: number; reason: string }[] }>;
   uploadFinish(token: string, batchId: string, summary: { rows_read: number; rows_skipped: number }, warnings: Omit<UploadWarning, 'warning_id' | 'batch_id'>[]): Promise<UploadBatch>;
+
+  // --- data checks ---
+  /**
+   * Re-runs the data checks (flags) of stored events against the current Master Data, for one year
+   * or (without a year) every year. Needs Edit on the events tab. Returns how many events were
+   * checked and how many had their flags changed. Never changes anything else.
+   */
+  revalidateEvents(token: string, year?: number): Promise<{ checked: number; changed: number }>;
 
   // --- event correction (never done by upload) ---
   editEvent(token: string, eventId: string, changes: EventChanges, note: string): Promise<EventRow>;

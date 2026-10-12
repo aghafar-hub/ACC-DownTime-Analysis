@@ -10,3 +10,5 @@ export * from './pareto';
 export * from './repeats';
 export * from './trends';
 export * from './uploadDiff';
+export * from './flags';
+export * from './overlaps';
