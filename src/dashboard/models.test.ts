@@ -6,7 +6,7 @@ import {
 } from '../calc';
 import { buildSyntheticDb } from '../mock/synthetic';
 import { defaultFilters, resolveRange } from './filters';
-import { areaModel, cutPareto, equipmentModel, overviewModel, reasonModel, isoWeekStart, reliabilityModel, repeatsModel, sparkSeries, windowDays } from './models';
+import { areaModel, areaReliabilityModel, classModel, cutPareto, equipmentModel, lineModel, overviewModel, reasonModel, reasonMonthModel, whenFailuresStart, isoWeekStart, reliabilityModel, repeatsModel, sparkSeries, windowDays } from './models';
 import { noChangeText } from './format';
 import { buildCtx, rowsInRange, yearsNeeded } from './scope';
 
@@ -190,11 +190,106 @@ describe('change line when the other period has no data', () => {
   });
 });
 
+describe('Phase 4 models equal the existing figures', () => {
+  const kpi = ctx.kpis.current;
+  if (kpi.status !== 'ok') throw new Error('no kpi');
+  const win = ctx.win.effective!;
+  const am = areaReliabilityModel(ctx)!;
+
+  it('Pareto by line and by classification add up to the Pareto total', () => {
+    for (const measure of ['hours', 'count'] as const) {
+      const areaTotal = areaModel(ctx, measure)!.total;
+      const line = lineModel(ctx, measure)!;
+      expect(line.total).toBeCloseTo(areaTotal, 9);
+      expect(line.bars.reduce((s, b) => s + b.value, 0)).toBeCloseTo(areaTotal, 9);
+      expect(classModel(ctx, measure, true)!.total).toBeCloseTo(areaTotal, 9);
+    }
+    // the line of a bar is the master-data line of its areas, with the line's name as label
+    const line = lineModel(ctx, 'count')!;
+    expect(line.bars.every((b) => ctx.master.lineNames.get(b.key) === b.label)).toBe(true);
+    // all events: classes add up to every chained event that started in the window
+    expect(classModel(ctx, 'count', false)!.total).toBe(ctx.scope.chains.filter((c) => c.startDate >= win.from && c.startDate <= win.to).length);
+  });
+
+  it('Reasons by month: totals equal the failure events and the failure hours of the Pareto', () => {
+    const rm = reasonMonthModel(ctx)!;
+    expect(rm.countAll.total).toBe(kpi.total.failureEventCount);
+    expect(rm.hoursAll.total).toBeCloseTo(areaModel(ctx, 'hours')!.total, 6);
+    expect(rm.hoursAll.total).toBeCloseTo(reasonModel(ctx, false)!.hours.total, 6);
+    expect(rm.hours.rows.length).toBeLessThanOrEqual(12);
+    expect(rm.hours.total).toBeCloseTo(rm.hoursAll.total, 9); // the cut keeps the total of every cell
+    expect(rm.countAll.values.flat().reduce((s, v) => s + v, 0)).toBe(rm.countAll.total);
+  });
+
+  it('per-area MTBF, MTTR, failure rate and availability equal the By area table (the per-area KPIs)', () => {
+    expect(am.mtbf).toHaveLength(kpi.areas.length);
+    for (const a of kpi.areas) {
+      const pick = (ranks: typeof am.mtbf) => ranks.find((r) => r.area_id === a.area_id)!;
+      expect(pick(am.mtbf).value).toBe(a.mtbfHours.available ? a.mtbfHours.value : null);
+      expect(pick(am.mttr).value).toBe(a.mttrHours.available ? a.mttrHours.value : null);
+      expect(pick(am.rate.rows).value).toBe(a.failureRatePer1000h.available ? a.failureRatePer1000h.value : null);
+      expect(am.overallAvailability.get(a.area_id)).toEqual(a.availabilityHeadline);
+    }
+    // MTBF is never averaged: the all-area rate is the aggregate KPI, not the mean of the bars
+    expect(am.rate.overall).toEqual(kpi.total.failureRatePer1000h);
+    const vals = am.mtbf.flatMap((r) => (r.value === null ? [] : [r.value]));
+    expect(vals).toEqual([...vals].sort((x, y) => x - y));
+    expect(am.mtbf.findIndex((r) => r.value === null)).toBeGreaterThanOrEqual(vals.length === am.mtbf.length ? -1 : vals.length);
+    const q = am.quadrant;
+    expect(q.points.length + q.excluded.length).toBe(kpi.areas.length);
+  });
+
+  it('availability by area and month: a one-month range equals computeKpis of that month per area', () => {
+    const month = ctx.win.range.to.slice(0, 7);
+    const mr = { from: `${month}-01`, to: ctx.win.range.to };
+    const mctx = buildCtx(rows, startup, { ...defaultFilters(), preset: 'custom' as const, from: mr.from, to: mr.to, compare: 'none' }, mr);
+    const mk = mctx.kpis.current;
+    if (mk.status !== 'ok') throw new Error('no kpi');
+    const m1 = areaReliabilityModel(mctx)!.monthAvailability;
+    expect(m1.months).toHaveLength(1);
+    for (const a of mk.areas) {
+      expect(m1.areas.find((x) => x.area_id === a.area_id)!.values[0]).toEqual(a.availabilityHeadline);
+    }
+    // the full-range matrix has one row per area and one cell per month
+    expect(am.monthAvailability.areas).toHaveLength(ctx.base.areaIds.length);
+    expect(am.monthAvailability.areas.every((a) => a.values.length === am.monthAvailability.months.length)).toBe(true);
+  });
+
+  it('failure starts: counts sum to the failure events, hours to the MTTR cohort, 24 rows x 7 weekdays', () => {
+    const c = whenFailuresStart(ctx, 'count')!;
+    expect(c.rows).toHaveLength(24);
+    expect(c.cols).toHaveLength(7);
+    expect(c.total).toBe(kpi.total.failureEventCount);
+    expect(c.values.flat().reduce((s, v) => s + v, 0)).toBe(kpi.total.failureEventCount);
+    expect(c.cols.reduce((s, x) => s + x.total, 0)).toBe(kpi.total.failureEventCount);
+    const h = whenFailuresStart(ctx, 'hours')!;
+    const mttr = kpi.total.mttrHours;
+    expect(mttr.available).toBe(true);
+    if (mttr.available) expect(h.total / kpi.total.failureEventCount).toBeCloseTo(mttr.value, 6);
+  });
+
+  it('repeat groups carry their occurrence dates inside the window', () => {
+    const m = repeatsModel(ctx)!;
+    for (const g of m.result.groups) {
+      expect(g.occurrenceDates).toHaveLength(g.occurrences);
+      expect(g.occurrenceDates[g.occurrenceDates.length - 1]).toBe(g.lastFailureDate);
+      expect(g.occurrenceDates.every((d) => d >= m.window.from && d <= m.window.to)).toBe(true);
+    }
+  });
+
+  it('shared filters narrow the new models too', () => {
+    const f2 = { ...defaultFilters(), lineIds: [startup.lines[0]!.line_id] };
+    const c2 = buildCtx(rows, startup, f2, range);
+    expect(lineModel(c2, 'count')!.bars.map((b) => b.key)).toEqual([startup.lines[0]!.line_id]);
+    expect(areaReliabilityModel(c2)!.mtbf).toHaveLength(c2.base.areaIds.length);
+  });
+});
+
 describe('performance', () => {
   it('filters, chains and every page model for the full mock data stay well under a second', () => {
     const t0 = performance.now();
     const c = buildCtx(rows, startup, { ...defaultFilters(), preset: 'ytd' }, resolveRange({ ...defaultFilters(), preset: 'ytd' }, coverage.to));
-    overviewModel(c); equipmentModel(c); repeatsModel(c); reliabilityModel(c);
+    overviewModel(c); equipmentModel(c); repeatsModel(c); reliabilityModel(c); areaReliabilityModel(c); reasonMonthModel(c); whenFailuresStart(c, 'count');
     expect(performance.now() - t0).toBeLessThan(1000);
   });
 });

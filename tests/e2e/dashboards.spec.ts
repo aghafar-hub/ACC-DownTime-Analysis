@@ -386,6 +386,206 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
   });
 });
 
+test.describe('Phase 4: more charts (desktop)', () => {
+  test.beforeEach(async ({ page }) => {
+    await stubFonts(page);
+  });
+
+  /** View as table shows a table and View as chart brings the graphic back. */
+  async function tableWorks(page: Page, id: string) {
+    const card = page.getByTestId(id);
+    await card.scrollIntoViewIfNeeded();
+    await expect(card.getByTestId('chart-summary')).not.toBeEmpty();
+    await card.getByTestId('view-table').click();
+    await expect(card.locator('table.chart-table')).toBeVisible();
+    await card.getByTestId('view-table').click();
+    await expect(card.locator('table.chart-table')).toHaveCount(0);
+  }
+
+  test('Pareto: lines and classifications (hours and count) next to areas; reasons by month heat map with switch and show-all', async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    await open(page, '/pareto', 'page-pareto');
+    await page.getByTestId('sub-area').click();
+    for (const id of ['pareto-line-hours', 'pareto-line-count', 'pareto-area-hours', 'pareto-area-count', 'pareto-class', 'pareto-class-count']) {
+      await expect(page.getByTestId(id)).toBeVisible();
+      await tableWorks(page, id);
+    }
+    // the line Pareto covers the same failures as the area Pareto
+    const total = async (id: string) => num(((await page.getByTestId(id).getByTestId('chart-summary').textContent()) ?? '').match(/([\d,]+(?:\.\d+)?) \S+ in total/)?.[1] ?? null);
+    await page.getByTestId('pareto-line-hours').getByTestId('pareto-line-hours-top-all').click();
+    await page.getByTestId('pareto-area-hours').getByTestId('pareto-area-hours-top-all').click();
+    expect(await total('pareto-line-hours')).toBe(await total('pareto-area-hours'));
+    await expect(page.getByTestId('pareto-line-count').getByTestId('pareto-bar').first()).toBeVisible();
+    // the class scope switch drives both classification charts
+    await page.getByTestId('class-scope-fail').click();
+    await expect(page.getByTestId('pareto-class-count')).toContainText('Failure events only');
+
+    await page.getByTestId('sub-reason').click();
+    const card = page.getByTestId('chart-heat-reason-month');
+    await expect(card.getByTestId('heatmap')).toBeVisible();
+    await expect(card.getByTestId('chart-summary')).toContainText('reasons shown');
+    const hoursSummary = await card.getByTestId('chart-summary').textContent();
+    await card.getByTestId('heat-reason-month-measure-count').click();
+    await expect(card.getByTestId('chart-summary')).not.toHaveText(hoursSummary!);
+    await expect(card.getByTestId('chart-summary')).toContainText('events in total');
+    const shown = await card.locator('tbody tr').count();
+    expect(shown).toBeLessThanOrEqual(12);
+    if (await card.getByTestId('heat-toggle').count()) {
+      await card.getByTestId('heat-toggle').click();
+      expect(await card.locator('tbody tr').count()).toBeGreaterThan(shown);
+    }
+    await tableWorks(page, 'chart-heat-reason-month');
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  test('Reliability: Areas block order, ranked bars, quadrant, availability heat map, failure rate', async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    await open(page, '/reliability', 'page-reliability');
+    const ids = ['chart-availability', 'area-table-card', 'chart-area-mtbf', 'chart-area-mttr', 'chart-area-quadrant', 'chart-area-month-heat', 'chart-area-rate', 'chart-when-heat', 'chart-mtbf'];
+    const order = await page.locator(ids.map((i) => `[data-testid="${i}"]`).join(',')).evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
+    expect(order).toEqual(ids);
+    // the new charts sit inside the Areas block; the new section is its own block after it
+    for (const id of ['chart-area-mtbf', 'chart-area-mttr', 'chart-area-quadrant', 'chart-area-month-heat', 'chart-area-rate']) {
+      await expect(page.getByTestId('areas-block').getByTestId(id)).toBeVisible();
+    }
+    await expect(page.getByTestId('when-block').getByRole('heading', { name: 'When failures start' })).toBeVisible();
+
+    // ranked bars: MTBF lowest first, MTTR highest first, no figure shown as zero
+    const tableValues = async (id: string) => {
+      const card = page.getByTestId(id);
+      await card.getByTestId('view-table').click();
+      const cells = await card.locator('tbody tr').evaluateAll((trs) => trs.map((tr) => [...tr.children].map((c) => c.textContent ?? '')));
+      await card.getByTestId('view-table').click();
+      return cells;
+    };
+    const areaRows = await page.getByTestId('area-row').count();
+    for (const [id, dir] of [['chart-area-mtbf', 1], ['chart-area-mttr', -1]] as const) {
+      const rows = await tableValues(id);
+      expect(rows.length).toBe(areaRows);
+      const nums = rows.filter((r) => !/failures|unavailable/.test(r[1]!)).map((r) => num(r[1]!));
+      expect(nums, id).toEqual([...nums].sort((a, b) => (a - b) * dir));
+      // areas with no failures come after every ranked area and say so
+      const firstNone = rows.findIndex((r) => r[1] === 'no failures');
+      if (firstNone >= 0) expect(rows.slice(firstNone).every((r) => r[1] === 'no failures' || r[1] === 'unavailable')).toBe(true);
+      expect(rows.some((r) => num(r[1]!) === 0), `${id} zero`).toBe(false);
+    }
+    // the bars equal the By area table
+    const mtbfRows = await tableValues('chart-area-mtbf');
+    for (const [area, v] of mtbfRows) {
+      const cell = await page.locator(`[data-testid="area-row"][data-area="${area}"] td`).nth(4).textContent();
+      expect(cell === 'None recorded' ? 'no failures' : cell).toBe(v);
+    }
+    for (const id of ['chart-area-mtbf', 'chart-area-mttr']) await expect(page.getByTestId(id).locator('rect.chart-hit').first()).toBeVisible();
+
+    // quadrant: a labelled point per area with failures, two dashed median lines, the worst quadrant named in words
+    const quad = page.getByTestId('chart-area-quadrant');
+    await expect(quad.getByTestId('quadrant')).toBeVisible();
+    const points = await quad.getByTestId('quadrant-point').count();
+    expect(points).toBeGreaterThan(1);
+    expect(await quad.getByTestId('quadrant-label').count()).toBe(points);
+    await expect(quad.getByTestId('quadrant-median-x')).toBeVisible();
+    await expect(quad.getByTestId('quadrant-median-y')).toBeVisible();
+    await expect(quad.getByTestId('quadrant-worst-label')).toHaveText('Worst: low MTBF, high MTTR');
+    await expect(quad.getByTestId('chart-summary')).toContainText('Median MTBF');
+    await quad.getByTestId('quadrant-point').first().hover({ force: true });
+    await expect(page.getByTestId('chart-tip')).toContainText('MTBF');
+    await tableWorks(page, 'chart-area-quadrant');
+
+    // availability heat map: a % in every cell, fixed scale legend, one row per area
+    const heat = page.getByTestId('chart-area-month-heat');
+    await expect(heat.getByTestId('scale-legend')).toContainText('90%');
+    await expect(heat.getByTestId('scale-legend')).toContainText('100%');
+    expect(await heat.locator('tbody tr').count()).toBe(areaRows);
+    const cells = heat.getByTestId('scale-cell');
+    expect(await cells.count()).toBeGreaterThan(areaRows);
+    await expect(cells.first()).toHaveText(/\d+(\.\d)?%/);
+    await expect(heat.getByRole('heading', { level: 2 })).toContainText('basis B');
+    // its "Range" column equals the By area table
+    const first = await heat.locator('tbody tr').first().getAttribute('data-area');
+    const rangeCell = await heat.locator('tbody tr').first().locator('td').last().textContent();
+    const tbl = await page.locator(`[data-testid="area-row"][data-area="${first}"] td`).nth(3).textContent();
+    expect(rangeCell!.replace('▾ ', '')).toBe(tbl);
+    await tableWorks(page, 'chart-area-month-heat');
+
+    // failure rate with the all-area reference line
+    await expect(page.getByTestId('chart-area-rate').getByTestId('hbars-ref')).toBeVisible();
+    await expect(page.getByTestId('chart-area-rate').getByTestId('chart-legend')).toContainText('All areas together');
+    await tableWorks(page, 'chart-area-rate');
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  test('Reliability: When failures start (hour x weekday) with the Count / Hours switch', async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    await open(page, '/reliability', 'page-reliability');
+    const card = page.getByTestId('chart-when-heat');
+    await card.scrollIntoViewIfNeeded();
+    await expect(card.getByTestId('heatmap')).toBeVisible();
+    expect(await card.locator('tbody tr').count()).toBe(24);
+    expect(await card.locator('thead th').count()).toBe(1 + 7 + 1);
+    await expect(card.locator('thead')).toContainText('Mon');
+    await expect(card.locator('thead')).toContainText('Sun');
+    // counts sum to the failure events of the page
+    const grand = num(await card.getByTestId('heat-grand-total').textContent());
+    expect(grand).toBeGreaterThan(0);
+    const colTotals = await card.getByTestId('heat-col-total').allTextContents();
+    expect(colTotals.map(num).reduce((a, b) => a + b, 0)).toBe(grand);
+    expect(num(await card.getByTestId('chart-summary').textContent())).toBe(grand);
+    await expect(card.getByText('no time zone conversion')).toBeVisible();
+    await card.getByTestId('when-measure-hours').click();
+    await expect(card.getByTestId('chart-summary')).toContainText(' h started');
+    expect(num(await card.getByTestId('heat-grand-total').textContent())).toBeGreaterThan(0);
+    await card.getByTestId('when-measure-count').click();
+    expect(num(await card.getByTestId('heat-grand-total').textContent())).toBe(grand);
+    await tableWorks(page, 'chart-when-heat');
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  test('Reliability: the new charts follow the shared filters', async ({ page }) => {
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    await open(page, '/reliability', 'page-reliability');
+    const before = num(await page.getByTestId('chart-when-heat').getByTestId('heat-grand-total').textContent());
+    const areas = await page.getByTestId('area-row').count();
+    await page.getByTestId('fb-filters-pill').click();
+    await page.getByTestId('fb-cls-MEC').click();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('fb-chip-cls-MEC')).toBeVisible();
+    await expect.poll(async () => num(await page.getByTestId('chart-when-heat').getByTestId('heat-grand-total').textContent())).toBeLessThan(before);
+    expect(await page.getByTestId('chart-area-month-heat').locator('tbody tr').count()).toBe(areas);
+  });
+
+  test('Repeated failures: every investigation row has a mini timeline of its occurrences', async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    await open(page, '/repeats', 'page-repeats');
+    const rows = page.getByTestId('repeat-row');
+    const n = await rows.count();
+    expect(n).toBeGreaterThan(0);
+    await expect(page.getByTestId('repeat-table').getByTestId('occ-strip')).toHaveCount(n);
+    for (let i = 0; i < Math.min(n, 5); i++) {
+      const row = rows.nth(i);
+      const strip = row.getByTestId('occ-strip');
+      const occurrences = num(await row.locator('td').nth(3).textContent());
+      await expect(strip).toHaveAttribute('aria-label', /\d+ occurrences, first \d{4}-\d{2}-\d{2}, last \d{4}-\d{2}-\d{2}/);
+      expect(Number(await strip.getAttribute('data-count'))).toBe(occurrences);
+      expect(await strip.locator('circle').count()).toBe(occurrences);
+      const last = await row.locator('td').nth(7).textContent();
+      expect(await strip.getAttribute('aria-label')).toContain(`last ${last}`);
+    }
+    // sorting keeps the strips with their rows
+    await page.getByTestId('sort-equipmentId').click();
+    await expect(page.getByTestId('repeat-table').getByTestId('occ-strip')).toHaveCount(n);
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+});
+
 for (const width of [360, 390]) {
   test.describe(`dashboards (phone ${width})`, () => {
     test.use({ viewport: { width, height: 800 }, isMobile: true, hasTouch: true });
@@ -474,6 +674,54 @@ for (const width of [360, 390]) {
       expect(chip!.height).toBeGreaterThanOrEqual(43.5);
       await page.getByTestId('fb-chip-cls-PRO').click();
       await expect(page.getByTestId('fb-chip-cls-PRO')).toHaveCount(0);
+      expect(errors, errors.join('\n')).toEqual([]);
+    });
+    test(`Phase 4 charts at ${width}px: no sideways scroll, 44 px targets, 12 px text, tap alternatives, no console errors`, async ({ page }) => {
+      const errors = watchConsole(page);
+      await stubFonts(page);
+      await page.goto('/');
+      await signInAndWait(page, 'engineer');
+      const checks = async (label: string) => {
+        expect((await noSidewaysScroll(page)).ok, `${label} sideways scroll`).toBe(true);
+        expect(await smallTargets(page), `${label} targets`).toEqual([]);
+        expect(await smallText(page), `${label} text`).toEqual([]);
+      };
+      await open(page, '/pareto', 'page-pareto');
+      await page.getByTestId('sub-area').click();
+      await expect(page.getByTestId('pareto-line-hours')).toBeVisible();
+      await expect(page.getByTestId('pareto-class-count')).toBeVisible();
+      await checks('pareto areas');
+      await page.getByTestId('sub-reason').click();
+      await expect(page.getByTestId('chart-heat-reason-month').getByTestId('heatmap')).toBeVisible();
+      await page.getByTestId('chart-heat-reason-month').getByTestId('heat-reason-month-measure-count').click();
+      await checks('pareto reasons');
+
+      await open(page, '/reliability', 'page-reliability');
+      for (const id of ['chart-area-mtbf', 'chart-area-mttr', 'chart-area-quadrant', 'chart-area-month-heat', 'chart-area-rate', 'chart-when-heat']) {
+        await page.getByTestId(id).scrollIntoViewIfNeeded();
+        await expect(page.getByTestId(id).getByTestId('chart-summary')).toBeVisible();
+      }
+      await checks('reliability');
+      // touch alternative to click-to-drill: tap a quadrant point, the pinned tooltip has the button
+      const pt = page.getByTestId('chart-area-quadrant').getByTestId('quadrant-point').first();
+      await pt.scrollIntoViewIfNeeded();
+      await pt.tap({ force: true });
+      await expect(page.getByTestId('chart-tip')).toContainText('Open events');
+      await expect(page.getByTestId('chart-tip').getByRole('button')).toBeVisible();
+      await checks('reliability tooltip');
+      await page.getByTestId('chart-area-quadrant').getByTestId('chart-summary').tap();
+      const bar = page.getByTestId('chart-area-mtbf').locator('rect.chart-hit').first();
+      await bar.scrollIntoViewIfNeeded();
+      await bar.tap();
+      await expect(page.getByTestId('chart-tip')).toContainText('MTBF');
+      await page.getByTestId('chart-when-heat').getByTestId('when-measure-hours').scrollIntoViewIfNeeded();
+      await page.getByTestId('chart-when-heat').getByTestId('when-measure-hours').tap();
+      await checks('reliability hours');
+
+      await open(page, '/repeats', 'page-repeats');
+      await expect(page.getByTestId('repeat-card').first()).toBeVisible();
+      await expect(page.getByTestId('repeat-cards').getByTestId('occ-strip').first()).toBeVisible();
+      await checks('repeats');
       expect(errors, errors.join('\n')).toEqual([]);
     });
   });

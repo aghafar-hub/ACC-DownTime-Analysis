@@ -5,6 +5,7 @@ import CartesianChart, { type CartCategory } from '../charts/CartesianChart';
 import HeatmapTable from '../charts/HeatmapTable';
 import ScatterChart from '../charts/ScatterChart';
 import TimelineChart from '../charts/TimelineChart';
+import OccurrenceStrip from '../charts/OccurrenceStrip';
 import { ACCENT } from '../charts/palette';
 import { BottomSheet, PAGE_SIZE, ShowMore } from '../components/PhoneParts';
 import { Tile } from '../components/Tile';
@@ -143,11 +144,11 @@ export default function Repeats() {
         <>
           <section className="card" data-testid="repeat-table-card">
             <h2>{t('Investigation table')}</h2>
-            <p className="chart-sub" style={{ marginBottom: 8 }}>{t('Select a row to see the failure timeline of that equipment. N/A and blank reasons are excluded.')}</p>
+            <p className="chart-sub" style={{ marginBottom: 8 }}>{t('Select a row to see the failure timeline of that equipment. N/A and blank reasons are excluded. The small timeline shows when each occurrence happened across the range.')}</p>
             {groups.length === 0 ? <p className="muted" data-testid="repeat-none">{t('No repeated failures in this range.')}</p> : !mobile ? (
               <div className="table-wrap">
                 <table className="data-table" data-testid="repeat-table">
-                  <thead><tr>{COLS.map(th)}<th scope="col">{t('Days between')}</th></tr></thead>
+                  <thead><tr>{COLS.map(th)}<th scope="col">{t('Days between')}</th><th scope="col">{t('Timeline')}</th></tr></thead>
                   <tbody>
                     {visible.map((g) => (
                       <tr key={g.key} className={g.equipmentId === selCode ? 'tr-selected' : undefined} data-testid="repeat-row" data-equipment={g.equipmentId}>
@@ -161,6 +162,7 @@ export default function Repeats() {
                         <td className="nowrap mono">{g.lastFailureDate}</td>
                         <td className="num">{fint(g.previousPeriodOccurrences)}</td>
                         <td className="mono nowrap">{gaps(g)}</td>
+                        <td className="occ-cell">{win && <OccurrenceStrip dates={g.occurrenceDates} from={win.from} to={win.to} label={`${g.equipmentId}, ${g.reasonLabel}`} />}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -178,6 +180,7 @@ export default function Repeats() {
                     <div className="event-card-line mono">{fh(g.totalHours)} h total · avg {fh2(g.avgHours)} · max {fh2(g.maxHours)}</div>
                     <div className="event-card-line mono">{t('Last')} {g.lastFailureDate} · {t('previous period')} {g.previousPeriodOccurrences}</div>
                     <div className="event-card-line mono">{t('Days between')}: {gaps(g)}</div>
+                    {win && <div className="event-card-line occ-line"><span className="muted">{t('Timeline')}</span> <OccurrenceStrip dates={g.occurrenceDates} from={win.from} to={win.to} label={`${g.equipmentId}, ${g.reasonLabel}`} /></div>}
                   </button>
                 ))}
               </div>

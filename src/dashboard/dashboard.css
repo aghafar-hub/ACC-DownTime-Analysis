@@ -540,3 +540,13 @@
   font-size: 14px;
   line-height: 1.4;
 }
+.occ-cell {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  min-width: 128px;
+}
+.occ-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

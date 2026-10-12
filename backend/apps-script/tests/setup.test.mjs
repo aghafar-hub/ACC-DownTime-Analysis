@@ -120,7 +120,7 @@ test('doGet ping and doPost envelopes', () => {
   const env = createEnv();
   const admin = bootstrapAdmin(env);
   const ping = JSON.parse(env.ctx.doGet({ parameter: { action: 'ping' } }).getContent());
-  assert.deepEqual(ping, { status: 'ok', data: { version: '1.0.0' } });
+  assert.deepEqual(ping, { status: 'ok', data: { version: '1.1.0' } });
   assert.equal(JSON.parse(env.ctx.doGet({ parameter: {} }).getContent()).error.code, 'bad_request');
   assert.equal(JSON.parse(env.ctx.doGet(undefined).getContent()).status, 'error');
 

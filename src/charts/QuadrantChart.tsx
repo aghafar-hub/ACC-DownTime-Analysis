@@ -115,7 +115,7 @@ export default function QuadrantChart({
             {p.worst
               ? <path d={`M${x(p.x)} ${y(p.y) - R - 1.5} L${x(p.x) + R + 1.5} ${y(p.y)} L${x(p.x)} ${y(p.y) + R + 1.5} L${x(p.x) - R - 1.5} ${y(p.y)} Z`} fill="var(--tk-danger)" stroke="var(--tk-card-bg)" strokeWidth="1.5" />
               : <circle cx={x(p.x)} cy={y(p.y)} r={R} fill={ACCENT} fillOpacity={0.75} stroke={ACCENT} strokeWidth={1.5} />}
-            <circle cx={x(p.x)} cy={y(p.y)} r={14} fill="transparent" className="chart-hit" data-testid="quadrant-point" data-key={p.key} {...bind(node(p))} />
+            <circle cx={x(p.x)} cy={y(p.y)} r={11} fill="transparent" className="chart-hit" data-testid="quadrant-point" data-key={p.key} {...bind(node(p))} />
           </g>
         ))}
         <g pointerEvents="none">

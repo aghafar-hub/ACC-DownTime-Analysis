@@ -39,6 +39,7 @@ describe('findRepeatedFailures', () => {
     const g = r.groups[0]!;
     expect(g).toMatchObject({ equipmentId: '100.A1', reasonKey: 'belt slip', occurrences: 3, recurrenceCount: 2, totalHours: 6, avgHours: 2, maxHours: 2, lastFailureDate: '2026-01-26' });
     expect(g.daysBetween).toEqual([10, 15]);
+    expect(g.occurrenceDates).toEqual(['2026-01-01', '2026-01-11', '2026-01-26']);
     expect(r.recurrences.map((x) => [x.startDate, x.daysSincePrevious])).toEqual([['2026-01-11', 10], ['2026-01-26', 15]]);
   });
   it('lists recurrence events separately from the first occurrence', () => {
