@@ -25,8 +25,8 @@ export function ValidationBanner() {
   const hrs = hours(b.hours * 3600);
   return (
     <div className="vbanner" role="status" data-testid="validation-banner">
-      <span className="vbanner-sym" aria-hidden="true">◆</span>
       <span className="vbanner-text">
+        <span className="vbanner-sym" aria-hidden="true">◆</span>{' '}
         {tn(b.count, '{n} record ({h} h) is left out of these numbers because it needs checking.', '{n} records ({h} h) are left out of these numbers because they need checking.').replace('{h}', hrs)}
       </span>
       {canView('events') && (
