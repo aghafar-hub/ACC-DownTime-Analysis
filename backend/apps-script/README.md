@@ -43,6 +43,14 @@ The repository is public. Secrets live only in **Script Properties** (step 4).
    `Code.js` into it.
 5. Click **Save** (disk icon).
 
+**Option A2 - one paste (fastest)**
+
+If you were given the single file `ACC_Downtime_Backend.gs` (made by
+`node tools/bundle-apps-script.mjs`): do steps 1 to 3 of option A, then open
+`Code.gs`, select everything, paste the whole content of `ACC_Downtime_Backend.gs`
+and click **Save**. There is no need to create the other files. In step 6 you
+will find `createFirstAdminRun` by using **Ctrl+F** in this one file.
+
 **Option B - clasp (for people who use the command line)**
 
 1. Install Node.js, then `npm install -g @google/clasp` and `clasp login`.
