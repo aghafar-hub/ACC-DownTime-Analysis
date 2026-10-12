@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.vite/
+coverage/
+test-results/
+playwright-report/
+# Real plant data - never commit
+local-data/
+*.xlsx
+*.xls
+*.csv
+.env
+.env.*
+!.env.example
