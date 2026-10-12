@@ -1,0 +1,91 @@
+/* App shell layout. Colours come from the --shell-* variables the theme provider sets on <body>. */
+.app-shell {
+  display: flex;
+  min-height: 100svh;
+  background: var(--shell-bg);
+}
+.app-shell-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100svh;
+  box-sizing: border-box;
+}
+@media (max-width: 860px) {
+  .app-shell-right {
+    padding-bottom: calc(var(--bottom-nav-h) + 4px);
+  }
+}
+.shell-page-content {
+  flex: 1;
+  padding: 2rem;
+  box-sizing: border-box;
+  background: var(--shell-bg);
+  color: var(--shell-text);
+  font-family: var(--sans);
+  transition: background 0.15s ease, color 0.15s ease;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--shell-border) var(--shell-grid-strength, 55%), transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--shell-border) var(--shell-grid-strength, 55%), transparent) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-attachment: fixed;
+}
+@media (max-width: 860px) {
+  .shell-page-content {
+    padding: 16px;
+  }
+}
+.shell-page-content h1,
+.shell-page-content h2 {
+  color: var(--shell-text);
+}
+.shell-page-content h1 {
+  font-size: 30px;
+  letter-spacing: -0.4px;
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+  position: relative;
+}
+.shell-page-content h1::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 44px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--shell-accent);
+}
+.env-ribbon {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  padding: 2px 14px;
+  border-radius: 8px 8px 0 0;
+  background: #c2410c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+@media (max-width: 860px) {
+  .env-ribbon {
+    font-size: 12px;
+    padding: 0 8px;
+    bottom: auto;
+    top: calc(var(--topbar-h, 54px) - 8px);
+    border-radius: 6px;
+    z-index: 60;
+  }
+  .env-ribbon-extra {
+    display: none;
+  }
+}
+.app-shell-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}

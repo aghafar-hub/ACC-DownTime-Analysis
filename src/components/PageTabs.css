@@ -1,0 +1,275 @@
+/* Module page tabs (design system D2) — see ModuleTabs.tsx. */
+.module-tabs {
+  background: var(--shell-card-bg, #fff);
+  border-bottom: 1px solid var(--shell-border, #d9e0e8);
+  padding: 0 24px;
+  font-family: var(--sans);
+}
+.module-tabs-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.module-tab {
+  appearance: none;
+  border: 0;
+  background: none;
+  padding: 12px 14px 10px;
+  font: 600 14px var(--sans);
+  color: var(--shell-text-secondary, #4a5a70);
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.module-tab:hover {
+  color: var(--shell-text, #0f1b2d);
+}
+.module-tab--active {
+  color: var(--shell-text, #0f1b2d);
+  border-bottom-color: var(--shell-accent, #1e5bb8);
+}
+.module-tab:focus-visible,
+.module-view:focus-visible,
+.module-action:focus-visible,
+.module-picker-btn:focus-visible,
+.module-sheet-item:focus-visible {
+  outline: 2px solid var(--shell-accent, #1e5bb8);
+  outline-offset: 2px;
+}
+.module-tab-more {
+  position: relative;
+  display: flex;
+}
+.module-tab-menu {
+  /* drawn on <body> (ModuleTabs.tsx sets top/left) so the scrolling tab
+     row can't clip it */
+  position: fixed;
+  min-width: 200px;
+  background: var(--shell-card-bg, #fff);
+  border: 1px solid var(--shell-border, #d9e0e8);
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.14);
+  padding: 6px;
+  z-index: 600;
+}
+.module-tab-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  background: none;
+  padding: 9px 10px;
+  border-radius: 7px;
+  font: 500 14px var(--sans);
+  color: var(--shell-text, #0f1b2d);
+  cursor: pointer;
+  text-align: start;
+}
+.module-tab-menu-item:hover,
+.module-tab-menu-item--active {
+  background: color-mix(in srgb, var(--shell-accent, #1e5bb8) 10%, transparent);
+}
+.module-tabs-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  flex-wrap: wrap;
+}
+.module-views {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.module-view {
+  border: 1px solid var(--shell-border, #d9e0e8);
+  background: var(--shell-card-bg, #fff);
+  color: var(--shell-text-secondary, #4a5a70);
+  font: 600 13px var(--sans);
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  min-height: 34px;
+}
+.module-view--active {
+  background: var(--shell-text, #0f1b2d);
+  border-color: var(--shell-text, #0f1b2d);
+  color: var(--shell-card-bg, #fff);
+}
+.module-action {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--shell-accent, #1e5bb8);
+  color: var(--shell-accent-text, #fff);
+  font: 600 13.5px var(--sans);
+  padding: 8px 14px;
+  min-height: 36px;
+  cursor: pointer;
+}
+.module-action--active {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--shell-accent, #1e5bb8) 30%, transparent);
+}
+.module-tabs-phone {
+  display: none;
+}
+
+/* Phone: Oil | Vibration switch + a sideways-scrolling strip of pages. */
+@media (max-width: 860px) {
+  .module-tabs {
+    padding: 6px 0 8px;
+    position: sticky;
+    top: var(--topbar-h, 56px);
+    z-index: 40;
+    background: var(--shell-bg, #f3f5f8);
+  }
+  .module-tabs-row {
+    display: none;
+  }
+  .module-tabs-phone {
+    display: block;
+  }
+  .mt-strip {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 0 16px 2px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-inline: 16px;
+  }
+  .mt-strip::-webkit-scrollbar {
+    display: none;
+  }
+  .mt-chip {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid var(--shell-border, #d9e0e8);
+    background: var(--shell-card-bg, #fff);
+    color: var(--shell-text-secondary, #4b5563);
+    font: 600 13.5px var(--sans);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .mt-chip--on {
+    background: var(--shell-accent, #1e5bb8);
+    border-color: var(--shell-accent, #1e5bb8);
+    color: var(--shell-accent-text, #fff);
+  }
+  .module-tabs-sub {
+    padding: 8px 16px 0;
+  }
+  /* step 6: "Module name ▾" + 3 chips and More ▾, no sideways scroll */
+  .mt-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: calc(100% - 32px);
+    margin: 0 16px 8px;
+    min-height: 38px;
+    padding: 0 12px;
+    border: 1px solid var(--shell-border, #d9e0e8);
+    border-radius: 10px;
+    background: var(--shell-card-bg, #fff);
+    color: var(--shell-text, #0f1b2d);
+    font: 700 15px var(--sans);
+    cursor: pointer;
+  }
+  .mt-name-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mt-strip--fit {
+    overflow: hidden;
+  }
+  .mt-strip--fit .mt-chip {
+    flex: 0 0 auto;
+  }
+  .mt-chip--more {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    color: var(--shell-accent, #1e5bb8);
+  }
+  .mt-chip--more.mt-chip--on {
+    color: var(--shell-accent-text, #fff);
+  }
+}
+.module-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 27, 46, 0.45);
+  z-index: 600;
+}
+.module-sheet {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 601;
+  background: var(--shell-card-bg, #fff);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+  padding: 8px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+  max-height: 80vh;
+  overflow-y: auto;
+  animation: module-sheet-in 0.18s ease-out;
+}
+@keyframes module-sheet-in {
+  from {
+    transform: translateY(24px);
+    opacity: 0.6;
+  }
+}
+.module-sheet-grab {
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--shell-border, #d9e0e8);
+  margin: 0 auto 10px;
+}
+.module-sheet-title {
+  margin: 0 4px 6px;
+  font: 700 17px var(--heading, var(--sans));
+  color: var(--shell-text, #0f1b2d);
+}
+.module-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 48px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--shell-border, #d9e0e8) 60%, transparent);
+  background: none;
+  padding: 0 6px;
+  font: 500 16px var(--sans);
+  color: var(--shell-text, #0f1b2d);
+  cursor: pointer;
+  text-align: start;
+}
+.module-sheet-item--active {
+  color: var(--shell-accent, #1e5bb8);
+  font-weight: 700;
+}
+.module-sheet-check {
+  margin-inline-start: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .module-sheet {
+    animation: none;
+  }
+}

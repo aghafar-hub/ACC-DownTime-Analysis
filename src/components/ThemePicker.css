@@ -1,0 +1,86 @@
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: var(--space-3);
+  max-width: 760px;
+}
+
+/* Card chrome (border/background/label) reads from the shell's OWN current
+   theme — these used to be hardcoded white/light values regardless of which
+   palette was active, which put a bright white card on top of, say, Navy
+   Dark or Carbon Dark's near-black page. Each swatch's PREVIEW patch below
+   still shows that swatch's own theme colors unconditionally (inline
+   styles from ThemePicker.tsx) — only the surrounding frame follows the
+   active theme. */
+.theme-swatch {
+  border: 2px solid var(--shell-border, #e2e8f0);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--shell-card-bg, #fff);
+  padding: 0;
+  text-align: left;
+  font-family: var(--sans);
+  box-shadow: var(--elevation-1);
+  transition: border-color var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease),
+    box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+.theme-swatch:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elevation-2);
+}
+
+.theme-swatch:active {
+  transform: scale(0.97);
+}
+
+.theme-swatch--active {
+  border-color: var(--shell-accent, #1d4ed8);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--shell-accent, #1d4ed8) 25%, transparent);
+}
+
+.theme-swatch-preview {
+  display: block;
+  height: 56px;
+  padding: 8px;
+  border-bottom: 2px solid transparent;
+}
+
+.theme-swatch-sidebar {
+  display: block;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+}
+
+.theme-swatch-accent {
+  display: block;
+  width: 32px;
+  height: 6px;
+  border-radius: 3px;
+  margin-top: 8px;
+}
+
+.theme-swatch-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--shell-text, #1e293b);
+}
+
+.theme-swatch-check {
+  color: var(--shell-accent, #1d4ed8);
+}
+
+.theme-swatch-hint {
+  display: block;
+  padding: 0 10px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--shell-text-secondary, #8ea0bb);
+  text-align: start;
+}

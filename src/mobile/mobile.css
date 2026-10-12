@@ -1,0 +1,197 @@
+/* Mobile proposal M1 — shared phone pieces (More sheet, update prompt,
+   keyboard handling). Desktop is untouched: everything here is either a
+   component only phones open, or inside the <=860px media query. */
+
+.more-sheet {
+  max-height: min(88vh, calc(var(--app-vh, 100vh) - 24px));
+  padding-top: 8px;
+}
+.more-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px 12px;
+  border-bottom: 1px solid var(--shell-border, #d9e0e8);
+}
+.more-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--shell-accent, #1e5bb8);
+  color: var(--shell-accent-text, #fff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.more-account-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.more-account-text b {
+  font-size: 14.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--shell-text, #0f1b2d);
+}
+.more-account-text span {
+  font-size: 12.5px;
+  color: var(--shell-text-secondary, #4b5563);
+}
+.more-group {
+  margin-top: 6px;
+}
+.more-group-title {
+  margin: 12px 6px 2px;
+  font: 700 12px var(--sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--shell-text-secondary, #4b5563);
+}
+.more-signout {
+  color: var(--shell-danger, #c42b2b);
+  border-bottom: 0;
+}
+
+/* More as a hub (step 6) */
+.more-account { border-bottom: 0; border-top: 1px solid var(--shell-border, #d9e0e8); padding-top: 12px; margin-top: 12px; }
+.more-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--shell-border, #d9e0e8); border-radius: 12px; padding: 0 12px; background: var(--shell-bg, #f4f6f9); color: var(--shell-text-secondary, #4b5563); margin: 4px 2px 0; }
+.more-search input { flex: 1; min-width: 0; border: 0; background: transparent; font: 400 15px var(--sans); padding: 11px 0; color: var(--shell-text, #0f1b2d); outline: none; }
+.more-recent { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 2px; }
+.more-recent-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--shell-border, #d9e0e8); background: var(--shell-card-bg, #fff); color: var(--shell-text, #0f1b2d); border-radius: 999px; padding: 7px 12px; font: 600 13.5px var(--sans); cursor: pointer; }
+.more-recent-chip--on { border-color: var(--shell-accent, #1e5bb8); color: var(--shell-accent, #1e5bb8); }
+.more-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 4px 2px; }
+.more-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; border: 1px solid var(--shell-border, #d9e0e8); background: var(--shell-card-bg, #fff); border-radius: 14px; padding: 12px 6px 10px; cursor: pointer; font-family: var(--sans); color: var(--shell-text, #0f1b2d); min-width: 0; }
+.more-tile b { font-size: 13.5px; line-height: 1.2; }
+.more-tile small { font-size: 12px; color: var(--shell-text-secondary, #4b5563); }
+.more-tile--soon { border-style: dashed; }
+.more-tile-icon { width: 40px; height: 40px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; }
+.more-tile-icon--other { background: color-mix(in srgb, var(--shell-text-secondary, #4b5563) 12%, transparent); color: var(--shell-text-secondary, #4b5563); }
+.more-account-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 2px 4px; }
+.more-action { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--shell-border, #d9e0e8); background: var(--shell-card-bg, #fff); color: var(--shell-text, #0f1b2d); border-radius: 12px; padding: 9px 4px; font: 600 13px var(--sans); cursor: pointer; }
+.more-action.more-signout { color: var(--shell-danger, #c42b2b); }
+.more-drill-head { display: flex; align-items: center; gap: 10px; padding: 4px 2px 10px; }
+.more-back { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--shell-border, #d9e0e8); background: var(--shell-card-bg, #fff); color: var(--shell-text, #0f1b2d); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; }
+.more-drill-title { display: flex; flex-direction: column; }
+.more-drill-title b { font-size: 16px; color: var(--shell-text, #0f1b2d); }
+.more-drill-title small { font-size: 12.5px; color: var(--shell-text-secondary, #4b5563); }
+.more-muted { color: var(--shell-text-secondary, #4b5563); font-weight: 400; }
+.more-empty { padding: 10px 6px; }
+.more-mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+[dir='rtl'] .more-back svg { transform: none !important; }
+
+/* New-version prompt (UpdatePrompt.tsx) */
+.update-toast {
+  position: fixed;
+  z-index: 2100;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 24px;
+  width: min(460px, calc(100% - 24px));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 14px;
+  border-radius: 14px;
+  background: #111827;
+  color: #fff;
+  font: 500 13.5px var(--sans);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+}
+.update-toast span {
+  flex: 1;
+}
+.update-toast button {
+  border: 0;
+  background: none;
+  color: #9dc1ff;
+  font: 700 14px var(--sans);
+  padding: 8px 6px;
+  cursor: pointer;
+}
+.update-toast .update-toast-x {
+  color: #9ca3af;
+  padding: 8px 4px;
+}
+@media (max-width: 860px) {
+  .update-toast {
+    bottom: calc(var(--bottom-nav-h) + 14px);
+  }
+}
+
+/* Keyboard open (viewport.ts): the bottom bar steps aside so the form
+   and its buttons get the room. */
+@media (max-width: 860px) {
+  html.kb-open .bottom-nav,
+  html.kb-open .env-ribbon {
+    display: none !important;
+  }
+}
+
+/* No zooming on phones (user request): the page never scales.
+   - iPhone zooms into any field whose text is under 16px when it gets
+     focus, so fields use 16px on phones (beats the apps' inline sizes).
+   - touch-action: manipulation removes double-tap zoom everywhere.
+   Pinch is blocked in viewport.ts (Safari ignores user-scalable=no). */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+@media (max-width: 860px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Arabic view (M4, i18n/translator.ts): the page reads right-to-left.
+   Codes (Equipment ID, LP, VIB ID), numbers in monospace and charts stay
+   left-to-right so "321.FN400" never reorders; arrows point the reading way. */
+html.lang-ar {
+  --sans: 'IBM Plex Sans Arabic', 'IBM Plex Sans', 'Segoe UI', Tahoma, sans-serif;
+  --heading: 'IBM Plex Sans Arabic', 'Space Grotesk', 'IBM Plex Sans', sans-serif;
+}
+html.lang-ar body {
+  font-family: var(--sans);
+}
+/* translated text (marked by the translator) wins over fonts set inline or
+   per module; codes and numbers around it keep their own font */
+html.lang-ar [data-ar],
+body [lang='ar'] {
+  font-family: 'IBM Plex Sans Arabic', 'IBM Plex Sans', sans-serif !important;
+}
+html[dir='rtl'] .plant-code,
+html[dir='rtl'] [style*='Mono'],
+html[dir='rtl'] [style*='monospace'],
+html[dir='rtl'] code,
+html[dir='rtl'] input[type='date'],
+html[dir='rtl'] input[type='number'] {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+html[dir='rtl'] .recharts-wrapper,
+html[dir='rtl'] .recharts-responsive-container {
+  direction: ltr;
+}
+html[dir='rtl'] .icon-chevronRight,
+html[dir='rtl'] .ti-chevron-right,
+html[dir='rtl'] .ti-chevron-left,
+html[dir='rtl'] .ti-arrow-right,
+html[dir='rtl'] .ti-arrow-left {
+  transform: scaleX(-1);
+  display: inline-block;
+}
+.lang-on {
+  font-weight: 800;
+}
+/* lines still in English (names, reasons, codes lists) keep their own
+   reading order; Arabic lines read right-to-left */
+html[dir='rtl'] body :is(p, span, b, small, em, strong, td, th, li, label, button, a, h1, h2, h3, h4, div) {
+  unicode-bidi: plaintext;
+}

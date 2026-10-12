@@ -1,0 +1,80 @@
+/* Phone bottom bar (860 px and below). See BottomNav.tsx. */
+.bottom-nav {
+  display: none;
+}
+
+:root {
+  /* iPhone home-indicator allowance; some of it is already inside the 54 px bar */
+  --bottom-nav-pad: max(4px, calc(env(safe-area-inset-bottom, 0px) - 16px));
+  --bottom-nav-h: calc(54px + var(--bottom-nav-pad));
+}
+
+@media (max-width: 860px) {
+  .bottom-nav {
+    display: grid;
+    align-items: start;
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    height: var(--bottom-nav-h);
+    padding-bottom: var(--bottom-nav-pad);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    background: var(--shell-card-bg, #fff);
+    background: color-mix(in srgb, var(--shell-card-bg, #fff) 94%, transparent);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+    border-top: 1px solid var(--shell-border, #d9e0e8);
+    z-index: 300;
+  }
+  .bottom-nav-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    height: 54px;
+    border: none;
+    background: transparent;
+    color: var(--shell-text-secondary, #4a5a70);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 0;
+    text-decoration: none;
+  }
+  .bottom-nav-item span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+    padding: 0 4px;
+  }
+  .bottom-nav-item--active {
+    color: var(--shell-accent, #1e5bb8);
+  }
+  .bottom-nav-item--active::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    inset-inline: 22%;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: var(--shell-accent, #1e5bb8);
+  }
+  .bottom-nav-item:active {
+    transform: scale(0.94);
+  }
+  .bottom-nav-item:focus-visible {
+    outline: 2px solid var(--shell-accent, #1e5bb8);
+    outline-offset: 2px;
+  }
+}
+
+.bottom-nav-icon {
+  position: relative;
+  display: inline-flex;
+}

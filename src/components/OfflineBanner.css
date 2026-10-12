@@ -1,0 +1,29 @@
+/* PWA item 26 — see OfflineBanner.tsx. */
+.offline-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 20px;
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: var(--shell-text, #0f1b2d);
+  background: color-mix(in srgb, var(--shell-warning, #9a5500) 14%, var(--shell-card-bg, #fff));
+  border-bottom: 1px solid color-mix(in srgb, var(--shell-warning, #9a5500) 40%, transparent);
+}
+.offline-banner svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--shell-warning, #9a5500);
+}
+.offline-banner--sending {
+  background: color-mix(in srgb, var(--shell-accent, #1e5bb8) 10%, var(--shell-card-bg, #fff));
+  border-bottom-color: color-mix(in srgb, var(--shell-accent, #1e5bb8) 35%, transparent);
+}
+.offline-banner--sending svg {
+  color: var(--shell-accent, #1e5bb8);
+}
+@media (max-width: 860px) {
+  .offline-banner {
+    padding: 8px 12px;
+  }
+}

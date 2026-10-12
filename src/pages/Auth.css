@@ -1,0 +1,211 @@
+/* Login + ChangePassword — the one screen in this app that is NOT inside
+   ShellThemeProvider (see App.tsx's route tree), so it always renders with
+   index.css's own fixed --bg/--text/--accent tokens regardless of whichever
+   of theme.ts's 10 palettes the user previously chose. That's deliberate:
+   theme choice is an in-app preference, and this is the one surface worth
+   spending a fixed, opinionated identity on (frontend-design brief:
+   "spend your boldness in one place") — a faint technical grid instead of
+   a flat fill, since the subject here is an industrial equipment platform,
+   not a generic SaaS product. */
+.auth-page {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5) var(--space-4);
+  box-sizing: border-box;
+  background: var(--bg);
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 40px 40px;
+  background-position: center;
+  /* The grid lines above are full-strength --border color at 40px spacing —
+     faded via mask instead of lowering the lines' own opacity, so they stay
+     crisp close to the card and disappear toward the edges rather than
+     washing out evenly everywhere. */
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 0%, transparent 75%);
+  mask-image: radial-gradient(ellipse at center, #000 0%, transparent 75%);
+}
+
+.auth-card-wrap {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.auth-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+
+.auth-logo {
+  display: block;
+  max-width: 220px;
+  width: 100%;
+  height: auto;
+}
+
+.auth-tagline {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  color: var(--text);
+}
+
+.auth-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  box-sizing: border-box;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elevation-3);
+}
+
+.auth-card h1 {
+  font-size: 1.3rem;
+  margin: 0 0 var(--space-1);
+  text-align: center;
+}
+
+.auth-card label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
+  text-align: left;
+}
+
+.auth-remember {
+  flex-direction: row !important;
+  align-items: center;
+  gap: var(--space-2) !important;
+  font-weight: 400 !important;
+}
+
+.auth-remember input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.auth-card input {
+  min-height: 44px;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  font-family: var(--sans);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-h);
+  box-sizing: border-box;
+  transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
+}
+
+.auth-card input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.auth-card button {
+  min-height: 48px;
+  padding: 0.6rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-family: var(--sans);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: var(--space-1);
+}
+
+.auth-card button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth-error {
+  color: #f87171;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.auth-hint {
+  color: var(--text);
+  font-size: 0.8rem;
+  margin: 0;
+  text-align: center;
+}
+
+.auth-footer {
+  margin: var(--space-5) 0 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.2px;
+  color: var(--text);
+  opacity: 0.7;
+  text-align: center;
+}
+
+/* Notice line (a session that ended) and the mock-mode demo accounts. */
+.auth-notice {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-size: 0.85rem;
+}
+.auth-demo {
+  width: 100%;
+  margin-top: var(--space-4);
+  text-align: center;
+}
+.auth-demo p {
+  font-size: 12px;
+  color: var(--text);
+  margin-bottom: var(--space-2);
+}
+.auth-demo-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+.auth-demo-row button {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-h);
+  font: 600 13px var(--sans);
+  cursor: pointer;
+}
+.auth-demo-row button:hover {
+  border-color: var(--accent);
+}
+.auth-secondary {
+  background: transparent !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}

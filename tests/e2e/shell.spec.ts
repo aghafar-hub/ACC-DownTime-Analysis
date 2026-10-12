@@ -1,0 +1,342 @@
+import { expect, test } from '@playwright/test';
+import { noSidewaysScroll, PASSWORD, signIn, signInAndWait, stubFonts, watchConsole, type Role } from './helpers';
+
+// Runs against `vite preview` of a production build in mock mode (made-up data).
+
+const DASH = ['Overview', 'Pareto', 'Repeated Failures', 'Reliability', 'Event Explorer'];
+const TABS: Record<Role, string[]> = {
+  admin: [...DASH, 'Upload', 'Master Data', 'Settings', 'Users'],
+  manager: [...DASH, 'Master Data'],
+  engineer: [...DASH, 'Upload', 'Master Data'],
+  viewer: DASH,
+};
+
+test.describe('desktop', () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+  let errors: string[];
+  test.beforeEach(async ({ page }) => {
+    await stubFonts(page);
+    errors = watchConsole(page);
+  });
+  test.afterEach(() => {
+    expect(errors, 'console errors').toEqual([]);
+  });
+
+  test('login screen has the brand, the fields and the footer', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('img', { name: 'ACC Downtime Analysis' })).toBeVisible();
+    await expect(page.getByTestId('login-keep')).toBeChecked();
+    await expect(page.getByTestId('login-submit')).toHaveText('Sign in');
+    await expect(page.getByText('Arabian Cement Company · Sokhna Plant')).toBeVisible();
+  });
+
+  test('a wrong password shows one plain message, then the right one works', async ({ page }) => {
+    await signIn(page, 'viewer', 'not-the-password');
+    await expect(page.getByTestId('login-error')).toHaveText('Email or password is not correct.');
+    await page.getByTestId('login-password').fill(PASSWORD);
+    await page.getByTestId('login-submit').click();
+    await expect(page.getByTestId('page-title')).toHaveText('Overview');
+  });
+
+  for (const role of Object.keys(TABS) as Role[]) {
+    test(`${role}: sees exactly the tabs the role allows`, async ({ page }) => {
+      await signInAndWait(page, role);
+      const tabs = await page.getByRole('navigation', { name: 'Pages' }).getByRole('link').allTextContents();
+      expect(tabs.map((s) => s.trim())).toEqual(TABS[role]);
+      await expect(page.getByTestId('user-name')).toContainText(`Demo ${role[0].toUpperCase()}${role.slice(1)}`);
+      await expect(page.getByTestId('breadcrumb')).toContainText('ACC Downtime');
+      await expect(page.getByTestId('breadcrumb')).toContainText('Overview');
+      await expect(page.getByTestId('online-dot')).toBeVisible();
+      // the left rail lists the same pages
+      const rail = await page.getByRole('navigation', { name: 'Primary' }).getByRole('link').count();
+      expect(rail).toBe(TABS[role].length);
+    });
+  }
+
+  test('a deep link to a hidden tab shows a plain "You do not have access" page', async ({ page }) => {
+    await signInAndWait(page, 'viewer');
+    await page.goto('/#/users');
+    await expect(page.getByTestId('no-access')).toContainText('You do not have access');
+    await page.goto('/#/upload');
+    await expect(page.getByTestId('no-access')).toBeVisible();
+  });
+
+  test('placeholder pages show live facts and the "next step" card', async ({ page }) => {
+    await signInAndWait(page, 'admin');
+    await expect(page.getByTestId('fact-areas')).toContainText('19');
+    await expect(page.getByTestId('fact-events')).not.toContainText('-');
+    await expect(page.getByTestId('next-step')).toContainText('Built in the next step');
+    await page.getByRole('link', { name: 'Upload' }).first().click();
+    await expect(page.getByTestId('fact-batches')).toContainText(/\d/);
+    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Users' }).click();
+    await expect(page.getByTestId('fact-users')).toContainText('5');
+    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Settings' }).click();
+    await expect(page.getByTestId('theme-picker')).toBeVisible();
+  });
+
+  test('Event Explorer: list, paging, filters, year switch', async ({ page }) => {
+    await signInAndWait(page, 'viewer');
+    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Event Explorer' }).click();
+    await expect(page.getByTestId('event-row')).toHaveCount(50);
+    await page.getByTestId('show-more').click();
+    await expect(page.getByTestId('event-row')).toHaveCount(100);
+    const total = await page.getByTestId('tile-shown').locator('span').nth(2).textContent();
+    expect(Number((total ?? '').replace(/,/g, ''))).toBeGreaterThan(1000);
+
+    await page.getByTestId('failure-only').click();
+    await expect(page.getByTestId('event-row').first()).toContainText('Failure');
+    const failures = await page.getByTestId('list-count').textContent();
+    await page.getByTestId('failure-only').click();
+    await page.getByTestId('class-PL').click();
+    await expect(page.getByTestId('event-row').first().locator('.badge--class')).toHaveText('PL');
+    await page.getByTestId('reset-filters').click();
+
+    await page.getByTestId('event-search').fill('bearing');
+    await expect(page.getByTestId('event-row').first()).toContainText(/bearing/i);
+    await page.getByTestId('event-search').fill('zzzz-no-such-text');
+    await expect(page.getByTestId('no-results')).toBeVisible();
+    await page.getByTestId('event-search').fill('');
+
+    await page.getByTestId('filter-show').selectOption('void');
+    await expect(page.getByTestId('event-row').first()).toContainText('Void');
+    await page.getByTestId('filter-show').selectOption('edited');
+    await expect(page.getByTestId('event-row').first()).toContainText('Edited');
+    await page.getByTestId('filter-show').selectOption('issues');
+    await expect(page.getByTestId('event-row').first().getByTestId('badge-flag').first()).toBeVisible();
+    await page.getByTestId('reset-filters').click();
+
+    await page.getByTestId('filter-from').fill('2026-03-01');
+    await page.getByTestId('filter-to').fill('2026-03-31');
+    await page.getByTestId('filter-area').selectOption('K.1');
+    await expect(page.getByTestId('event-row').first()).toContainText('K.1');
+    expect(failures).toContain('matching');
+
+    await page.getByTestId('year-2025').click();
+    await page.getByTestId('reset-filters').click();
+    await expect(page.getByTestId('page-subtitle')).toContainText('in 2025');
+  });
+
+  test('viewer cannot see Edit or Void buttons but can read the history', async ({ page }) => {
+    await signInAndWait(page, 'viewer');
+    await page.goto('/#/events');
+    await page.getByTestId('filter-show').selectOption('edited');
+    await page.getByTestId('event-row').first().getByRole('button').click();
+    await expect(page.getByTestId('event-detail')).toBeVisible();
+    await expect(page.getByTestId('edit-event')).toHaveCount(0);
+    await expect(page.getByTestId('void-event')).toHaveCount(0);
+    await expect(page.getByTestId('restore-event')).toHaveCount(0);
+    await expect(page.getByTestId('history-item').first()).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('event-detail')).toHaveCount(0);
+  });
+
+  test('engineer edits an event and sees the Edited badge and recalculated values', async ({ page }) => {
+    await signInAndWait(page, 'engineer');
+    await page.goto('/#/events');
+    // a row that has not been edited yet
+    const row = page.getByTestId('event-row').first();
+    const id = await row.getAttribute('data-event-id');
+    await expect(row.getByTestId('badge-edited')).toHaveCount(0);
+    await row.getByRole('button').click();
+    await expect(page.getByTestId('no-history')).toBeVisible();
+    await page.getByTestId('edit-event').click();
+
+    // plain-English validation
+    await page.getByTestId('save-edit').click();
+    await expect(page.getByTestId('error-note')).toContainText('Write a short note');
+    await page.getByTestId('f-note').fill('Checking the form');
+    await page.getByTestId('save-edit').click();
+    await expect(page.getByTestId('error-form')).toContainText('Nothing has been changed yet');
+    await page.getByTestId('f-code').fill('');
+    await page.getByTestId('save-edit').click();
+    await expect(page.getByTestId('error-code_raw')).toContainText('Enter the equipment code');
+    await page.getByTestId('f-code').fill('999.UNLISTED');
+    await page.getByTestId('f-desc').fill('Corrected by e2e test');
+    await page.getByTestId('f-class').selectOption('PL');
+    await page.getByTestId('f-note').fill('Checked against the control-room log');
+    await page.getByTestId('save-edit').click();
+
+    const result = page.getByTestId('edit-result');
+    await expect(result).toContainText('Saved');
+    await expect(result).toContainText('Equipment: not in the equipment list');
+    await expect(result).toContainText('Criticality: NO_INC, failure: no');
+    await expect(result).toContainText('Unknown code');
+    await expect(page.getByTestId('history-item').first()).toContainText('Checked against the control-room log');
+    await expect(page.getByTestId('detail-flags')).toContainText('Unknown code');
+    await page.getByTestId('modal-close').click();
+
+    const edited = page.locator(`[data-event-id="${id}"]`);
+    await expect(edited.getByTestId('badge-edited')).toBeVisible();
+    await expect(edited).toContainText('Unknown code');
+  });
+
+  test('engineer voids and restores an event with a note', async ({ page }) => {
+    await signInAndWait(page, 'engineer');
+    await page.goto('/#/events');
+    const row = page.getByTestId('event-row').nth(2);
+    const id = await row.getAttribute('data-event-id');
+    await row.getByRole('button').click();
+    await page.getByTestId('void-event').click();
+    await page.getByTestId('confirm-void').click();
+    await expect(page.getByTestId('error-note')).toBeVisible();
+    await page.getByTestId('f-note').fill('Duplicate row');
+    await page.getByTestId('confirm-void').click();
+    await expect(page.getByTestId('edit-result')).toContainText('voided');
+    await expect(page.getByTestId('restore-event')).toBeVisible();
+    await page.getByTestId('modal-close').click();
+    await expect(page.locator(`[data-event-id="${id}"]`).getByTestId('badge-void')).toBeVisible();
+    await page.locator(`[data-event-id="${id}"]`).getByRole('button').click();
+    await page.getByTestId('restore-event').click();
+    await page.getByTestId('f-note').fill('It was real');
+    await page.getByTestId('confirm-void').click();
+    await expect(page.getByTestId('edit-result')).toContainText('restored');
+    await page.getByTestId('modal-close').click();
+    await expect(page.locator(`[data-event-id="${id}"]`).getByTestId('badge-void')).toHaveCount(0);
+  });
+
+  test('a temporary password forces a change before anything else', async ({ page }) => {
+    await signIn(page, 'newhire@demo.test', 'Temp-Pass-1234');
+    await expect(page.getByTestId('change-password-form')).toBeVisible();
+    await page.goto('/#/events');
+    await expect(page.getByTestId('change-password-form')).toBeVisible();
+    await page.getByTestId('cp-current').fill('Temp-Pass-1234');
+    await page.getByTestId('cp-new').fill('short');
+    await page.getByTestId('cp-confirm').fill('short');
+    await page.getByTestId('cp-submit').click();
+    await expect(page.getByTestId('cp-error')).toContainText('at least 10');
+    await page.getByTestId('cp-new').fill('My-Own-Password-1');
+    await page.getByTestId('cp-confirm').fill('Different-Password-1');
+    await page.getByTestId('cp-submit').click();
+    await expect(page.getByTestId('cp-error')).toContainText('do not match');
+    await page.getByTestId('cp-confirm').fill('My-Own-Password-1');
+    await page.getByTestId('cp-submit').click();
+    await expect(page.getByTestId('page-title')).toHaveText('Overview');
+  });
+
+  test('theme choice is kept, and sign-out returns to the login screen', async ({ page }) => {
+    await signInAndWait(page, 'viewer');
+    await page.getByTestId('appearance-btn').click();
+    await page.getByRole('radio', { name: /Navy Dark/ }).click();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'Navy Dark');
+    await page.getByTestId('modal-close').click();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'Navy Dark');
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('sign-out').click();
+    await expect(page.getByTestId('login-form')).toBeVisible();
+  });
+
+  test('offline: a banner says the data is read-only', async ({ page, context }) => {
+    await signInAndWait(page, 'engineer');
+    await context.setOffline(true);
+    await expect(page.getByTestId('offline-banner')).toContainText('Offline');
+    await expect(page.getByTestId('offline-banner')).toContainText('Uploads and edits need a connection');
+    await context.setOffline(false);
+    await expect(page.getByTestId('offline-banner')).toHaveCount(0);
+  });
+
+  test('every page has no sideways scroll at 1280', async ({ page }) => {
+    await signInAndWait(page, 'admin');
+    for (const hash of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users']) {
+      await page.goto(`/#/${hash}`);
+      await expect(page.getByTestId('page-title')).toBeVisible();
+      expect((await noSidewaysScroll(page)).ok, hash).toBe(true);
+    }
+  });
+});
+
+test.describe('phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  let errors: string[];
+  test.beforeEach(async ({ page }) => {
+    await stubFonts(page);
+    errors = watchConsole(page);
+  });
+  test.afterEach(() => {
+    expect(errors, 'console errors').toEqual([]);
+  });
+
+  test('bottom bar, page chips and the More sheet follow the role', async ({ page }) => {
+    await signInAndWait(page, 'viewer');
+    await expect(page.getByTestId('bottom-nav')).toBeVisible();
+    await expect(page.getByTestId('bottom-overview')).toBeVisible();
+    await expect(page.getByTestId('bottom-upload')).toHaveCount(0);
+    await page.getByTestId('bottom-more').click();
+    const sheet = page.getByTestId('more-sheet');
+    await expect(sheet).toBeVisible();
+    for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events']) await expect(sheet.getByTestId(`more-tile-${id}`)).toBeVisible();
+    for (const id of ['upload', 'master', 'settings', 'users']) await expect(sheet.getByTestId(`more-tile-${id}`)).toHaveCount(0);
+    await expect(sheet.getByTestId('more-role')).toHaveText('Viewer');
+    // Back closes the sheet
+    await page.goBack();
+    await expect(sheet).toHaveCount(0);
+    await expect(page.getByTestId('page-title')).toHaveText('Overview');
+    await page.getByTestId('bottom-more').click();
+    await sheet.getByTestId('more-tile-events').click();
+    await expect(page.getByTestId('page-title')).toHaveText('Event Explorer');
+    await page.getByTestId('bottom-more').click();
+    await page.getByTestId('more-logout').click();
+    await expect(page.getByTestId('login-form')).toBeVisible();
+  });
+
+  test('admin sees every page in More; engineer has Upload on the bar', async ({ page }) => {
+    await signInAndWait(page, 'admin');
+    await page.getByTestId('bottom-more').click();
+    for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users']) {
+      await expect(page.getByTestId(`more-tile-${id}`)).toBeVisible();
+    }
+    await expect(page.getByTestId('more-tile-users')).toContainText('Can edit');
+  });
+
+  test('Event Explorer on a phone: cards, 50 at a time, filters in a sheet, detail opens', async ({ page }) => {
+    await signInAndWait(page, 'engineer');
+    await page.goto('/#/events');
+    await expect(page.getByTestId('event-card')).toHaveCount(50);
+    await expect(page.getByTestId('event-table')).toHaveCount(0);
+    await page.getByTestId('show-more').click();
+    await expect(page.getByTestId('event-card')).toHaveCount(100);
+    await page.getByTestId('filters-pill').click();
+    await expect(page.getByTestId('filters-sheet')).toBeVisible();
+    await page.getByTestId('class-ELE').click();
+    await page.getByTestId('filter-area').selectOption('K.1');
+    await expect(page.getByTestId('sheet-apply')).toContainText('Show');
+    await page.getByTestId('sheet-apply').click();
+    await expect(page.getByTestId('filters-sheet')).toHaveCount(0);
+    await expect(page.getByTestId('event-card').first()).toContainText('K.1');
+    await page.getByTestId('event-card').first().click();
+    await expect(page.getByTestId('event-detail')).toBeVisible();
+    await page.goBack(); // Back closes the popup
+    await expect(page.getByTestId('event-detail')).toHaveCount(0);
+    // touch targets
+    const small = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('button, a, select, input:not([type=checkbox])')]
+      .filter((el) => el.offsetParent !== null)
+      .map((el) => ({ el, r: el.getBoundingClientRect() }))
+      .filter(({ r }) => r.height > 0 && r.height < 38)
+      .map(({ el }) => el.outerHTML.slice(0, 90)));
+    expect(small, 'controls under 38px tall').toEqual([]);
+  });
+
+  for (const width of [360, 390]) {
+    test(`no sideways scroll at ${width}px on every page and sheet`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto('/');
+      expect((await noSidewaysScroll(page)).ok, 'login').toBe(true);
+      await signInAndWait(page, 'admin');
+      for (const hash of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users']) {
+        await page.goto(`/#/${hash}`);
+        await expect(page.getByTestId('page-title')).toBeVisible();
+        const r = await noSidewaysScroll(page);
+        expect(r.ok, `${hash}: ${JSON.stringify(r)}`).toBe(true);
+      }
+      await page.goto('/#/events');
+      await page.getByTestId('bottom-more').click();
+      expect((await noSidewaysScroll(page)).ok, 'more sheet').toBe(true);
+      await page.goBack();
+      await page.getByTestId('filters-pill').click();
+      expect((await noSidewaysScroll(page)).ok, 'filter sheet').toBe(true);
+      await page.goBack();
+      await page.getByTestId('event-card').first().click();
+      expect((await noSidewaysScroll(page)).ok, 'detail').toBe(true);
+    });
+  }
+});

@@ -1,0 +1,379 @@
+﻿/* Pushes the main content over as it expands (rather than overlaying on
+   top of it) — real content must never end up hidden behind the sidebar,
+   even during the hover-expand transition. Colors read from --shell-*
+   custom properties (set in App.tsx from the chosen theme — see
+   shellTheme.tsx), falling back to the original dark-navy values so the
+   sidebar still renders correctly if those vars are ever unset. */
+.sidebar-rail {
+  width: 68px;
+  flex-shrink: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  background: var(--shell-sidebar-bg, #0f172a);
+  color: var(--shell-sidebar-text, #e2e8f0);
+  font-family: var(--sans);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.16s ease, background 0.15s ease, color 0.15s ease;
+  z-index: 100;
+}
+
+/* :focus-within expands the rail the same way :hover does, so a keyboard
+   user tabbing onto a nav link can actually see its label (and reach its
+   sub-tabs, see .sidebar-subnav below) instead of landing on an invisible
+   icon-only target. */
+.sidebar-rail:hover,
+.sidebar-rail:focus-within {
+  width: 248px;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
+}
+
+/* Touch devices have no :hover state at all, so the hover-expand trigger
+   above never fires there — leaving every label and every sub-tab
+   permanently unreachable. Below 861px (phones, and portrait tablets —
+   see the overlay breakpoint further down) that's handled by a proper
+   slide-in overlay instead, toggled from TopBar's hamburger button,
+   because forcing 248px permanently open there ate ~65% of a real phone's
+   screen width with no way to dismiss it. Above that width (e.g. a
+   touchscreen laptop or a landscape tablet, where 248px is a reasonable
+   fraction of the screen) keep the simpler "permanently expanded" fallback,
+   since there's no hamburger button rendered up there to open an overlay
+   with (see TopBar.css's own breakpoint). */
+@media (hover: none) and (min-width: 861px) {
+  .sidebar-rail {
+    width: 248px;
+  }
+}
+
+.sidebar-nav-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 248px; /* content sizes for the expanded width; the collapsed rail clips it via overflow:hidden above */
+}
+
+.sidebar-logo {
+  height: 100px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--shell-border, #1e293b);
+  position: relative;
+}
+
+/* No background behind either mark — both images are transparent PNGs
+   (the full lockup also carries its own dark backing box behind its own
+   text, so it stays legible against any sidebar color). */
+.sidebar-logo-mark {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  display: block;
+}
+
+.sidebar-logo-full {
+  height: 84px;
+  width: auto;
+  max-width: 216px;
+  object-fit: contain;
+  display: none;
+  position: absolute;
+  left: 14px;
+}
+
+.sidebar-rail:hover .sidebar-logo-mark,
+.sidebar-rail:focus-within .sidebar-logo-mark {
+  display: none;
+}
+
+.sidebar-rail:hover .sidebar-logo-full,
+.sidebar-rail:focus-within .sidebar-logo-full {
+  display: block;
+}
+
+@media (hover: none) and (min-width: 861px) {
+  .sidebar-logo-mark {
+    display: none;
+  }
+  .sidebar-logo-full {
+    display: block;
+  }
+}
+
+.sidebar-nav {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+  overflow-y: auto;
+  /* Explicit (not left to compute from overflow-y:auto) — otherwise the
+     browser treats overflow-x:visible as auto too whenever overflow-y is
+     scrolling, which showed up as a stray horizontal scrollbar whenever
+     this list's content came out even a pixel wider than the rail. */
+  overflow-x: hidden;
+  flex: 1;
+}
+
+.sidebar-link {
+  position: relative; /* anchors .sidebar-link-loading to the icon, visible even when the rail is collapsed */
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  min-height: 44px; /* touch target minimum — the 18px icon + old padding fell short of this */
+  padding: 0.65rem 1.25rem;
+  box-sizing: border-box;
+  color: var(--shell-sidebar-text, #cbd5e1);
+  text-decoration: none;
+  font-size: 0.87rem;
+  background: transparent;
+  border: none;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.sidebar-link:active {
+  transform: scale(0.98);
+}
+
+/* Tiny "still warming up in the background" signal for a module whose
+   embed bundle is preloading after login (see embeddedNav.tsx's
+   loadStateFor) — a small pulsing dot at the icon's corner, positioned so
+   it's visible whether the rail is collapsed (icon only) or expanded
+   (icon + label), and gone entirely once the module finishes loading. */
+.sidebar-link-loading {
+  position: absolute;
+  left: 27px;
+  top: 9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 0 2px var(--shell-sidebar-bg, #0f1420);
+  animation: sidebar-loading-pulse 1.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes sidebar-loading-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.sidebar-rail:hover .sidebar-link,
+.sidebar-rail:focus-within .sidebar-link {
+  gap: 12px;
+}
+
+@media (hover: none) and (min-width: 861px) {
+  .sidebar-link {
+    gap: 12px;
+  }
+}
+
+.sidebar-link:hover {
+  background: var(--shell-border, #1e293b);
+  color: var(--shell-sidebar-text, #fff);
+}
+
+.sidebar-link--active {
+  background: var(--shell-accent, #1d4ed8);
+  color: var(--shell-accent-text, #fff);
+}
+
+.sidebar-link-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 18px;
+}
+
+/* Collapses to zero width (not just opacity) when the rail isn't hovered,
+   so a bordered element around icon+label (like .sidebar-logout) doesn't
+   keep the label's full-width invisible box in its layout — that was
+   clipping the Sign out pill asymmetrically against the collapsed rail. */
+.sidebar-link-label {
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: opacity 0.1s ease, max-width 0.16s ease;
+}
+
+.sidebar-rail:hover .sidebar-link-label,
+.sidebar-rail:focus-within .sidebar-link-label {
+  opacity: 1;
+  max-width: 200px;
+}
+
+@media (hover: none) and (min-width: 861px) {
+  .sidebar-link-label {
+    opacity: 1;
+    max-width: 200px;
+  }
+}
+
+.sidebar-subnav {
+  list-style: none;
+  margin: 0;
+  padding: 2px 0 6px;
+  display: none;
+}
+
+.sidebar-rail:hover .sidebar-subnav,
+.sidebar-rail:focus-within .sidebar-subnav {
+  display: block;
+}
+
+@media (hover: none) and (min-width: 861px) {
+  .sidebar-subnav {
+    display: block;
+  }
+}
+
+/* Shared by both kinds of sub-tab (see Sidebar.tsx's SubTabItem) — a
+   "native" one renders as a <button>, a "routed" one as a NavLink <a>, so
+   this resets anchor-specific defaults (text-decoration) alongside the
+   button ones (background/border/font) that were already here. */
+.sidebar-sublink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px; /* touch target minimum, see .sidebar-link above */
+  padding: 0.4rem 1.25rem 0.4rem 2.5rem;
+  box-sizing: border-box;
+  color: var(--shell-sidebar-text-secondary, #94a3b8);
+  background: transparent;
+  border: none;
+  text-align: left;
+  text-decoration: none;
+  font-size: 0.78rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease),
+    transform var(--motion-fast) var(--motion-ease);
+}
+
+.sidebar-sublink:hover {
+  background: var(--shell-border, #1e293b);
+  color: var(--shell-sidebar-text, #fff);
+}
+
+.sidebar-sublink:active {
+  transform: scale(0.98);
+}
+
+.sidebar-sublink--active {
+  color: var(--shell-accent, #60a5fa);
+  font-weight: 600;
+}
+
+/* Patch 28: the old bottom account block (General Settings link, email,
+   Sign out button — .sidebar-footer/.sidebar-settings-link/.sidebar-user/
+   .sidebar-logout) was removed from Sidebar.tsx; that functionality now
+   lives in the shell-level TopBar's settings icon + user-profile dropdown
+   (see TopBar.tsx) — "replace sidebar, no duplicate," confirmed directly
+   by the user. */
+
+/* Hidden everywhere except the <=860px overlay mode below (and only then
+   while mobileOpen — see Sidebar.tsx). A plain `display: none` default
+   keeps it inert (and non-interactive/non-tabbable) at every wider width. */
+.sidebar-mobile-backdrop {
+  display: none;
+}
+
+/* Below 861px: the rail becomes a fixed slide-in overlay panel instead of
+   pushing page content over, triggered by TopBar's hamburger button
+   (TopBar.tsx's onOpenMenu / TopBar.css's own <=860px breakpoint) rather
+   than hover/focus — "sidebar disappear[ed]/unusable on mobile view":
+   the old `@media (hover: none)` fallback above forced the rail permanently
+   open at 248px with no way to dismiss it, which on a real ~390px-wide
+   phone ate roughly two-thirds of the screen and left real page content
+   squeezed into a sliver (confirmed in testing: KPI cards and the TopBar's
+   own title were visibly cut off). This is the same slide-in-panel +
+   backdrop pattern already used (but only reachable in the retired
+   standalone deployment, not production) by apps/oil-analysis's and
+   apps/vibration-analysis's own internal sidebars — see each app's App.jsx
+   for the equivalent `.app-sidebar`/`.sidebar-backdrop`/860px convention
+   this mirrors. */
+@media (max-width: 860px) {
+  .sidebar-rail {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 248px;
+    height: 100svh;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none;
+    z-index: 500;
+    /* Glass panel over the real content it's covering — reinforces that
+       this is a temporary overlay, not a new page. */
+    background: color-mix(in srgb, var(--shell-sidebar-bg, #0f172a) 92%, transparent);
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
+  }
+
+  .sidebar-rail--mobile-open {
+    transform: translateX(0);
+    box-shadow: var(--elevation-3);
+  }
+
+  /* Always shown in the fully-expanded state once open — there's no
+     collapsed/hover-intermediate state in overlay mode, so these skip
+     straight to the same values the desktop :hover/:focus-within rules
+     above apply, and the un-opened state is covered by the rail being
+     off-screen entirely (transform above), not by hiding these. */
+  .sidebar-logo-mark {
+    display: none;
+  }
+  .sidebar-logo-full {
+    display: block;
+  }
+  .sidebar-link {
+    gap: 12px;
+  }
+  .sidebar-link-label {
+    opacity: 1;
+    max-width: 200px;
+  }
+  .sidebar-subnav {
+    display: block;
+  }
+
+  .sidebar-mobile-backdrop--open {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 499;
+    animation: sidebar-backdrop-in var(--motion-base) var(--motion-ease);
+  }
+
+  @keyframes sidebar-backdrop-in {
+    from {
+      opacity: 0;
+    }
+  }
+}
+/* PWA item 22 — landscape iPhone: keep the rail's icons clear of the
+   Dynamic Island / rounded corner (content-box, so the rail just grows). */
+.sidebar-rail {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+@media (max-width: 860px) {
+  .sidebar-rail {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+/* A thin rule between the dashboard pages and the admin pages. */
+.sidebar-group-start {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--shell-sidebar-text-secondary) 28%, transparent);
+}
