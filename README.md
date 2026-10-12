@@ -1,10 +1,15 @@
 # ACC Downtime Analysis
 
-Installable web app (PWA) that analyses cement-plant downtime. This is the
-foundation (phase P0): the shell, themes, sign-in, access gating, the API layer
-with an in-memory demo backend, and a complete Event Explorer. Dashboards,
-upload and admin pages are placeholders that show live facts until the next step.
-Plan: `docs/architecture-and-build-plan.md`; wire contract: `docs/wire-protocol.md`.
+Installable web app (PWA) that analyses cement-plant downtime. Built so far:
+sign-in with per-tab access, the five themes and phone layout, the four
+dashboards (Overview, Pareto and Contributors, Repeated Failures, Reliability
+Trends), the Event Explorer with in-app correction of events (edit or void, with
+a required reason and a full history), the Upload page (reads the monthly
+workbook, review screen, chunked upload), Master Data, Settings and Users, and
+the Apps Script backend in `backend/apps-script/`.
+
+Plan: `docs/architecture-and-build-plan.md`; wire contract: `docs/wire-protocol.md`;
+backend setup for a non-programmer: `backend/apps-script/README.md`.
 
 ## Run it in demo (mock) mode
 
@@ -40,14 +45,33 @@ the IndexedDB cache `acc_dt_cache`).
 ## Commands
 
 ```
-npm run typecheck    # tsc
-npm run build        # tsc + vite build (PWA service worker included)
-npm test             # vitest: calc, mock API, wire protocol client, data cache
-npm run test:e2e     # Playwright (builds, then runs vite preview); uses /opt/pw-browsers/chromium
+npm run typecheck      # tsc
+npm run build          # tsc + vite build (PWA service worker included)
+npm test               # vitest: calc engine, mock API, wire-protocol client, upload reader, contract test
+npm run test:backend   # the Apps Script backend against an in-memory fake of Google Sheets
+npx vite-node tools/golden-check.ts -- path/to/workbook.xlsx
+                       # reconciles a real monthly workbook with its own Analysis sheet (stays local)
 ```
 
-`tests/e2e/screens.spec.ts` writes screenshots of every theme on a phone and a
-desktop to `test-results/screens/`.
+Browser tests (Playwright, preinstalled Chromium at /opt/pw-browsers/chromium).
+Run **one spec file at a time**, each with its own port, because each run builds
+into its own folder:
+
+```
+E2E_PORT=4191 npx playwright test tests/e2e/dashboards.spec.ts
+```
+
+The `*-screens.spec.ts` files write screenshots of every theme on a phone and a
+desktop under `test-results/`.
+
+`tests/unit/contract.test.ts` runs the same scenario through the real backend code
+(via the real API client) and through the demo API, so the two cannot drift apart.
+
+## Real plant data
+
+This repository is public. The monthly workbook, the equipment and reason lists and
+the database spreadsheet are plant data and are never committed (`local-data/`,
+`*.xlsx` and `*.csv` are git-ignored). Tests use synthetic data only.
 
 ## Folder map
 
