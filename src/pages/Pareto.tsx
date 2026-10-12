@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ParetoResult } from '../calc';
 import { Tile } from '../components/Tile';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { areaModel, classModel, equipmentModel, reasonForEquipmentModel, reasonModel } from '../dashboard/models';
 import { NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import ParetoCard from '../dashboard/ParetoCard';
@@ -41,6 +42,7 @@ function Bucket({ title, note, result, testid, onOpen }: { title: string; note: 
 export default function Pareto() {
   const dash = useDash();
   const { ctx } = dash;
+  const mobile = useIsMobile();
   const drill = useDrill(dash, 'Pareto');
   const [sub, setSub] = useState<Sub>('equipment');
   const [split, setSplit] = useState(false);
@@ -79,10 +81,10 @@ export default function Pareto() {
       />
       {eq && (
         <div className="kpi-grid" data-testid="pareto-tiles">
-          <Tile icon="clock" label={t('Failure hours (own equipment)')} value={<span data-testid="pt-hours">{fh(eq.hours.own.total)} h</span>} sub={t('equipment code belongs to the stopped area')} />
-          <Tile icon="alert" label={t('Failure events (own equipment)')} value={<span data-testid="pt-count">{fint(eq.count.own.total)}</span>} sub={t('{n} different codes', { n: fint(eq.count.own.entryCount) })} />
-          <Tile icon="limits" label={t('Top equipment')} value={eq.hours.own.bars[0]?.label ?? t('None recorded')} sub={eq.hours.own.bars[0] ? `${fh(eq.hours.own.bars[0].value)} h · ${eq.hours.own.bars[0].sharePct.toFixed(1)}%` : undefined} />
-          <Tile icon="info" label={t('Not counted as own')} value={fh(bucketTotal(eq.hours.otherAreas) + bucketTotal(eq.hours.areaLevel) + bucketTotal(eq.hours.unknown) + bucketTotal(eq.hours.unassigned)) + ' h'} sub={t('other areas, area-level, unknown codes')} />
+          <Tile compact={mobile} icon="clock" label={t('Failure hours (own equipment)')} value={<span data-testid="pt-hours">{fh(eq.hours.own.total)} h</span>} sub={t('equipment code belongs to the stopped area')} />
+          <Tile compact={mobile} icon="alert" label={t('Failure events (own equipment)')} value={<span data-testid="pt-count">{fint(eq.count.own.total)}</span>} sub={t('{n} different codes', { n: fint(eq.count.own.entryCount) })} />
+          <Tile compact={mobile} icon="limits" label={t('Top equipment')} value={eq.hours.own.bars[0]?.label ?? t('None recorded')} sub={eq.hours.own.bars[0] ? `${fh(eq.hours.own.bars[0].value)} h · ${eq.hours.own.bars[0].sharePct.toFixed(1)}%` : undefined} />
+          <Tile compact={mobile} icon="info" label={t('Not counted as own')} value={fh(bucketTotal(eq.hours.otherAreas) + bucketTotal(eq.hours.areaLevel) + bucketTotal(eq.hours.unknown) + bucketTotal(eq.hours.unassigned)) + ' h'} sub={t('other areas, area-level, unknown codes')} />
         </div>
       )}
       {ctx && !eq && <NoData reason={t('No data covers the selected period.')} />}

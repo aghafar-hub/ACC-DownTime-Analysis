@@ -81,8 +81,8 @@ export function topEquipment(ctx: DashCtx, n: number): { bars: ParetoBar[]; tota
 }
 
 export interface SparkSeries {
-  mode: 'daily' | 'monthly';
-  /** first and last label, for the accessible name */
+  mode: 'daily' | 'weekly' | 'monthly';
+  /** first label of each point, for the accessible name */
   labels: string[];
   downtimeHours: (number | null)[];
   failureCount: (number | null)[];
@@ -93,19 +93,59 @@ export interface SparkSeries {
 
 const num = (m: Metric): number | null => (m.available ? m.value : null);
 
-/** Daily points for a window of up to 120 days, monthly points beyond; the same series feed the hero KPI sparklines. */
+/** Monday (ISO week start) of a YYYY-MM-DD date. */
+export function isoWeekStart(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  const back = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - back);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Sparkline resolution: daily up to 28 days, weekly up to 120 days, monthly beyond. */
+export function sparkMode(windowDays: number): SparkSeries['mode'] {
+  return windowDays <= 28 ? 'daily' : windowDays <= 120 ? 'weekly' : 'monthly';
+}
+
+/** Weighted mean of per-day values; null when no day has a value. */
+function wmean(items: { v: number | null; w: number }[]): number | null {
+  let sw = 0;
+  let sv = 0;
+  for (const i of items) if (i.v !== null && i.w > 0) { sw += i.w; sv += i.v * i.w; }
+  return sw > 0 ? sv / sw : null;
+}
+
+/** Daily points up to 28 days, ISO-week points up to 120 days (hours and counts summed, availability weighted by scheduled time, MTTR by failure events), monthly points beyond. */
 export function sparkSeries(days: DayPoint[], months: MonthPoint[], windowDays: number): SparkSeries {
-  if (windowDays <= 120) {
+  const mode = sparkMode(windowDays);
+  if (mode === 'daily') {
     return {
-      mode: 'daily', labels: days.map((d) => d.date),
+      mode, labels: days.map((d) => d.date),
       downtimeHours: days.map((d) => (d.hasData ? d.downtimeHours : null)),
       failureCount: days.map((d) => (d.hasData ? d.failureCount : null)),
       availability: days.map((d) => (d.kpis ? num(d.kpis.availabilityHeadline) : null)),
       mttrHours: days.map((d) => (d.kpis ? num(d.kpis.mttrHours) : null)),
     };
   }
+  if (mode === 'weekly') {
+    const weeks = new Map<string, DayPoint[]>();
+    for (const d of days) {
+      const k = isoWeekStart(d.date);
+      const list = weeks.get(k);
+      if (list) list.push(d); else weeks.set(k, [d]);
+    }
+    const out: SparkSeries = { mode, labels: [], downtimeHours: [], failureCount: [], availability: [], mttrHours: [] };
+    for (const [k, ds] of weeks) {
+      const withData = ds.filter((d) => d.hasData);
+      out.labels.push(k);
+      out.downtimeHours.push(withData.length ? withData.reduce((s, d) => s + d.downtimeHours, 0) : null);
+      out.failureCount.push(withData.length ? withData.reduce((s, d) => s + d.failureCount, 0) : null);
+      out.availability.push(wmean(withData.map((d) => ({ v: d.kpis ? num(d.kpis.availabilityHeadline) : null, w: d.kpis?.scheduledHours ?? 0 }))));
+      out.mttrHours.push(wmean(withData.map((d) => ({ v: d.kpis ? num(d.kpis.mttrHours) : null, w: d.kpis?.failureEventCount ?? 0 }))));
+    }
+    return out;
+  }
   return {
-    mode: 'monthly', labels: months.map((m) => m.month),
+    mode, labels: months.map((m) => m.month),
     downtimeHours: months.map((m) => (m.hasData ? m.failureHours + m.plannedHours + m.otherHours : null)),
     failureCount: months.map((m) => (m.hasData ? m.failureCount : null)),
     availability: months.map((m) => num(m.availability)),

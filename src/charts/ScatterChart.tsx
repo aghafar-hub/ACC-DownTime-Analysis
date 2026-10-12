@@ -81,10 +81,16 @@ export default function ScatterChart({
         {points.map((p) => (
           <g key={p.key}>
             <circle cx={x(p.x)} cy={y(p.y)} r={r(p)} fill={ACCENT} fillOpacity={selected === p.key ? 0.95 : 0.5} stroke={ACCENT} strokeWidth={selected === p.key ? 3 : 1.5} />
-            {labelAt.has(p.key) && <text x={labelAt.get(p.key)!.x} y={labelAt.get(p.key)!.y} textAnchor={labelAt.get(p.key)!.anchor} className="chart-ink">{p.label}</text>}
             <circle cx={x(p.x)} cy={y(p.y)} r={Math.max(r(p), 14)} fill="transparent" className="chart-hit" data-testid="scatter-point" data-key={p.key} {...bind(node(p))} />
           </g>
         ))}
+        {/* labels last, with a halo in the card colour, so neighbouring points never cover them */}
+        <g pointerEvents="none">
+          {points.map((p) => {
+            const at = labelAt.get(p.key);
+            return at ? <text key={p.key} x={at.x} y={at.y} textAnchor={at.anchor} className="chart-ink" stroke="var(--tk-card-bg)" strokeWidth={3} paintOrder="stroke">{p.label}</text> : null;
+          })}
+        </g>
       </svg>
       <TipLayer tip={tip} width={width} />
     </div>

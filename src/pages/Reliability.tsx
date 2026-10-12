@@ -4,6 +4,7 @@ import { ChartCard } from '../charts/ChartKit';
 import CartesianChart, { seriesTable, type CartCategory, type CartSeries } from '../charts/CartesianChart';
 import { seriesColor } from '../charts/palette';
 import { Tile } from '../components/Tile';
+import { useIsMobile } from '../hooks/useIsMobile';
 import AreasBlock from '../dashboard/AreasBlock';
 import DashTop from '../dashboard/DashTop';
 import { dayLabel, fh, fh2, fint, monthLabel } from '../dashboard/format';
@@ -25,6 +26,7 @@ const why = (m: Metric): string | undefined => (m.available ? undefined : m.code
 export default function Reliability() {
   const dash = useDash({ extraYearsBack: 1 });
   const { ctx } = dash;
+  const mobile = useIsMobile();
   const { dark } = useTheme();
   const drill = useDrill(dash, 'Reliability');
   const [area, setArea] = useState('');
@@ -105,10 +107,10 @@ export default function Reliability() {
       />
       {k && (
         <div className="kpi-grid" data-testid="reliability-tiles">
-          <Tile icon="trend" label={t('MTBF ({a})', { a: areaId || t('aggregate over areas') })} value={<span data-testid="rt-mtbf">{mt(k.mtbfHours, fh)}</span>} sub={k.mtbfHours.available ? t('operating hours per failure') : (k.mtbfHours.reason)} />
-          <Tile icon="repeat" label={t('Mean restoration time')} value={<span data-testid="rt-mttr">{mt(k.mttrHours, fh2)}</span>} sub={t('failure events that started in the range')} />
-          <Tile icon="alert" label={t('Failures per 1,000 operating hours')} value={k.failureRatePer1000h.available ? fh2(k.failureRatePer1000h.value) : t('Unavailable')} sub={k.failureRatePer1000h.available ? undefined : k.failureRatePer1000h.reason} />
-          <Tile icon="clock" label={t('Failure events')} value={fint(k.failureEventCount)} sub={t('{n} failure rows', { n: fint(k.failureCount) })} />
+          <Tile compact={mobile} icon="trend" label={t('MTBF ({a})', { a: areaId || t('aggregate over areas') })} value={<span data-testid="rt-mtbf">{mt(k.mtbfHours, fh)}</span>} sub={k.mtbfHours.available ? t('operating hours per failure') : (k.mtbfHours.reason)} />
+          <Tile compact={mobile} icon="repeat" label={t('Mean restoration time')} value={<span data-testid="rt-mttr">{mt(k.mttrHours, fh2)}</span>} sub={t('failure events that started in the range')} />
+          <Tile compact={mobile} icon="alert" label={t('Failures per 1,000 operating hours')} value={k.failureRatePer1000h.available ? fh2(k.failureRatePer1000h.value) : t('Unavailable')} sub={k.failureRatePer1000h.available ? undefined : k.failureRatePer1000h.reason} />
+          <Tile compact={mobile} icon="clock" label={t('Failure events')} value={fint(k.failureEventCount)} sub={t('{n} failure rows', { n: fint(k.failureCount) })} />
         </div>
       )}
       {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}

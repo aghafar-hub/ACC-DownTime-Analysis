@@ -40,3 +40,12 @@ export function axisNum(v: number): string {
   if (a >= 1000) return `${(Math.round(v / 100) / 10).toLocaleString('en-GB')}k`;
   return String(Math.round(v * 100) / 100);
 }
+
+/**
+ * Start of a zoomed percentage axis: one point below the lowest value (rounded down), never below 0 and always
+ * below `cap` so the axis has some width. Non-finite input gives 0 (the full axis).
+ */
+export function zoomFloor(min: number, cap = 100): number {
+  if (!Number.isFinite(min)) return 0;
+  return Math.max(0, Math.min(Math.floor(min) - 1, cap - 1));
+}

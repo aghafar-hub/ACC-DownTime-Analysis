@@ -10,6 +10,7 @@ import DashTop from '../dashboard/DashTop';
 import { ChangeLine, dayLabel, dayShort, fh, fh2, fint, fpct, fpct0, metricText, monthLabel } from '../dashboard/format';
 import { HeroKpi } from '../dashboard/HeroKpi';
 import { kpiInfo } from '../dashboard/kpiInfo';
+import { zoomFloor } from '../charts/scale';
 import { overviewModel, ROLLING_DAYS, sparkSeries, windowDays } from '../dashboard/models';
 import { Collapsible, NoData, rowsInRange, useDrill } from '../dashboard/parts';
 import { overviewTakeaway } from '../dashboard/takeaways';
@@ -165,9 +166,12 @@ export default function Overview() {
     ? [{ key: a.area_id, label: a.area_id, segments: [{ key: 'av', label: t('Availability (basis {b})', { b: basis }), color: 'var(--tk-accent)', value: a.availability.value * 100 }] }]
     : []));
   const overall = av?.overall.available ? av.overall.value : null;
+  // zoomed axis: from one point below the lowest value (areas and all-area line) up to 100%
+  const avFloor = zoomFloor(Math.min(...avRows.map((r) => r.segments[0]!.value), ...(overall !== null ? [overall * 100] : [])));
+  const avNote = t('Axis starts at {n}%', { n: avFloor });
   const avSummary = avRows.length
-    ? t('{n} areas, lowest first. Lowest: {a} at {p}.{o}', {
-      n: avRows.length, a: avRows[0]!.label, p: `${avRows[0]!.segments[0]!.value.toFixed(1)}%`, o: overall !== null ? ` ${t('All areas together: {p}.', { p: fpct(overall) })}` : '',
+    ? t('{n} areas, lowest first. Lowest: {a} at {p}.{o} {z}.', {
+      n: avRows.length, a: avRows[0]!.label, p: `${avRows[0]!.segments[0]!.value.toFixed(1)}%`, o: overall !== null ? ` ${t('All areas together: {p}.', { p: fpct(overall) })}` : '', z: avNote,
     })
     : t('No availability can be calculated for these areas.');
 
@@ -187,17 +191,17 @@ export default function Overview() {
 
   const hero = model && kpi && tot && spark && (
     <div className="hero-grid" data-testid="hero-kpis">
-      <HeroKpi id="total-hours" label={t('Total stoppage hours')} value={`${fh(tot.downtimeHours)} h`} sub={t('area-hours: summed over {n} areas', { n: perArea.length })}
+      <HeroKpi id="total-hours" label={t('Total stoppage hours')} shortLabel={t('Stoppage hours')} value={`${fh(tot.downtimeHours)} h`} sub={t('area-hours: summed over {n} areas', { n: perArea.length })}
         change={<ChangeLine change={model.downtimeChange} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} info={kpiInfo('total-hours', basis)}
         spark={sparkOf(spark.downtimeHours, hfmt)} />
-      <HeroKpi id="failure-count" label={t('Failure count')} value={tot.failureCount === 0 ? t('None recorded') : fint(tot.failureCount)} unavailable={tot.failureCount === 0}
+      <HeroKpi id="failure-count" label={t('Failure count')} shortLabel={t('Failures')} value={tot.failureCount === 0 ? t('None recorded') : fint(tot.failureCount)} unavailable={tot.failureCount === 0}
         sub={t('{n} failure events started in the window', { n: fint(tot.failureEventCount) })} change={<ChangeLine change={ch?.failureCount ?? null} fmt={fint} label={cmpLabel} compare={cmpMode} />}
         info={kpiInfo('failure-count', basis)} spark={sparkOf(spark.failureCount, fint)} />
-      <HeroKpi id="availability" label={t('Availability (basis {b})', { b: basis })} value={avText!.text} unavailable={avText!.unavailable}
+      <HeroKpi id="availability" label={t('Availability (basis {b})', { b: basis })} shortLabel={t('Availability {b}', { b: basis })} value={avText!.text} unavailable={avText!.unavailable}
         sub={<span data-testid="kpi-availability-abc">A {metricText(tot.availability.A, fpct).text} · B {metricText(tot.availability.B, fpct).text} · C {metricText(tot.availability.C, fpct).text}<br />{t(BASIS_NAME[basis])}</span>}
         change={<ChangeLine change={ch?.availability ?? null} fmt={(n) => (n * 100).toFixed(1)} unit=" pts" label={cmpLabel} compare={cmpMode} />}
         info={kpiInfo('availability', basis)} spark={sparkOf(spark.availability, fpct)} />
-      <HeroKpi id="mttr" label={t('Mean restoration time')} value={mttr!.text} unavailable={mttr!.unavailable}
+      <HeroKpi id="mttr" label={t('Mean restoration time')} shortLabel={t('Restoration time')} value={mttr!.text} unavailable={mttr!.unavailable}
         sub={mttr!.reason ?? t('mean duration of failure events')} change={<ChangeLine change={ch?.mttrHours ?? null} fmt={fh2} unit=" h" label={cmpLabel} compare={cmpMode} />}
         info={kpiInfo('mttr', basis)} spark={sparkOf(spark.mttrHours, (n) => `${fh2(n)} h`)} />
     </div>
@@ -321,7 +325,7 @@ export default function Overview() {
                 {(w) => (
                   avRows.length === 0 ? <p className="muted">{t('No availability can be calculated for these areas.')}</p> : (
                     <HBars
-                      rows={avRows} width={w} format={(n) => `${n.toFixed(1)}%`} xMax={100} axisFormat={(n) => `${n}%`}
+                      rows={avRows} width={w} format={(n) => `${n.toFixed(1)}%`} xMax={100} xMin={avFloor} axisNote={avNote} axisFormat={(n) => `${n}%`}
                       refLine={overall !== null ? { value: overall * 100, label: `${t('All areas')} ${fpct(overall)}` } : undefined}
                       ariaLabel={t('Bars of availability per area with a line at the availability of all areas. {s}', { s: avSummary })}
                     />

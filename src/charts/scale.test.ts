@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { axisNum, labelEvery, linear, niceTicks } from './scale';
+import { axisNum, labelEvery, linear, niceTicks, zoomFloor } from './scale';
 
 describe('scale helpers', () => {
   it('niceTicks covers the data with round steps', () => {
@@ -32,5 +32,15 @@ describe('scale helpers', () => {
     expect(axisNum(1200)).toBe('1.2k');
     expect(axisNum(15000)).toBe('15k');
     expect(axisNum(7.5)).toBe('7.5');
+  });
+  it('zoomFloor starts one point below the lowest value, clamped to 0..cap-1', () => {
+    expect(zoomFloor(95.3)).toBe(94);
+    expect(zoomFloor(97)).toBe(96);
+    expect(zoomFloor(99.9)).toBe(98);
+    expect(zoomFloor(100)).toBe(99);
+    expect(zoomFloor(120)).toBe(99);
+    expect(zoomFloor(0.4)).toBe(0);
+    expect(zoomFloor(-5)).toBe(0);
+    expect(zoomFloor(Number.NaN)).toBe(0);
   });
 });

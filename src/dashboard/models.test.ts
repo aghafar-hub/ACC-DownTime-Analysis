@@ -6,7 +6,7 @@ import {
 } from '../calc';
 import { buildSyntheticDb } from '../mock/synthetic';
 import { defaultFilters, resolveRange } from './filters';
-import { areaModel, cutPareto, equipmentModel, overviewModel, reasonModel, reliabilityModel, repeatsModel, sparkSeries, windowDays } from './models';
+import { areaModel, cutPareto, equipmentModel, overviewModel, reasonModel, isoWeekStart, reliabilityModel, repeatsModel, sparkSeries, windowDays } from './models';
 import { noChangeText } from './format';
 import { buildCtx, rowsInRange, yearsNeeded } from './scope';
 
@@ -146,14 +146,27 @@ describe('Overview chart models match the headline numbers', () => {
     expect(vals).toEqual([...vals].sort((x, y) => x - y));
     expect(a.overall).toEqual(k.total.availabilityHeadline);
   });
-  it('sparklines use daily points up to 120 days and monthly points beyond', () => {
-    const d = sparkSeries(m.daily, m.monthly, 90);
+  it('sparklines use daily points up to 28 days, weekly points up to 120 days and monthly points beyond', () => {
+    const d = sparkSeries(m.daily, m.monthly, 28);
     expect(d.mode).toBe('daily');
     expect(d.downtimeHours).toHaveLength(m.daily.length);
-    expect(d.downtimeHours.reduce<number>((s, v) => s + (v ?? 0), 0)).toBeCloseTo(k.total.downtimeHours, 6);
+    const w = sparkSeries(m.daily, m.monthly, 90);
+    expect(w.mode).toBe('weekly');
+    expect(w.labels.length).toBeLessThan(m.daily.length);
+    expect(w.labels.every((l) => isoWeekStart(l) === l)).toBe(true);
+    expect(w.downtimeHours.reduce<number>((s, v) => s + (v ?? 0), 0)).toBeCloseTo(k.total.downtimeHours, 6);
+    expect(w.failureCount.reduce<number>((s, v) => s + (v ?? 0), 0)).toBe(k.total.failureCount);
+    expect(w.availability.every((v) => v === null || (v >= 0 && v <= 1))).toBe(true);
+    expect(sparkSeries(m.daily, m.monthly, 29).mode).toBe('weekly');
+    expect(sparkSeries(m.daily, m.monthly, 120).mode).toBe('weekly');
     const mo = sparkSeries(m.daily, m.monthly, 365);
     expect(mo.mode).toBe('monthly');
     expect(mo.downtimeHours).toHaveLength(m.monthly.length);
+  });
+  it('isoWeekStart returns the Monday of the week', () => {
+    expect(isoWeekStart('2026-03-02')).toBe('2026-03-02');
+    expect(isoWeekStart('2026-03-08')).toBe('2026-03-02');
+    expect(isoWeekStart('2026-03-09')).toBe('2026-03-09');
   });
 });
 

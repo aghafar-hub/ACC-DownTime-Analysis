@@ -314,6 +314,8 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
       expect(info!.width).toBeGreaterThanOrEqual(43.5);
       expect(info!.height).toBeGreaterThanOrEqual(43.5);
     }
+    // the default range is 90 days: weekly points
+    await expect(page.getByTestId('kpi-total-hours').getByTestId('spark')).toHaveAttribute('aria-label', /weekly trend/);
     await page.getByTestId('kpi-availability-info').click();
     await expect(page.getByTestId('kpi-info')).toContainText('Basis B');
     await page.keyboard.press('Escape');
@@ -398,6 +400,16 @@ for (const width of [360, 390]) {
         await expect(page.getByTestId('fb-filters-pill')).toBeVisible();
         await expect(page.getByTestId('takeaway')).toBeVisible();
       }
+      // KPI tiles are two per row on every Analyze page
+      for (const [p, id] of [['pareto', 'pareto-tiles'], ['repeats', 'repeat-tiles'], ['reliability', 'reliability-tiles']] as const) {
+        await open(page, `/${p}`, `page-${p}`);
+        const tiles = await page.getByTestId(id).locator(':scope > *').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y }; }));
+        expect(tiles.length).toBe(4);
+        expect(Math.abs(tiles[0]!.y - tiles[1]!.y), `${p} row 1`).toBeLessThan(2);
+        expect(Math.abs(tiles[2]!.y - tiles[3]!.y), `${p} row 2`).toBeLessThan(2);
+        expect(tiles[2]!.y).toBeGreaterThan(tiles[0]!.y + 40);
+        expect(await smallText(page), `${p} small text`).toEqual([]);
+      }
       await open(page, '/overview', 'page-overview');
       // the Filters chip opens a sheet with all fields; the count of active filters shows on the chip
       await page.getByTestId('fb-filters-pill').click();
@@ -427,6 +439,15 @@ for (const width of [360, 390]) {
       expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThan(2);
       expect(Math.abs(boxes[2]!.y - boxes[3]!.y)).toBeLessThan(2);
       expect(boxes[2]!.y).toBeGreaterThan(boxes[0]!.y + 40);
+      // short labels on the phone, the full label stays the accessible text; the label does not wrap
+      for (const [id, short, full] of [['total-hours', 'Stoppage hours', 'Total stoppage hours'], ['failure-count', 'Failures', 'Failure count'], ['availability', 'Availability B', 'Availability (basis B)'], ['mttr', 'Restoration time', 'Mean restoration time']]) {
+        const label = page.getByTestId(`kpi-${id}`).locator('.hero-label');
+        await expect(label.locator('.hl-short')).toHaveText(short);
+        await expect(label.locator('.hl-short')).toBeVisible();
+        await expect(label).toHaveAttribute('title', full);
+        await expect(label.locator('.hl-full')).toHaveText(full);
+        expect((await label.boundingBox())!.height, `${id} label lines`).toBeLessThan(24);
+      }
       await expect(page.getByTestId('more-figures-toggle')).toHaveAttribute('aria-expanded', 'false');
       await expect(page.getByTestId('kpi-failure-hours')).toHaveCount(0);
       await page.getByTestId('more-figures-toggle').click();
@@ -439,6 +460,9 @@ for (const width of [360, 390]) {
       await page.getByTestId('kpi-info-close').click();
       await page.getByTestId('sec-where-toggle').click();
       for (const id of ['chart-daily', 'chart-class-month', 'chart-top-equipment', 'chart-area-availability']) await expect(page.getByTestId(id)).toBeVisible();
+      // zoomed availability axis says where it starts, in the chart and in the text summary
+      await expect(page.getByTestId('chart-area-availability').getByTestId('hbars-axis-note')).toHaveText(/^Axis starts at \d+%$/);
+      await expect(page.getByTestId('chart-area-availability').getByTestId('chart-summary')).toContainText('Axis starts at');
       expect((await noSidewaysScroll(page)).ok).toBe(true);
       expect(await smallText(page)).toEqual([]);
       expect(await smallTargets(page)).toEqual([]);

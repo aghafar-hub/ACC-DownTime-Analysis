@@ -28,6 +28,18 @@ export default function TimelineChart({
   const months = monthsOfRange(range);
   const monthEvery = Math.max(1, Math.ceil((months.length * 48) / pw));
 
+  // value labels: longest stops first; a label is dropped when it would sit on top of one already placed (the tooltip has every value)
+  const labelled = new Set<number>();
+  const placed: number[] = [];
+  [...events.keys()].sort((a, b) => events[b]!.hours - events[a]!.hours).forEach((i) => {
+    const e = events[i]!;
+    if (!(events.length <= 14 || e.hours >= maxH * 0.6)) return;
+    const cx = x(e.startMs);
+    if (placed.some((p) => Math.abs(p - cx) < 40)) return;
+    placed.push(cx);
+    labelled.add(i);
+  });
+
   const node = (e: TimelineEvent, gapDays: number | null): ReactNode => (
     <>
       <TipRows title={`${new Date(e.startMs).toISOString().slice(0, 16).replace('T', ' ')} · ${e.area}`} rows={[
@@ -68,7 +80,7 @@ export default function TimelineChart({
               )}
               <rect x={x(e.startMs)} y={base - hOf(e)} width={w} height={hOf(e)} fill="var(--tk-danger)" stroke="var(--tk-card-bg)" strokeWidth="0.75" />
               <path d={`M${x(e.startMs) + w / 2} ${base - hOf(e) - 3}l-4 -6h8z`} fill="var(--tk-danger)" />
-              {(events.length <= 14 || e.hours >= maxH * 0.6) && <text x={x(e.startMs) + w / 2} y={base - hOf(e) - 12} textAnchor="middle" className="chart-ink">{e.hours.toFixed(1)} h</text>}
+              {labelled.has(i) && <text x={x(e.startMs) + w / 2} y={base - hOf(e) - 12} textAnchor="middle" className="chart-ink">{e.hours.toFixed(1)} h</text>}
               <rect className="chart-hit" x={x(e.startMs) - 8} y={markTop - 6} width={w + 16} height={markMax + 12} data-testid="timeline-mark" {...bind(node(e, gapDays))} />
             </g>
           );

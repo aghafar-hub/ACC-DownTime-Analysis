@@ -132,10 +132,10 @@ export default function Repeats() {
       />
       {res && settings && (
         <div className="kpi-grid" data-testid="repeat-tiles">
-          <Tile icon="repeat" label={t('Qualifying groups')} value={<span data-testid="rt-groups">{fint(res.groups.length)}</span>} sub={t('same code and reason, at least {n} events within {d} days', { n: settings.repeatMinEvents, d: settings.repeatWindowDays })} />
-          <Tile icon="alert" label={t('Recurrence events')} value={<span data-testid="rt-recurrences">{fint(res.recurrences.length)}</span>} sub={t('occurrences after the first of each cluster')} />
-          <Tile icon="clock" label={t('Hours in these groups')} value={`${fh(groupHours)} h`} sub={t('all occurrences, area-hours')} />
-          <Tile icon="equipment" label={t('Equipment affected')} value={fint(equipCount)} sub={t('different equipment codes')} />
+          <Tile compact={mobile} icon="repeat" label={t('Qualifying groups')} value={<span data-testid="rt-groups">{fint(res.groups.length)}</span>} sub={t('same code and reason, at least {n} events within {d} days', { n: settings.repeatMinEvents, d: settings.repeatWindowDays })} />
+          <Tile compact={mobile} icon="alert" label={t('Recurrence events')} value={<span data-testid="rt-recurrences">{fint(res.recurrences.length)}</span>} sub={t('occurrences after the first of each cluster')} />
+          <Tile compact={mobile} icon="clock" label={t('Hours in these groups')} value={`${fh(groupHours)} h`} sub={t('all occurrences, area-hours')} />
+          <Tile compact={mobile} icon="equipment" label={t('Equipment affected')} value={fint(equipCount)} sub={t('different equipment codes')} />
         </div>
       )}
       {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}

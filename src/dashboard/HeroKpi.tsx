@@ -48,21 +48,23 @@ export function InfoButton({ info, testid }: { info: KpiInfo; testid?: string })
   );
 }
 
-export interface SparkData { values: (number | null)[]; format: (n: number) => string; mode: 'daily' | 'monthly' }
+export interface SparkData { values: (number | null)[]; format: (n: number) => string; mode: 'daily' | 'weekly' | 'monthly' }
 
-export function HeroKpi({ id, label, value, unavailable, sub, change, tone, info, spark }: {
-  id: string; label: string; value: string; unavailable?: boolean; sub?: ReactNode; change?: ReactNode; tone?: string; info: KpiInfo; spark: SparkData;
+export function HeroKpi({ id, label, shortLabel, value, unavailable, sub, change, tone, info, spark }: {
+  id: string; label: string; /** shown instead of `label` on a phone; the full label stays the accessible name */ shortLabel?: string; value: string; unavailable?: boolean; sub?: ReactNode; change?: ReactNode; tone?: string; info: KpiInfo; spark: SparkData;
 }) {
   return (
     <div className="hero-kpi" data-testid={`kpi-${id}`} style={tone ? { borderLeftColor: tone } : undefined}>
       <div className="hero-head">
-        <span className="hero-label">{label}</span>
+        <span className="hero-label" title={shortLabel ? label : undefined}>
+          {shortLabel ? (<><span className="hl-full">{label}</span><span className="hl-short" aria-hidden="true">{shortLabel}</span></>) : label}
+        </span>
         <InfoButton info={info} testid={`kpi-${id}-info`} />
       </div>
       <span className={unavailable ? 'hero-value hero-value--na' : 'hero-value'} style={tone ? { color: tone } : undefined} data-testid={`kpi-${id}-value`}>{value}</span>
       {sub && <span className="kpi-sub">{sub}</span>}
       {change}
-      <Sparkline values={spark.values} label={label} format={spark.format} unitLabel={spark.mode === 'daily' ? t('daily') : t('monthly')} />
+      <Sparkline values={spark.values} label={label} format={spark.format} unitLabel={spark.mode === 'daily' ? t('daily') : spark.mode === 'weekly' ? t('weekly') : t('monthly')} />
     </div>
   );
 }
