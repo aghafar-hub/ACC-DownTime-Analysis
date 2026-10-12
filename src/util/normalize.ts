@@ -105,7 +105,11 @@ export function resolveRow(
     const candidate = viaAlias ?? key;
     if (look.equipment.has(candidate)) equipmentId = candidate;
     if (!equipmentId) flags.push('unknown_code');
-    else if (!look.equipmentAreas.get(equipmentId)?.has(row.area_id)) flags.push('code_not_in_area');
+    else {
+      // same rule as the backend: only when the code is listed under other areas (a code with no area at all is not flagged)
+      const owners = look.equipmentAreas.get(equipmentId);
+      if (owners && owners.size > 0 && !owners.has(row.area_id)) flags.push('code_not_in_area');
+    }
     if (PLACEHOLDER_CODES.includes(key)) flags.push('placeholder_code');
   }
   let reasonId: string | undefined;

@@ -3,9 +3,10 @@
 //
 // A record's problems = its stored flags (events.flags) + the derived `overlap_in_area`, found by
 // comparing events (findOverlaps over the loaded events; blocked and voided ones are ignored there).
-// Voided records never appear.
+// Voided records never appear. Information flags (code_not_in_area: "Cause in another area") are not problems:
+// they are dropped here, so a record whose only flag is one of them is simply fine and is not listed.
 import type { EventChanges, EventRow } from '../api/types';
-import { blockedSummary, BLOCKING_FLAGS, codeKey, FLAG_INFO, findOverlaps, isBlocked, isBlockingFlag, rowSeconds, splitFlags, WARNING_FLAGS } from '../calc';
+import { blockedSummary, BLOCKING_FLAGS, codeKey, FLAG_INFO, findOverlaps, isBlocked, isBlockingFlag, isInfoFlag, rowSeconds, splitFlags, WARNING_FLAGS } from '../calc';
 
 export const OVERLAP_FLAG = 'overlap_in_area';
 
@@ -47,9 +48,9 @@ const rank = (flag: string): number => {
   return i < 0 ? FLAG_ORDER.length : i;
 };
 
-/** The stored problems of an event in catalogue order, without repeats. Unknown names count as warnings. */
+/** The stored problems of an event in catalogue order, without repeats. Unknown names count as warnings; information flags are not problems. */
 export function storedProblems(e: Pick<EventRow, 'flags'>): string[] {
-  return [...new Set(splitFlags(e.flags))].sort((a, b) => rank(a) - rank(b));
+  return [...new Set(splitFlags(e.flags).filter((f) => !isInfoFlag(f)))].sort((a, b) => rank(a) - rank(b));
 }
 
 function recordOf(e: EventRow, partners: string[]): ValidationRecord | null {

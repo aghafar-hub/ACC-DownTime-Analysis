@@ -3,7 +3,7 @@ import { t } from '../../i18n/t';
 
 export const FLAG_LABELS: Record<string, { label: string; help: string }> = {
   unknown_code: { label: 'Unknown code', help: 'The equipment code is not in the equipment list and no alias matches it.' },
-  code_not_in_area: { label: 'Code not in area', help: 'The equipment code exists but is not listed under this area.' },
+  code_not_in_area: { label: 'Cause in another area', help: 'The equipment code is listed under other areas, not under the area that stopped. Normal; nothing to fix.' },
   unlisted_reason: { label: 'Reason not listed', help: 'The reason text does not match any listed reason for this classification.' },
   blank_reason: { label: 'No reason', help: 'The reason is blank.' },
   end_before_start: { label: 'Restart before stop', help: 'The restart time is earlier than the stop time, so the duration is negative.' },

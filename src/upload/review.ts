@@ -3,12 +3,12 @@
 // Nothing is dropped: every row of the workbook is stored. Pure functions, no screens, no network.
 import type { EventRow, Startup, UploadRow, UploadWarning, WarningResolution, WarningType } from '../api/types';
 import {
-  BLOCKING_FLAGS, buildIndex, compareUpload, eventIdFromFingerprint, FLAG_INFO, isBlockingFlag, WARNING_FLAGS,
+  BLOCKING_FLAGS, buildIndex, compareUpload, eventIdFromFingerprint, FLAG_INFO, isBlockingFlag, isInfoFlag, WARNING_FLAGS,
   type DiffUploadRow, type DiffWarning, type FieldChange, type LateMonth, type UploadDiff,
 } from '../calc';
 import { t } from '../i18n/t';
 import type { ParsedFile } from './parseWorkbook';
-import { CHECK_TYPES, fieldName, resolutionLabel, warningLabel } from './warningText';
+import { CHECK_TYPES, fieldName, INFO_CHECK_TYPES, resolutionLabel, warningLabel } from './warningText';
 
 export type Decision = 'add' | 'skip';
 /** Late choices: by row fingerprint for a late row, by `month:YYYY-MM` (see monthKey) for a late month. No entry = undecided. */
@@ -120,7 +120,7 @@ export interface FlagSummary {
 
 const FLAG_ORDER: string[] = [...BLOCKING_FLAGS, ...WARNING_FLAGS, 'overlap_in_area'];
 
-/** Counts, per flag, of the rows that will be stored with a problem. Late rows the person chose to skip are not counted; undecided ones are, as they will be unless skipped. */
+/** Counts, per flag, of the rows that will be stored with a problem. Information flags (cause in another area) are not problems and are left out.  Late rows the person chose to skip are not counted; undecided ones are, as they will be unless skipped. */
 export function flagSummary(review: Review, decisions: Decisions): FlagSummary {
   const overlap = new Set(review.diff.warnings.filter((w) => w.type === 'overlap_in_area' && w.fingerprint).map((w) => w.fingerprint as string));
   const by = new Map<string, FlagCount>();
@@ -128,7 +128,7 @@ export function flagSummary(review: Review, decisions: Decisions): FlagSummary {
   let warningRows = 0;
   for (const d of review.diff.rows) {
     if (d.status === 'identical' || d.status === 'changed_row' || (d.status === 'late_row' && lateDecision(review, decisions, d) === 'skip')) continue;
-    const flags = [...d.flags, ...(overlap.has(d.fingerprint) ? ['overlap_in_area'] : [])];
+    const flags = [...d.flags.filter((f) => !isInfoFlag(f)), ...(overlap.has(d.fingerprint) ? ['overlap_in_area'] : [])];
     if (!flags.length) continue;
     if (flags.some(isBlockingFlag)) blockedRows++;
     else warningRows++;
@@ -244,7 +244,7 @@ export const csvText = (rows: unknown[][]): string => rows.map((r) => r.map(csvC
 export function reviewCsv(review: Review, decisions: Decisions): string {
   const head = [t('Sheet row'), t('Kind'), t('Type'), t('What we found'), t('What happens')];
   const lines: { row: number; cells: string[] }[] = [];
-  const kind = (ty: WarningType): string => (ty === 'missing_row' || ty === 'edited_in_app' ? t('Information') : t('Warning'));
+  const kind = (ty: WarningType): string => (ty === 'missing_row' || ty === 'edited_in_app' || INFO_CHECK_TYPES.includes(ty) ? t('Information') : t('Warning'));
   const decisionLabel = (d: Decision | undefined): string => (d === 'add' ? t('Added') : d === 'skip' ? t('Skipped') : t('Not decided yet'));
   for (const w of review.diff.warnings) {
     let what = '';
@@ -252,6 +252,7 @@ export function reviewCsv(review: Review, decisions: Decisions): string {
     else if (w.type === 'late_month') what = decisionLabel(w.month ? decisions[monthKey(w.month)] : undefined);
     else if (w.type === 'changed_row' || w.type === 'edited_in_app') what = t('Stored values kept');
     else if (w.type === 'missing_row') what = t('Nothing is deleted');
+    else if (INFO_CHECK_TYPES.includes(w.type)) what = w.fingerprint && isSkipped(review, decisions, w.fingerprint) ? t('Row not added') : t('Added; nothing to fix');
     else what = w.fingerprint && isSkipped(review, decisions, w.fingerprint) ? t('Row not added') : t('Added and flagged');
     lines.push({ row: w.source_row ?? 0, cells: [String(w.source_row ?? ''), kind(w.type), warningLabel(w.type), w.detail ?? '', what] });
   }
@@ -263,7 +264,7 @@ export function reviewCsv(review: Review, decisions: Decisions): string {
 export function storedWarningsCsv(warnings: UploadWarning[]): string {
   const head = [t('Sheet row'), t('Type'), t('What we found'), t('What happened'), t('Event')];
   const rows = [...warnings].sort((a, b) => (a.source_row ?? 0) - (b.source_row ?? 0))
-    .map((w) => [w.source_row ?? '', warningLabel(w.type), w.detail ?? '', resolutionLabel(w.resolution), w.event_id ?? '']);
+    .map((w) => [w.source_row ?? '', warningLabel(w.type), w.detail ?? '', INFO_CHECK_TYPES.includes(w.type) && w.resolution === 'accepted' ? t('Added; nothing to fix') : resolutionLabel(w.resolution), w.event_id ?? '']);
   return csvText([head, ...rows]);
 }
 

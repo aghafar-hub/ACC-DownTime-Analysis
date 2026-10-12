@@ -362,7 +362,7 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
   const WARN_TYPES: WarningType[] = ['missing_classification', 'invalid_classification', 'unknown_area', 'missing_code', 'line_mismatch', 'placeholder_code', 'unknown_code', 'code_not_in_area', 'unlisted_reason', 'blank_reason', 'end_before_start', 'orphan_continuation', 'overlap_in_area', 'placeholder_code', 'duration_mismatch'];
   const detailOf: Record<string, string> = {
     unknown_code: 'The equipment code is not in the equipment list.',
-    code_not_in_area: 'The equipment code is not listed under this area.',
+    code_not_in_area: 'The equipment code is listed under other areas: the cause is in another area (information).',
     unlisted_reason: 'The reason is not in the reason list for this classification.',
     blank_reason: 'The reason is blank.',
     end_before_start: 'The restart time is earlier than the stop time.',

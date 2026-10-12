@@ -8,7 +8,7 @@ import {
   checkGroups, flagProblem, flagSummary, flagTitle, monthKey, monthLabel, undecidedCount,
   type CheckGroup, type Decision, type Decisions, type FlagCount, type Review,
 } from './review';
-import { fieldName, OTHER_CHECK_TYPES, warningHelp, warningLabel, warningSymbol, warningTone } from './warningText';
+import { fieldName, INFO_CHECK_TYPES, OTHER_CHECK_TYPES, warningHelp, warningLabel, warningSymbol, warningTone } from './warningText';
 import './upload.css';
 
 const shortTime = (ts: string): string => ts.slice(0, 16);
@@ -124,7 +124,8 @@ export default function ReviewPanel({ review, decisions, onDecide, onDecideAll }
   const [changedShown, setChangedShown] = useState(10);
   const groups = checkGroups(review, decisions, OTHER_CHECK_TYPES);
   const flags = flagSummary(review, decisions);
-  const lateChecks = new Map(review.late.map((l) => [l.fingerprint, l.warnings.length]));
+  const infoGroups = checkGroups(review, decisions, INFO_CHECK_TYPES);
+  const lateChecks = new Map(review.late.map((l) => [l.fingerprint, l.warnings.filter((w) => !INFO_CHECK_TYPES.includes(w.type)).length]));
   return (
     <div data-testid="review">
       <section className="card" aria-label={t('What the file contains')}>
@@ -229,9 +230,11 @@ export default function ReviewPanel({ review, decisions, onDecide, onDecideAll }
         </section>
       )}
 
-      {(review.edited.length > 0 || review.missing.length > 0 || review.parsed.caseFixes.length > 0) && (
-        <section className="card" aria-label={t('For your information')} data-testid="info-section">
-          <h2><span aria-hidden="true">● </span>{t('For your information')}</h2>
+      {(infoGroups.length > 0 || review.edited.length > 0 || review.missing.length > 0 || review.parsed.caseFixes.length > 0) && (
+        <section className="card" aria-label={t('Information')} data-testid="info-section">
+          <h2><span aria-hidden="true">● </span>{t('Information')}</h2>
+          <p className="adm-note">{t('Nothing here needs a decision or a fix, and nothing blocks Add.')}</p>
+          {infoGroups.map((g) => <CheckBlock key={g.type} g={g} />)}
           {review.edited.length > 0 && (
             <details className="up-group" data-testid="info-edited">
               <summary><span className="badge badge--info"><span aria-hidden="true">●</span> {review.edited.length}</span><span className="up-group-title">{warningLabel('edited_in_app')}</span></summary>

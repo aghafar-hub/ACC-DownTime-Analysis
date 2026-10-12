@@ -63,9 +63,9 @@ const TEXT: Record<WarningType, Text> = {
     tone: 'warning', symbol: '▲',
   },
   code_not_in_area: {
-    label: 'Code not listed under this area',
-    help: 'The code exists but is not in this area\'s equipment list. The row is added and flagged.',
-    tone: 'warning', symbol: '▲',
+    label: 'Cause in another area',
+    help: 'The code is listed under other areas, not under the area that stopped. This is normal (one area stops because of equipment that belongs to another area). The row is added; nothing to decide or fix.',
+    tone: 'info', symbol: '●',
   },
   unlisted_reason: {
     label: 'Reason not in the list',
@@ -117,6 +117,9 @@ export const CHECK_TYPES: WarningType[] = [
 
 /** Checks listed in detail under "Other checks" (the flag-based ones are counted under "Records that will need checking"). */
 export const OTHER_CHECK_TYPES: WarningType[] = ['duration_mismatch', 'orphan_continuation', 'placeholder_code'];
+
+/** Check types that are information only: no decision, never blocking, shown under "Information". */
+export const INFO_CHECK_TYPES: WarningType[] = ['code_not_in_area'];
 
 export function resolutionLabel(r: WarningResolution | undefined): string {
   switch (r) {

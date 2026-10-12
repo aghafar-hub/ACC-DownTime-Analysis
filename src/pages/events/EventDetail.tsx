@@ -3,7 +3,7 @@ import { api, describeError } from '../../api';
 import type { ClassificationCode, EventChanges, EventEdit, EventRow, Startup } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import ShellModal, { FormSection } from '../../components/ShellModal';
-import { FLAG_INFO, isBlockingFlag } from '../../calc/flags';
+import { FLAG_INFO, isBlockingFlag, isInfoFlag } from '../../calc/flags';
 import { SAVE_BLOCKED_EVENT } from '../../components/SaveBlockedToast';
 import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
@@ -13,6 +13,7 @@ import { flagList, isValidDate, parseTs } from '../../util/normalize';
 import { shortTs } from '../../util/format';
 import type { ValidateAssist } from './assist';
 import EventBadges from './EventBadges';
+import { buildOwnerLookup, causeChipLabel, causeNote, ownersOfRow } from './crossArea';
 import { fieldLabel, flagHelp, flagLabel, historyValue } from './eventLabels';
 
 type Mode = 'view' | 'edit' | 'void';
@@ -69,7 +70,7 @@ function reasonText(startup: Startup | null, r: EventRow): string {
 }
 
 function resultSummary(startup: Startup | null, u: EventRow): string[] {
-  const flags = flagList(u);
+  const flags = flagList(u).filter((f) => !isInfoFlag(f));
   return [
     t('Duration: {d}', { d: duration(u.duration_s) }),
     u.is_area_level ? t('Equipment: the whole area (N/A)') : u.equipment_id ? t('Equipment: {id}', { id: u.equipment_id }) : t('Equipment: not in the equipment list'),
@@ -114,18 +115,29 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
     () => (startup?.reasons.filter((r) => r.classification === form.classification && r.active).map((r) => r.text_as_listed.trim()) ?? []),
     [startup, form.classification],
   );
-  // the stored problems, plus the overlap found by comparing records (Validate page)
-  const flags = [...flagList(row), ...(assist?.overlaps?.length ? ['overlap_in_area'] : [])];
+  // the stored problems (information flags are not problems), plus the overlap found by comparing records (Validate page)
+  const flags = [...flagList(row).filter((f) => !isInfoFlag(f)), ...(assist?.overlaps?.length ? ['overlap_in_area'] : [])];
+  const ownerLookup = useMemo(() => buildOwnerLookup(startup?.equipment_areas), [startup]);
+  const crossOwners = ownersOfRow(row, ownerLookup);
+  const crossArea = flagList(row).some(isInfoFlag);
   const unknownArea = !startup?.areas.some((a) => a.area_id === form.area_id);
-  const areaCodes = useMemo(() => {
-    if (!assist || !startup) return [];
-    const ids = new Set(startup.equipment_areas.filter((e) => e.area_id === form.area_id).map((e) => e.equipment_id));
+  // the equipment finder: codes listed under the stopped area first, then every other active code with its owner area(s)
+  const codeChoices = useMemo(() => {
+    if (!startup) return { own: [], other: [] };
     const q = codeQ.trim().toLowerCase();
-    return startup.equipment
-      .filter((e) => ids.has(e.equipment_id) && e.status !== 'Retired')
-      .filter((e) => !q || `${e.equipment_id} ${e.description ?? ''}`.toLowerCase().includes(q))
-      .sort((a, b) => a.equipment_id.localeCompare(b.equipment_id));
-  }, [assist, startup, form.area_id, codeQ]);
+    const areasOf = new Map<string, string[]>();
+    for (const ea of startup.equipment_areas) areasOf.set(ea.equipment_id, [...(areasOf.get(ea.equipment_id) ?? []), ea.area_id]);
+    const own: { equipment_id: string; description?: string; owners: string[] }[] = [];
+    const other: { equipment_id: string; description?: string; owners: string[] }[] = [];
+    for (const e of startup.equipment) {
+      if (e.status === 'Retired') continue;
+      if (q && !`${e.equipment_id} ${e.description ?? ''}`.toLowerCase().includes(q)) continue;
+      const owners = (areasOf.get(e.equipment_id) ?? []).slice().sort();
+      (owners.includes(form.area_id) ? own : other).push({ equipment_id: e.equipment_id, description: e.description, owners });
+    }
+    const byId = (a: { equipment_id: string }, b: { equipment_id: string }) => a.equipment_id.localeCompare(b.equipment_id);
+    return { own: own.sort(byId), other: other.sort(byId) };
+  }, [startup, form.area_id, codeQ]);
   const blockedOffline = !online;
 
   function startEdit() {
@@ -287,8 +299,17 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
           </FormSection>
 
           <FormSection icon="alert" title={t('Data checks')}>
+            {crossArea && (
+              <div className="callout" role="note" data-testid="cause-note">
+                <Icon name="info" size={16} />
+                <span>
+                  <span className="badge" data-testid="cause-chip"><span aria-hidden="true">●</span> {causeChipLabel(crossOwners)}</span>{' '}
+                  {causeNote(row.area_id, crossOwners)}
+                </span>
+              </div>
+            )}
             {flags.length === 0 ? (
-              <p className="muted" style={{ margin: 0 }}>{t('No data issues found.')}</p>
+              <p className="muted" style={{ margin: 0, marginTop: crossArea ? 8 : 0 }}>{t('No data issues found.')}</p>
             ) : (
               <ul className="history" data-testid="detail-flags">
                 {flags.map((f) => {
@@ -417,24 +438,43 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
                 <label htmlFor="f-code">{t('Equipment code')}</label>
                 <input id="f-code" className="input mono" value={form.code_raw} onChange={(e) => upd('code_raw', e.target.value)} autoCapitalize="characters" data-testid="f-code" />
                 {err('code_raw')}
-                {assist && (
-                  <div data-testid="code-finder">
-                    <label htmlFor="f-code-find" className="field-hint">{t('Find equipment listed under {area}', { area: form.area_id || t('this area') })}</label>
-                    <input id="f-code-find" className="input" type="search" value={codeQ} onChange={(e) => setCodeQ(e.target.value)} placeholder={t('Code or description')} autoComplete="off" data-testid="f-code-find" />
-                    <div className="v-picker" role="group" aria-label={t('Equipment of this area')}>
-                      <button type="button" className={form.code_raw.trim().toUpperCase() === 'N/A' ? 'chip chip--on' : 'chip'} aria-pressed={form.code_raw.trim().toUpperCase() === 'N/A'} onClick={() => upd('code_raw', 'N/A')} data-testid="code-na">
-                        N/A · {t('the whole area stopped')}
-                      </button>
-                      {areaCodes.slice(0, 6).map((e) => (
-                        <button key={e.equipment_id} type="button" className={form.code_raw.trim() === e.equipment_id ? 'chip chip--on' : 'chip'} aria-pressed={form.code_raw.trim() === e.equipment_id} onClick={() => upd('code_raw', e.equipment_id)} data-testid="code-option">
-                          <span className="mono">{e.equipment_id}</span>{e.description ? <span> · {e.description.slice(0, 28)}</span> : null}
-                        </button>
-                      ))}
-                    </div>
-                    {areaCodes.length > 6 && <span className="field-hint">{t('{n} more match. Type to narrow the list.', { n: areaCodes.length - 6 })}</span>}
-                    {areaCodes.length === 0 && <span className="field-hint">{t('No equipment is listed under this area{match}.', { match: codeQ.trim() ? t(' for that search') : '' })}</span>}
+                <div data-testid="code-finder">
+                  <label htmlFor="f-code-find" className="field-hint">{t('Find equipment (listed under {area} first)', { area: form.area_id || t('this area') })}</label>
+                  <input id="f-code-find" className="input" type="search" value={codeQ} onChange={(e) => setCodeQ(e.target.value)} placeholder={t('Code or description')} autoComplete="off" data-testid="f-code-find" />
+                  <div className="v-picker" role="group" aria-label={t('Equipment')}>
+                    <button type="button" className={form.code_raw.trim().toUpperCase() === 'N/A' ? 'chip chip--on' : 'chip'} aria-pressed={form.code_raw.trim().toUpperCase() === 'N/A'} onClick={() => upd('code_raw', 'N/A')} data-testid="code-na">
+                      N/A · {t('the whole area stopped')}
+                    </button>
                   </div>
-                )}
+                  {codeChoices.own.length > 0 && (
+                    <div data-testid="code-group-own">
+                      <span className="field-hint v-picker-label">{t('Listed under {area}', { area: form.area_id || t('this area') })}</span>
+                      <div className="v-picker" role="group" aria-label={t('Listed under {area}', { area: form.area_id })}>
+                        {codeChoices.own.slice(0, 6).map((e) => (
+                          <button key={e.equipment_id} type="button" className={form.code_raw.trim() === e.equipment_id ? 'chip chip--on' : 'chip'} aria-pressed={form.code_raw.trim() === e.equipment_id} onClick={() => upd('code_raw', e.equipment_id)} data-testid="code-option">
+                            <span className="mono">{e.equipment_id}</span>{e.description ? <span> · {e.description.slice(0, 28)}</span> : null}
+                          </button>
+                        ))}
+                      </div>
+                      {codeChoices.own.length > 6 && <span className="field-hint">{t('{n} more match. Type to narrow the list.', { n: codeChoices.own.length - 6 })}</span>}
+                    </div>
+                  )}
+                  {codeChoices.other.length > 0 && (
+                    <div data-testid="code-group-other">
+                      <span className="field-hint v-picker-label">{t('Other areas')}</span>
+                      <div className="v-picker" role="group" aria-label={t('Other areas')}>
+                        {codeChoices.other.slice(0, 6).map((e) => (
+                          <button key={e.equipment_id} type="button" className={form.code_raw.trim() === e.equipment_id ? 'chip chip--on' : 'chip'} aria-pressed={form.code_raw.trim() === e.equipment_id} onClick={() => upd('code_raw', e.equipment_id)} data-testid="code-option-other">
+                            <span className="mono">{e.equipment_id}</span>{e.description ? <span> · {e.description.slice(0, 28)}</span> : null}
+                            {e.owners.length > 0 && <span className="badge" data-testid="code-owner"> {e.owners.join(', ')}</span>}
+                          </button>
+                        ))}
+                      </div>
+                      {codeChoices.other.length > 6 && <span className="field-hint">{t('{n} more match. Type to narrow the list.', { n: codeChoices.other.length - 6 })}</span>}
+                    </div>
+                  )}
+                  {codeChoices.own.length === 0 && codeChoices.other.length === 0 && <span className="field-hint">{t('No equipment matches{match}.', { match: codeQ.trim() ? t(' that search') : '' })}</span>}
+                </div>
               </div>
               <div className="field">
                 <label htmlFor="f-class">{t('Classification')}</label>

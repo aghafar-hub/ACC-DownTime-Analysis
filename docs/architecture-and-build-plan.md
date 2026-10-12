@@ -239,6 +239,17 @@ After adding a code, alias, reason or area in Master Data, a **re-check**
 (`revalidateEvents`) clears the flags that the new entry explains. Until a blocking
 flag is cleared the record is stored and visible but excluded from every number.
 
+**Cross-area causes are normal, shown as information, never as problems.** When one area
+stops because of equipment that belongs to another area (a raw mill stops because the
+kiln stopped, or the cause sits in CR), the sheet records the stopped area in EQUIPMENT and
+the cause's code, and a code may belong to several areas. The backend keeps storing the
+flag `code_not_in_area` for such rows, but the app treats it as an **information flag**
+(`INFO_FLAGS` in `src/calc/flags.ts`, shown as "Cause in CR"): it is never listed on
+Validate, never counted in the badge, banner, tiles or the "data issues" filter, and never
+needs a decision at upload. The equipment finder in the edit form offers every active code
+(the stopped area's first, then "Other areas" with their owner area), and the Pareto card
+"Stopped by other areas" shows each code's owner area and the area it stopped.
+
 ### 6.1 Correcting stored events
 
 Upload and correction are separate. Upload never modifies a stored row; the

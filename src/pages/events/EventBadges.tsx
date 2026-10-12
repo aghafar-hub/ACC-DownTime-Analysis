@@ -1,13 +1,17 @@
 import type { EventRow } from '../../api/types';
-import { isBlockingFlag } from '../../calc/flags';
+import { isBlockingFlag, isInfoFlag } from '../../calc/flags';
 import { t } from '../../i18n/t';
 import { flagLabel } from './eventLabels';
 import { flagList } from '../../util/normalize';
+import { causeChipLabel, ownersOfRow, type OwnerLookup } from './crossArea';
 
 // Status badges: every one carries a symbol and a word, so colour is never the only signal.
-// ◆ failure or a problem that leaves the record out of the numbers, ▲ data issue, ↳ continuation, ✎ edited, ⊘ void.
-export default function EventBadges({ row, maxFlags = 2 }: { row: EventRow; maxFlags?: number }) {
-  const flags = flagList(row);
+// ◆ failure or a problem that leaves the record out of the numbers, ▲ data issue, ↳ continuation, ✎ edited, ⊘ void,
+// ● information (a neutral chip, e.g. "Cause in CR": nothing to fix, not counted as a data issue).
+export default function EventBadges({ row, maxFlags = 2, owners }: { row: EventRow; maxFlags?: number; owners?: OwnerLookup }) {
+  const all = flagList(row);
+  const flags = all.filter((f) => !isInfoFlag(f));
+  const infoFlags = all.filter(isInfoFlag);
   const shown = flags.slice(0, maxFlags);
   return (
     <>
@@ -17,6 +21,9 @@ export default function EventBadges({ row, maxFlags = 2 }: { row: EventRow; maxF
       {row.edited && <span className="badge badge--accent" data-testid="badge-edited"><span aria-hidden="true">✎</span> {t('Edited')}</span>}
       {shown.map((f) => (
         <span key={f} className={isBlockingFlag(f) ? 'badge badge--danger' : 'badge badge--warning'} data-testid="badge-flag"><span aria-hidden="true">{isBlockingFlag(f) ? '◆' : '▲'}</span> {flagLabel(f)}</span>
+      ))}
+      {infoFlags.map((f) => (
+        <span key={f} className="badge" data-testid="badge-info" data-flag={f}><span aria-hidden="true">●</span> {causeChipLabel(ownersOfRow(row, owners))}</span>
       ))}
       {flags.length > shown.length && (
         <span className={flags.slice(shown.length).some(isBlockingFlag) ? 'badge badge--danger' : 'badge badge--warning'} data-testid="badge-flag-more"><span aria-hidden="true">{flags.slice(shown.length).some(isBlockingFlag) ? '◆' : '▲'}</span> +{flags.length - shown.length}</span>

@@ -101,7 +101,7 @@ The server computes the flags on `uploadChunk`, on `editEvent` and on `revalidat
 | `placeholder` | warning | the `code_key` is `AFR` or `AFR2` |
 | `blank_reason` | warning | the reason is empty |
 | `unlisted_reason` | warning | the classification is valid, the reason is not empty and matches no listed reason |
-| `code_not_in_area` | warning | the code resolves to an equipment that has areas, and the row's (known) area is not one of them |
+| `code_not_in_area` | information | the code resolves to an equipment that has areas, and the row's (known) area is not one of them. The flag stays stored exactly as before; the client treats it as information ("Cause in another area"), not as a problem: not listed on Validate, not counted in badges, banners or filters |
 | `line_mismatch` | warning | the area is known and `line_id` differs from the area's line (the area decides the line) |
 
 `overlap_in_area` is a **derived** flag (two events of one area covering the same time, tolerance 1 s): it is found by

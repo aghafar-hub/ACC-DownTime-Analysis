@@ -17,6 +17,8 @@ import { Icon } from '../icons';
 import { useTheme } from '../theme/ThemeContext';
 import { duration, hours, num, shortTs } from '../util/format';
 import EventBadges from './events/EventBadges';
+import { buildOwnerLookup } from './events/crossArea';
+import { hasProblemFlags } from '../calc/flags';
 import EventDetail from './events/EventDetail';
 import TimelineView from './events/TimelineView';
 import './events/timeline.css';
@@ -48,7 +50,7 @@ function applyFilters(rows: EventRow[], f: Filters, startup: Startup | null, q: 
     if (f.failureOnly && !(e.is_failure && !e.is_void)) return false;
     if (f.from && e.event_date < f.from) return false;
     if (f.to && e.event_date > f.to) return false;
-    if (f.show === 'issues' && !e.flags) return false;
+    if (f.show === 'issues' && !hasProblemFlags(e)) return false;
     if (f.show === 'edited' && !e.edited) return false;
     if (f.show === 'void' && !e.is_void) return false;
     if (needle) {
@@ -185,7 +187,7 @@ export default function EventExplorer() {
   const stats = useMemo(() => {
     let sec = 0, failures = 0, issues = 0;
     for (const e of filtered) {
-      if (e.flags) issues++;
+      if (hasProblemFlags(e)) issues++;
       if (e.is_void || isBlocked(e)) continue; // left out of the numbers like everywhere else, but still listed below
       if (e.duration_s > 0) sec += e.duration_s;
       if (e.is_failure) failures++;
@@ -193,6 +195,7 @@ export default function EventExplorer() {
     return { sec, failures, issues };
   }, [filtered]);
 
+  const owners = useMemo(() => buildOwnerLookup(startup?.equipment_areas), [startup]);
   const areaName = useMemo(() => new Map(startup?.areas.map((a) => [a.area_id, a.name]) ?? []), [startup]);
   const open = openId ? sourceRows.find((e) => e.event_id === openId) ?? null : null;
   const visible = filtered.slice(0, shown);
@@ -337,7 +340,7 @@ export default function EventExplorer() {
                       <td><span className="badge badge--class">{e.classification}</span></td>
                       <td className="num">{duration(e.duration_s)}</td>
                       <td>{e.reason_raw || <span className="muted">{t('(blank)')}</span>}{e.description && <div className="muted" style={{ fontSize: 12.5 }}>{e.description}</div>}</td>
-                      <td><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}><EventBadges row={e} /></div></td>
+                      <td><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}><EventBadges row={e} owners={owners} /></div></td>
                     </tr>
                   ))}
                 </tbody>
@@ -353,7 +356,7 @@ export default function EventExplorer() {
                   </div>
                   <div className="event-card-line mono">{shortTs(e.stop_ts)} · {duration(e.duration_s)}</div>
                   <div className="event-card-line">{e.reason_raw || t('(blank)')}</div>
-                  <div className="event-card-badges"><EventBadges row={e} maxFlags={2} /></div>
+                  <div className="event-card-badges"><EventBadges row={e} maxFlags={2} owners={owners} /></div>
                 </button>
               ))}
             </div>

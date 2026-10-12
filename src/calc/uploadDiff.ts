@@ -135,7 +135,9 @@ export function validateRow(row: DiffUploadRow, index: MasterIndex, toleranceS =
   if (rc && rc.kind !== 'area_level' && !key.includes('.')) out.push(warn('placeholder_code', row, `Code "${row.code_raw}" has no dot, so it looks like a placeholder`));
   if (rc && rc.kind === 'unknown') out.push(warn('unknown_code', row, `Code "${row.code_raw}" is not in the equipment master`));
   else if (rc && rc.kind === 'equipment' && area && areasOf(index, rc.equipmentId).size > 0 && !areasOf(index, rc.equipmentId).has(area.area_id)) {
-    out.push(warn('code_not_in_area', row, `Code "${rc.equipmentId}" is not in the list of area ${row.area_id}`));
+    // information, not a problem: the cause sits in another area (a normal case). Needs no decision, never blocks.
+    const owners = [...areasOf(index, rc.equipmentId)].sort().join(', ');
+    out.push(warn('code_not_in_area', row, `Code "${rc.equipmentId}" is listed under ${owners}, not under ${row.area_id}: the cause is in another area`, 'info'));
   }
   if (!area) out.push(warn('unknown_area', row, row.area_id.trim() ? `Area "${row.area_id}" is not in the list of areas` : 'The area (EQUIPMENT column) is empty'));
   else if (row.line_id.trim() !== area.line_id) out.push(warn('line_mismatch', row, `Line "${row.line_id}" in the sheet, but area ${area.area_id} belongs to ${area.line_id}`));

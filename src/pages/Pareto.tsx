@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import type { ParetoResult } from '../calc';
+import { areasOf, type ParetoBar, type ParetoResult } from '../calc';
 import { Tile } from '../components/Tile';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { areaModel, classModel, equipmentModel, lineModel, reasonForEquipmentModel, reasonModel, reasonMonthModel } from '../dashboard/models';
@@ -19,7 +19,7 @@ import '../dashboard/dashboard.css';
 
 type Sub = 'equipment' | 'reason' | 'area';
 
-function Bucket({ title, note, result, testid, onOpen }: { title: string; note: string; result: ParetoResult; testid: string; onOpen: (label: string, ids: string[]) => void }) {
+function Bucket({ title, note, result, testid, onOpen, detail }: { title: string; note: string; result: ParetoResult; testid: string; onOpen: (label: string, ids: string[]) => void; detail?: (b: ParetoBar) => string }) {
   const bars = result.bars.slice(0, 5);
   const blank = t('(blank code)');
   return (
@@ -31,7 +31,10 @@ function Bucket({ title, note, result, testid, onOpen }: { title: string; note: 
         <ul className="bucket-list">
           {bars.map((b) => (
             <li key={b.key}>
-              <button type="button" className="row-btn mono" onClick={() => onOpen(`${title}: ${b.label || blank}`, b.eventIds)}>{b.label.trim() ? b.label : blank}</button>
+              <span>
+                <button type="button" className="row-btn mono" onClick={() => onOpen(`${title}: ${b.label || blank}`, b.eventIds)}>{b.label.trim() ? b.label : blank}</button>
+                {detail && <span className="muted bucket-detail" data-testid="bucket-detail"> · {detail(b)}</span>}
+              </span>
               <b>{fh(b.value)} h</b>
             </li>
           ))}
@@ -55,6 +58,16 @@ export default function Pareto() {
 
   const eq = useMemo(() => (ctx ? equipmentModel(ctx) : null), [ctx]);
   const reasons = useMemo(() => (ctx && sub === 'reason' ? reasonModel(ctx, split) : null), [ctx, sub, split]);
+  // "Stopped by other areas": next to each code, the area(s) it is listed under and the area(s) that stopped because of it
+  const otherDetail = useMemo(() => {
+    if (!ctx) return undefined;
+    const areaOfEvent = new Map(ctx.scope.failureChains.map((c) => [c.id, c.area_id]));
+    return (b: ParetoBar): string => {
+      const owners = [...areasOf(ctx.master.index, b.key)].sort();
+      const stopped = [...new Set(b.eventIds.map((id) => areaOfEvent.get(id)).filter((a): a is string => !!a))].sort();
+      return `${t('listed under {areas}', { areas: owners.join(', ') || '-' })} · ${t('stopped {areas}', { areas: stopped.join(', ') || '-' })}`;
+    };
+  }, [ctx]);
   const codes = useMemo(() => (eq ? eq.count.own.bars.map((b) => b.key).sort() : []), [eq]);
   const code = eqCode && codes.includes(eqCode) ? eqCode : (eq?.hours.own.bars[0]?.key ?? '');
   const reasonEq = useMemo(() => (ctx && sub === 'reason' && code ? reasonForEquipmentModel(ctx, code, split, eqMeasure) : null), [ctx, sub, code, split, eqMeasure]);
@@ -108,7 +121,7 @@ export default function Pareto() {
                 <ParetoCard title={t('Equipment by failure frequency')} subtitle={t('Failure events that started in the range')} all={eq.count.own} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-eq-count" onOpen={open(t('the Pareto bar'))} />
               </div>
               <div className="bucket-grid" data-testid="buckets">
-                <Bucket title={t('Stopped by other areas')} note={t('The code belongs to another area only; not counted above so a cause is never counted twice.')} result={eq.hours.otherAreas} testid="bucket-other" onOpen={open(t('the bucket'))} />
+                <Bucket title={t('Stopped by other areas')} note={t('The code belongs to another area only; not counted above so a cause is never counted twice.')} result={eq.hours.otherAreas} testid="bucket-other" onOpen={open(t('the bucket'))} detail={otherDetail} />
                 <Bucket title={t('Area-level (N/A)')} note={t('The whole area stopped; no equipment code.')} result={eq.hours.areaLevel} testid="bucket-area" onOpen={open(t('the bucket'))} />
                 <Bucket title={t('Unknown code')} note={t('The code is not in the equipment master.')} result={eq.hours.unknown} testid="bucket-unknown" onOpen={open(t('the bucket'))} />
                 <Bucket title={t('Code in no area')} note={t('The code exists but is not assigned to any area.')} result={eq.hours.unassigned} testid="bucket-unassigned" onOpen={open(t('the bucket'))} />

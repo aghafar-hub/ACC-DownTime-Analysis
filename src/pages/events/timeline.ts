@@ -2,7 +2,7 @@
 // lanes, hit boxes, overlap lookup and the text summaries. No React, no clock, no time zone: every time is the
 // plant-local text of the data, handled as plain numbers (see calc/time.ts).
 import type { Area, EventRow, Line } from '../../api/types';
-import { MS_DAY, MS_HOUR, addDays, formatTs, parseDate, parseTs, rowSpan, rowHours, splitFlags, type ChainedEvent, type Interval, isAnalysable, isBlocked } from '../../calc';
+import { MS_DAY, MS_HOUR, addDays, formatTs, parseDate, parseTs, rowSpan, rowHours, splitFlags, isInfoFlag, type ChainedEvent, type Interval, isAnalysable, isBlocked } from '../../calc';
 import { t } from '../../i18n/t';
 
 // ------------------------------------------------------------------ window
@@ -138,7 +138,7 @@ function makeBar(head: EventRow, startMs: number, endMs: number, hours: number, 
   const toMs = Math.min(Math.max(endMs, startMs), w.toMs);
   return {
     key: head.event_id, areaId: head.area_id, kind: kindOfClass(head.classification), areaLevel: head.is_area_level || head.code_raw.trim().toUpperCase() === 'N/A',
-    blocked, flags: splitFlags(head.flags), code: head.code_raw.trim() || 'N/A', reason: (head.reason_raw ?? '').trim(), classification: head.classification,
+    blocked, flags: splitFlags(head.flags).filter((f) => !isInfoFlag(f)), code: head.code_raw.trim() || 'N/A', reason: (head.reason_raw ?? '').trim(), classification: head.classification,
     startMs, endMs, fromMs, toMs, continuesBefore: startMs < w.fromMs, continuesAfter: endMs > w.toMs, hours, totalHours, rows,
   };
 }
