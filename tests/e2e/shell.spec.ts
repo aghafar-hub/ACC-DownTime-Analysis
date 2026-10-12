@@ -4,13 +4,14 @@ import { noSidewaysScroll, PASSWORD, signIn, signInAndWait, smallTargets, stubFo
 // Runs against `vite preview` of a production build in mock mode (made-up data).
 
 const ANALYZE = ['Overview', 'Pareto', 'Repeated Failures', 'Reliability'];
+const ANALYZE_RAIL = ['Overview', 'Pareto & Contributors', 'Repeated Failures', 'Reliability Trends'];
 const DATA_VIEW = ['Event Explorer', 'Validate'];
 // the left rail: every page the role may open, grouped under Analyze / Data / Setup
 const RAIL: Record<Role, Record<string, string[]>> = {
-  admin: { Analyze: ANALYZE, Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
-  manager: { Analyze: ANALYZE, Data: DATA_VIEW, Setup: ['Master Data'] },
-  engineer: { Analyze: ANALYZE, Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
-  viewer: { Analyze: ANALYZE, Data: DATA_VIEW },
+  admin: { Analyze: ANALYZE_RAIL, Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
+  manager: { Analyze: ANALYZE_RAIL, Data: DATA_VIEW, Setup: ['Master Data'] },
+  engineer: { Analyze: ANALYZE_RAIL, Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
+  viewer: { Analyze: ANALYZE_RAIL, Data: DATA_VIEW },
 };
 
 test.describe('desktop', () => {
@@ -333,7 +334,7 @@ test.describe('phone', () => {
     // exactly four slots: Overview, Causes (Pareto), Events, More
     const bar = page.getByTestId('bottom-nav');
     await expect(bar.locator('a, button')).toHaveCount(4);
-    await expect(bar.locator('a, button')).toHaveText(['Overview', 'Causes', 'Events', 'More']);
+    await expect(bar.locator('a, button')).toHaveText([/^Overview$/, /^Causes$/, /^Events$/, /More$/]);
     await expect(page.getByTestId('bottom-pareto')).toHaveAttribute('href', /#\/pareto$/);
     await expect(page.getByTestId('bottom-upload')).toHaveCount(0);
     // the Validate count rides on More (Validate is not on the bar)
@@ -366,7 +367,7 @@ test.describe('phone', () => {
 
   test('the bar always has Overview, Causes, Events and More, whatever the role; admin sees every page in More', async ({ page }) => {
     await signInAndWait(page, 'engineer');
-    await expect(page.getByTestId('bottom-nav').locator('a, button')).toHaveText(['Overview', 'Causes', 'Events', 'More']);
+    await expect(page.getByTestId('bottom-nav').locator('a, button')).toHaveText([/^Overview$/, /^Causes$/, /^Events$/, /More$/]);
     await expect(page.getByTestId('bottom-upload')).toHaveCount(0);
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await page.goto('/');

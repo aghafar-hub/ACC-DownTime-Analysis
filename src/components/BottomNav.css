@@ -96,6 +96,11 @@
   white-space: nowrap;
   pointer-events: none;
 }
+.bottom-nav-item span.bottom-nav-icon {
+  overflow: visible;
+  max-width: none;
+  padding: 0;
+}
 .bottom-nav-item span.bottom-nav-badge {
   overflow: visible;
   max-width: none;

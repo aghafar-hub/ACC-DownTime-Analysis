@@ -199,8 +199,15 @@
   .mt-strip--fit {
     overflow: hidden;
   }
+  /* at most four chips (the Analyze section): share the width so none is cut off at 360 px */
+  .mt-strip--fit {
+    gap: 4px;
+  }
   .mt-strip--fit .mt-chip {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 0;
+    padding: 0 8px;
   }
   .mt-chip--more {
     flex-shrink: 0;
