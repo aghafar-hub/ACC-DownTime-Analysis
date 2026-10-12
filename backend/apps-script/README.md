@@ -86,35 +86,36 @@ classifications, the four roles (Admin, Manager, Engineer, Viewer), the default
 settings and the default tab access. It never overwrites anything, so it is also
 safe to run again.
 
-## 4. Set the three Script Properties
+## 4. Create the secrets (run `generateSecrets`)
 
-Project Settings (gear icon) > **Script Properties** > **Add script property**.
+Run **generateSecrets** (function drop-down, then **Run**). It creates, inside
+Script Properties and nowhere else:
 
-| Property | Value | Notes |
-|---|---|---|
-| `SESSION_SIGNING_SECRET` | a long random value | Signs login tokens. Changing it signs everyone out. |
-| `PASSWORD_PEPPER` | a different long random value | Mixed into every password hash. **Never change it after users exist**, or every password stops working (then use Reset password for each user). |
-| `SPREADSHEET_ID` | the id of your sheet | Optional when the script is bound to the sheet (step 1, option A). It is the long text between `/d/` and `/edit` in the sheet's address. |
+- `SESSION_SIGNING_SECRET`: signs the login tokens (changing it signs everyone out).
+- `PASSWORD_PEPPER`: mixed into every password hash (**never change it after users
+  exist**, or every password stops working; then use Reset password for each user).
+- `HASH_ROUNDS`: the password-hash cost, measured on your Google account (a sign-in
+  takes roughly half a second).
 
-How to make a strong value (at least 40 characters, letters and digits):
+The two secrets are random, 96 characters long, and are **never shown or logged**,
+so there is nothing to copy or store. The function never overwrites a value that
+already exists, so it is safe to run again.
 
-- Easiest: ask your password manager (Bitwarden, 1Password, the one built into
-  Chrome or Edge) to "generate a password", length 48, then copy it.
-- Mac or Linux terminal: `openssl rand -hex 32`
-- Make **two different** values, one for each secret. Store them in your
-  password manager. Do not email them or paste them into any file or chat.
+You can check them any time under Project Settings (gear icon) > **Script
+Properties**. `SPREADSHEET_ID` is optional when the script is bound to the sheet
+(step 1, option A); if you ever need it, it is the long text between `/d/` and
+`/edit` in the sheet's address. Use different secrets for the test copy and the
+live copy (each copy has its own project, so each runs `generateSecrets` itself).
 
-Use different values for the test copy and the live copy.
+*Manual alternative:* add the properties yourself with values of at least 40 random
+characters from a password manager (a different value for each secret).
 
-## 5. Tune the password hashing (run `benchmarkHashRounds`)
+## 5. Raise the password-hash cost later (optional)
 
-1. Run **benchmarkHashRounds**. Open the log. It says, for example,
-   `Suggested HASH_ROUNDS = 2300`.
-2. Add a Script Property `HASH_ROUNDS` with that number. This makes a sign-in take
-   roughly half a second, which is slow enough to hinder guessing and fast enough
-   for users. If you skip this step the built-in default (2000) is used.
-3. Later you can raise the number. Each user's stored hash is upgraded
-   automatically the next time they sign in.
+`generateSecrets` already chose `HASH_ROUNDS`. To change it later, run
+**benchmarkHashRounds**, read the suggestion in the log, and edit the
+`HASH_ROUNDS` Script Property. Each user's stored hash is upgraded automatically
+the next time they sign in.
 
 ## 6. Create the first Admin
 

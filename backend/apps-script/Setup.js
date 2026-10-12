@@ -105,6 +105,34 @@ function createFirstAdminRun() {
   return createFirstAdmin(email, name);
 }
 
+/**
+ * Creates the two secrets and the password-hash cost, once. Run it from the editor.
+ * - Only values that are missing are created; an existing value is NEVER changed
+ *   (changing PASSWORD_PEPPER would stop every password working, and changing
+ *   SESSION_SIGNING_SECRET would sign everyone out).
+ * - The values are random, kept only in Script Properties, and never printed or logged.
+ */
+function generateSecrets() {
+  var props = PropertiesService.getScriptProperties();
+  var say = [];
+  [[PROP.SECRET, 'signs the login tokens'], [PROP.PEPPER, 'is mixed into every password hash']].forEach(function (p) {
+    if (getProp_(p[0])) { say.push(p[0] + ' already exists: left unchanged.'); return; }
+    props.setProperty(p[0], randomHex_(96));
+    say.push(p[0] + ' created: 96 random characters, stored only in Script Properties; it ' + p[1] + '.');
+  });
+  if (getProp_(PROP.ROUNDS)) {
+    say.push(PROP.ROUNDS + ' already exists: left unchanged.');
+  } else {
+    var rounds = benchmarkHashRounds();
+    props.setProperty(PROP.ROUNDS, String(rounds));
+    say.push(PROP.ROUNDS + ' set to ' + rounds + ' (measured on this account).');
+  }
+  say.push('Next: run createFirstAdminRun (after putting your email and name in it), then installCheck.');
+  var text = say.join('\n');
+  Logger.log(text);
+  return text;
+}
+
 /** Times the password hash on this Google account and suggests a HASH_ROUNDS value. */
 function benchmarkHashRounds() {
   var probe = 200;

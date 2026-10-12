@@ -192,3 +192,35 @@ test('every write action takes the script lock (30 s wait) and releases it; read
   for (const a of ['getStartup', 'getEvents', 'listUsers', 'getUploadHistory']) env.ok(a, admin.token, { year: 2026 });
   assert.equal(env.lockState.tryCalls.length, 0);
 });
+
+test('generateSecrets: creates both secrets and the hash cost, never prints or overwrites them', async () => {
+  const { createEnv, bootstrapAdmin } = await import('./harness.mjs');
+  const env = createEnv({ prepare: false });
+  env.ctx.ensureSchema();
+  env.ctx.seedDefaults();
+  env.logs.length = 0;
+  env.ctx.generateSecrets();
+  const secret = env.props.get('SESSION_SIGNING_SECRET');
+  const pepper = env.props.get('PASSWORD_PEPPER');
+  assert.match(secret, /^[0-9a-f]{96}$/);
+  assert.match(pepper, /^[0-9a-f]{96}$/);
+  assert.notEqual(secret, pepper);
+  const rounds = Number(env.props.get('HASH_ROUNDS'));
+  assert.ok(rounds >= 200 && rounds <= env.run('HASH_ROUNDS_MAX'));
+  const log = env.logs.join('\n');
+  assert.ok(!log.includes(secret) && !log.includes(pepper), 'secret values must never be logged');
+  assert.match(log, /SESSION_SIGNING_SECRET created/);
+
+  // a second run changes nothing
+  env.logs.length = 0;
+  env.ctx.generateSecrets();
+  assert.equal(env.props.get('SESSION_SIGNING_SECRET'), secret);
+  assert.equal(env.props.get('PASSWORD_PEPPER'), pepper);
+  assert.equal(Number(env.props.get('HASH_ROUNDS')), rounds);
+  assert.match(env.logs.join('\n'), /left unchanged/);
+
+  // and the generated secrets really work: first admin, sign in
+  const admin = bootstrapAdmin(env);
+  assert.ok(env.ok('getMyAccess', admin.token));
+  assert.match(env.ctx.installCheck(), /Everything looks ready/);
+});
