@@ -17,7 +17,8 @@ Version 1 does three things:
    rows only, warn on anything that differs from stored data.
 2. **Analyse** the stored events in five dashboard tabs (Overview, Pareto and
    Contributors, Repeated Failures, Reliability Trends, Event Explorer).
-3. **Administer** master data (equipment, areas, reasons), settings and users.
+3. **Correct** stored events (edit fields or void a record) with a full history.
+4. **Administer** master data (equipment, areas, reasons), settings and users.
 
 Out of scope for version 1: operator logging on phones, corrective-action log
 and before/after comparison, shift analysis, lost-tonnes estimates, production
@@ -50,6 +51,7 @@ the ACC Reliability Platform but does not run inside it.
 | 15 | Backend | Apps Script + Google Sheets for the test phase. The team will migrate to a real database later. |
 | 16 | Look and feel | Same five themes, shell, phone design and PWA behaviour as the platform. No contractor concept. English first; Arabic open (§12). |
 | 17 | Access | Per-tab levels Hidden / View / Edit, enforced by the server. |
+| 18 | Correcting data | Authorised users can **edit or void** a stored event in the app when something is wrong. Upload still never changes stored rows. Every edit keeps the original value, who changed it, when and why. |
 
 ---
 
@@ -131,12 +133,12 @@ zone (as in the Excel source); see risk R4.
 | `equipment_aliases` | `alias` PK, `equipment_id`, `reason` |
 | `classifications` | `code` PK (PRO, MEC, ELE, AUT, PL, CIR), `name`, `is_incident` |
 | `reasons` | `reason_id` PK, `classification`, `text_as_listed`, `match_key`, `order_no`, `active` |
-| `events` | `event_id` PK, `batch_id`, `event_date`, `line_id`, `area_id`, `code_raw`, `equipment_id` null, `is_area_level`, `stop_ts`, `start_ts`, `duration_s`, `freq`, `classification`, `criticality`, `is_failure`, `reason_raw`, `reason_id` null, `description`, `source_file`, `source_row`, `fingerprint` unique, `created_at` |
+| `events` | `event_id` PK, `edited`, `is_void` (see §6.1), `batch_id`, `event_date`, `line_id`, `area_id`, `code_raw`, `equipment_id` null, `is_area_level`, `stop_ts`, `start_ts`, `duration_s`, `freq`, `classification`, `criticality`, `is_failure`, `reason_raw`, `reason_id` null, `description`, `source_file`, `source_row`, `fingerprint` unique, `created_at` |
 | `upload_batches` | `batch_id` PK, `uploaded_by`, `uploaded_at`, `file_name`, `file_hash`, `rows_read`, `rows_added`, `rows_identical`, `rows_skipped`, `warning_count`, `status` |
 | `upload_warnings` | `warning_id` PK, `batch_id`, `type`, `source_row`, `event_id` null, `detail`, `resolution`, `resolved_by` |
-| `users` | `user_id` PK, `email` unique, `display_name`, `password_hash`, `password_salt`, `hash_rounds`, `must_change`, `active`, `failed_attempts`, `locked_until`, `last_login_at` |
-| `roles` | `role_id` PK, `name` |
-| `user_roles` | (`user_id`, `role_id`) |
+| `users` | `user_id` PK, `email` unique, `display_name`, `role_id`, `password_hash`, `password_salt`, `hash_rounds`, `must_change`, `active`, `failed_attempts`, `locked_until`, `last_login_at` |
+| `event_edits` | `edit_id` PK, `event_id`, `edited_at`, `edited_by`, `field`, `old_value`, `new_value`, `note` |
+| `roles` | `role_id` PK, `name`, `description` |
 | `tab_access` | (`role_id` or `user_id`, `tab_id`) → `level` (Hidden / View / Edit) |
 | `settings` | `key` PK, `value`, `updated_by`, `updated_at` |
 | `audit_log` | `at`, `user_id`, `action`, `entity`, `entity_id`, `detail` |
@@ -219,6 +221,25 @@ totals computed independently from that workbook (row count, stoppage hours,
 Freq = 1 rows, failure count). The reference figures are kept outside the
 repository with the data, and are never committed.
 
+### 6.1 Correcting stored events
+
+Upload and correction are separate. Upload never modifies a stored row; the
+correction screen does, under these rules:
+
+- Needs **Edit** on the `events` tab (Admin and Engineer by default).
+- A **note (reason for the change) is required** on every edit and void.
+- Editable fields: date, line, area, equipment code, stop and start time, Freq,
+  classification, criticality, failure flag, reason, description. Duration, the
+  resolved equipment and reason ids, data-quality flags and (when not set by hand)
+  criticality and the failure flag are **recalculated** after the edit.
+- Each changed field becomes a row in `event_edits` (old value, new value, who,
+  when, why). The event is marked `edited`. Its upload fingerprint never changes,
+  so a later re-upload of the same sheet row still matches it.
+- **Void** instead of delete: a voided event stays in the table and its history,
+  and is excluded from every calculation. It can be restored.
+- If a later upload differs from an edited row, the app reports "edited in app"
+  and keeps the corrected value; it does not raise a changed-row warning.
+
 ---
 
 ## 7. Accounts, passwords and access
@@ -259,7 +280,8 @@ Proposed defaults (to confirm):
 
 | Tab | Admin | Manager | Engineer | Viewer |
 |---|---|---|---|---|
-| Dashboards (5) | Edit | View | View | View |
+| Dashboards (4) | Edit | View | View | View |
+| Event Explorer (view; edit/void) | Edit | View | Edit | View |
 | Upload | Edit | Hidden | Edit | Hidden |
 | Master data | Edit | View | Edit | Hidden |
 | Settings | Edit | Hidden | Hidden | Hidden |
@@ -410,7 +432,7 @@ Each phase ends with something runnable and a stated check.
 |---|---|---|
 | **P0 Foundation** | Repo scaffold, themes, shell, PWA, login screen, `api/` interface with `mockApi`, synthetic data generator, CI | App runs with mock data on phone and desktop in all five themes |
 | **P1 Backend core** | Apps Script project: sheets, auth, tokens, lockout, access, settings, audit | Login, change password, lockout and tab access enforced; API contract tests pass |
-| **P2 Master data** | Import equipment (with many-to-many areas), reasons, aliases, areas; admin screens | Masters load, edit, audit; unknown-code reporting works |
+| **P2 Master data and corrections** | Import equipment (with many-to-many areas), reasons, aliases, areas; admin screens; event edit and void with history | Masters load, edit, audit; unknown-code reporting works; an edit recalculates and is fully traceable |
 | **P3 Upload** | Parse, validate, review, commit, history, warnings download | A real monthly workbook reproduces its golden totals (local check); re-upload adds 0; late-row and changed-row warnings correct |
 | **P4 Calc and Overview** | `calc/` with tests; Overview tab; Event Explorer; global filters | KPIs match hand-calculated fixtures and the golden file |
 | **P5 Pareto and Repeats** | Pareto tab (all charts and rules), Repeated Failures tab | Pareto percentages use the full total; repeat groups match fixtures |
