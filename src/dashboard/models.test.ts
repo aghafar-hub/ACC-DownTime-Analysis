@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Startup } from '../api/types';
 import {
   areaPareto, buildFailureEvents, computeKpis, dataRangeOf, equipmentPareto, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
-  durationHistogram, buildIndex, parseSettings, comparisonRange,
+  durationHistogram, buildIndex, parseSettings, comparisonRange, isBlocked,
 } from '../calc';
 import { buildSyntheticDb } from '../mock/synthetic';
 import { defaultFilters, resolveRange } from './filters';
@@ -47,7 +47,7 @@ describe('page adapters equal the calculation layer on the mock data', () => {
 
   it('events in scope equals the rows the Event Explorer would list', () => {
     const inRange = rowsInRange(ctx.scope, range);
-    const expected = rows.filter((r) => !r.is_void && areaIds.includes(r.area_id) && r.stop_ts.slice(0, 10) >= range.from && r.stop_ts.slice(0, 10) <= range.to);
+    const expected = rows.filter((r) => !r.is_void && !isBlocked(r) && areaIds.includes(r.area_id) && r.stop_ts.slice(0, 10) >= range.from && r.stop_ts.slice(0, 10) <= range.to);
     expect(inRange.length).toBe(expected.length);
   });
 

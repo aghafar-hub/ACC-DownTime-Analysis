@@ -50,4 +50,7 @@ test('engineer (Edit) gets the file chooser', async ({ page }) => {
   await expect(page.getByTestId('choose-file')).toBeFocused();
   await page.getByTestId('file-input').setInputFiles({ name: 'm.xlsx', mimeType: 'application/octet-stream', buffer: Buffer.from(await buildWorkbook(simpleRows(2, '2026-11-02'))) });
   await expect(page.getByTestId('review')).toBeVisible();
+  // the new review screen: records that need checking, with the Validate link
+  await expect(page.getByTestId('flags-section')).toBeVisible();
+  await expect(page.getByTestId('nothing-dropped')).toContainText('every row is stored');
 });

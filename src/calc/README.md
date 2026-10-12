@@ -9,6 +9,7 @@ Conventions
 - Unavailable values are `Metric` objects (`{available:false, code, reason}`), never 0, NaN or Infinity.
 - Build lookups once (`buildIndex(master)`) and pass the `MasterIndex`; nothing is cached inside the functions.
 - Voided rows (`is_void`) are ignored everywhere except `applyFilters({includeVoid})`, `buildFailureEvents({includeVoid})`, and as fingerprint matches in `compareUpload`.
+- **Blocked rows** (a blocking flag, see flags.ts: `missing_classification`, `invalid_classification`, `unknown_area`, `end_before_start`) are kept out of every calculation like voided ones, unless `includeInvalid` is set (`applyFilters`, `buildFailureEvents`). `computeKpis`, `dataRangeOf`, `monthlySeries` and the chain-based entry points (Pareto, repeats, trends) also drop blocked rows and chains with a blocked head (`isAnalysable`, `analysableChains` in events.ts), so a chain passed in directly is guarded too.
 
 ## metric.ts / settings.ts
 - `avail(v)`, `unavail(code, reason)`, `ratio(n, d, code, reason)`: `Metric` helpers.
@@ -28,8 +29,15 @@ Conventions
 - `fingerprint({area_id, code, stop_ts, start_ts, occurrence})` (async SHA-256 hex), `eventIdFromFingerprint`, `assignOccurrences(rows)` (1, 2, ... per identical key in file order).
 - `buildIndex(master)` -> `MasterIndex`; `areasOf(index, equipmentId)`.
 
+## flags.ts / overlaps.ts / validate.ts
+- `BLOCKING_FLAGS`, `WARNING_FLAGS`, `FLAG_INFO` (label, problem, fix), `splitFlags`, `isBlocked(event)`, `isBlockingFlag`, `blockingFlagsOf`, `flagLabel`.
+- `findOverlaps(events, toleranceS = 1)` -> `{ids, partners, pairs}`: events of one area covering the same time (voided and blocked ignored). `overlap_in_area` is derived, never stored.
+- `computeEventFlags(row, index)` -> flag list in the server's order (the same rule as `backend/apps-script/Events.js`, see docs/wire-protocol.md 4a); `deriveEventFields(row, index)` -> `{equipment_id, is_area_level, reason_id, flags}`; `findArea(index, id)` (case-insensitive). The mock API, the upload review and the Validate page use these.
+
 ## filters.ts
-- `Filter`, `emptyFilter()`, `applyFilters(events, filter, {settings, index?})`. Empty list/null/false = no restriction. Voided rows are always dropped unless `includeVoid`.
+- `Filter`, `emptyFilter()`, `applyFilters(events, filter, {settings, index?})`. Empty list/null/false = no restriction. Voided rows are always dropped unless `includeVoid`; blocked rows unless `includeInvalid`.
+- The line filter resolves **area -> line through the master** (`index.areaById`), never `event.line_id` (the sheet's line can be wrong); an area the master does not know belongs to no line. Without an `index` it falls back to `line_id`, so always pass the index.
+- `blockedSummary(events)` -> `{total: {count, hours}, byFlag: {<blocking flag>: {count, hours}}}` for the records kept out of the numbers (voided ignored; a record with two blocking flags counts under both, once in the total).
 - Date range keeps rows that overlap the days (matched on stop/restart, so a row crossing the edge is kept; use clipped hours). Duration band is the row's own duration (short <= `duration_short_max_min`, long >= `duration_long_min_min`).
 - Row-level: filtering by classification/reason can remove continuation rows. Build events from rows filtered by area/line/date only when chains must stay whole.
 
@@ -66,7 +74,8 @@ Conventions
 - `rollingFailureCounts(failureEvents, range, 30 | 90)`, `yearOverYear({rows, year, settings})`, `durationHistogram(failureEvents, settings, window?)` (bins + short/medium/long bands), `equipmentMonthHeatmap`, `equipmentReasonHeatmap`, `buildHeatmap`, `longestEvents(chains, n)` (by chained event).
 
 ## uploadDiff.ts
-- `compareUpload({uploaded, stored, index, editedFields?})` -> `{rows, warnings, normalizedRows, normalisations, summary}`.
-  Status per row: `identical`, `new`, `late_row` (a new row whose date is on or before the latest stored date), `changed_row` (same fingerprint, different freq/classification/criticality/is_failure/reason_raw/description/event_date/line_id; stored value kept). If the stored event was `edited` and all differences are edited fields, an `edited_in_app` info warning is given and the row counts as identical. Stored non-void rows inside the file's date range but absent from it give `missing_row` (info).
-  Validation (new and late rows only): `unknown_code`, `code_not_in_area`, `unlisted_reason`, `blank_reason`, `end_before_start`, `duration_mismatch` (needs `sheet_duration_s`), `orphan_continuation`, `overlap_in_area` (against the file and stored rows, same area, more than 1 s), `placeholder_code`. Classification case is normalised and reported in `normalisations`.
+- `compareUpload({uploaded, stored, index, editedFields?})` -> `{rows, warnings, normalizedRows, normalisations, lateMonths, summary}`. **No row is rejected**: each new/late row carries `flags` (what it will be stored with, from `computeEventFlags`) and validation warnings.
+  Status per row: `identical`, `new`, `late_row` (a new row whose date is on or before the latest stored date; `lateScope` is `'month'` when its month `YYYY-MM` has no stored non-void events at all, else `'row'`),
+  `lateMonths: {month, rows, hours}[]` (oldest first, one `late_month` warning each); per-row `late_row` warnings only for scope `'row'`; `summary.late` counts both, `summary.lateMonths` / `lateMonthRows` the month ones, `changed_row` (same fingerprint, different freq/classification/criticality/is_failure/reason_raw/description/event_date/line_id; stored value kept). If the stored event was `edited` and all differences are edited fields, an `edited_in_app` info warning is given and the row counts as identical. Stored non-void rows inside the file's date range but absent from it give `missing_row` (info).
+  Validation (new and late rows only): `missing_code`, `missing_classification`, `invalid_classification`, `unknown_area`, `line_mismatch`, `unknown_code`, `code_not_in_area`, `unlisted_reason`, `blank_reason`, `end_before_start`, `duration_mismatch` (needs `sheet_duration_s`), `orphan_continuation`, `placeholder_code`, and `overlap_in_area` (uses `findOverlaps` over the file and the stored non-void rows, tolerance 1 s: one warning per affected row, so a 3-row pile-up gives 3, not 3 pairs). Classification case is normalised and reported in `normalisations`.
 - `validateRow`, `compareFields`.

@@ -1,3 +1,4 @@
+import { FLAG_INFO } from '../../calc/flags';
 import { t } from '../../i18n/t';
 
 export const FLAG_LABELS: Record<string, { label: string; help: string }> = {
@@ -11,6 +12,9 @@ export const FLAG_LABELS: Record<string, { label: string; help: string }> = {
   overlap_in_area: { label: 'Overlaps another stop', help: 'This stop overlaps another stop in the same area.' },
   placeholder_code: { label: 'Placeholder code', help: 'The equipment code is a placeholder, not a real piece of equipment.' },
 };
+
+// every flag of the catalogue (calc/flags.ts) gets its label; the older names above stay for records stored before the catalogue
+for (const info of Object.values(FLAG_INFO)) FLAG_LABELS[info.flag] = { label: info.label, help: `${info.problem} ${info.fix}` };
 
 export const flagLabel = (f: string): string => t(FLAG_LABELS[f]?.label ?? f.replace(/_/g, ' '));
 export const flagHelp = (f: string): string => t(FLAG_LABELS[f]?.help ?? '');

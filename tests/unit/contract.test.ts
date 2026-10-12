@@ -8,7 +8,9 @@ import { bootstrapAdmin, createEnv } from '../../backend/apps-script/tests/harne
 import { createMockApi } from '../../src/api/mockApi';
 import { createSheetsApi } from '../../src/api/sheetsApi';
 import { ApiError, type Api, type EventRow, type UploadRow } from '../../src/api/types';
-import { eventIdFromFingerprint, fingerprint } from '../../src/calc';
+import {
+  applyFilters, blockedSummary, buildIndex, DEFAULT_SETTINGS, emptyFilter, eventIdFromFingerprint, fingerprint, isBlocked,
+} from '../../src/calc';
 
 interface Subject {
   name: string;
@@ -126,13 +128,131 @@ describe.each([
     expect((await s.api.getStartup(token)).years[0]).toBe(YEAR);
   });
 
-  it('rejects a bad upload row in plain words and stores nothing for it', async () => {
+  it('refuses only a row that cannot be stored at all, in plain words, and stores nothing for it', async () => {
     const { batch_id } = await s.api.uploadStart(token, 'bad.xlsx', 'b'.repeat(64));
-    const row = { ...(await uploadRow()), area_id: 'NOPE', stop_ts: `${YEAR}-06-01 01:00:00.000`, start_ts: `${YEAR}-06-01 02:00:00.000` };
-    const res = await s.api.uploadChunk(token, batch_id, [row]);
+    const base = await uploadRow();
+    const rows = [
+      { ...base, source_row: 5, stop_ts: 'soon' },
+      { ...base, source_row: 6, freq: 2 as never },
+      { ...base, source_row: 7, criticality: 'MAYBE' as never },
+      { ...base, source_row: 8, is_failure: 'YES' as never },
+      { ...base, source_row: 9, event_date: '05/05/2030' },
+    ];
+    const res = await s.api.uploadChunk(token, batch_id, rows);
     expect(res.added).toBe(0);
-    expect(res.rejected).toHaveLength(1);
-    expect(res.rejected[0]?.source_row).toBe(5);
+    expect(res.rejected.map((r) => r.source_row)).toEqual([5, 6, 7, 8, 9]);
+    expect(res.rejected.every((r) => r.reason.length > 5)).toBe(true);
+  });
+
+  // ---- "import never drops a row": problem rows are stored with flags and fixed later ----
+  const YEAR2 = 2031;
+  interface Problem { name: string; over: Partial<UploadRow>; flags: string; equipment?: string }
+  const at = (n: number): { stop_ts: string; start_ts: string } => ({
+    stop_ts: `${YEAR2}-03-0${n} 08:00:00.000`, start_ts: `${YEAR2}-03-0${n} 09:00:00.000`,
+  });
+  const PROBLEMS: Problem[] = [
+    { name: 'blank code, classification and reason', over: { ...at(1), code_raw: '', classification: '', reason_raw: '' }, flags: 'missing_classification,missing_code,blank_reason' },
+    { name: 'HD under L.2', over: { ...at(2), area_id: 'HD', line_id: 'L.2', code_raw: 'N/A' }, flags: 'line_mismatch' },
+    { name: 'unknown area', over: { ...at(3), area_id: 'ZZ', line_id: 'L.9' }, flags: 'unknown_area', equipment: '900.ZZ01' },
+    { name: 'invalid classification', over: { ...at(4), classification: 'xyz' }, flags: 'invalid_classification', equipment: '900.ZZ01' },
+    { name: 'clean row', over: { ...at(5) }, flags: '', equipment: '900.ZZ01' },
+    { name: 'code added later', over: { ...at(6), code_raw: 'newcode.5' }, flags: 'unknown_code' },
+    { name: 'alias added later', over: { ...at(7), code_raw: 'OLDNAME.5' }, flags: 'unknown_code' },
+    { name: 'unlisted reason', over: { ...at(8), reason_raw: 'Something unlisted' }, flags: 'unlisted_reason', equipment: '900.ZZ01' },
+    { name: 'restart before stop', over: { stop_ts: `${YEAR2}-03-09 09:00:00.000`, start_ts: `${YEAR2}-03-09 08:00:00.000` }, flags: 'end_before_start', equipment: '900.ZZ01' },
+    { name: 'code of another area', over: { stop_ts: `${YEAR2}-03-10 08:00:00.000`, start_ts: `${YEAR2}-03-10 09:00:00.000`, area_id: 'RM.1' }, flags: 'code_not_in_area', equipment: '900.ZZ01' },
+    { name: 'placeholder', over: { stop_ts: `${YEAR2}-03-11 08:00:00.000`, start_ts: `${YEAR2}-03-11 09:00:00.000`, code_raw: 'AFR' }, flags: 'unknown_code,placeholder' },
+  ];
+  const ids: Record<string, string> = {};
+
+  async function problemRows(): Promise<UploadRow[]> {
+    const base = await uploadRow();
+    const out: UploadRow[] = [];
+    for (const [i, p] of PROBLEMS.entries()) {
+      const row: UploadRow = { ...base, source_row: 20 + i, event_date: (p.over.stop_ts ?? at(1).stop_ts).slice(0, 10), ...p.over };
+      row.fingerprint = await fingerprint({ area_id: row.area_id, code: row.code_raw, stop_ts: row.stop_ts, start_ts: row.start_ts, occurrence: 1 });
+      out.push(row);
+    }
+    return out;
+  }
+
+  it('stores problem rows (nothing is rejected) with the right flags, HD under L.2 included', async () => {
+    const rows = await problemRows();
+    const { batch_id } = await s.api.uploadStart(token, 'problems.xlsx', 'c'.repeat(64));
+    const res = await s.api.uploadChunk(token, batch_id, rows);
+    expect(res).toMatchObject({ added: PROBLEMS.length, identical: 0, rejected: [] });
+    const again = await s.api.uploadChunk(token, batch_id, rows);
+    expect(again).toMatchObject({ added: 0, identical: PROBLEMS.length });
+    await s.api.uploadFinish(token, batch_id, { rows_read: rows.length, rows_skipped: 0 }, []);
+    const events = await s.api.getEvents(token, YEAR2);
+    expect(events).toHaveLength(PROBLEMS.length);
+    PROBLEMS.forEach((p, i) => {
+      const ev = events.find((e) => e.source_row === 20 + i) as EventRow;
+      ids[p.name] = ev.event_id;
+      expect(ev.flags ?? '', p.name).toBe(p.flags);
+      if (p.equipment !== undefined) expect(ev.equipment_id ?? '', p.name).toBe(p.equipment);
+    });
+    const blank = events.find((e) => e.event_id === ids['blank code, classification and reason']) as EventRow;
+    expect([blank.code_raw, blank.classification, blank.reason_raw ?? '']).toEqual(['', '', '']);
+    expect(blank.is_failure).toBe(true); // the sheet's values are kept
+    const hd = events.find((e) => e.event_id === ids['HD under L.2']) as EventRow;
+    expect([hd.area_id, hd.line_id, hd.flags]).toEqual(['HD', 'L.2', 'line_mismatch']);
+    const unknownArea = events.find((e) => e.event_id === ids['unknown area']) as EventRow;
+    expect([unknownArea.area_id, unknownArea.line_id]).toEqual(['ZZ', 'L.9']);
+  });
+
+  it('leaves blocked rows out of the calc filter and resolves the line through the area master', async () => {
+    const st = await s.api.getStartup(token);
+    const events = await s.api.getEvents(token, YEAR2);
+    const ctx = { settings: DEFAULT_SETTINGS, index: buildIndex(st) };
+    const usable = applyFilters(events, emptyFilter(), ctx);
+    const blocked = events.filter(isBlocked);
+    expect(blocked.map((e) => e.flags).sort()).toEqual(['end_before_start', 'invalid_classification', 'missing_classification,missing_code,blank_reason', 'unknown_area'].sort());
+    expect(usable).toHaveLength(PROBLEMS.length - 4);
+    expect(usable.some(isBlocked)).toBe(false);
+    expect(applyFilters(events, { ...emptyFilter(), includeInvalid: true }, ctx)).toHaveLength(PROBLEMS.length);
+    expect(blockedSummary(events).total.count).toBe(4);
+    // HD belongs to L.1 whatever the sheet said
+    const hd = ids['HD under L.2'];
+    expect(applyFilters(events, { ...emptyFilter(), lineIds: ['L.1'] }, ctx).some((e) => e.event_id === hd)).toBe(true);
+    expect(applyFilters(events, { ...emptyFilter(), lineIds: ['L.2'] }, ctx).some((e) => e.event_id === hd)).toBe(false);
+  });
+
+  it('editing fixes the flags; classification and area must be valid', async () => {
+    const note = 'fixed on the validate page';
+    expect((await rejection(s.api.editEvent(token, ids['unknown area'] as string, { area_id: 'STILL-NOPE' }, note))).code).toBe('bad_request');
+    expect((await rejection(s.api.editEvent(token, ids['invalid classification'] as string, { classification: 'XYZ' as never }, note))).code).toBe('bad_request');
+    const a = await s.api.editEvent(token, ids['unknown area'] as string, { area_id: 'K.1' }, note);
+    expect([a.area_id, a.line_id, a.flags ?? '']).toEqual(['K.1', 'L.1', '']);
+    const b = await s.api.editEvent(token, ids['invalid classification'] as string, { classification: 'mec' as never }, note);
+    expect([b.classification, b.flags ?? '']).toEqual(['MEC', '']);
+    const c = await s.api.editEvent(token, ids['blank code, classification and reason'] as string, { classification: 'ELE', code_raw: 'n/a', reason_raw: 'x' }, note);
+    expect([c.classification, c.is_area_level, c.flags ?? '']).toEqual(['ELE', true, 'unlisted_reason']);
+    const d = await s.api.editEvent(token, ids['HD under L.2'] as string, { line_id: 'L.1' }, note);
+    expect(d.flags ?? '').toBe('');
+    const e = await s.api.editEvent(token, ids['restart before stop'] as string, { start_ts: `${YEAR2}-03-09 10:00:00.000` }, note);
+    expect([e.duration_s, e.flags ?? '']).toEqual([3600, '']);
+  });
+
+  it('revalidateEvents picks up a code and an alias added to Master Data later', async () => {
+    const before = await s.api.getEvents(token, YEAR2);
+    expect(before.filter((e) => (e.flags ?? '').includes('unknown_code') && !(e.flags ?? '').includes('placeholder'))).toHaveLength(2);
+    expect(await s.api.revalidateEvents(token, YEAR2)).toEqual({ checked: PROBLEMS.length, changed: 0 });
+    await s.api.saveEquipment(token, { equipment_id: 'NEWCODE.5', description: 'New fan', criticality: 'High', status: 'Active', needs_review: false } as never, ['K.1']);
+    await s.api.saveAlias(token, { alias: 'OLDNAME.5', equipment_id: 'NEWCODE.5' });
+    expect(await s.api.revalidateEvents(token, YEAR2)).toEqual({ checked: PROBLEMS.length, changed: 2 });
+    const after = await s.api.getEvents(token, YEAR2);
+    for (const name of ['code added later', 'alias added later']) {
+      const ev = after.find((e) => e.event_id === ids[name]) as EventRow;
+      expect([ev.flags ?? '', ev.equipment_id]).toEqual(['', 'NEWCODE.5']);
+      expect(ev.edited).toBe(false); // a re-check is not an edit
+    }
+    expect((await s.api.getEventEdits(token, ids['code added later'] as string))).toEqual([]);
+    // a voided event is not re-checked
+    await s.api.voidEvent(token, ids['placeholder'] as string, true, 'duplicate');
+    expect((await s.api.revalidateEvents(token, YEAR2)).checked).toBe(PROBLEMS.length - 1);
+    await s.api.voidEvent(token, ids['placeholder'] as string, false, 'restored');
+    expect((await rejection(s.api.revalidateEvents(token, 1066))).code).toBe('bad_request');
   });
 
   it('edits an event: recalculates, marks it edited, keeps history, needs a note', async () => {
@@ -179,6 +299,7 @@ describe.each([
     expect((await s.api.getEvents(session.token, YEAR)).length).toBe(1);
     const denied = await rejection(s.api.editEvent(session.token, eventId, { description: 'z' }, 'viewer tries'));
     expect(denied.accessDenied).toBe(true);
+    expect((await rejection(s.api.revalidateEvents(session.token, YEAR2))).accessDenied).toBe(true);
     expect((await rejection(s.api.saveSettings(session.token, { repeat_min_events: '3' }))).accessDenied).toBe(true);
     expect((await rejection(s.api.listUsers(session.token))).accessDenied).toBe(true);
 

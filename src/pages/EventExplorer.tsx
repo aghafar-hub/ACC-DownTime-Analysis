@@ -35,8 +35,10 @@ function activeCount(f: Filters, includeFailure = true): number {
 function applyFilters(rows: EventRow[], f: Filters, startup: Startup | null, q: string): EventRow[] {
   const needle = q.trim().toLowerCase();
   const reasonText = new Map(startup?.reasons.map((r) => [r.reason_id, r.text_as_listed.trim().toLowerCase()]) ?? []);
+  // the area decides the line (the sheet's own line can be wrong)
+  const lineOfArea = new Map(startup?.areas.map((a) => [a.area_id, a.line_id]) ?? []);
   const out = rows.filter((e) => {
-    if (f.line && e.line_id !== f.line) return false;
+    if (f.line && (lineOfArea.get(e.area_id) ?? e.line_id) !== f.line) return false;
     if (f.area && e.area_id !== f.area) return false;
     if (f.classes.length && !f.classes.includes(e.classification)) return false;
     if (f.crit && e.criticality !== f.crit) return false;

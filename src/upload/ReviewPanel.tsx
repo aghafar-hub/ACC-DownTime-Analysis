@@ -179,9 +179,11 @@ export default function ReviewPanel({ review, decisions, onDecide, onDecideAll }
       <section className="card" aria-label={t('Records that will need checking')} data-testid="flags-section">
         <h2>{t('Records that will need checking')}</h2>
         <p className="adm-note" data-testid="nothing-dropped">
-          {t('Nothing is dropped: every row is stored. These records wait on the Validate page.')}{' '}
-          <Link to="/validate" data-testid="open-validate">{t('Open the Validate page')}</Link>
+          {t('Nothing is dropped: every row is stored. These records wait on the Validate page.')}
         </p>
+        <div className="chip-row" style={{ marginBottom: 10 }}>
+          <Link className="btn" to="/validate" data-testid="open-validate">{t('Open the Validate page')}</Link>
+        </div>
         {flags.total === 0 ? (
           <p className="up-decided" data-testid="flags-none"><span aria-hidden="true">✓ </span>{t('No record has a data problem.')}</p>
         ) : (

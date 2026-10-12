@@ -45,8 +45,11 @@ test.describe('upload flow', () => {
     await expect(page.getByTestId('count-new')).toContainText('5');
     await expect(page.getByTestId('count-late')).toContainText('3');
     await expect(page.getByTestId('count-identical')).toContainText('0');
-    await expect(page.getByTestId('check-unknown_code')).toContainText('Equipment code not in the master list');
-    await expect(page.getByTestId('check-unknown_code')).toContainText('999.ZZ900');
+    await expect(page.getByTestId('nothing-dropped')).toContainText('Nothing is dropped: every row is stored');
+    await expect(page.getByTestId('open-validate')).toHaveAttribute('href', /\/validate$/);
+    await expect(page.getByTestId('flag-unknown_code')).toContainText('Unknown code');
+    await page.getByTestId('flag-unknown_code').locator('summary').click();
+    await expect(page.getByTestId('flag-unknown_code')).toContainText('9');
 
     // the Upload button waits for a decision on every late row
     await expect(page.getByTestId('upload-confirm')).toBeDisabled();
@@ -58,7 +61,7 @@ test.describe('upload flow', () => {
     await expect(page.getByTestId('upload-confirm')).toBeDisabled();
     await expect(page.getByTestId('late-progress')).toContainText('2 of 3 decided');
     await rows.nth(2).getByTestId('late-skip').click();
-    await expect(page.getByTestId('late-progress')).toContainText('All 3 late entries decided');
+    await expect(page.getByTestId('late-progress')).toContainText('All 3 late decisions made');
     await expect(page.getByTestId('upload-confirm')).toBeEnabled();
     await expect(page.getByTestId('upload-confirm')).toContainText('Upload 7 rows');
 
@@ -177,6 +180,11 @@ test.describe('upload flow', () => {
     await input.setInputFiles(await file(simpleRows(3), 'bad-time.xlsx', { overrides: [[1, 'Stop Time', 'tomorrow']] }));
     await expect(page.getByTestId('problem-bad_time')).toContainText('row 3');
 
+    await input.setInputFiles(await file(simpleRows(3), 'bad-failure.xlsx', { overrides: [[0, 'Failure', 'MAYBE'], [2, 'Freq', 7]] }));
+    await expect(page.getByTestId('problem-bad_value')).toContainText('Fix them in Excel and choose the file again');
+    await expect(page.getByTestId('problem-bad_value')).toContainText('2, 4');
+    await expect(page.getByTestId('review')).toHaveCount(0);
+
     await input.setInputFiles({ name: 'notes.xlsx', mimeType: 'text/plain', buffer: Buffer.from('this is not a workbook') });
     await expect(page.getByTestId('problem-unreadable')).toContainText('cannot be read as an Excel workbook');
     await expect(page.getByTestId('upload-confirm')).toHaveCount(0);
@@ -187,17 +195,93 @@ test.describe('upload flow', () => {
     await expect(page.getByTestId('upload-refused')).toHaveCount(0);
   });
 
-  test('rows with an unknown area are left out and listed', async ({ page }) => {
+  test('problem rows are stored, flagged and counted: blank classification, unknown area, HD on line L.2', async ({ page }) => {
     await signInAndWait(page, 'engineer');
     await openUpload(page);
-    const rows = [...simpleRows(2, '2026-11-02'), { ...simpleRows(1, '2026-11-04')[0]!, area: 'ZZ.9' }];
-    await page.getByTestId('file-input').setInputFiles(await file(rows));
-    await expect(page.getByTestId('count-rejected')).toContainText('1');
-    await expect(page.getByTestId('reject-row')).toContainText('not in the master data');
+    const rows: SheetRowSpec[] = [
+      ...simpleRows(2, '2026-11-02'),
+      { ...simpleRows(1, '2026-11-04')[0]!, description: 'no classification' },
+      { ...simpleRows(1, '2026-11-05')[0]!, area: 'ZZ.9', description: 'unknown area row' },
+      { ...simpleRows(1, '2026-11-06')[0]!, area: 'HD', line: 'L.2', code: 'N/A', description: 'hd on line two' },
+    ];
+    await page.getByTestId('file-input').setInputFiles(await file(rows, 'problems.xlsx', { overrides: [[2, 'STOPPAGE CLASIFICATION', null]] }));
+    await expect(page.getByTestId('review')).toBeVisible();
+    await expect(page.getByTestId('count-read')).toContainText('5');
+    await expect(page.getByTestId('count-new')).toContainText('5');
+    await expect(page.getByTestId('rejects-section')).toHaveCount(0);
+    await expect(page.getByTestId('count-rejected')).toHaveCount(0);
+    const flags = page.getByTestId('flags-section');
+    await expect(page.getByTestId('flags-total')).toContainText('3 records will need checking');
+    await expect(page.getByTestId('flags-total')).toContainText('2 are left out of the numbers until fixed');
+    await expect(flags.getByTestId('flag-missing_classification')).toHaveAttribute('data-blocking', 'yes');
+    await expect(flags.getByTestId('flag-unknown_area')).toHaveAttribute('data-blocking', 'yes');
+    await expect(flags.getByTestId('flag-unknown_area')).toContainText('left out of the numbers until fixed');
+    await expect(flags.getByTestId('flag-line_mismatch')).toHaveAttribute('data-blocking', 'no');
+    // blocking flags are listed before the warnings
+    const order = await flags.locator('details[data-testid^="flag-"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
+    expect(order.indexOf('flag-line_mismatch')).toBeGreaterThan(order.indexOf('flag-unknown_area'));
+    await page.getByTestId('upload-confirm').click();
+    await expect(page.getByTestId('upload-confirm-dialog')).toContainText('5 rows will be added');
+    await page.getByTestId('confirm-ok').click();
+    await expect(page.getByTestId('result-added')).toContainText('5');
+    await expect(page.getByTestId('result-skipped')).toContainText('0');
+    await expect(page.getByTestId('result-needs-checking')).toContainText('3 records need checking');
+    await expect(page.getByTestId('result-blocking')).toContainText('2 have a blocking problem');
+    await expect(page.getByTestId('result-validate-link')).toHaveAttribute('href', /\/validate$/);
+    // all five are stored: the explorer finds each one
+    await page.getByTestId('open-events').click();
+    for (const text of ['no classification', 'unknown area row', 'hd on line two']) {
+      await page.getByTestId('event-search').fill(text);
+      await expect(page.getByTestId('event-row')).toHaveCount(1);
+    }
+    // the same file again: nothing is new, nothing is lost
+    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Upload' }).click();
+    await page.getByTestId('file-input').setInputFiles(await file(rows, 'problems.xlsx', { overrides: [[2, 'STOPPAGE CLASIFICATION', null]] }));
+    await expect(page.getByTestId('count-identical')).toContainText('5');
+    await expect(page.getByTestId('count-new')).toContainText('0');
+    await expect(page.getByTestId('flags-none')).toBeVisible();
+  });
+
+  test('a month with nothing stored is decided as a whole: Add month or Skip month', async ({ page }) => {
+    await signInAndWait(page, 'engineer');
+    await openUpload(page);
+    // January 2025 is older than everything stored; two single late rows sit in October 2026, which already has stored rows
+    const rows = [...simpleRows(6, '2025-01-10'), ...simpleRows(2, '2026-10-05', { code: '131.BC110' })];
+    await page.getByTestId('file-input').setInputFiles(await file(rows, 'old-month.xlsx'));
+    await expect(page.getByTestId('review')).toBeVisible();
+    await expect(page.getByTestId('count-late-months')).toContainText('1');
+    await expect(page.getByTestId('count-late')).toContainText('2');
+    const month = page.getByTestId('late-month');
+    await expect(month).toHaveCount(1);
+    await expect(month).toContainText('January 2025: 6 rows');
+    await expect(month).toContainText('not stored yet');
+    await expect(page.getByTestId('late-row')).toHaveCount(2);
+    await expect(page.getByTestId('late-progress')).toContainText('0 of 3 decided');
+    await expect(page.getByTestId('upload-confirm')).toBeDisabled();
+    await month.getByTestId('month-skip').click();
+    await expect(page.getByTestId('upload-confirm')).toBeDisabled();
+    await page.getByTestId('late-add').first().click();
+    await page.getByTestId('late-add').last().click();
+    await expect(page.getByTestId('upload-confirm')).toBeEnabled();
+    await expect(page.getByTestId('upload-confirm')).toContainText('Upload 2 rows');
+    await month.getByTestId('month-add').click();
+    await expect(page.getByTestId('upload-confirm')).toContainText('Upload 8 rows');
+    await page.getByTestId('skip-all').click();
+    await expect(page.getByTestId('upload-bar-text')).toContainText('nothing new to add');
+    await page.getByTestId('add-all').click();
     await page.getByTestId('upload-confirm').click();
     await page.getByTestId('confirm-ok').click();
-    await expect(page.getByTestId('result-added')).toContainText('2');
-    await expect(page.getByTestId('result-skipped')).toContainText('1');
+    await expect(page.getByTestId('result-added')).toContainText('8');
+    // the batch records the month decision
+    const first = page.getByTestId('history-row').first();
+    await first.getByTestId('history-warnings').click();
+    await expect(page.getByTestId('batch-group-late_month')).toContainText('Added');
+    await page.keyboard.press('Escape');
+    // now January has stored rows: the same file shows nothing late
+    await page.getByTestId('upload-another').click();
+    await page.getByTestId('file-input').setInputFiles(await file(rows, 'old-month.xlsx'));
+    await expect(page.getByTestId('count-identical')).toContainText('8');
+    await expect(page.getByTestId('late-section')).toHaveCount(0);
   });
 
   test('a large file is sent in chunks with progress', async ({ page }) => {

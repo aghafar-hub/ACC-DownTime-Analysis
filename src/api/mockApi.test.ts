@@ -278,7 +278,13 @@ describe('edit and void semantics', () => {
     const e = await pickEvent(a, s.token, (x) => x.freq === 1 && x.line_id === 'L.1');
     const moved = await a.editEvent(s.token, e.event_id, { area_id: 'K.2' }, 'wrong area');
     expect(moved.line_id).toBe('L.2');
-    expect(await code(a.editEvent(s.token, e.event_id, { area_id: 'CR', line_id: 'L.2' }, 'bad'))).toBe('bad_request');
+    // a line that disagrees with the area is stored and flagged, not refused; an unknown line or area is refused
+    const mismatch = await a.editEvent(s.token, e.event_id, { area_id: 'CR', line_id: 'L.2' }, 'sheet says L.2');
+    expect(mismatch.flags).toContain('line_mismatch');
+    expect(await code(a.editEvent(s.token, e.event_id, { line_id: 'L.9' }, 'bad'))).toBe('bad_request');
+    expect(await code(a.editEvent(s.token, e.event_id, { area_id: 'NOPE' }, 'bad'))).toBe('bad_request');
+    const fixed = await a.editEvent(s.token, e.event_id, { line_id: 'L.1' }, 'back to the area line');
+    expect(fixed.flags ?? '').not.toContain('line_mismatch');
   });
   it('void and restore need a note, keep the row, and write history', async () => {
     const a = createMockApi();
@@ -324,16 +330,22 @@ describe('upload', () => {
     const good = row();
     const unknown = row({ source_row: 11, code_raw: '999.NOPE', stop_ts: '2026-10-10 02:00:00.000', start_ts: '2026-10-10 02:10:00.000', fingerprint: fingerprintOf('CR', '999.NOPE', '2026-10-10 02:00:00.000', '2026-10-10 02:10:00.000'), reason_raw: 'Not in list' });
     const badArea = row({ source_row: 12, area_id: 'ZZ', fingerprint: 'a'.repeat(64) });
-    const badLine = row({ source_row: 13, line_id: 'L.2', fingerprint: 'b'.repeat(64) });
-    const badClass = row({ source_row: 14, classification: 'XXX', fingerprint: 'c'.repeat(64) });
+    const badLine = row({ source_row: 13, line_id: 'L.2', stop_ts: '2026-10-10 03:00:00.000', start_ts: '2026-10-10 03:10:00.000', fingerprint: 'b'.repeat(64) });
+    const badClass = row({ source_row: 14, classification: 'XXX', stop_ts: '2026-10-10 04:00:00.000', start_ts: '2026-10-10 04:10:00.000', fingerprint: 'c'.repeat(64) });
     const badTs = row({ source_row: 15, stop_ts: 'soon', fingerprint: 'd'.repeat(64) });
     const badFreq = row({ source_row: 16, freq: 2 as never, fingerprint: 'e'.repeat(64) });
     const r1 = await a.uploadChunk(s.token, batch_id, [good, unknown, badArea, badLine, badClass, badTs, badFreq]);
-    expect(r1.added).toBe(2);
+    // only rows that cannot be stored at all are refused; a wrong area, line or classification is stored with flags
+    expect(r1.added).toBe(5);
     expect(r1.identical).toBe(0);
-    expect(r1.rejected.map((r) => r.source_row)).toEqual([12, 13, 14, 15, 16]);
+    expect(r1.rejected.map((r) => r.source_row)).toEqual([15, 16]);
     const r2 = await a.uploadChunk(s.token, batch_id, [good, unknown]);
     expect(r2).toMatchObject({ added: 0, identical: 2 });
+    const all = await a.getEvents(s.token, 2026);
+    const flagsOf = (src: number) => all.find((e) => e.batch_id === batch_id && e.source_row === src)!.flags;
+    expect(flagsOf(12)).toContain('unknown_area');
+    expect(flagsOf(13)).toBe('line_mismatch');
+    expect(flagsOf(14)).toContain('invalid_classification');
     const stored = (await a.getEvents(s.token, 2026)).find((e) => e.fingerprint === good.fingerprint)!;
     expect(stored.classification).toBe('MEC');
     expect(stored.equipment_id).toBe('111.BC100');
@@ -345,7 +357,7 @@ describe('upload', () => {
     expect(u.flags).toContain('unknown_code');
     expect(u.flags).toContain('unlisted_reason');
     const done = await a.uploadFinish(s.token, batch_id, { rows_read: 7, rows_skipped: 0 }, [{ type: 'unknown_code', source_row: 11, detail: 'x' }]);
-    expect(done).toMatchObject({ status: 'Completed', rows_added: 2, rows_identical: 2, rows_read: 7, warning_count: 1 });
+    expect(done).toMatchObject({ status: 'Completed', rows_added: 5, rows_identical: 2, rows_read: 7, warning_count: 1 });
     expect((await a.getUploadWarnings(s.token, batch_id))[0].warning_id).toBe(`W-${batch_id}-1`);
     expect((await a.getUploadHistory(s.token))[0].batch_id).toBe(batch_id);
     expect(await code(a.uploadChunk(s.token, batch_id, [good]))).toBe('conflict');

@@ -199,17 +199,25 @@ aliases, settings), `getEvents(year)`, `uploadStart`, `uploadChunk`,
 |---|---|
 | Identical to a stored row | Skipped silently, counted |
 | New row, date after the latest stored date | Added |
-| New row on an already-stored date (late entry) | **Warning; user chooses Add or Skip per row** (with Add all / Skip all) |
+| New row on or before the latest stored date, in a month that already has stored rows (late entry) | **Warning; user chooses Add or Skip per row** (with Add all / Skip all) |
+| New rows on or before the latest stored date, in a month with nothing stored (late month) | **One decision per month: Add month or Skip month** (with Add all / Skip all) |
 | Stored row whose fields differ in the file | **Warning with sheet row and both values; stored value kept** |
 | Stored row missing from the file | Warning (informational) |
 
-4. Validation warnings (stored and flagged, not blocked): unknown equipment code,
-   code not in the area's list, reason not listed for the classification, blank
-   reason, end before start, duration differs from the sheet's own total,
-   Freq = 0 with no predecessor (continuation of a month not uploaded), overlapping
-   rows within one area, `Aut`/`AUT` case, placeholder codes.
-5. **Hard rejects:** wrong sheet or headers, unreadable timestamps, missing area,
-   empty cached values.
+4. **Import never drops a row.** Every row of the workbook becomes a stored event.
+   A row with a data problem is stored **with flags**: no classification, unknown
+   classification, area not in Master Data, restart before stop (these four are
+   *blocking*: the record is kept out of every calculation until fixed, like a
+   voided one), and unknown equipment code, no code, placeholder code, reason not
+   listed, no reason, code not in the area's list, line not matching the area
+   (warnings: analysed as they are). Overlapping stops in one area, Freq = 0 with no
+   predecessor and a duration that differs from the sheet's total are shown on the
+   review screen. The review screen lists the records that will need checking, with
+   counts per flag, and says so: nothing is dropped.
+5. **File-level refusal** (nothing is imported, so nothing is lost; the rows are
+   listed, "fix these in Excel and choose the file again"): wrong sheet or headers,
+   an unreadable date, stop or start time, Freq not 0 or 1, CRITICALITY not
+   INC / NO_INC, Failure not YES / NO, empty cached values.
 6. On confirmation the browser sends rows in chunks (about 300). The server
    re-validates, takes the lock, inserts, and records the batch and its warnings.
    Re-sending a chunk is harmless.
@@ -220,6 +228,16 @@ Golden check (local only): uploading a real monthly workbook must reproduce the
 totals computed independently from that workbook (row count, stoppage hours,
 Freq = 1 rows, failure count). The reference figures are kept outside the
 repository with the data, and are never committed.
+
+### 6.0 The Validate page
+
+Flagged records wait on the **Validate page**, where a user with Edit access to
+the events tab fixes them one by one (the area decides the line; a classification,
+area, code or reason is chosen from the lists). Every fix is an ordinary
+correction with a note (6.1), and the flags are recomputed from the master data.
+After adding a code, alias, reason or area in Master Data, a **re-check**
+(`revalidateEvents`) clears the flags that the new entry explains. Until a blocking
+flag is cleared the record is stored and visible but excluded from every number.
 
 ### 6.1 Correcting stored events
 

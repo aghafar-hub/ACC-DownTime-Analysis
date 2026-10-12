@@ -125,9 +125,9 @@ export default function UploadFlow({ onDone }: { onDone: () => void }) {
               <b>{tn(r.plan.flagged.total, '{n} record needs checking.', '{n} records need checking.')}</b>{' '}
               {r.plan.flagged.blockedRows > 0 && <span data-testid="result-blocking">{tn(r.plan.flagged.blockedRows, '{n} has a blocking problem and is left out of the numbers until fixed.', '{n} have a blocking problem and are left out of the numbers until fixed.')} </span>}
               {r.plan.flagged.warningRows > 0 && <span data-testid="result-warning-rows">{tn(r.plan.flagged.warningRows, '{n} has warnings only.', '{n} have warnings only.')} </span>}
-              {t('Nothing was dropped: every row is stored.')}{' '}
-              <Link to="/validate" data-testid="result-validate-link">{t('Open the Validate page')}</Link>
+              {t('Nothing was dropped: every row is stored.')}
             </span>
+            <Link className="btn" to="/validate" data-testid="result-validate-link">{t('Open the Validate page')}</Link>
           </div>
         )}
         {r.progress.rejected.length > 0 && (
