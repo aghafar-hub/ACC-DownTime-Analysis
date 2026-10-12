@@ -30,8 +30,8 @@ contract.
 
 ## 2. Session token
 
-`base64url(JSON{ uid, role, iat, exp }) + "." + hex(HMAC-SHA256(payloadB64, SESSION_SIGNING_SECRET))`
-with `iat` / `exp` in epoch milliseconds. Issued only by `login` and
+`base64url(JSON{ uid, role, iat, exp, pv }) + "." + hex(HMAC-SHA256(payloadB64, SESSION_SIGNING_SECRET))`
+with `iat` / `exp` in epoch milliseconds; `pv` is a short fingerprint of the user's current password hash, so changing or resetting a password ends every open session (the server compares it on each call). Issued only by `login` and
 `changePassword`. The server re-reads the user (active, role, lock) on every call;
 a deactivated user is refused even with a valid token. The client may decode the
 payload for display of expiry only, never as a security check.
@@ -55,6 +55,8 @@ wins over the role row. Missing row = Hidden.
 | `saveSettings` | `settings` Edit |
 | `listUsers` | `users` View |
 | `createUser`, `updateUser`, `resetPassword`, `setUserTabAccess` | `users` Edit |
+
+`getStartup.years` is sorted newest first.
 
 `getStartup` hides master data a user may not see only by tab: the data is the
 same for everyone who can read any dashboard (areas, equipment, reasons,

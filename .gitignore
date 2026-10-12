@@ -14,3 +14,4 @@ local-data/
 !.env.example
 
 *.tsbuildinfo
+dist-e2e-*/

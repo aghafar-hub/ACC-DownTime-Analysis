@@ -96,7 +96,7 @@ test('getEvents filters by the year prefix of event_date and validates the year'
   assert.equal(env.ok('getEvents', admin.token, { year: 2026 }).length, 2);
   assert.equal(env.ok('getEvents', admin.token, { year: 2025 }).length, 1);
   assert.equal(env.ok('getEvents', admin.token, { year: 2024 }).length, 0);
-  assert.deepEqual(env.ok('getStartup', admin.token).years, [2025, 2026]);
+  assert.deepEqual(env.ok('getStartup', admin.token).years, [2026, 2025]); // newest first
   assert.equal(env.call('getEvents', admin.token, { year: 'abc' }).error.code, 'bad_request');
   assert.equal(env.call('getEvents', admin.token, {}).error.code, 'bad_request');
 });

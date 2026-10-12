@@ -11,7 +11,7 @@ function getStartup_() {
     equipment_areas: readTable_(T.EQUIPMENT_AREAS), aliases: readTable_(T.ALIASES),
     classifications: readTable_(T.CLASSIFICATIONS), reasons: readTable_(T.REASONS),
     settings: readSettings_(),
-    years: Object.keys(years).map(Number).sort(function (a, b) { return a - b; })
+    years: Object.keys(years).map(Number).sort(function (a, b) { return b - a; })
   };
 }
 

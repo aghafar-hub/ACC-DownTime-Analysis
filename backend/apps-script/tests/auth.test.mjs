@@ -22,7 +22,8 @@ test('login success returns a session with access, never hash fields', () => {
   assert.equal(Date.parse(s.expires_at) - env.clock.now, 12 * HOUR);
   assert.ok(!JSON.stringify(s).match(/password_hash|password_salt|hash_rounds/));
   const payload = JSON.parse(Buffer.from(s.token.split('.')[0], 'base64url').toString());
-  assert.deepEqual(Object.keys(payload).sort(), ['exp', 'iat', 'role', 'uid']);
+  assert.deepEqual(Object.keys(payload).sort(), ['exp', 'iat', 'pv', 'role', 'uid']);
+  assert.equal(payload.pv.length, 12); // a short password fingerprint, never the hash itself
   assert.equal(payload.exp - payload.iat, 12 * HOUR);
   const row = env.rows('users').find((u) => u.email === 'eng@example.com');
   assert.equal(row.last_login_at.slice(0, 4), '2026');
@@ -259,4 +260,25 @@ test('changePassword returns a fresh session and keeps GOOD_PASSWORD style rules
   assert.equal(env.call('getStartup', s.token).status, 'ok');
   const log = env.rows('audit_log');
   assert.ok(log.some((a) => a.action === 'change_password'));
+});
+
+test('a password reset by an admin ends the user\'s open sessions', () => {
+  const { env, admin, eng } = setup();
+  const s = env.ok('login', '', { email: eng.email, password: eng.password, keepSignedIn: false });
+  assert.ok(env.ok('getMyAccess', s.token));
+  env.ok('resetPassword', admin.token, { userId: s.user.user_id });
+  const r = env.call('getMyAccess', s.token);
+  assert.equal(r.status, 'error');
+  assert.equal(r.error.code, 'unauthenticated');
+  assert.match(r.error.message, /sign in again/i);
+});
+
+test('changing your own password ends older sessions but the new token works', () => {
+  const { env, eng } = setup();
+  const a = env.ok('login', '', { email: eng.email, password: eng.password, keepSignedIn: false });
+  const b = env.ok('login', '', { email: eng.email, password: eng.password, keepSignedIn: false });
+  const fresh = env.ok('changePassword', a.token, { current: eng.password, next: 'Brand-New-Pass-77' });
+  assert.ok(env.ok('getMyAccess', fresh.token));
+  assert.equal(env.call('getMyAccess', a.token).error.code, 'unauthenticated');
+  assert.equal(env.call('getMyAccess', b.token).error.code, 'unauthenticated');
 });

@@ -3,7 +3,10 @@ import { defineConfig } from '@playwright/test';
 // Runs against `vite preview` of a production build (mock API: no
 // VITE_API_URL). The preinstalled Chromium is used; never run
 // `playwright install`.
-const PORT = 4173;
+// E2E_PORT lets several runs share the machine: each uses its own port, build
+// folder and output folder.
+const PORT = Number(process.env.E2E_PORT || 4173);
+const OUT = `dist-e2e-${PORT}`;
 
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -12,7 +15,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   reporter: [['list']],
-  outputDir: 'test-results/pw',
+  outputDir: `test-results/pw-${PORT}`,
   use: {
     baseURL: `http://localhost:${PORT}`,
     launchOptions: {
@@ -22,7 +25,7 @@ export default defineConfig({
     serviceWorkers: 'block',
   },
   webServer: {
-    command: `npm run build && npx vite preview --port ${PORT} --strictPort`,
+    command: `npx tsc -b && npx vite build --outDir ${OUT} && npx vite preview --outDir ${OUT} --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: true,
     timeout: 180_000,

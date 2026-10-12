@@ -6,6 +6,9 @@ function readUsers_() { return readTable_(T.USERS); }
 function findUserByEmail_(email) { return findBy_(T.USERS, 'email', email); }
 function findUserById_(id) { return findBy_(T.USERS, 'user_id', id); }
 
+/** Short fingerprint of the current password: a password change or reset ends every open session. */
+function pwVersion_(u) { return String(u.password_hash || '').slice(0, 12); }
+
 function publicUser_(u) {
   return { user_id: u.user_id, email: u.email, display_name: u.display_name, role_id: u.role_id };
 }
@@ -72,7 +75,7 @@ function buildSession_(user, keep) {
   var hours = keep ? settingNum_('session_hours_keep', 720) : settingNum_('session_hours', 12);
   var iat = nowMs_();
   var exp = iat + hours * 3600000;
-  var token = signToken_({ uid: user.user_id, role: user.role_id, iat: iat, exp: exp });
+  var token = signToken_({ uid: user.user_id, role: user.role_id, iat: iat, exp: exp, pv: pwVersion_(user) });
   return {
     token: token, expires_at: new Date(exp).toISOString(), user: publicUser_(user),
     must_change: user.must_change, access: computeAccess_(user, readTable_(T.TAB_ACCESS))
@@ -85,6 +88,7 @@ function requireSession_(token) {
   if (!payload) throw apiError_(ERR.UNAUTHENTICATED, 'Please sign in again.');
   var user = findUserById_(payload.uid);
   if (!user || !user.active) throw apiError_(ERR.UNAUTHENTICATED, 'This account is not active.');
+  if (payload.pv !== pwVersion_(user)) throw apiError_(ERR.UNAUTHENTICATED, 'Your password changed. Please sign in again.');
   if (isLocked_(user, nowMs_())) throw lockedError_(user, nowMs_());
   return { user: user, payload: payload, access: computeAccess_(user, readTable_(T.TAB_ACCESS)) };
 }
