@@ -152,6 +152,16 @@ test.describe('dashboards (desktop)', () => {
     // the four separate panels
     for (const id of ['bucket-other', 'bucket-area', 'bucket-unknown']) await expect(page.getByTestId(id)).toBeVisible();
 
+    // "Stopped by other areas": each code says where it is listed and which area stopped; hours and events as before
+    const other = page.getByTestId('bucket-other');
+    const details = other.getByTestId('bucket-detail');
+    expect(await details.count()).toBeGreaterThan(0);
+    for (const d of await details.allTextContents()) expect(d).toMatch(/^ · listed under [A-Z0-9.]+(, [A-Z0-9.]+)* · stopped [A-Z0-9.]+(, [A-Z0-9.]+)*$/);
+    const listed = await other.locator('li').evaluateAll((els) => els.map((el) => (el.textContent ?? '').trim()));
+    expect(listed[0]).toMatch(/^\S+ · listed under .* · stopped .* h$/);
+    const bucketHours = num((await other.getByTestId('bucket-other-total').textContent())!);
+    expect(bucketHours).toBeGreaterThan(0);
+
     // click the first bar: Event Explorer opens with a removable chip
     await card.getByTestId('pareto-bar').first().click();
     await expect(page).toHaveURL(/#\/events/);

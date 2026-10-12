@@ -9,6 +9,7 @@ import {
   buildPlan, buildReview, checkGroups, csvCell, csvText, decideAll, decisionsComplete, flagSummary, monthKey, monthLabel, reviewCsv,
   storedWarningsCsv, undecidedCount,
 } from './review';
+import { INFO_CHECK_TYPES, OTHER_CHECK_TYPES } from './warningText';
 import { yearsToLoad } from './loadReview';
 import { CHUNK_SIZE, runUpload, UploadStopped } from './uploadRunner';
 
@@ -201,6 +202,47 @@ describe('review of an upload', () => {
     const added = first.diff.normalizedRows.map((r) => ({ ...stored[0]!, fingerprint: r.fingerprint, event_id: `EV-${r.fingerprint.slice(0, 16)}`, event_date: r.event_date, area_id: r.area_id, code_raw: r.code_raw, stop_ts: r.stop_ts, start_ts: r.start_ts, freq: r.freq, classification: r.classification as EventRow['classification'], criticality: r.criticality, is_failure: r.is_failure, reason_raw: r.reason_raw, description: r.description, line_id: r.line_id, edited: false, is_void: false }));
     const second = buildReview(parsed, startup, [...stored, ...added]);
     expect(second.counts).toMatchObject({ new: 0, late: 0, identical: 6, changed: 0 });
+  });
+});
+
+describe('a cause in another area (information)', () => {
+  /** a code listed under other areas only, not under K.1 */
+  const foreign = (): string => {
+    const k1 = new Set(db.equipment_areas.filter((x) => x.area_id === 'K.1').map((x) => x.equipment_id));
+    return db.equipment_areas.find((x) => !k1.has(x.equipment_id))!.equipment_id;
+  };
+
+  it('is not a decision, not a problem to check, and never blocks or delays Add', async () => {
+    const parsed = await parse(simpleRows(3, '2026-11-02', { code: foreign() }));
+    const review = buildReview(parsed, startup, stored);
+    expect(review.counts).toMatchObject({ new: 3, late: 0 });
+    expect(review.diff.rows.every((r) => r.flags.includes('code_not_in_area'))).toBe(true); // still stored with the flag
+    expect(review.diff.warnings.filter((w) => w.type === 'code_not_in_area').every((w) => w.severity === 'info')).toBe(true);
+    expect(decisionsComplete(review, {})).toBe(true);
+    const plan = buildPlan(review, {});
+    expect(plan.willAdd).toBe(3);
+    // not counted as records that will need checking
+    expect(flagSummary(review, {})).toMatchObject({ flags: [], blockedRows: 0, warningRows: 0, total: 0 });
+    expect(plan.flagged.total).toBe(0);
+    // shown as information, grouped
+    const info = checkGroups(review, {}, INFO_CHECK_TYPES);
+    expect(info.map((g) => g.type)).toEqual(['code_not_in_area']);
+    expect(info[0]!.items).toHaveLength(3);
+    expect(info[0]!.items[0]!.detail).toMatch(/cause is in another area/);
+    // not among the "other checks" listed as warnings
+    expect(checkGroups(review, {}, OTHER_CHECK_TYPES)).toEqual([]);
+  });
+
+  it('does not hide a real problem on the same row', async () => {
+    const parsed = await parse(simpleRows(1, '2026-11-02', { code: foreign(), reason: '' }));
+    const fs = flagSummary(buildReview(parsed, startup, stored), {});
+    expect(fs.flags.map((f) => f.flag)).toEqual(['blank_reason']);
+    expect(fs.total).toBe(1);
+  });
+
+  it('is listed as Information in the downloadable list', async () => {
+    const review = buildReview(await parse(simpleRows(1, '2026-11-02', { code: foreign() })), startup, stored);
+    expect(reviewCsv(review, {})).toMatch(/^2,Information,Cause in another area,.*Added; nothing to fix/m);
   });
 });
 

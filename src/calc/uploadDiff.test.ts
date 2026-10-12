@@ -137,6 +137,14 @@ describe('validation warnings', () => {
   it('a clean row has no warnings', () => expect(run(up('a', base))).toEqual([]));
   it('unknown_code', () => expect(run(up('a', { ...base, code_raw: 'ZZ.9' }))).toEqual(['unknown_code']));
   it('code_not_in_area', () => expect(run(up('a', { ...base, code_raw: '200.B1' }))).toEqual(['code_not_in_area']));
+  it('code_not_in_area is information: severity info, row still stored with the flag, no decision needed', () => {
+    const d = compareUpload({ uploaded: [up('a', { ...base, code_raw: '200.B1' })], stored: [], index });
+    expect(d.warnings.map((w) => [w.type, w.severity])).toEqual([['code_not_in_area', 'info']]);
+    expect(d.warnings[0]!.detail).toMatch(/listed under RM\.1, not under K\.1/);
+    expect(d.rows[0]!.flags).toEqual(['code_not_in_area']);
+    expect(d.rows[0]!.status).toBe('new');
+    expect(d.lateMonths).toEqual([]);
+  });
   it('codes of several areas are fine in each of them', () => {
     expect(run(up('a', { ...base, code_raw: '100.A2', area_id: 'RM.1' }))).toEqual([]);
     expect(run(up('a', { ...base, code_raw: '100.A2' }))).toEqual([]);

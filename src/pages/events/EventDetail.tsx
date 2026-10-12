@@ -250,7 +250,7 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
       icon="list"
       title={`${row.area_id} · ${row.code_raw || 'N/A'}`}
       subtitle={<span><span className="mono">{row.event_id}</span> · {row.event_date}</span>}
-      badge={<span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}><EventBadges row={row} maxFlags={0} /></span>}
+      badge={<span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}><EventBadges row={row} maxFlags={0} owners={ownerLookup} /></span>}
       onClose={onClose}
       footer={footer}
       width={820}

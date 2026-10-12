@@ -58,6 +58,27 @@ describe('buildValidation', () => {
   });
 });
 
+describe('information flags (cause in another area)', () => {
+  const cross = ev('cross', 'RM.1', '2026-05-01 08:00:00', '2026-05-01 10:00:00', { code_raw: '131.RE300', flags: 'code_not_in_area' });
+  const both = ev('both', 'RM.1', '2026-05-02 08:00:00', '2026-05-02 09:00:00', { flags: 'code_not_in_area,blank_reason' });
+  it('a record whose only flag is information is not a problem: not listed, not counted', () => {
+    const l = buildValidation([...DATA, cross]);
+    expect(l.records.map((r) => r.event.event_id)).not.toContain('cross');
+    expect(l.summary.total).toBe(5);
+    expect(l.summary.review.count).toBe(3);
+    expect(l.summary.byFlag.code_not_in_area).toBeUndefined();
+    expect(storedProblems(cross)).toEqual([]);
+    expect(recheckRecord(DATA, cross)).toBeNull();
+  });
+  it('the information flag is dropped from a record that has a real problem too', () => {
+    const l = buildValidation([both]);
+    expect(l.records).toHaveLength(1);
+    expect(l.records[0]!.problems).toEqual(['blank_reason']);
+    expect(flagCounts(l.records).map((f) => f.flag)).toEqual(['blank_reason']);
+    expect(l.summary.byFlag).toEqual({ blank_reason: 1 });
+  });
+});
+
 describe('recheckRecord', () => {
   it('returns null once nothing is left to fix, and keeps an overlap that remains', () => {
     const fixed = { ...DATA[1], classification: 'PRO' as const, flags: 'blank_reason' };

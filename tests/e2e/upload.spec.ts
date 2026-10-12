@@ -161,6 +161,40 @@ test.describe('upload flow', () => {
     await expect(page.getByTestId('upload-bar-text')).toContainText('nothing new to add');
   });
 
+  test('a cause in another area is information: grouped under Information, needs no decision, never blocks Add', async ({ page }) => {
+    const errors = watchConsole(page);
+    await signInAndWait(page, 'engineer');
+    await openUpload(page);
+    // 241.GB140 is listed under FM.2 only; the rows stop K.1 because of it
+    await page.getByTestId('file-input').setInputFiles(await file(simpleRows(2, '2026-11-02', { code: '241.GB140' })));
+    await expect(page.getByTestId('review')).toBeVisible();
+    await expect(page.getByTestId('count-new')).toContainText('2');
+    // not a problem to check: nothing waits on the Validate page
+    await expect(page.getByTestId('flags-none')).toContainText('No record has a data problem.');
+    await expect(page.getByTestId('flag-code_not_in_area')).toHaveCount(0);
+    await expect(page.getByTestId('checks-section')).toHaveCount(0);
+    // shown under a neutral Information heading
+    const info = page.getByTestId('info-section');
+    await expect(info.getByRole('heading', { name: 'Information' })).toBeVisible();
+    const group = page.getByTestId('check-code_not_in_area');
+    await expect(group).toContainText('Cause in another area');
+    await group.locator('summary').click();
+    await expect(group).toContainText('listed under FM.2, not under K.1');
+    await expect(group.locator('.badge--info')).toHaveCount(1);
+    await expect(group.locator('.badge--warning')).toHaveCount(0);
+    // no decision, Add is open at once
+    await expect(page.getByTestId('late-section')).toHaveCount(0);
+    await expect(page.getByTestId('upload-confirm')).toBeEnabled();
+    await expect(page.getByTestId('upload-confirm')).toContainText('Upload 2 rows');
+    await page.getByTestId('upload-confirm').click();
+    await page.getByTestId('confirm-ok').click();
+    await expect(page.getByTestId('result-added')).toContainText('2');
+    // the warning stays on record as information
+    await page.getByTestId('history-row').first().getByTestId('history-warnings').click();
+    await expect(page.getByTestId('batch-group-code_not_in_area')).toContainText('Cause in another area');
+    expect(errors, 'console errors').toEqual([]);
+  });
+
   test('wrong files are refused with a clear message', async ({ page }) => {
     await signInAndWait(page, 'engineer');
     await openUpload(page);

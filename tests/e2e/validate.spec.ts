@@ -198,7 +198,7 @@ test.describe('validate (desktop)', () => {
     if (n0 > 1) expect(await chipCount(page, 'unlisted_reason')).toBe(n0 - 1);
   });
 
-  test('equipment finder: only the area\'s codes and N/A', async ({ page }) => {
+  test('equipment finder: the area\'s codes and N/A', async ({ page }) => {
     await openValidate(page, 'engineer');
     await chip(page, 'missing_code').click();
     await rows(page).first().getByTestId('v-fix-btn').click();
@@ -214,6 +214,91 @@ test.describe('validate (desktop)', () => {
     await expect(page.getByTestId('f-code')).not.toHaveValue('');
     await page.getByTestId('code-na').click();
     await expect(page.getByTestId('f-code')).toHaveValue('N/A');
+  });
+
+  // EV-d8f4c170f3345baa: RM.1 stopped because of 241.GB140, which is listed under FM.2 only (flag code_not_in_area is its only flag)
+  const CROSS_ID = 'EV-d8f4c170f3345baa';
+
+  test('a cause in another area is information: not in Validate, neutral chip and note in Explorer, not a data issue', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    // not listed, not a chip, not in the counts
+    await expect(chip(page, 'code_not_in_area')).toHaveCount(0);
+    await page.getByTestId('v-search').fill(CROSS_ID);
+    await expect(page.getByTestId('v-filters')).toBeVisible();
+    await expect(rows(page)).toHaveCount(0);
+    await page.getByTestId('v-reset').click();
+    const total0 = num(await page.getByTestId('page-subtitle').textContent());
+    const badge0 = num(await page.getByTestId('validate-badge-tab').textContent());
+    expect(badge0).toBe(total0);
+
+    await page.goto('/#/events');
+    await page.getByTestId('event-search').fill(CROSS_ID);
+    const row = page.locator(`[data-event-id="${CROSS_ID}"]`);
+    await expect(row).toBeVisible();
+    await expect(row.getByTestId('badge-flag')).toHaveCount(0);
+    const info = row.getByTestId('badge-info');
+    await expect(info).toHaveText(/Cause in FM\.2/);
+    await expect(info).not.toHaveClass(/badge--warning|badge--danger/);
+    // 'Only rows with data issues' leaves it out, and the issue tile does not count it
+    await page.getByTestId('filter-show').selectOption('issues');
+    await expect(row).toHaveCount(0);
+    await page.getByTestId('filter-show').selectOption('all');
+    await expect(page.getByTestId('tile-issues')).toContainText('0');
+
+    // the popup: a short note, nothing to fix, no warning styling
+    await row.getByRole('button').first().click();
+    await expect(page.getByTestId('cause-note')).toContainText("This code is listed under FM.2, not under RM.1. The stop counts for RM.1 as stopped by another area (not RM.1's own equipment). Nothing to fix.");
+    await expect(page.getByTestId('cause-chip')).toHaveText(/Cause in FM\.2/);
+    await expect(page.getByTestId('detail-flag')).toHaveCount(0);
+    await expect(page.getByText('No data issues found.')).toBeVisible();
+    await page.getByTestId('modal-close').click();
+
+    // the banner and the nav badge are unchanged by it
+    await page.goto('/#/validate');
+    await expect(page.getByTestId('v-count-blocked')).toBeVisible();
+    expect(num(await page.getByTestId('validate-badge-tab').textContent())).toBe(badge0);
+  });
+
+  test('equipment finder: every active code, the area\'s first, other areas with their owner; saving one raises no warning', async ({ page }) => {
+    await signInAndWait(page, 'engineer');
+    await page.goto('/#/events');
+    await page.getByTestId('event-search').fill(CROSS_ID);
+    await page.locator(`[data-event-id="${CROSS_ID}"]`).getByRole('button').first().click();
+    await page.getByTestId('edit-event').click();
+    await expect(page.getByTestId('code-finder')).toContainText('Find equipment (listed under RM.1 first)');
+    await expect(page.getByTestId('code-na')).toContainText('N/A · the whole area stopped');
+    const own = page.getByTestId('code-group-own');
+    const other = page.getByTestId('code-group-other');
+    await expect(own).toContainText('Listed under RM.1');
+    await expect(other).toContainText('Other areas');
+    expect(await own.locator('[data-testid="code-option"]').count()).toBeGreaterThan(0);
+    // listed-under-RM.1 group is above the other-areas group
+    const yOwn = (await own.boundingBox())!.y;
+    const yOther = (await other.boundingBox())!.y;
+    expect(yOwn).toBeLessThan(yOther);
+    // an other-area item names its owner area
+    const first = other.getByTestId('code-option-other').first();
+    await expect(first.getByTestId('code-owner')).toHaveText(/^\s*[A-Z0-9.]+(, [A-Z0-9.]+)*$/);
+    // search reaches every area
+    await page.getByTestId('f-code-find').fill('zzzz-nothing');
+    await expect(page.getByTestId('code-option')).toHaveCount(0);
+    await expect(page.getByTestId('code-option-other')).toHaveCount(0);
+    await page.getByTestId('f-code-find').fill('');
+    const dialogs: string[] = [];
+    page.on('dialog', (d) => { dialogs.push(d.message()); void d.dismiss(); });
+    const code = ((await first.locator('.mono').textContent()) ?? '').trim();
+    await first.click();
+    await expect(page.getByTestId('f-code')).toHaveValue(code);
+    // the code input stays free-form
+    await page.getByTestId('f-code').fill(code);
+    await page.getByTestId('f-note').fill('Cause is in another area');
+    await page.getByTestId('save-edit').click();
+    await expect(page.getByTestId('edit-result')).toBeVisible();
+    await expect(page.getByTestId('edit-result')).toContainText('Data checks: no issues');
+    await expect(page.getByTestId('server-error')).toHaveCount(0);
+    expect(dialogs).toEqual([]);
+    // the saved record is still information only
+    await expect(page.getByTestId('cause-note')).toBeVisible();
   });
 
   test('bulk: classification set on several records, one refusal is reported and the run goes on', async ({ page }) => {
