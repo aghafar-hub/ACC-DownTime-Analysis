@@ -1,0 +1,72 @@
+# calc: the pure calculation layer
+
+Pure TypeScript. No DOM, UI, network or global state; runs in the browser and in Node. Import from `src/calc/index.ts`.
+Row types come from `src/api/types.ts`. Tests sit next to the code (`*.test.ts`); `fixtures.ts` holds small synthetic data.
+
+Conventions
+- Timestamps are plant-local text `YYYY-MM-DD HH:MM:SS.mmm`, parsed as UTC numbers (no machine time zone).
+- A **window** is an inclusive `DateRange {from, to}` of calendar days. Hours are clipped to it; events are counted where they start.
+- Unavailable values are `Metric` objects (`{available:false, code, reason}`), never 0, NaN or Infinity.
+- Build lookups once (`buildIndex(master)`) and pass the `MasterIndex`; nothing is cached inside the functions.
+- Voided rows (`is_void`) are ignored everywhere except `applyFilters({includeVoid})`, `buildFailureEvents({includeVoid})`, and as fingerprint matches in `compareUpload`.
+
+## metric.ts / settings.ts
+- `avail(v)`, `unavail(code, reason)`, `ratio(n, d, code, reason)`: `Metric` helpers.
+- `parseSettings(Setting[] | record)` -> `CalcSettings` (defaults in `DEFAULT_SETTINGS`; invalid values fall back; `repeatMinEvents` is at least 2).
+
+## time.ts
+- `parseTs`, `parseDate`, `formatTs`, `formatDate`, `durationSeconds(stop, start)` (negative if restart precedes stop; null if unreadable).
+- `clipInterval`, `clippedHours`, `splitByDay`, `splitByMonth` on half-open ms intervals.
+- `monthKey`, `monthRange`, `monthsBetween`, `monthsOfRange`, `addDays`, `addMonthsClamped`, `daysInRange`, `rangeToInterval`, `intersectRanges`.
+- `scheduledHours(range, settings)`: days x `scheduled_hours_per_day`; with `scheduled_days_per_week` = N the first N days of a Monday-based week are scheduled.
+- `comparisonRange(range, kind)`, `previousPeriod`, `sameLastYear`: whole months -> whole months; month-aligned partial (1st to day N) -> elapsed-equivalent period (clamped); other windows -> same length before / same dates a year earlier. `elapsedEquivalent(month, asOf, otherMonth)`, `isPartialMonth`.
+
+## normalize.ts / masters.ts
+- `codeKey`, `isAreaLevelCode`, `matchKey`, `normalizeClassification`.
+- `resolveCode(code, lookup)` -> `area_level | equipment | unknown` (N/A, then alias, then equipment table). `rowCode(row, lookup?)` uses the stored flags first.
+- `resolveReason(classification, text, reasonLookup)` -> `blank | listed | unlisted` (same classification and match key, lowest `order_no`).
+- `fingerprint({area_id, code, stop_ts, start_ts, occurrence})` (async SHA-256 hex), `eventIdFromFingerprint`, `assignOccurrences(rows)` (1, 2, ... per identical key in file order).
+- `buildIndex(master)` -> `MasterIndex`; `areasOf(index, equipmentId)`.
+
+## filters.ts
+- `Filter`, `emptyFilter()`, `applyFilters(events, filter, {settings, index?})`. Empty list/null/false = no restriction. Voided rows are always dropped unless `includeVoid`.
+- Date range keeps rows that overlap the days (matched on stop/restart, so a row crossing the edge is kept; use clipped hours). Duration band is the row's own duration (short <= `duration_short_max_min`, long >= `duration_long_min_min`).
+- Row-level: filtering by classification/reason can remove continuation rows. Build events from rows filtered by area/line/date only when chains must stay whole.
+
+## events.ts
+- `buildFailureEvents(rows, {toleranceMs=1000, includeVoid})` -> `{chains, failureEvents, orphans, unreadable}`.
+  Per area, sorted by stop. A Freq=1 row starts a chain; a Freq=0 row joins the chain whose last restart is within the tolerance of its stop (any reason/classification). No match = orphan chain (kept in `chains` and `orphans`).
+  `failureEvents` = non-orphan chains whose head row has `is_failure`. `durationS` = sum of the rows; `startDate` = date of the head's stop.
+- `rowSpan`, `rowSeconds`, `rowHours(row, window)`, `chainHours(chain, window?)`, `startedIn(chain, window)`.
+
+## kpis.ts
+- `computeKpis({rows, chains?, window, dataRange?, areaIds?, settings, index?})` -> `{status:'no_data'}` or `{status:'ok', areas[], total, window, partial, topArea, topEquipmentByHours, mostFrequentEquipment, repeatGroups, repeatedFailureCount, orphanCount}`.
+  - The window is clipped to the data range (default: first stop to last restart in `rows`; pass the full coverage when `rows` are filtered). `partial` = the window was shortened.
+  - Hours: PL rows = planned, CIR = other, everything else = INC/failure (continuations included). `failureCount` = rows with `is_failure` whose stop is in the window.
+  - T = scheduled hours of the (clipped) window per area; the aggregate sums areas ("area-hours") and derives ratios from summed hours.
+  - A = (T - down) / T; B = (T - PL - (INC + CIR)) / (T - PL); C = (T - PL - CIR - INC) / (T - PL - CIR); results clamped to 0..1. `availabilityHeadline` follows `availability_basis`.
+  - Operating hours = T - down. MTBF = operating / failures (unavailable: `no_failures` or `no_exposure`). Rate = failures / operating x 1000. MTTR = mean full duration of failure events that started in the window.
+  - Default area set = areas present in `rows`; pass `areaIds` to fix it.
+- `computeKpisWithComparison(input, kind?)` -> current, previous, `changes` (`abs`, `pct` (null if previous is 0), `direction`, `assessment` good/bad/neutral). The comparison window derives from the current *effective* window.
+- `composeKpis`, `compareValues`, `dataRangeOf`.
+
+## pareto.ts
+- `buildPareto(entries, topN)` / `pareto(items, spec, topN)`: descending, `sharePct` and `cumulativePct` against the complete total, `Others` bar (`isOthers`), 80% `referenceIndex`, `eventIds` per bar. `topN`: 5 | 10 | 20 | 'all'. Zero values are dropped; ties sort by label.
+- Event-based builders (input: chains; only `isFailure` chains are used, except `classificationPareto`). Cause = the head row. Measure `hours` = all rows of the chain clipped to the window; `count` = events that started in the window.
+  - `equipmentPareto(chains, index, opts)` -> `{own, otherAreas, unassigned, areaLevel, unknown}`. Own-stop rule: `own` holds events whose code belongs to the stopped area (any area of the code). Other areas' codes go to `otherAreas`, codes in no area to `unassigned`, N/A to `areaLevel`, codes outside the master to `unknown`.
+  - `reasonPareto` (by `matchKey`; `splitByClassification`), `reasonParetoForEquipment`, `areaPareto`, `classificationPareto({failureOnly})`.
+
+## repeats.ts
+- `findRepeatedFailures(failureChains, {settings, window?, previousWindow?, lookup?, includeBlankReason?})` -> `{groups, recurrences}`.
+  Groups by (equipment code, reason match key); N/A and blank reasons excluded. A cluster = events inside a sliding window of `repeat_window_days` (**inclusive**: exactly N days apart qualifies) with at least `repeat_min_events` events; overlapping windows merge. Occurrences = cluster events (in `window`); recurrences = occurrences after the first of each cluster. Groups need at least one recurrence in the window. History before the window is used to find clusters.
+- `findClusters(startsMs, minEvents, windowDays)`.
+
+## trends.ts
+- `monthlySeries({rows, chains?, range, dataRange?, areaIds?, settings})`: one `MonthPoint` per month (hours by class, failure count, MTBF, MTTR, rate, availability); months in progress are `partial`, months without data have `hasData:false` and unavailable metrics. Equals `computeKpis` for each month.
+- `rollingFailureCounts(failureEvents, range, 30 | 90)`, `yearOverYear({rows, year, settings})`, `durationHistogram(failureEvents, settings, window?)` (bins + short/medium/long bands), `equipmentMonthHeatmap`, `equipmentReasonHeatmap`, `buildHeatmap`, `longestEvents(chains, n)` (by chained event).
+
+## uploadDiff.ts
+- `compareUpload({uploaded, stored, index, editedFields?})` -> `{rows, warnings, normalizedRows, normalisations, summary}`.
+  Status per row: `identical`, `new`, `late_row` (a new row whose date is on or before the latest stored date), `changed_row` (same fingerprint, different freq/classification/criticality/is_failure/reason_raw/description/event_date/line_id; stored value kept). If the stored event was `edited` and all differences are edited fields, an `edited_in_app` info warning is given and the row counts as identical. Stored non-void rows inside the file's date range but absent from it give `missing_row` (info).
+  Validation (new and late rows only): `unknown_code`, `code_not_in_area`, `unlisted_reason`, `blank_reason`, `end_before_start`, `duration_mismatch` (needs `sheet_duration_s`), `orphan_continuation`, `overlap_in_area` (against the file and stored rows, same area, more than 1 s), `placeholder_code`. Classification case is normalised and reported in `normalisations`.
+- `validateRow`, `compareFields`.
