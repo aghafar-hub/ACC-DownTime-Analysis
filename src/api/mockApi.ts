@@ -84,10 +84,17 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
     overrides: Object.keys(u.overrides).length ? { ...u.overrides } : undefined,
   });
 
+  /** Short fingerprint of the current password: changing or resetting it ends every open session (as on the real server). */
+  function pwVersion(u: MockUser): string {
+    let h = 5381;
+    for (let i = 0; i < u.password.length; i++) h = ((h * 33) ^ u.password.charCodeAt(i)) >>> 0;
+    return h.toString(36);
+  }
+
   function makeSession(u: MockUser, lifetimeMs: number): Session {
     const iat = now();
     const exp = iat + lifetimeMs;
-    const payload = b64urlEncode(JSON.stringify({ uid: u.user_id, role: u.role_id, iat, exp }));
+    const payload = b64urlEncode(JSON.stringify({ uid: u.user_id, role: u.role_id, iat, exp, pv: pwVersion(u) }));
     return {
       token: `${payload}.mock`, expires_at: new Date(exp).toISOString(), user: sessionUser(u),
       must_change: u.must_change, access: accessFor(u),
@@ -99,11 +106,12 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
     if (!token) throw fail();
     const [payloadB64, sig] = String(token).split('.');
     if (!payloadB64 || sig !== 'mock') throw fail();
-    let payload: { uid?: string; iat?: number; exp?: number };
+    let payload: { uid?: string; iat?: number; exp?: number; pv?: string };
     try { payload = JSON.parse(b64urlDecode(payloadB64)); } catch { throw fail(); }
     if (!payload.exp || payload.exp <= now()) throw fail();
     const user = get().users.find((u) => u.user_id === payload.uid);
     if (!user || !user.active) throw fail();
+    if (payload.pv !== pwVersion(user)) throw new ApiError('Your password changed. Please sign in again.', 'unauthenticated');
     if (user.must_change && !allowMustChange) {
       throw new ApiError('You must set a new password before you continue.', 'forbidden', true);
     }
@@ -410,8 +418,18 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       if (id === 'N/A' || id === 'NA') throw new ApiError('N/A is reserved for "the whole area stopped". Use a real equipment code.', 'bad_request');
       if (row.status !== 'Active' && row.status !== 'Retired') throw new ApiError('Status must be Active or Retired.', 'bad_request');
       for (const ar of areaIds ?? []) if (!d.areas.some((x) => x.area_id === ar)) throw new ApiError(`The area "${ar}" does not exist.`, 'bad_request');
-      const next: Equipment = { ...row, equipment_id: id, updated_at: nowTs(), updated_by: a.user.user_id };
       const at = d.equipment.findIndex((e) => e.equipment_id === id);
+      const description = String(row.description ?? '').trim() || undefined;
+      const criticality = String(row.criticality ?? '').trim() || undefined;
+      const missing: string[] = [];
+      if (!description) missing.push('description');
+      if (!criticality) missing.push('criticality');
+      if (!(areaIds ?? []).length) missing.push('area');
+      const next: Equipment = {
+        ...row, equipment_id: id, description, criticality, updated_at: nowTs(), updated_by: a.user.user_id,
+        needs_review: missing.length > 0, review_note: missing.length ? `Missing: ${missing.join(', ')}` : undefined,
+        origin: at >= 0 ? (d.equipment[at]?.origin ?? row.origin) : 'User',
+      };
       if (at >= 0) d.equipment[at] = { ...d.equipment[at], ...next };
       else d.equipment.push({ ...next, created_at: nowTs() });
       d.equipment_areas = d.equipment_areas.filter((x) => x.equipment_id !== id);
@@ -474,12 +492,22 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
     async saveSettings(token, changes) {
       const a = need(token, ['settings'], 'Edit');
       const d = get();
-      const numeric = ['scheduled_hours_per_day', 'scheduled_days_per_week', 'repeat_min_events', 'repeat_window_days', 'duration_short_max_min',
-        'duration_long_min_min', 'lockout_attempts', 'lockout_minutes', 'session_hours', 'session_hours_keep', 'min_password_length'];
+      // the same ranges as backend/apps-script/Settings.js
+      const ranges: Record<string, [number, number]> = {
+        scheduled_hours_per_day: [1, 24], scheduled_days_per_week: [1, 7], repeat_min_events: [2, 100], repeat_window_days: [1, 3650],
+        duration_short_max_min: [1, 10000], duration_long_min_min: [1, 100000], lockout_attempts: [1, 100], lockout_minutes: [1, 1440],
+        session_hours: [1, 168], session_hours_keep: [1, 8760], min_password_length: [8, 128],
+      };
       for (const [k, v] of Object.entries(changes ?? {})) {
         if (!d.settings.some((s) => s.key === k)) throw new ApiError(`There is no setting called "${k}".`, 'bad_request');
         const val = String(v ?? '').trim();
-        if (numeric.includes(k) && !(Number(val) > 0)) throw new ApiError(`"${k}" must be a number above zero.`, 'bad_request');
+        const range = ranges[k];
+        if (range) {
+          const n = Number(val);
+          if (val === '' || !Number.isInteger(n) || n < range[0] || n > range[1]) {
+            throw new ApiError(`"${k}" must be a whole number between ${range[0]} and ${range[1]}.`, 'bad_request');
+          }
+        }
         if (k === 'availability_basis' && !['A', 'B', 'C'].includes(val)) throw new ApiError('Availability basis must be A, B or C.', 'bad_request');
         if (k === 'default_comparison' && !['previous_period', 'same_period_last_year'].includes(val)) throw new ApiError('Comparison must be previous_period or same_period_last_year.', 'bad_request');
         if (k === 'availability_target_pct' && val !== '' && !(Number(val) > 0 && Number(val) <= 100)) throw new ApiError('The availability target must be between 0 and 100, or blank.', 'bad_request');

@@ -12,8 +12,18 @@ The repository is public. Secrets live only in **Script Properties** (step 4).
 - A Google account that will own the system (the "deploying account"). Calls run
   as this account, so use a shared plant account if more than one person will
   maintain it.
-- A new, empty Google Sheet (name it for example `ACC Downtime - TEST`). Use a
-  separate sheet for the test copy and for the live copy.
+- A Google Sheet for the data (name it for example `ACC Downtime - TEST`). Use a
+  separate sheet for the test copy and for the live copy. Two ways to get one:
+  - **Recommended: the ready-made database sheet** (`ACC_Downtime_Database.xlsx`,
+    supplied separately because it holds plant data and is not in this
+    repository). Upload it to Google Drive, open it with Google Sheets, then
+    choose **File > Save as Google Sheets**. It already has every table with its
+    headers and your starting data (areas, equipment, reasons, aliases, roles,
+    settings). The `events` and `users` sheets are empty on purpose. With this
+    sheet, step 2 reports "Schema is up to date" and step 3 can be skipped.
+  - Or a new, empty Google Sheet. Then steps 2 and 3 create the tables and the
+    starting areas, roles and settings, but you would have to enter the equipment
+    and reasons yourself.
 
 ## 1. Put the code into Apps Script
 
@@ -62,7 +72,8 @@ Sheets never turns `2026-03-05` into a date.
 
 ## 3. Add the starting data (run `seedDefaults`)
 
-Run **seedDefaults**. It adds the two lines, the 19 areas, the six
+(Skip this step if you started from the ready-made database sheet; running it
+anyway is harmless.) Run **seedDefaults**. It adds the two lines, the 19 areas, the six
 classifications, the four roles (Admin, Manager, Engineer, Viewer), the default
 settings and the default tab access. It never overwrites anything, so it is also
 safe to run again.

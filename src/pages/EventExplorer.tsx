@@ -1,11 +1,14 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { ClassificationCode, EventRow, Startup } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import DataNotes from '../components/DataNotes';
 import { BottomSheet, ChipRow, CountChip, FiltersPill, PAGE_SIZE, ShowMore } from '../components/PhoneParts';
 import { PageHeader, Tile } from '../components/Tile';
 import YearSwitch from '../components/YearSwitch';
+import { buildFailureEvents } from '../calc';
+import { readDrill } from '../dashboard/drill';
+import { useEventsForYears } from '../dashboard/useDash';
 import { useYearData } from '../data/useYearData';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
@@ -134,6 +137,20 @@ export default function EventExplorer() {
   const { T } = useTheme();
   const mobile = useIsMobile();
   const location = useLocation();
+  const navigate = useNavigate();
+  // drill-through from a dashboard: show exactly these events (all years they live in), until the chip is removed
+  const drill = readDrill(location.state);
+  const multi = useEventsForYears(drill ? drill.years : []);
+  const drillRows = useMemo(() => {
+    if (!drill || !multi.ready) return null;
+    const want = new Set(drill.rowIds ?? []);
+    if (drill.eventIds?.length) {
+      const ids = new Set(drill.eventIds);
+      for (const c of buildFailureEvents(multi.rows, { includeVoid: true }).chains) if (ids.has(c.id)) for (const r of c.rows) want.add(r.event_id);
+    }
+    return multi.rows.filter((r) => want.has(r.event_id));
+  }, [drill, multi.ready, multi.rows]);
+  const sourceRows = drill ? drillRows ?? [] : ev.events;
   const [f, setF] = useState<Filters>(EMPTY);
   const [sheet, setSheet] = useState(false);
   const [shown, setShown] = useState(PAGE_SIZE);
@@ -148,8 +165,8 @@ export default function EventExplorer() {
     if (focusKey) searchRef.current?.focus();
   }, [focusKey]);
 
-  const filtered = useMemo(() => applyFilters(ev.events, f, startup, q), [ev.events, f, startup, q]);
-  useEffect(() => setShown(PAGE_SIZE), [f, q, year]);
+  const filtered = useMemo(() => applyFilters(sourceRows, f, startup, q), [sourceRows, f, startup, q]);
+  useEffect(() => setShown(PAGE_SIZE), [f, q, year, drill?.label]);
 
   const stats = useMemo(() => {
     let sec = 0, failures = 0, issues = 0;
@@ -163,9 +180,10 @@ export default function EventExplorer() {
   }, [filtered]);
 
   const areaName = useMemo(() => new Map(startup?.areas.map((a) => [a.area_id, a.name]) ?? []), [startup]);
-  const open = openId ? ev.events.find((e) => e.event_id === openId) ?? null : null;
+  const open = openId ? sourceRows.find((e) => e.event_id === openId) ?? null : null;
   const visible = filtered.slice(0, shown);
-  const total = ev.events.length;
+  const total = sourceRows.length;
+  const dataReady = drill ? multi.ready : !!ev.data;
   const filtersOn = activeCount(f) + (f.q.trim() ? 1 : 0);
   const reset = () => setF(EMPTY);
 
@@ -183,7 +201,7 @@ export default function EventExplorer() {
     <div className="page" data-testid="page-events">
       <PageHeader
         title={t('Event Explorer')}
-        subtitle={ev.data ? t('{shown} of {total} events in {year} · {hours} stoppage hours · {failures} failures', { shown: num(filtered.length), total: num(total), year: year ?? '', hours: hours(stats.sec), failures: num(stats.failures) }) : t('Loading…')}
+        subtitle={dataReady ? t('{shown} of {total} events in {year} · {hours} stoppage hours · {failures} failures', { shown: num(filtered.length), total: num(total), year: year ?? '', hours: hours(stats.sec), failures: num(stats.failures) }) : t('Loading…')}
         right={
           <>
             <YearSwitch />
@@ -194,11 +212,20 @@ export default function EventExplorer() {
         }
       />
       <DataNotes st={st} ev={ev} />
+      {drill && (
+        <div className="callout" role="status" data-testid="drill-chip">
+          <Icon name="filter" size={16} />
+          <span data-testid="drill-text">{t('Showing {n} events from {label}', { n: num(drill.eventIds?.length ?? drill.rowIds?.length ?? 0), label: drill.label })}</span>
+          <button type="button" className="btn btn-sm" onClick={() => navigate(location.pathname, { replace: true, state: null })} data-testid="drill-remove" aria-label={t('Remove the filter: {label}', { label: drill.label })}>
+            <Icon name="close" size={14} /> {t('Remove')}
+          </button>
+        </div>
+      )}
 
       {!mobile ? (
         <>
           <div className="tiles" data-testid="event-tiles">
-            <Tile icon="list" label={t('Events shown')} value={num(filtered.length)} sub={t('of {n} in {year}', { n: num(total), year: year ?? '' })} testid="tile-shown" />
+            <Tile icon="list" label={t('Events shown')} value={num(filtered.length)} sub={drill ? t('of {n} in the opened events', { n: num(total) }) : t('of {n} in {year}', { n: num(total), year: year ?? '' })} testid="tile-shown" />
             <Tile icon="clock" label={t('Stoppage hours shown')} value={hours(stats.sec)} sub={t('area-hours, not voided')} testid="tile-hours" />
             <Tile icon="alert" label={t('Failures shown')} value={num(stats.failures)} tone={stats.failures ? T.danger : undefined} sub={t('not voided')} testid="tile-failures" />
             <Tile icon="info" label={t('Rows with data issues')} value={num(stats.issues)} tone={stats.issues ? T.warning : undefined} sub={t('{n} edited · {v} voided in {year}', { n: facts.edited, v: facts.voided, year: year ?? '' })} testid="tile-issues" />
@@ -250,7 +277,7 @@ export default function EventExplorer() {
         </>
       )}
 
-      {ev.data && (
+      {dataReady && (
         <div style={{ marginTop: 12 }}>
           {filtered.length === 0 ? (
             <div className="callout" role="status" data-testid="no-results">

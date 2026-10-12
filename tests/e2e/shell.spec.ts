@@ -61,16 +61,24 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('no-access')).toBeVisible();
   });
 
-  test('placeholder pages show live facts and the "next step" card', async ({ page }) => {
+  test('every page opens for the admin (no placeholders left)', async ({ page }) => {
     await signInAndWait(page, 'admin');
-    await expect(page.getByTestId('fact-areas')).toContainText('19');
-    await expect(page.getByTestId('fact-events')).not.toContainText('-');
-    await expect(page.getByTestId('next-step')).toContainText('Built in the next step');
-    await page.getByRole('link', { name: 'Upload' }).first().click();
-    await expect(page.getByTestId('fact-batches')).toContainText(/\d/);
-    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Users' }).click();
-    await expect(page.getByTestId('fact-users')).toContainText('5');
-    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Settings' }).click();
+    const nav = page.getByRole('navigation', { name: 'Pages' });
+    const pages: [string, string][] = [
+      ['Overview', 'page-overview'],
+      ['Pareto', 'page-pareto'],
+      ['Repeated Failures', 'page-repeats'],
+      ['Reliability', 'page-reliability'],
+      ['Upload', 'page-upload'],
+      ['Master Data', 'page-master'],
+      ['Users', 'page-users'],
+      ['Settings', 'page-settings'],
+    ];
+    for (const [label, id] of pages) {
+      await nav.getByRole('link', { name: label }).first().click();
+      await expect(page.getByTestId(id)).toBeVisible({ timeout: 20000 });
+      await expect(page.getByText('Built in the next step')).toHaveCount(0);
+    }
     await expect(page.getByTestId('theme-picker')).toBeVisible();
   });
 

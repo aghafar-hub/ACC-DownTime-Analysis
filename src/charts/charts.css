@@ -1,0 +1,232 @@
+/* Chart styles: tokens only (--tk-*), nothing under 12px. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.chart-card {
+  padding: 14px 16px 12px;
+}
+.chart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+}
+.chart-head-text {
+  min-width: 0;
+  flex: 1 1 220px;
+}
+.chart-head-text h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.chart-sub {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--tk-text-secondary);
+}
+.chart-head-controls {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.chart-card .chart-summary {
+  margin: 6px 0 8px;
+  font-size: 13px;
+  color: var(--tk-text-secondary);
+  line-height: 1.4;
+}
+.chart-foot {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--tk-text-muted);
+}
+.chart-card p.chart-foot {
+  font-size: 12px;
+}
+.chart-legend {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  gap: 4px 14px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  color: var(--tk-text-primary);
+}
+.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.chart-legend-note {
+  color: var(--tk-text-muted);
+}
+.chart-box {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+}
+.chart-box svg {
+  display: block;
+  max-width: 100%;
+  overflow: visible;
+  font-family: var(--sans);
+}
+.chart-box svg text {
+  font-size: 12px;
+  fill: var(--tk-text-secondary);
+}
+.chart-box svg text.chart-ink {
+  fill: var(--tk-text-primary);
+}
+.chart-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+.chart-tip {
+  position: absolute;
+  z-index: 5;
+  min-width: 150px;
+  max-width: min(280px, 86%);
+  transform: translateY(-4px);
+  background: var(--tk-card-bg);
+  color: var(--tk-text-primary);
+  border: 1px solid var(--tk-text-secondary);
+  border-radius: 8px;
+  padding: 8px 10px;
+  box-shadow: var(--elevation-2);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.chart-tip-title {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.chart-tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.chart-tip-row > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--tk-text-secondary);
+}
+.chart-tip-row b {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--tk-text-primary);
+}
+.chart-tip .btn {
+  margin-top: 6px;
+  width: 100%;
+  white-space: normal;
+}
+.chart-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+.chart-focusable:focus-visible {
+  outline: 2px solid var(--tk-accent);
+  outline-offset: 1px;
+}
+.chart-table-wrap {
+  max-height: 340px;
+  overflow: auto;
+}
+.chart-table th[scope='row'] {
+  position: static;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  color: var(--tk-text-primary);
+  background: transparent;
+  white-space: nowrap;
+}
+.toggle-group {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.toggle-group .chip {
+  min-height: 36px;
+  padding: 4px 12px;
+}
+@media (max-width: 860px) {
+  .toggle-group .chip {
+    min-height: 44px;
+  }
+  .chart-card {
+    padding: 12px 12px 10px;
+  }
+}
+.chart-tip-note {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--tk-text-muted);
+}
+.heat-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  border: 1px solid var(--tk-border2);
+  border-radius: 8px;
+}
+.heat {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  width: max-content;
+  min-width: 100%;
+}
+.heat th,
+.heat td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--tk-border2);
+  border-right: 1px solid var(--tk-border2);
+  text-align: right;
+  color: var(--tk-text-primary);
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+.heat .heat-col {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--tk-text-secondary);
+  background: var(--tk-table-head);
+  white-space: normal;
+  min-width: 56px;
+  max-width: 96px;
+  vertical-align: bottom;
+  overflow-wrap: anywhere;
+}
+.heat .heat-corner,
+.heat .heat-row {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+  background: var(--tk-table-head);
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 12.5px;
+}
+.heat .heat-zero {
+  color: var(--tk-text-muted);
+  text-align: center;
+}
+.heat .heat-total {
+  font-weight: 700;
+  background: var(--tk-table-head);
+}

@@ -1,0 +1,80 @@
+# Builds the TEST COPY of the app and publishes it to GitHub Pages.
+# Runs on a push to the `test-site` branch, or by hand (Actions > Deploy test copy > Run workflow).
+#
+# One-time setup in the repository settings:
+#   1. Settings > Pages > Source: GitHub Actions.
+#   2. Settings > Secrets and variables > Actions > Variables:
+#        TEST_API_URL  the web-app URL of the TEST Apps Script deployment (ends in /exec)
+#        LIVE_API_URL  (optional) the live web-app URL, only so this workflow can refuse to mix them up
+# The URL is a variable, never a file in the repository.
+name: Deploy test copy
+
+on:
+  push:
+    branches: [test-site]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-test
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the backend address
+        env:
+          TEST_API_URL: ${{ vars.TEST_API_URL }}
+          LIVE_API_URL: ${{ vars.LIVE_API_URL }}
+        run: |
+          if [ -z "$TEST_API_URL" ]; then
+            echo "TEST_API_URL is not set. A deployed copy must talk to a real backend, not the demo data."; exit 1
+          fi
+          if [ -n "$LIVE_API_URL" ] && [ "$TEST_API_URL" = "$LIVE_API_URL" ]; then
+            echo "TEST_API_URL equals LIVE_API_URL. The test copy must never use the live backend."; exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:backend
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ vars.TEST_API_URL }}
+          VITE_BASE: ./
+          VITE_ENV_LABEL: TEST COPY
+          VITE_STORAGE_PREFIX: 'acc-dt-test:'
+
+      - name: Confirm the build has no demo data or demo accounts
+        run: |
+          if grep -rl "Demo-Pass-1234" dist >/dev/null 2>&1; then
+            echo "The build contains demo accounts. VITE_API_URL was not applied."; exit 1
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

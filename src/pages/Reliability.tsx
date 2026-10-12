@@ -1,38 +1,171 @@
-import DataNotes from '../components/DataNotes';
-import PlaceholderPage from '../components/PlaceholderPage';
-import { Tile } from '../components/Tile';
-import YearSwitch from '../components/YearSwitch';
-import { useYearData } from '../data/useYearData';
+import { useMemo, useState } from 'react';
+import type { Metric } from '../calc';
+import { ChartCard } from '../charts/ChartKit';
+import CartesianChart, { seriesTable, type CartCategory, type CartSeries } from '../charts/CartesianChart';
+import { seriesColor } from '../charts/palette';
+import { PageHeader, Tile } from '../components/Tile';
+import FilterBar from '../dashboard/FilterBar';
+import { dayLabel, fh, fh2, fint, monthLabel, rangeLabel } from '../dashboard/format';
+import { reliabilityModel } from '../dashboard/models';
+import { DashStatus, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
+import { PhoneBar } from '../dashboard/PhoneBar';
+import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
-import { num } from '../util/format';
+import { Icon } from '../icons';
+import { useTheme } from '../theme/ThemeContext';
+import '../components/ui.css';
+import '../dashboard/dashboard.css';
+
+type YoyMetric = 'failureHours' | 'failureCount' | 'mtbf' | 'rate';
+
+const num = (m: Metric): number | null => (m.available ? m.value : null);
+const why = (m: Metric): string | undefined => (m.available ? undefined : m.code === 'no_failures' ? t('No failures this month: MTBF is not defined') : m.reason);
 
 export default function Reliability() {
-  const { st, startup, year, ev, facts } = useYearData();
-  const loaded = !!ev.data;
-  const setting = (k: string) => startup?.settings.find((s) => s.key === k)?.value || '-';
+  const dash = useDash({ extraYearsBack: 1 });
+  const { ctx } = dash;
+  const { dark } = useTheme();
+  const drill = useDrill(dash, 'Reliability');
+  const [area, setArea] = useState('');
+  const [yoyMetric, setYoyMetric] = useState<YoyMetric>('failureHours');
+  const areaId = area && ctx?.base.areaIds.includes(area) ? area : '';
+  const model = useMemo(() => (ctx ? reliabilityModel(ctx, areaId || undefined) : null), [ctx, areaId]);
+  const rows = useMemo(() => (ctx ? rowsInRange(ctx.scope, ctx.win.range) : null), [ctx]);
+  const win = ctx?.win.effective ?? null;
+
+  const months = model?.monthly ?? [];
+  const cats: CartCategory[] = months.map((m) => ({ key: m.month, label: monthLabel(m.month), partial: m.partial, note: m.partial && m.window ? t('Partial month: data to {d}', { d: dayLabel(m.window.to) }) : undefined }));
+  const line = (key: string, label: string, pick: (m: (typeof months)[number]) => Metric, fmt: (n: number) => string, slot: number): CartSeries => ({
+    key, label, color: seriesColor(dark, slot), type: 'line', values: months.map((m) => num(pick(m))), missing: months.map((m) => why(pick(m))), format: fmt,
+  });
+  const mtbf = line('mtbf', t('MTBF (h)'), (m) => m.mtbfHours, fh, 0);
+  const mttr = line('mttr', t('Mean restoration time (h)'), (m) => m.mttrHours, fh2, 1);
+  const rate = line('rate', t('Failures per 1,000 operating hours'), (m) => m.failureRatePer1000h, fh2, 2);
+  const gapCount = (s: CartSeries) => s.values.filter((v) => v === null).length;
+  const gapNote = (s: CartSeries) => (gapCount(s) ? t('{n} months have no value (gaps): no failures or no data. Hover or tap a month for the reason.', { n: gapCount(s) }) : undefined);
+  const areaLabel = areaId || t('all areas (area-hours)');
+
+  const hist = model?.histogram;
+  const bandOf = (fromMin: number, toMin: number | null): 'short' | 'medium' | 'long' => {
+    const s = ctx!.master.settings;
+    if (toMin !== null && toMin <= s.durationShortMaxMin) return 'short';
+    if (fromMin >= s.durationLongMinMin) return 'long';
+    return 'medium';
+  };
+  const BAND_COLOR = { short: seriesColor(dark, 0), medium: seriesColor(dark, 3), long: seriesColor(dark, 7) };
+  const hcats: CartCategory[] = (hist?.bins ?? []).map((b) => ({ key: b.label, label: b.label }));
+  const hseries: CartSeries[] = hist ? [{
+    key: 'n', label: t('Failure events'), color: BAND_COLOR.medium, type: 'bar', values: hist.bins.map((b) => b.count), format: fint,
+    pointColors: hist.bins.map((b) => BAND_COLOR[bandOf(b.fromMin, b.toMin)]),
+    pointNotes: hist.bins.map((b) => `${t(bandOf(b.fromMin, b.toMin) === 'short' ? 'Short' : bandOf(b.fromMin, b.toMin) === 'long' ? 'Long' : 'Medium')} · ${fh(b.hours)} h`),
+  }] : [];
+
+  const yoy = model?.yoy ?? [];
+  const ycats: CartCategory[] = yoy.map((y) => ({ key: String(y.monthNumber), label: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][y.monthNumber - 1]!, partial: y.current.partial }));
+  const pickY = (p: (typeof yoy)[number]['current']): number | null => {
+    if (!p.hasData) return null;
+    switch (yoyMetric) {
+      case 'failureHours': return p.failureHours;
+      case 'failureCount': return p.failureCount;
+      case 'mtbf': return num(p.mtbfHours);
+      case 'rate': return num(p.failureRatePer1000h);
+    }
+  };
+  const yfmt = yoyMetric === 'failureCount' ? fint : yoyMetric === 'rate' ? fh2 : fh;
+  const yseries: CartSeries[] = model ? [
+    { key: 'prev', label: String(model.yoyYear - 1), color: seriesColor(dark, 1), type: 'bar', values: yoy.map((y) => pickY(y.previous)), format: yfmt },
+    { key: 'cur', label: String(model.yoyYear), color: seriesColor(dark, 0), type: 'bar', values: yoy.map((y) => pickY(y.current)), format: yfmt },
+  ] : [];
+  const yoyLabels: Record<YoyMetric, string> = { failureHours: t('Failure hours'), failureCount: t('Failure count'), mtbf: t('MTBF (h)'), rate: t('Failures per 1,000 h') };
+
+  const longest = model?.longest ?? [];
+  const subtitle = !ctx ? t('Loading…') : model && win ? t('Reliability for {a} · {r}', { a: areaLabel, r: rangeLabel(win) }) : t('No data for this range');
+  const total = ctx && model && ctx.kpis.current.status === 'ok' ? ctx.kpis.current.total : null;
+  const areaKpi = areaId && ctx && ctx.kpis.current.status === 'ok' ? ctx.kpis.current.areas.find((a) => a.area_id === areaId) ?? null : null;
+  const k = areaKpi ?? total;
+  const mt = (m: Metric, f: (n: number) => string) => (m.available ? `${f(m.value)} h` : m.code === 'no_failures' ? t('None recorded') : t('Unavailable'));
+
   return (
-    <PlaceholderPage
-      tab="reliability"
-      subtitle={loaded ? t('{n} events in {year} · availability basis {basis} · {h} scheduled hours a day', { n: num(facts.count), year: year ?? '', basis: setting('availability_basis'), h: setting('scheduled_hours_per_day') }) : t('Loading…')}
-      right={<YearSwitch />}
-      tiles={
+    <div className="page dash-page" data-testid="page-reliability">
+      <PageHeader title={t('Reliability Trends')} subtitle={subtitle} right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>} />
+      <DashStatus dash={dash} />
+      <PhoneBar>{k ? <><b>{k.mtbfHours.available ? `${fh(k.mtbfHours.value)} h` : t('no MTBF')}</b> MTBF<span><span aria-hidden="true">◆</span> {fint(k.failureCount)} {t('failures')}</span></> : subtitle}</PhoneBar>
+      {k && (
+        <div className="kpi-grid" data-testid="reliability-tiles">
+          <Tile icon="trend" label={t('MTBF ({a})', { a: areaId || t('aggregate over areas') })} value={<span data-testid="rt-mtbf">{mt(k.mtbfHours, fh)}</span>} sub={k.mtbfHours.available ? t('operating hours per failure') : (k.mtbfHours.reason)} />
+          <Tile icon="repeat" label={t('Mean restoration time')} value={<span data-testid="rt-mttr">{mt(k.mttrHours, fh2)}</span>} sub={t('failure events that started in the range')} />
+          <Tile icon="alert" label={t('Failures per 1,000 operating hours')} value={k.failureRatePer1000h.available ? fh2(k.failureRatePer1000h.value) : t('Unavailable')} sub={k.failureRatePer1000h.available ? undefined : k.failureRatePer1000h.reason} />
+          <Tile icon="clock" label={t('Failure events')} value={fint(k.failureEventCount)} sub={t('{n} failure rows', { n: fint(k.failureCount) })} />
+        </div>
+      )}
+      <FilterBar dash={dash} eventCount={rows ? rows.length : null} hideCompare />
+      {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}
+      {model && ctx && (
         <>
-          <Tile icon="list" label={t('Events loaded for {year}', { year: year ?? '-' })} value={loaded ? num(facts.count) : '-'} testid="fact-events" />
-          <Tile icon="calendar" label={t('Years with data')} value={startup ? num(startup.years.length) : '-'} sub={startup?.years.join(', ')} testid="fact-years" />
-          <Tile icon="trend" label={t('Availability basis')} value={setting('availability_basis')} sub={t('from Settings')} testid="fact-basis" />
-          <Tile icon="clock" label={t('Scheduled hours per day')} value={setting('scheduled_hours_per_day')} sub={t('{n} days a week', { n: setting('scheduled_days_per_week') })} testid="fact-scheduled" />
+          <div className="field" style={{ maxWidth: 280, marginBottom: 12 }}>
+            <label htmlFor="rel-area">{t('Area for the monthly charts')}</label>
+            <select id="rel-area" className="select" value={areaId} onChange={(e) => setArea(e.target.value)} data-testid="rel-area">
+              <option value="">{t('All areas (area-hours)')}</option>
+              {ctx.base.areaIds.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+          <div className="chart-grid">
+            <ChartCard title={t('Monthly MTBF')} subtitle={t('Operating hours per failure, {a}', { a: areaLabel })} testid="chart-mtbf"
+              summary={`${t('{n} of {m} months have an MTBF.', { n: months.length - gapCount(mtbf), m: months.length })}`} footnote={gapNote(mtbf)}
+              table={seriesTable(cats, [mtbf], t('Month'), (_s, n) => fh(n))}>
+              {(w) => <CartesianChart categories={cats} series={[mtbf]} width={w} ariaLabel={t('Line chart of monthly MTBF')} zeroBased />}
+            </ChartCard>
+            <ChartCard title={t('Mean restoration time')} subtitle={t('Mean duration of failure events that started in the month')} testid="chart-mttr"
+              summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(mttr), m: months.length })} footnote={gapNote(mttr)}
+              table={seriesTable(cats, [mttr], t('Month'), (_s, n) => fh2(n))}>
+              {(w) => <CartesianChart categories={cats} series={[mttr]} width={w} ariaLabel={t('Line chart of monthly mean restoration time')} yFormat={(n) => `${n}`} />}
+            </ChartCard>
+            <ChartCard title={t('Failures per 1,000 operating hours')} subtitle={t('Failure rate adjusted for exposure, {a}', { a: areaLabel })} testid="chart-rate"
+              summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(rate), m: months.length })} footnote={gapNote(rate)}
+              table={seriesTable(cats, [rate], t('Month'), (_s, n) => fh2(n))}>
+              {(w) => <CartesianChart categories={cats} series={[rate]} width={w} ariaLabel={t('Line chart of failures per 1,000 operating hours')} yFormat={(n) => `${n}`} />}
+            </ChartCard>
+            <ChartCard title={t('Failure duration distribution')} subtitle={t('Failure events by total duration; colours and labels mark short, medium and long')} testid="chart-histogram"
+              summary={hist ? t('{n} failure events. Short {s}, medium {m}, long {l}.', { n: fint(hist.eventCount), s: fint(hist.bands[0]!.count), m: fint(hist.bands[1]!.count), l: fint(hist.bands[2]!.count) }) : ''}
+              legend={[
+                { label: t('Short (up to {m} min)', { m: ctx.master.settings.durationShortMaxMin }), color: BAND_COLOR.short },
+                { label: t('Medium'), color: BAND_COLOR.medium, symbol: 'diamond' },
+                { label: t('Long (from {m} min)', { m: ctx.master.settings.durationLongMinMin }), color: BAND_COLOR.long, symbol: 'triangle' },
+              ]}
+              table={hist ? { head: [t('Duration'), t('Events'), t('Hours'), t('Band')], rows: hist.bins.map((b) => [b.label, fint(b.count), fh(b.hours), bandOf(b.fromMin, b.toMin)]) } : undefined}
+              footnote={hist ? hist.bands.map((b) => `${b.band}: ${fint(b.count)} (${b.countPct.toFixed(0)}% of events, ${b.hoursPct.toFixed(0)}% of hours)`).join(' · ') : undefined}>
+              {(w) => <CartesianChart categories={hcats} series={hseries} width={w} ariaLabel={t('Histogram of failure durations')} yFormat={(n) => `${n}`} />}
+            </ChartCard>
+          </div>
+          <ChartCard title={t('Year over year, by month')} subtitle={t('{a} against {b}, {m}', { a: model.yoyYear, b: model.yoyYear - 1, m: yoyLabels[yoyMetric] })} testid="chart-yoy"
+            controls={<Toggle value={yoyMetric} options={(Object.keys(yoyLabels) as YoyMetric[]).map((v) => ({ value: v, label: yoyLabels[v] }))} onChange={setYoyMetric} label={t('Measure')} testid="yoy-measure" />}
+            summary={t('Months without data in either year are left out.')} legend={yseries.map((s) => ({ label: s.label, color: s.color }))}
+            table={seriesTable(ycats, yseries, t('Month'), (_s, n) => yfmt(n))}>
+            {(w) => <CartesianChart categories={ycats} series={yseries} width={w} ariaLabel={t('Grouped bars comparing each month with the same month a year earlier')} yFormat={(n) => `${n}`} maxBarWidth={26} />}
+          </ChartCard>
+          <section className="card" data-testid="longest-card">
+            <h2>{t('Longest events')}</h2>
+            <p className="chart-sub" style={{ marginBottom: 8 }}>{t('Ranked by chained event: a stop that continues over several rows counts once, with all its rows.')}</p>
+            {longest.length === 0 ? <p className="muted">{t('No failure events in this range.')}</p> : (
+              <div className="table-wrap">
+                <table className="data-table" data-testid="longest-table">
+                  <thead><tr><th scope="col">#</th><th scope="col">{t('Started')}</th><th scope="col">{t('Area')}</th><th scope="col">{t('Code')}</th><th scope="col">{t('Reason')}</th><th scope="col" className="num">{t('Hours')}</th><th scope="col" className="num">{t('Rows')}</th></tr></thead>
+                  <tbody>
+                    {longest.map((e, i) => (
+                      <tr key={e.eventId} data-testid="longest-row">
+                        <td>{i + 1}</td>
+                        <td className="nowrap"><button type="button" className="row-btn mono" onClick={() => drill(t('the event {id}', { id: e.eventId }), { eventIds: [e.eventId] })} aria-label={t('Open event {id}', { id: e.eventId })}>{e.startTs.slice(0, 16)}</button></td>
+                        <td>{e.area_id}</td><td className="mono">{e.code}</td><td>{e.reason || t('(blank)')}</td>
+                        <td className="num">{fh2(e.hours)}</td><td className="num">{e.rowCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </>
-      }
-      next={{
-        title: t('Reliability over time'),
-        points: [
-          'Availability, operating hours, MTBF, failure rate and mean restoration time by area and month',
-          'Comparison with the previous period or the same period last year',
-          '"None recorded" where there are no failures and "Unavailable" where data is missing, never zero',
-        ],
-      }}
-    >
-      <DataNotes st={st} ev={ev} />
-    </PlaceholderPage>
+      )}
+    </div>
   );
 }

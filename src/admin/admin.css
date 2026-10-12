@@ -1,0 +1,300 @@
+/* Shared styles for the Upload, Master Data, Settings and Users pages.
+   Colours come only from the theme tokens (--tk-*). Nothing under 12px;
+   44px touch targets and 16px inputs on the phone. */
+
+.adm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+.adm-toolbar .field {
+  flex: 1 1 200px;
+}
+.adm-toolbar .adm-grow {
+  flex: 2 1 260px;
+}
+.adm-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-inline-start: auto;
+}
+.adm-note {
+  margin: 0 0 12px;
+  color: var(--tk-text-secondary);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.adm-muted-sm {
+  font-size: 12.5px;
+  color: var(--tk-text-secondary);
+}
+.adm-wrap {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+/* toast: a short confirmation that something was saved */
+.adm-toast {
+  position: fixed;
+  z-index: 2200;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 24px;
+  width: min(460px, calc(100% - 24px));
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 6px 10px 14px;
+  border-radius: 14px;
+  background: var(--shell-card-bg);
+  color: var(--shell-text);
+  border: 1px solid var(--shell-success);
+  border-inline-start-width: 4px;
+  font: 600 13.5px var(--sans);
+  box-shadow: var(--elevation-2, 0 8px 24px rgba(8, 15, 28, 0.25));
+}
+.adm-toast span {
+  flex: 1;
+}
+.adm-toast button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  color: var(--shell-text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+}
+@media (max-width: 860px) {
+  .adm-toast {
+    bottom: calc(var(--bottom-nav-h, 60px) + 14px);
+  }
+}
+
+/* a sticky bar for the main action on a long screen */
+.adm-actionbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 12px 16px;
+  margin: 16px 0 0;
+  background: var(--tk-card-bg);
+  border: 1px solid var(--tk-border);
+  border-radius: 10px;
+  box-shadow: 0 -6px 16px rgba(8, 15, 28, 0.08);
+}
+.adm-actionbar .adm-actionbar-text {
+  flex: 1 1 220px;
+  min-width: 0;
+  font-size: 13.5px;
+  color: var(--tk-text-secondary);
+}
+.adm-actionbar-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-inline-start: auto;
+}
+@media (max-width: 860px) {
+  .adm-actionbar {
+    bottom: calc(var(--bottom-nav-h, 60px) + 6px);
+    padding: 10px 12px;
+  }
+  .adm-actionbar-buttons {
+    width: 100%;
+    margin-inline-start: 0;
+  }
+  .adm-actionbar-buttons > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}
+
+/* record cards on the phone */
+.adm-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.adm-card {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  font: inherit;
+  padding: 12px 14px;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--tk-border);
+  background: var(--tk-card-bg);
+  color: var(--tk-text-primary);
+  min-width: 0;
+}
+button.adm-card {
+  cursor: pointer;
+}
+button.adm-card:focus-visible {
+  outline: 2px solid var(--tk-accent);
+  outline-offset: 2px;
+}
+.adm-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.adm-card-title {
+  font: 600 14px var(--mono);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.adm-card-line {
+  font-size: 13px;
+  color: var(--tk-text-secondary);
+  overflow-wrap: anywhere;
+}
+.adm-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+/* a text that must show its spaces: leading and trailing spaces are drawn as a visible mark */
+.adm-space {
+  color: var(--tk-warning);
+  background: var(--tk-warning-bg);
+  border-radius: 3px;
+  font-family: var(--mono);
+  padding: 0 1px;
+}
+
+/* the one-time password */
+.adm-secret {
+  display: block;
+  padding: 14px 16px;
+  margin: 8px 0 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--tk-accent);
+  background: var(--tk-code-bg);
+  color: var(--tk-code-text);
+  font: 700 22px var(--mono);
+  letter-spacing: 0.04em;
+  text-align: center;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* check rows: label, control */
+.adm-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--tk-border);
+  border-radius: 8px;
+  padding: 4px;
+  background: var(--tk-input-bg);
+}
+.adm-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.adm-check:hover {
+  background: var(--tk-table-hover);
+}
+.adm-check input {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  accent-color: var(--tk-accent);
+}
+.adm-check small {
+  color: var(--tk-text-secondary);
+  font-size: 12.5px;
+}
+
+/* a read-only value box in a popup */
+.adm-readbox {
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--tk-border2);
+  background: var(--tk-card-sub-bg);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.adm-readbox.mono {
+  font-family: var(--mono);
+}
+
+/* sub-tabs scroll inside their own row, never the page */
+.adm-tabs {
+  margin-bottom: 14px;
+}
+.adm-tabs > div {
+  margin-bottom: 0 !important;
+}
+
+@media (max-width: 860px) {
+  .input,
+  .select,
+  .textarea {
+    font-size: 16px;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* page access editor */
+.adm-access {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.adm-access-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--tk-border2);
+  border-radius: 10px;
+  background: var(--tk-card-sub-bg);
+}
+.adm-access-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+.adm-access-row .field-hint {
+  flex: 1 0 100%;
+}
