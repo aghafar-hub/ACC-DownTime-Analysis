@@ -8,6 +8,8 @@
    a flat fill, since the subject here is an industrial equipment platform,
    not a generic SaaS product. */
 .auth-page {
+  position: relative;
+  isolation: isolate;
   min-height: 100svh;
   display: flex;
   align-items: center;
@@ -15,17 +17,22 @@
   padding: var(--space-5) var(--space-4);
   box-sizing: border-box;
   background: var(--bg);
+}
+/* The grid sits on its own layer and is faded with a mask; masking the page
+   itself (as the platform does) would fade the card and its text as well. */
+.auth-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background-image:
     linear-gradient(var(--border) 1px, transparent 1px),
     linear-gradient(90deg, var(--border) 1px, transparent 1px);
   background-size: 40px 40px;
   background-position: center;
-  /* The grid lines above are full-strength --border color at 40px spacing —
-     faded via mask instead of lowering the lines' own opacity, so they stay
-     crisp close to the card and disappear toward the edges rather than
-     washing out evenly everywhere. */
   -webkit-mask-image: radial-gradient(ellipse at center, #000 0%, transparent 75%);
   mask-image: radial-gradient(ellipse at center, #000 0%, transparent 75%);
+  pointer-events: none;
 }
 
 .auth-card-wrap {

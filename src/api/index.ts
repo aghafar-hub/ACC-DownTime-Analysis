@@ -1,6 +1,5 @@
 // The one `api` the app uses: the Apps Script backend when VITE_API_URL is set
 // at build time, otherwise the in-memory synthetic API (mock mode).
-import { API_URL } from '../config';
 import { createSheetsApi } from './sheetsApi';
 import type { Api } from './types';
 import { ApiError } from './types';
@@ -44,7 +43,8 @@ function watched(base: Api): Api {
   });
 }
 
-export const api: Api = watched(API_URL ? createSheetsApi(API_URL) : lazyMock());
+// Written against import.meta.env directly so a build with a backend address drops the mock entirely.
+export const api: Api = watched(import.meta.env.VITE_API_URL ? createSheetsApi(import.meta.env.VITE_API_URL.trim()) : lazyMock());
 
 /** Plain-English text for any error. */
 export function describeError(err: unknown, fallback = 'Something went wrong. Please try again.'): string {

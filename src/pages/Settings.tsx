@@ -49,9 +49,9 @@ export default function Settings() {
               <tbody>
                 {settings.map((s) => (
                   <tr key={s.key}>
-                    <td className="mono">{s.key}</td>
-                    <td className="mono">{s.value || '-'}</td>
-                    <td>{s.description}</td>
+                    <td className="mono nowrap">{s.key}</td>
+                    <td className="mono nowrap">{s.value || '-'}</td>
+                    <td style={{ minWidth: 260 }}>{s.description}</td>
                   </tr>
                 ))}
               </tbody>

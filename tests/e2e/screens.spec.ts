@@ -15,7 +15,7 @@ const DIR = 'test-results/screens';
 for (const theme of THEMES) {
   for (const vp of VIEWPORTS) {
     test(`screens: ${theme} / ${vp.name}`, async ({ browser }) => {
-      const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, isMobile: vp.phone, hasTouch: vp.phone, deviceScaleFactor: vp.phone ? 2 : 1 });
+      const context = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, isMobile: vp.phone, hasTouch: vp.phone, deviceScaleFactor: vp.phone ? 2 : 1, reducedMotion: 'reduce' });
       const page = await context.newPage();
       await stubFonts(page);
       const errors = watchConsole(page);
@@ -39,16 +39,15 @@ for (const theme of THEMES) {
       await shot('3-events');
 
       // an edited row opened, with its history
-      await page.getByTestId('filter-show').or(page.getByTestId('filters-pill')).first().click();
       if (vp.phone) {
+        await page.getByTestId('filters-pill').click();
         await page.getByTestId('filter-show').selectOption('edited');
         await page.getByTestId('sheet-apply').click();
+        await page.getByTestId('event-card').first().click();
       } else {
         await page.getByTestId('filter-show').selectOption('edited');
-      }
-      await page.getByTestId(vp.phone ? 'event-card' : 'event-row').first().click({ position: vp.phone ? undefined : { x: 5, y: 5 } }).catch(async () => {
         await page.getByTestId('event-row').first().getByRole('button').click();
-      });
+      }
       await expect(page.getByTestId('event-detail')).toBeVisible();
       await shot('4-event-detail');
       await page.getByTestId('edit-event').click();

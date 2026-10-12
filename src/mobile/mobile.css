@@ -60,13 +60,13 @@
 /* More as a hub (step 6) */
 .more-account { border-bottom: 0; border-top: 1px solid var(--shell-border, #d9e0e8); padding-top: 12px; margin-top: 12px; }
 .more-search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--shell-border, #d9e0e8); border-radius: 12px; padding: 0 12px; background: var(--shell-bg, #f4f6f9); color: var(--shell-text-secondary, #4b5563); margin: 4px 2px 0; }
-.more-search input { flex: 1; min-width: 0; border: 0; background: transparent; font: 400 15px var(--sans); padding: 11px 0; color: var(--shell-text, #0f1b2d); outline: none; }
+.more-search input { flex: 1; min-width: 0; min-height: 44px; border: 0; background: transparent; font: 400 15px var(--sans); padding: 0; color: var(--shell-text, #0f1b2d); outline: none; }
 .more-recent { display: flex; flex-wrap: wrap; gap: 8px; padding: 4px 2px; }
 .more-recent-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--shell-border, #d9e0e8); background: var(--shell-card-bg, #fff); color: var(--shell-text, #0f1b2d); border-radius: 999px; padding: 7px 12px; font: 600 13.5px var(--sans); cursor: pointer; }
 .more-recent-chip--on { border-color: var(--shell-accent, #1e5bb8); color: var(--shell-accent, #1e5bb8); }
 .more-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 4px 2px; }
 .more-tile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; border: 1px solid var(--shell-border, #d9e0e8); background: var(--shell-card-bg, #fff); border-radius: 14px; padding: 12px 6px 10px; cursor: pointer; font-family: var(--sans); color: var(--shell-text, #0f1b2d); min-width: 0; }
-.more-tile b { font-size: 13.5px; line-height: 1.2; }
+.more-tile b { font-size: 13.5px; line-height: 1.2; overflow-wrap: anywhere; }
 .more-tile small { font-size: 12px; color: var(--shell-text-secondary, #4b5563); }
 .more-tile--soon { border-style: dashed; }
 .more-tile-icon { width: 40px; height: 40px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; }

@@ -7,7 +7,7 @@ import { BOTTOM_BAR_ORDER, pageShort } from '../navigation';
 import './BottomNav.css';
 
 // The phone's bottom bar (only drawn at 860 px and below): up to three of
-// Overview, Pareto, Events, Upload, then More, which opens the full menu.
+// Overview, Events, Upload (or Pareto), then More, which opens the full menu.
 export default function BottomNav({ onOpenMore, moreOpen }: { onOpenMore: () => void; moreOpen: boolean }) {
   const pages = useVisiblePages();
   const location = useLocation();

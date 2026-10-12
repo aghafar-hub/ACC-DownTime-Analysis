@@ -35,8 +35,8 @@ export const pageLabel = (p: PageDef): string => t(p.label);
 export const pageTab = (p: PageDef): string => t(p.tab);
 export const pageShort = (p: PageDef): string => t(p.short);
 
-/** Pages shown on the phone bottom bar when the person may see them. */
-export const BOTTOM_BAR_ORDER: TabId[] = ['overview', 'pareto', 'events', 'upload', 'repeats'];
+/** The first three of these that the person may see go on the phone bottom bar (Upload before Pareto for those who upload). */
+export const BOTTOM_BAR_ORDER: TabId[] = ['overview', 'events', 'upload', 'pareto', 'repeats'];
 
 export const ROLE_LABELS: Record<string, string> = {
   'ROLE-ADMIN': 'Admin',

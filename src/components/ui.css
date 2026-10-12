@@ -509,6 +509,9 @@
   .form-grid .span-2 {
     grid-column: span 1;
   }
+}
+/* phone: 44 px touch targets */
+@media (max-width: 860px) {
   .btn,
   .btn-primary,
   .btn-danger,
@@ -522,7 +525,9 @@
   .sm-foot .btn,
   .sm-foot .btn-primary,
   .sm-foot .btn-danger {
-    flex: 1 1 140px;
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 8px;
   }
 }
 .status-line {

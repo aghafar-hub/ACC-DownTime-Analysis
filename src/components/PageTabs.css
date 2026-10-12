@@ -13,6 +13,7 @@
   scrollbar-width: none;
 }
 .module-tab {
+  text-decoration: none;
   appearance: none;
   border: 0;
   background: none;
@@ -152,8 +153,11 @@
     display: none;
   }
   .mt-chip {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
     flex: 0 0 auto;
-    min-height: 36px;
+    min-height: 44px;
     padding: 0 14px;
     border-radius: 999px;
     border: 1px solid var(--shell-border, #d9e0e8);

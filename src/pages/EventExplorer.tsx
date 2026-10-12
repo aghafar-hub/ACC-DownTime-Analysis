@@ -55,6 +55,19 @@ function applyFilters(rows: EventRow[], f: Filters, startup: Startup | null, q: 
   return out;
 }
 
+function SortField({ f, set, id }: { f: Filters; set: (p: Partial<Filters>) => void; id: string }) {
+  return (
+    <div className="field">
+      <label htmlFor={`${id}-sort`}>{t('Sort')}</label>
+      <select id={`${id}-sort`} className="select" value={f.sort} onChange={(e) => set({ sort: e.target.value as Sort })} data-testid="filter-sort">
+        <option value="stop_desc">{t('Newest first')}</option>
+        <option value="stop_asc">{t('Oldest first')}</option>
+        <option value="dur_desc">{t('Longest first')}</option>
+      </select>
+    </div>
+  );
+}
+
 function FilterFields({ f, set, startup, stacked }: { f: Filters; set: (p: Partial<Filters>) => void; startup: Startup | null; stacked?: boolean }) {
   const areas = (startup?.areas ?? []).filter((a) => !f.line || a.line_id === f.line);
   const toggleClass = (c: ClassificationCode) => set({ classes: f.classes.includes(c) ? f.classes.filter((x) => x !== c) : [...f.classes, c] });
@@ -101,14 +114,7 @@ function FilterFields({ f, set, startup, stacked }: { f: Filters; set: (p: Parti
             <option value="void">{t('Only voided rows')}</option>
           </select>
         </div>
-        <div className="field">
-          <label htmlFor={`${id}-sort`}>{t('Sort')}</label>
-          <select id={`${id}-sort`} className="select" value={f.sort} onChange={(e) => set({ sort: e.target.value as Sort })} data-testid="filter-sort">
-            <option value="stop_desc">{t('Newest first')}</option>
-            <option value="stop_asc">{t('Oldest first')}</option>
-            <option value="dur_desc">{t('Longest first')}</option>
-          </select>
-        </div>
+        {stacked && <SortField f={f} set={set} id={id} />}
       </div>
       <div className="field" style={{ marginTop: 12 }}>
         <span className="field-label">{t('Classification')}</span>
@@ -200,6 +206,7 @@ export default function EventExplorer() {
           <section className="card" aria-label={t('Filters')} data-testid="filters">
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
               {searchBox}
+              <SortField f={f} set={set} id="top" />
               <div className="field">
                 <span className="field-label">{t('Failures')}</span>
                 <CountChip on={f.failureOnly} onClick={() => set({ failureOnly: !f.failureOnly })} testid="failure-only">{t('Failures only')}</CountChip>

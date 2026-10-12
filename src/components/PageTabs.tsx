@@ -19,17 +19,21 @@ export default function PageTabs() {
   const location = useLocation();
   const stripRef = useRef<HTMLElement>(null);
   const active = pageForPath(location.pathname);
-  // how many chips fit beside "More" with full names; starts at 4 and drops until nothing is cut off
-  const [fitN, setFitN] = useState(4);
+  // How many chips fit beside "More" with full names: start at 4 and drop one at a
+  // time until nothing is cut off. The count starts again whenever the open page,
+  // the layout or the screen width changes (derived from `key`, so no effect can undo a drop).
+  const [tick, setTick] = useState(0);
   useEffect(() => {
-    const reset = () => setFitN(4);
-    reset();
-    window.addEventListener('resize', reset);
-    return () => window.removeEventListener('resize', reset);
-  }, [active?.id, mobile]);
+    const onResize = () => setTick((n) => n + 1);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const key = `${active?.id ?? ''}|${mobile}|${tick}|${pages.length}`;
+  const [fit, setFit] = useState({ key, n: 4 });
+  const fitN = fit.key === key ? fit.n : 4;
   useLayoutEffect(() => {
     const s = stripRef.current;
-    if (s && s.offsetParent && fitN > 1 && s.scrollWidth > s.clientWidth + 1) setFitN(fitN - 1);
+    if (s && s.offsetParent && fitN > 1 && s.scrollWidth > s.clientWidth + 1) setFit({ key, n: fitN - 1 });
   });
 
   if (pages.length === 0) return null;

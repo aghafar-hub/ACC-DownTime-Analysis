@@ -12,3 +12,5 @@ local-data/
 .env
 .env.*
 !.env.example
+
+*.tsbuildinfo

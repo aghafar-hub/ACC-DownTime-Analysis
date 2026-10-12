@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { noSidewaysScroll, PASSWORD, signIn, signInAndWait, stubFonts, watchConsole, type Role } from './helpers';
+import { noSidewaysScroll, PASSWORD, signIn, signInAndWait, smallTargets, stubFonts, watchConsole, type Role } from './helpers';
 
 // Runs against `vite preview` of a production build in mock mode (made-up data).
 
@@ -235,6 +235,20 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('offline-banner')).toHaveCount(0);
   });
 
+  test('the left rail is 68px with the leaf mark and opens to 248px with the full logo', async ({ page }) => {
+    await signInAndWait(page, 'viewer');
+    const rail = page.locator('.sidebar-rail');
+    expect((await rail.boundingBox())!.width).toBe(68);
+    await expect(page.locator('.sidebar-logo-mark')).toBeVisible();
+    await expect(page.locator('.sidebar-logo-full')).toBeHidden();
+    await rail.hover();
+    await expect.poll(async () => (await rail.boundingBox())!.width).toBe(248);
+    await expect(page.locator('.sidebar-logo-full')).toBeVisible();
+    // dark in a light theme
+    const bg = await rail.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).toBe('rgb(11, 27, 46)');
+  });
+
   test('every page has no sideways scroll at 1280', async ({ page }) => {
     await signInAndWait(page, 'admin');
     for (const hash of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users']) {
@@ -279,7 +293,13 @@ test.describe('phone', () => {
     await expect(page.getByTestId('login-form')).toBeVisible();
   });
 
-  test('admin sees every page in More; engineer has Upload on the bar', async ({ page }) => {
+  test('engineer has Upload on the bar; admin sees every page in More', async ({ page }) => {
+    await signInAndWait(page, 'engineer');
+    await expect(page.getByTestId('bottom-upload')).toBeVisible();
+    await expect(page.getByTestId('bottom-pareto')).toHaveCount(0);
+    await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
+    await page.goto('/');
+    await page.reload();
     await signInAndWait(page, 'admin');
     await page.getByTestId('bottom-more').click();
     for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users']) {
@@ -307,13 +327,28 @@ test.describe('phone', () => {
     await expect(page.getByTestId('event-detail')).toBeVisible();
     await page.goBack(); // Back closes the popup
     await expect(page.getByTestId('event-detail')).toHaveCount(0);
-    // touch targets
-    const small = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('button, a, select, input:not([type=checkbox])')]
-      .filter((el) => el.offsetParent !== null)
-      .map((el) => ({ el, r: el.getBoundingClientRect() }))
-      .filter(({ r }) => r.height > 0 && r.height < 38)
-      .map(({ el }) => el.outerHTML.slice(0, 90)));
-    expect(small, 'controls under 38px tall').toEqual([]);
+  });
+
+  test('every control on the main phone screens is at least 44px', async ({ page }) => {
+    await page.goto('/');
+    expect(await smallTargets(page), 'login').toEqual([]);
+    await signInAndWait(page, 'admin');
+    for (const hash of ['overview', 'events', 'settings', 'upload', 'users']) {
+      await page.goto(`/#/${hash}`);
+      await expect(page.getByTestId('page-title')).toBeVisible();
+      expect(await smallTargets(page), hash).toEqual([]);
+    }
+    await page.goto('/#/events');
+    await page.getByTestId('filters-pill').click();
+    expect(await smallTargets(page), 'filters sheet').toEqual([]);
+    await page.goBack();
+    await page.getByTestId('event-card').first().click();
+    expect(await smallTargets(page), 'detail').toEqual([]);
+    await page.getByTestId('edit-event').click();
+    expect(await smallTargets(page), 'edit form').toEqual([]);
+    await page.keyboard.press('Escape');
+    await page.getByTestId('bottom-more').click();
+    expect(await smallTargets(page), 'more sheet').toEqual([]);
   });
 
   for (const width of [360, 390]) {
