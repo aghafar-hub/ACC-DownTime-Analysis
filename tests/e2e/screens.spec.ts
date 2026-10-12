@@ -31,7 +31,7 @@ for (const theme of THEMES) {
       await shot('1-login');
 
       await signInAndWait(page, 'engineer');
-      await expect(page.getByTestId('fact-events')).not.toContainText('-');
+      await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
       await shot('2-overview');
 
       await page.goto('/#/events');
