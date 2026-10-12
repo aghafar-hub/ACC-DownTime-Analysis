@@ -102,3 +102,9 @@ Settings keys above are added to `settingsDefaults` with ranges validated by the
 - All new actions covered in the contract test (real backend vm harness + mockApi) and access matrix tests;
   Playwright for bell, panel (desktop + phone), badge counts, snooze/dismiss, prefs, since-last-visit, thresholds
   (admin only), no console errors, 360/390 no sideways scroll, themes.
+
+## 8. Implementation notes (backend and API, version 1.2.0)
+
+The server and API side is built as specified above. Exact formulas, the choices the design left open (recency window for
+long stops and repeated groups, what `getNotifications` returns, snooze limits, digest rules) and the access table are in
+`docs/wire-protocol.md` section 9 and section 3. Setup steps for the owner are in `backend/apps-script/README.md` section 11.

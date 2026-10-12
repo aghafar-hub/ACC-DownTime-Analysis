@@ -73,6 +73,21 @@ describe('sheetsApi', () => {
     expect(lastCall(fn).body).toEqual({ action: 'getStartup', token: 'tok', params: {} });
   });
 
+  it('sends the four notification actions with the documented params', async () => {
+    const fn = stubFetch({ status: 'ok', data: null });
+    const api = createSheetsApi(URL);
+    await api.getNotifications('tok');
+    expect(lastCall(fn).body).toEqual({ action: 'getNotifications', token: 'tok', params: {} });
+    await api.setNotificationState('tok', 'NT-1', 'seen');
+    expect(lastCall(fn).body).toEqual({ action: 'setNotificationState', token: 'tok', params: { notificationId: 'NT-1', state: 'seen' } });
+    await api.setNotificationState('tok', 'NT-1', 'snoozed', '2026-10-13 09:00:00');
+    expect(lastCall(fn).body.params).toEqual({ notificationId: 'NT-1', state: 'snoozed', snoozeUntil: '2026-10-13 09:00:00' });
+    await api.saveNotificationPrefs('tok', { digest: 'daily', watch_areas: 'K.1' });
+    expect(lastCall(fn).body).toEqual({ action: 'saveNotificationPrefs', token: 'tok', params: { prefs: { digest: 'daily', watch_areas: 'K.1' } } });
+    await api.runNotificationChecks('tok');
+    expect(lastCall(fn).body).toEqual({ action: 'runNotificationChecks', token: 'tok', params: {} });
+  });
+
   it('returns data from an ok envelope', async () => {
     stubFetch({ status: 'ok', data: [{ event_id: 'EV-1' }] });
     expect(await createSheetsApi(URL).getEvents('t', 2026)).toEqual([{ event_id: 'EV-1' }]);

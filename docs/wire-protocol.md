@@ -21,7 +21,8 @@ contract.
   `saveEquipment` -> `{ "row", "areaIds" }`, `login` -> `{ "email", "password", "keepSignedIn" }`,
   `changePassword` -> `{ "current", "next" }`, `uploadChunk` -> `{ "batchId", "rows" }`,
   `createUser` -> `{ "u" }`, `updateUser` -> `{ "userId", "changes" }`,
-  `setUserTabAccess` -> `{ "userId", "overrides" }`).
+  `setUserTabAccess` -> `{ "userId", "overrides" }`, `setNotificationState` -> `{ "notificationId", "state", "snoozeUntil" }`,
+  `saveNotificationPrefs` -> `{ "prefs" }`; `getNotifications` and `runNotificationChecks` take no params).
 - Success: `{ "status": "ok", "data": <result> }`.
 - Failure: `{ "status": "error", "error": { "message": "<plain English>", "code": "<code>", "accessDenied": false } }`.
 - Error codes: `bad_request`, `unauthenticated` (missing/invalid/expired token), `forbidden`
@@ -55,8 +56,13 @@ wins over the role row. Missing row = Hidden.
 | `saveSettings` | `settings` Edit |
 | `listUsers` | `users` View |
 | `createUser`, `updateUser`, `resetPassword`, `setUserTabAccess` | `users` Edit |
+| `getNotifications`, `setNotificationState`, `saveNotificationPrefs` | any valid session (not while a temporary password is still unchanged); only the caller's own state and preferences are read or written |
+| `runNotificationChecks` | `settings` Edit |
 
 `getStartup.years` is sorted newest first.
+
+Notifications are not tied to a tab: a viewer with every tab hidden still gets alerts and updates. What a person sees is
+decided inside the action (section 9), never by the client.
 
 `getStartup` hides master data a user may not see only by tab: the data is the
 same for everyone who can read any dashboard (areas, equipment, reasons,
@@ -180,3 +186,87 @@ are excluded from analysis.
   `changePassword`, `getMyAccess` and `login`.
 - Script Properties: `SESSION_SIGNING_SECRET`, `PASSWORD_PEPPER`, `SPREADSHEET_ID`.
   Never stored in a sheet or in git.
+
+## 9. Notifications
+
+Design: `docs/notifications-design.md`. Code: `backend/apps-script/Notifications.js` (server rules, plain JS) and
+`src/api/mockNotifications.ts` (the same rules for the mock, written with `src/calc`). `tests/unit/contract.test.ts` runs one
+scenario against both and expects identical rows. Action items (records to validate, unknown codes, `needs_review`) are
+derived by the app from live data and are never stored.
+
+### 9.1 Actions
+
+| Action | Params | Result |
+|---|---|---|
+| `getNotifications` | none | `{ items, state, prefs }` |
+| `setNotificationState` | `notificationId`, `state` (`seen` / `snoozed` / `dismissed`), `snoozeUntil` | the caller's `NotificationState` row |
+| `saveNotificationPrefs` | `prefs` (object) | all of the caller's prefs (`Record<string,string>`) |
+| `runNotificationChecks` | none | `{ created, resolved, expired }` |
+
+- `items`: stored rows with `status = open` that have not passed `expires_at` (resolved and expired rows stay in the sheet
+  but are never returned), newest first. Rows of type `user_event` are returned only to people whose access to the `users`
+  tab is not Hidden. Everyone signed in sees all other alerts and updates; the app filters them with the person's watched areas.
+- `state`: only the caller's rows, only for returned items. `prefs`: only the caller's rows. Neither can be read or written for
+  another person; a `userId` sent by the client is ignored.
+- `setNotificationState`: the notification must be visible to the caller (else `not_found`). `snoozed` needs `snoozeUntil`:
+  a plant-local timestamp `YYYY-MM-DD HH:MM:SS(.mmm)` or a date `YYYY-MM-DD` (midnight), in the future and less than 366 days ahead.
+  For `seen` and `dismissed` the snooze time is cleared. One row per user and notification (upsert).
+- `saveNotificationPrefs`: unknown keys are refused, nothing is saved when any value is invalid. Keys: `alert_types` (csv of
+  notification types, blank = all), `watch_areas` (csv of existing area ids, blank = all; stored in the master spelling),
+  `digest` (`none` / `daily` / `weekly`), `last_seen_at` (timestamp, stored as `YYYY-MM-DD HH:MM:SS.mmm`). `last_digest_at`
+  is written by the server when it sends a digest; it is returned by `getNotifications` but cannot be saved.
+- `runNotificationChecks`: runs every rule now, audited as `notification_check`.
+
+### 9.2 Settings
+
+`notif_long_stop_hours` (8, whole hours 1-720), `notif_spike_pct` (30, 1-1000), `notif_upload_gap_days` (35, 1-3650),
+`notif_availability_target_pct` (blank = rule off, 0-100), `notif_repeat_alert` (`true` / `false`), `notif_retention_days`
+(30, 1-3650), `app_url` (blank or `http(s)://...`, no spaces or quotes, up to 300 characters). Validated by `saveSettings` like
+every other setting; a database without these rows uses the defaults until `seedDefaults` adds them.
+
+### 9.3 Rules
+
+All rules leave out voided events and events with a blocking flag, exactly like the app (section 4a), and chain rows into events
+with the app's algorithm (1 s tolerance, a Freq = 0 row joins the open event it continues).
+"Latest event date" `L` is the largest `event_date` of any stored non-void event. "Today" is the plant-local date of the server clock.
+
+| Type | Raised when | `dedupe_key` | Resolved when |
+|---|---|---|---|
+| `long_stop` | a failure event (chain) lasts more than `notif_long_stop_hours` (summed hours of its rows) | `long_stop\|<event_id of the head>` | the event is voided, edited below the limit or the limit is raised |
+| `repeat_group` | at least `repeat_min_events` failure events with the same code and reason (code after alias resolution, reason compared by `match_key`, blank reasons and area-level N/A excluded) start within `repeat_window_days` of each other (sliding window, exactly the window still counts); one alert per cluster, when it first exists; needs `notif_repeat_alert = true` | `repeat\|<area of the first event>\|<code>\|<reason_key>\|<first event_id>` | the cluster no longer exists, or the switch is turned off |
+| `failure_spike` | per area, failures (rows with `is_failure`, by their stop time) in the 30 days ending on `L` are at least 5 and exceed the 30 days before by more than `notif_spike_pct` percent (any rise from zero counts) | `spike\|<area>\|<L>` | stays until it expires |
+| `availability_low` | basis B = (T - PL - (INC + CIR)) / (T - PL) of an area for the latest complete month is below `notif_availability_target_pct`. The month is the month of `L` if `L` is its last day, otherwise the month before; the window is clipped to the data range like the KPI cards. Off while the target is blank | `availability\|<area>\|<yyyy-mm>` | stays until it expires |
+| `upload_gap` | today is more than `notif_upload_gap_days` after `L` | `upload_gap\|<L>` | newer data arrives (`L` changes) |
+| `upload_done` (update) | `uploadFinish` completes an upload | `upload\|<batch_id>` | never |
+| `user_event` (update) | a user is created, a password is reset, a role is changed | `user\|<kind>\|<user_id>\|<epoch ms>` (kind: `created`, `password_reset`, `role_changed`) | never |
+
+Recency: a `long_stop` or `repeat_group` alert is only raised when the event (the last event of the cluster) started no more than
+`notif_retention_days` before `L`. Older ones would expire at once, and without this the first check on a database with years of
+history would raise hundreds of alerts. `failure_spike` and `availability_low` are about the latest data by construction.
+
+Dedupe: `dedupe_key` is unique over all statuses. A check never creates a second row for a key. A `resolved` row is re-opened (new
+expiry, same `notification_id`) if its condition returns; an `expired` row is never re-opened. Expiry: `expires_at = created_at +
+notif_retention_days`; open rows past it become `expired` at the next check and are hidden from `getNotifications` right away.
+`long_stop`, `repeat_group` and `upload_gap` rows whose key is no longer produced by the rules become `resolved` at the next check.
+
+When checks run: at the end of `uploadFinish` (never fails the upload; also writes `upload_done`), on `runNotificationChecks`, and in
+the daily job. `user_event` rows are written by `createUser`, `resetPassword` and `updateUser` (role change), best effort.
+
+### 9.4 Digest e-mail
+
+Sent by `sendDigest_` from the daily time trigger `notificationDailyJob` (Setup.js, created by `installNotificationTriggers()`, about
+07:00 plant time). Per person, from `notification_prefs.digest`: `daily`, or `weekly` (sent only on Sunday, plant time). Only active
+users with an e-mail address, at most one digest per person per plant-local day, and nothing is sent when there is nothing to say.
+Content (plain text and simple HTML, counts and titles only, never event rows):
+
+- Needs action (only what the server can count, for people who could act on it): records to validate (events with a stored flag
+  other than the information flag `code_not_in_area`; the number left out of the numbers because of a blocking flag), records with an
+  unknown or placeholder code (needs `master` Edit), equipment to review (`needs_review`, needs `master` Edit). Pending late months
+  are known to the browser only and are not in the e-mail.
+- New alerts since the person's `last_digest_at`: open alerts of the person's `alert_types` and `watch_areas` (an alert without an
+  area always matches), not dismissed by the person, at most 10, most severe first (long stop, availability, spike, repeated group,
+  upload gap), the rest as "and N more".
+- A link from `app_url` (omitted when blank).
+
+`MailApp` quota, permission and send errors are written to `audit_log` (`digest_failed`, with the user id, never the address) and never
+raise; when the daily quota is used up the run stops. `last_digest_at` is saved only after a successful send.

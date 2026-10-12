@@ -261,3 +261,50 @@ export function sha256(text) { return crypto.createHash('sha256').update(text).d
 export function startBatch(env, token, name = 'synthetic.xlsx') {
   return env.ok('uploadStart', token, { fileName: name, fileHash: sha256(name) }).batch_id;
 }
+
+// ---------- notification helpers ----------
+
+/** A MailApp stub. `quota` is the daily quota; `failWith` makes every send throw that message. Returns the sent list. */
+export function stubMailApp(env, { quota = 100, failWith = null } = {}) {
+  const sent = [];
+  env.ctx.MailApp = {
+    getRemainingDailyQuota: () => quota - sent.length,
+    sendEmail: (msg) => {
+      if (failWith) throw new Error(failWith);
+      sent.push(JSON.parse(JSON.stringify(msg)));
+    },
+  };
+  return sent;
+}
+
+/** A ScriptApp stub that keeps a list of triggers. `foreign` handler names start out installed (not ours). */
+export function stubScriptApp(env, foreign = []) {
+  const triggers = [];
+  let id = 0;
+  const make = (handler) => ({ handler, uid: ++id, getHandlerFunction() { return this.handler; }, getUniqueId() { return String(this.uid); } });
+  foreign.forEach((h) => triggers.push(make(h)));
+  env.ctx.ScriptApp = {
+    getProjectTriggers: () => triggers.slice(),
+    deleteTrigger: (t) => { const i = triggers.indexOf(t); if (i >= 0) triggers.splice(i, 1); },
+    newTrigger: (handler) => {
+      const t = make(handler);
+      const b = {
+        timeBased() { t.kind = 'time'; return b; },
+        everyDays(n) { t.everyDays = n; return b; },
+        atHour(h) { t.atHour = h; return b; },
+        inTimezone(tz) { t.timezone = tz; return b; },
+        create() { triggers.push(t); return t; },
+      };
+      return b;
+    },
+  };
+  return triggers;
+}
+
+/** Uploads rows through the real flow (start, chunk, finish). Returns the finished batch. */
+export function uploadAll(env, token, rows, fileName = 'synthetic.xlsx') {
+  const batchId = startBatch(env, token, fileName);
+  const res = env.ok('uploadChunk', token, { batchId, rows });
+  const batch = env.ok('uploadFinish', token, { batchId, summary: { rows_read: rows.length, rows_skipped: 0 }, warnings: [] });
+  return { batch, res };
+}

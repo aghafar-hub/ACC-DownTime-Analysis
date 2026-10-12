@@ -19,6 +19,8 @@ const REQ = {
   saveAlias: [['master'], 'Edit'], deleteAlias: [['master'], 'Edit'], saveSettings: [['settings'], 'Edit'],
   listUsers: [['users'], 'View'], createUser: [['users'], 'Edit'], updateUser: [['users'], 'Edit'],
   resetPassword: [['users'], 'Edit'], setUserTabAccess: [['users'], 'Edit'],
+  getNotifications: 'session', setNotificationState: 'session', saveNotificationPrefs: 'session',
+  runNotificationChecks: [['settings'], 'Edit'],
 };
 const RANK = { Hidden: 0, View: 1, Edit: 2 };
 

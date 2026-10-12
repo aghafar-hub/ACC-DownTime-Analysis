@@ -434,3 +434,60 @@ describe('user administration', () => {
   });
 });
 
+
+describe('notifications in the mock', () => {
+  const NOON = Date.parse('2026-10-12T12:00:00Z');
+  async function fresh() {
+    const a = createMockApi({ seed: 11 });
+    a.__setNow(() => NOON);
+    const admin = await a.login('admin@demo.test', DEMO_PASSWORD, true);
+    const viewer = await a.login('viewer@demo.test', DEMO_PASSWORD, true);
+    return { a, admin, viewer };
+  }
+
+  it('fills itself only through the rules: every row has a rule type, a dedupe key of that rule and a retention', async () => {
+    const { a, viewer } = await fresh();
+    const { items, state, prefs } = await a.getNotifications(viewer.token);
+    expect(state).toEqual([]);
+    expect(prefs).toEqual({});
+    expect(items.length).toBeGreaterThan(0);
+    const prefix: Record<string, string> = {
+      long_stop: 'long_stop|', repeat_group: 'repeat|', failure_spike: 'spike|', availability_low: 'availability|',
+      upload_gap: 'upload_gap|', upload_done: 'upload|', user_event: 'user|',
+    };
+    for (const n of items) {
+      expect(n.dedupe_key.startsWith(prefix[n.type] as string), n.dedupe_key).toBe(true);
+      expect(n.status).toBe('open');
+      expect(n.expires_at > n.created_at).toBe(true);
+      expect(n.notification_id).toMatch(/^NT-[0-9a-f]{16}$/);
+    }
+    expect(new Set(items.map((n) => n.dedupe_key)).size).toBe(items.length);
+  });
+
+  it('runNotificationChecks is deterministic and idempotent', async () => {
+    const one = await fresh();
+    const two = await fresh();
+    const first = await one.a.runNotificationChecks(one.admin.token); // the very first run creates the demo items
+    expect(first.created).toBeGreaterThan(0);
+    expect(await one.a.runNotificationChecks(one.admin.token)).toEqual({ created: 0, resolved: 0, expired: 0 });
+    const x = await one.a.getNotifications(one.admin.token);
+    const y = await two.a.getNotifications(two.admin.token);
+    expect(y.items).toEqual(x.items);
+    expect(await code(one.a.runNotificationChecks(one.viewer.token))).toBe('forbidden');
+  });
+
+  it('keeps state and preferences per user and refuses what the server refuses', async () => {
+    const { a, admin, viewer } = await fresh();
+    const first = (await a.getNotifications(viewer.token)).items.find((n) => n.severity === 'alert')!;
+    const st = await a.setNotificationState(viewer.token, first.notification_id, 'dismissed');
+    expect(st).toMatchObject({ state: 'dismissed', notification_id: first.notification_id });
+    expect((await a.getNotifications(viewer.token)).state).toHaveLength(1);
+    expect((await a.getNotifications(admin.token)).state).toEqual([]);
+    expect(await code(a.setNotificationState(viewer.token, first.notification_id, 'snoozed'))).toBe('bad_request');
+    expect(await code(a.setNotificationState(viewer.token, 'NT-nope', 'seen'))).toBe('not_found');
+    expect(await code(a.saveNotificationPrefs(viewer.token, { digest: 'hourly' }))).toBe('bad_request');
+    expect(await a.saveNotificationPrefs(viewer.token, { digest: 'daily', watch_areas: 'k.1' })).toEqual({ digest: 'daily', watch_areas: 'K.1' });
+    expect((await a.getNotifications(admin.token)).prefs).toEqual({});
+    expect(await code(a.getNotifications(''))).toBe('unauthenticated');
+  });
+});

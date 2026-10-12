@@ -178,3 +178,47 @@ function installCheck() {
   Logger.log(text);
   return text;
 }
+
+// ---------- notifications: triggers and the daily job ----------
+
+var NOTIFICATION_JOB_ = 'notificationDailyJob';
+
+function notificationTriggersOfThisScript_() {
+  return ScriptApp.getProjectTriggers().filter(function (t) { return t.getHandlerFunction() === NOTIFICATION_JOB_; });
+}
+
+/**
+ * Creates the daily trigger (about 07:00 plant time) that runs notificationDailyJob. Safe to run again: it first
+ * removes this script's own earlier notification triggers (and only those), so there is always exactly one.
+ * The first run asks for two more permissions (send email, manage triggers): approve them once.
+ */
+function installNotificationTriggers() {
+  var removed = notificationTriggersOfThisScript_();
+  removed.forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger(NOTIFICATION_JOB_).timeBased().everyDays(1).atHour(7).inTimezone(TIMEZONE).create();
+  var text = 'Notification trigger installed: ' + NOTIFICATION_JOB_ + ' runs every day around 07:00 (' + TIMEZONE + ')' +
+    (removed.length ? ' (replaced ' + removed.length + ' earlier trigger' + (removed.length === 1 ? '' : 's') + ').' : '.');
+  Logger.log(text);
+  return text;
+}
+
+/** Removes the notification trigger(s) created by installNotificationTriggers. Other triggers are left alone. */
+function removeNotificationTriggers() {
+  var removed = notificationTriggersOfThisScript_();
+  removed.forEach(function (t) { ScriptApp.deleteTrigger(t); });
+  var text = 'Removed ' + removed.length + ' notification trigger' + (removed.length === 1 ? '' : 's') + '.';
+  Logger.log(text);
+  return text;
+}
+
+/**
+ * The daily job: runs the notification checks, then sends the digests that are due. Each step is isolated, so a
+ * failed check does not stop the digests and nothing here can throw into the trigger.
+ */
+function notificationDailyJob() {
+  var out = { checks: null, digest: null };
+  try { out.checks = runNotificationChecks_({}); } catch (err) { notifLogFailure_('daily checks', err); }
+  try { out.digest = sendDigest_(); } catch (err2) { notifLogFailure_('daily digest', err2); }
+  Logger.log('Notification job: ' + JSON.stringify(out));
+  return out;
+}

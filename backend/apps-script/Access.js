@@ -33,7 +33,12 @@ var ACTION_RULES = {
   createUser: { auth: 'tabs', tabs: ['users'], level: 'Edit' },
   updateUser: { auth: 'tabs', tabs: ['users'], level: 'Edit' },
   resetPassword: { auth: 'tabs', tabs: ['users'], level: 'Edit' },
-  setUserTabAccess: { auth: 'tabs', tabs: ['users'], level: 'Edit' }
+  setUserTabAccess: { auth: 'tabs', tabs: ['users'], level: 'Edit' },
+  // Notifications: any signed-in user, and only their own state and preferences (see Notifications.js).
+  getNotifications: { auth: 'session' },
+  setNotificationState: { auth: 'session' },
+  saveNotificationPrefs: { auth: 'session' },
+  runNotificationChecks: { auth: 'tabs', tabs: ['settings'], level: 'Edit' }
 };
 
 function levelRank_(level) { return LEVELS.indexOf(level); }

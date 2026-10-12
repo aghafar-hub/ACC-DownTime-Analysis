@@ -39,3 +39,24 @@ test('appsscript.json: V8, Cairo, anonymous web app executed as the deployer', (
   assert.equal(m.webapp.executeAs, 'USER_DEPLOYING');
   assert.equal(m.webapp.access, 'ANYONE_ANONYMOUS');
 });
+
+test('notification tables follow docs/notifications-design.md section 4', () => {
+  const env = createEnv({ prepare: false });
+  const schema = env.json(env.run('SCHEMA'));
+  assert.ok(schema.version >= 2);
+  const cols = (t) => schema.tables[t].columns.map((c) => c.name);
+  assert.deepEqual(cols('notifications'), ['notification_id', 'type', 'severity', 'dedupe_key', 'title', 'detail', 'area_id', 'line_id', 'source_ref', 'created_at', 'expires_at', 'status', 'resolved_at']);
+  assert.deepEqual(cols('notification_state'), ['user_id', 'notification_id', 'state', 'snooze_until', 'updated_at']);
+  assert.deepEqual(cols('notification_prefs'), ['user_id', 'key', 'value', 'updated_at']);
+  const col = (t, c) => schema.tables[t].columns.find((x) => x.name === c);
+  assert.deepEqual(col('notifications', 'type').enum, ['long_stop', 'repeat_group', 'failure_spike', 'availability_low', 'upload_gap', 'upload_done', 'user_event']);
+  assert.deepEqual(col('notifications', 'severity').enum, ['alert', 'update']);
+  assert.deepEqual(col('notifications', 'status').enum, ['open', 'resolved', 'expired']);
+  assert.deepEqual(col('notification_state', 'state').enum, ['seen', 'snoozed', 'dismissed']);
+  assert.equal(col('notifications', 'dedupe_key').required, true);
+  const defaults = Object.fromEntries(env.json(env.run('SCHEMA.seeds.settings')).map((s) => [s.key, s.value]));
+  assert.deepEqual(
+    ['notif_long_stop_hours', 'notif_spike_pct', 'notif_upload_gap_days', 'notif_availability_target_pct', 'notif_repeat_alert', 'notif_retention_days', 'app_url'].map((k) => defaults[k]),
+    ['8', '30', '35', '', 'true', '30', ''],
+  );
+});

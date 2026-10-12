@@ -59,6 +59,7 @@ function createUser_(session, u) {
     auditLog_(session.user.user_id, 'create_user', T.USERS, row.user_id, email + ' as ' + roleId);
     return row;
   });
+  notifyUserEvent_('created', session.user, created, 'with role ' + roleId);
   return { user: adminUser_(created, readTable_(T.TAB_ACCESS)), temp_password: temp };
 }
 
@@ -72,6 +73,7 @@ function updateUser_(session, userId, changes) {
     patch.active = changes.active;
   }
   if (!Object.keys(patch).length) throw apiError_(ERR.BAD_REQUEST, 'No changes to save.');
+  var roleChange = null;
   withLock_(function () {
     var u = userOrThrow_(userId);
     var willBeAdmin = (patch.role_id || u.role_id) === 'ROLE-ADMIN' && (patch.active === undefined ? u.active : patch.active);
@@ -81,15 +83,18 @@ function updateUser_(session, userId, changes) {
     if (u.user_id === session.user.user_id && (patch.active === false || (patch.role_id && patch.role_id !== u.role_id))) {
       throw apiError_(ERR.CONFLICT, 'You cannot deactivate yourself or change your own role.');
     }
+    if (patch.role_id && patch.role_id !== u.role_id) roleChange = { user: u, from: u.role_id, to: patch.role_id };
     updateRow_(T.USERS, u._row, patch);
     auditLog_(session.user.user_id, 'update_user', T.USERS, u.user_id, Object.keys(patch).map(function (k) { return k + '=' + patch[k]; }).join('; '));
   });
+  if (roleChange) notifyUserEvent_('role_changed', session.user, roleChange.user, 'from ' + roleChange.from + ' to ' + roleChange.to);
   return adminUser_(userOrThrow_(userId), readTable_(T.TAB_ACCESS));
 }
 
 function resetPassword_(session, userId) {
   var temp = generateTempPassword_();
   var c = newCredentials_(temp);
+  var target = null;
   withLock_(function () {
     var u = userOrThrow_(userId);
     updateRow_(T.USERS, u._row, {
@@ -97,7 +102,9 @@ function resetPassword_(session, userId) {
       must_change: true, failed_attempts: 0, locked_until: ''
     });
     auditLog_(session.user.user_id, 'reset_password', T.USERS, u.user_id, 'Temporary password issued');
+    target = u;
   });
+  notifyUserEvent_('password_reset', session.user, target, 'a temporary password was issued');
   return { temp_password: temp };
 }
 

@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "notes": [
     "Single source of truth for the database spreadsheet, the Apps Script backend and the TypeScript types.",
     "Timestamps are plain text 'YYYY-MM-DD HH:MM:SS.mmm' in plant-local time (no time zone). Dates are 'YYYY-MM-DD'.",
@@ -244,6 +244,49 @@
         {"name": "entity_id", "type": "text", "required": false, "description": ""},
         {"name": "detail", "type": "text", "required": false, "description": "Plain-English description"}
       ]
+    },
+    {
+      "name": "notifications",
+      "description": "Stored alerts and updates (docs/notifications-design.md). Action items are derived live by the app and are never stored. Written by the server only.",
+      "key": ["notification_id"],
+      "columns": [
+        {"name": "notification_id", "type": "text", "required": true, "description": "NT- + 16 hex characters"},
+        {"name": "type", "type": "enum", "required": true, "enum": ["long_stop", "repeat_group", "failure_spike", "availability_low", "upload_gap", "upload_done", "user_event"], "description": "Which rule raised it"},
+        {"name": "severity", "type": "enum", "required": true, "enum": ["alert", "update"], "description": "alert = needs attention; update = informational"},
+        {"name": "dedupe_key", "type": "text", "required": true, "description": "Unique. One row per cause, e.g. long_stop|<event_id>, repeat|<area>|<code>|<reason_key>|<first_event_id>, spike|<area>|<yyyy-mm-dd>, upload_gap|<latest_event_date>, availability|<area>|<yyyy-mm>, upload|<batch_id>"},
+        {"name": "title", "type": "text", "required": true, "description": "One line, with the count"},
+        {"name": "detail", "type": "text", "required": false, "description": "Plain-English explanation, no event rows"},
+        {"name": "area_id", "type": "text", "required": false, "description": "References areas.area_id; blank when not about one area"},
+        {"name": "line_id", "type": "text", "required": false, "description": "Line of the area"},
+        {"name": "source_ref", "type": "text", "required": false, "description": "event_id, batch_id or user_id the notification is about"},
+        {"name": "created_at", "type": "timestamp", "required": true, "description": ""},
+        {"name": "expires_at", "type": "timestamp", "required": true, "description": "created_at plus notif_retention_days"},
+        {"name": "status", "type": "enum", "required": true, "enum": ["open", "resolved", "expired"], "description": "resolved = the condition no longer holds; expired = retention passed"},
+        {"name": "resolved_at", "type": "timestamp", "required": false, "description": ""}
+      ]
+    },
+    {
+      "name": "notification_state",
+      "description": "Per user and notification: seen, snoozed or dismissed. One row per user and notification (upsert).",
+      "key": ["user_id", "notification_id"],
+      "columns": [
+        {"name": "user_id", "type": "text", "required": true, "description": "References users.user_id"},
+        {"name": "notification_id", "type": "text", "required": true, "description": "References notifications.notification_id"},
+        {"name": "state", "type": "enum", "required": true, "enum": ["seen", "snoozed", "dismissed"], "description": ""},
+        {"name": "snooze_until", "type": "timestamp", "required": false, "description": "Plant-local time; only for state snoozed"},
+        {"name": "updated_at", "type": "timestamp", "required": true, "description": ""}
+      ]
+    },
+    {
+      "name": "notification_prefs",
+      "description": "Per user notification preferences. One row per user and key (upsert).",
+      "key": ["user_id", "key"],
+      "columns": [
+        {"name": "user_id", "type": "text", "required": true, "description": "References users.user_id"},
+        {"name": "key", "type": "text", "required": true, "description": "alert_types (csv of notification types, blank = all) | watch_areas (csv of area ids, blank = all) | digest (none | daily | weekly) | last_seen_at (timestamp) | last_digest_at (timestamp, written by the server)"},
+        {"name": "value", "type": "text", "required": false, "description": ""},
+        {"name": "updated_at", "type": "timestamp", "required": true, "description": ""}
+      ]
     }
   ],
   "settingsDefaults": [
@@ -260,7 +303,14 @@
     {"key": "lockout_minutes", "value": "15", "description": "Length of the temporary lock"},
     {"key": "session_hours", "value": "12", "description": "Session length without 'Keep me signed in'"},
     {"key": "session_hours_keep", "value": "720", "description": "Session length with 'Keep me signed in'"},
-    {"key": "min_password_length", "value": "10", "description": "Minimum password length"}
+    {"key": "min_password_length", "value": "10", "description": "Minimum password length"},
+    {"key": "notif_long_stop_hours", "value": "8", "description": "A failure event longer than this many hours raises an alert"},
+    {"key": "notif_spike_pct", "value": "30", "description": "Failures in the last 30 days of data up by more than this percent on the 30 days before (and at least 5 now) raise an alert"},
+    {"key": "notif_upload_gap_days", "value": "35", "description": "Latest stored event older than this many days raises 'No upload since'"},
+    {"key": "notif_availability_target_pct", "value": "", "description": "Availability (basis B) of the latest complete month below this percent raises an alert; blank = rule off"},
+    {"key": "notif_repeat_alert", "value": "true", "description": "true | false. A new repeated-failure group raises an alert"},
+    {"key": "notif_retention_days", "value": "30", "description": "Alerts and updates expire after this many days"},
+    {"key": "app_url", "value": "", "description": "Web address of the app, used for the link in digest emails; blank = no link"}
   ],
   "roleSeeds": [
     {"role_id": "ROLE-ADMIN", "name": "Admin", "description": "Everything, including users and settings"},

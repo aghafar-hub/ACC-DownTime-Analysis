@@ -4,10 +4,14 @@
 // passwords. Data lives in memory only: a page reload starts again.
 import type {
   Access, AccessLevel, AdminUser, Api, Area, ClassificationCode, Equipment, EquipmentAlias, EventChanges,
-  EventRow, Reason, Session, SessionUser, TabId, UploadRow,
+  EventRow, Notification, NotificationCheckResult, NotificationPrefs, NotificationState, Reason, Session, SessionUser,
+  TabId, UploadBatch, UploadRow,
 } from './types';
+import {
+  notificationCandidates, oneLine, parseNotifSettings, uploadDoneCandidate, userEventCandidate, type Candidate,
+} from './mockNotifications';
 import { buildIndex, deriveEventFields, findArea, type MasterIndex } from '../calc';
-import { ApiError, TAB_IDS } from './types';
+import { ApiError, NOTIFICATION_TYPES, TAB_IDS } from './types';
 import { buildSyntheticDb, fmtTs, type MockUser, type SyntheticDb } from '../mock/synthetic';
 import { codeKey, eventIdOf, fingerprintOf, isValidDate, matchKey, parseTs } from '../util/normalize';
 
@@ -182,6 +186,87 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
     };
   }
   const stored = (v: string | undefined): string | undefined => v || undefined;
+
+  // ------------------------------------------------------------ notifications (rules: mockNotifications.ts; the server has its own port)
+  const RESOLVABLE = ['long_stop', 'repeat_group', 'upload_gap'];
+  const SNOOZE_MAX_DAYS = 366;
+  let notifications: Notification[] = [];
+  let notifState: NotificationState[] = [];
+  let notifPrefs: { user_id: string; key: string; value: string; updated_at: string }[] = [];
+  let notifSeeded = false;
+  let notifCounter = 0;
+
+  const tsAt = (ms: number): string => {
+    const d = new Date(ms);
+    return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}.${p2(d.getMilliseconds(), 3)}`;
+  };
+
+  function makeNotification(c: Candidate, retentionDays: number, nowMs: number): Notification {
+    return {
+      notification_id: `NT-${(++notifCounter).toString(16).padStart(16, '0')}`, type: c.type, severity: c.severity,
+      dedupe_key: c.dedupe_key, title: c.title, detail: c.detail, area_id: c.area_id, line_id: c.line_id, source_ref: c.source_ref,
+      created_at: tsAt(nowMs), expires_at: tsAt(nowMs + retentionDays * 86_400_000), status: 'open', resolved_at: '',
+    };
+  }
+
+  /** Runs every rule (the "demo data" of the notification panel comes only from here), dedupes, expires and resolves. */
+  function runChecks(batch?: UploadBatch): NotificationCheckResult {
+    notifSeeded = true;
+    const d = get();
+    const st = parseNotifSettings(d.settings);
+    const nowMs = now();
+    const stamp = tsAt(nowMs);
+    const res: NotificationCheckResult = { created: 0, resolved: 0, expired: 0 };
+    for (const n of notifications) {
+      if (n.status === 'open' && n.expires_at && n.expires_at <= stamp) { n.status = 'expired'; res.expired++; }
+    }
+    const cands = notificationCandidates({ events: d.events, areas: d.areas, index: lookup(), settings: st, today: stamp.slice(0, 10) });
+    if (batch) cands.push(uploadDoneCandidate(batch));
+    const byKey = new Map(notifications.map((n) => [n.dedupe_key, n]));
+    const current = new Set<string>();
+    for (const c of cands) {
+      const resolvable = RESOLVABLE.includes(c.type);
+      if (resolvable) current.add(c.dedupe_key);
+      const ex = byKey.get(c.dedupe_key);
+      if (!ex) {
+        const row = makeNotification(c, st.retentionDays, nowMs);
+        notifications.push(row);
+        byKey.set(c.dedupe_key, row);
+        res.created++;
+      } else if (ex.status === 'resolved' && resolvable) {
+        ex.status = 'open';
+        ex.resolved_at = '';
+        ex.expires_at = tsAt(nowMs + st.retentionDays * 86_400_000);
+        res.created++;
+      }
+    }
+    for (const n of notifications) {
+      if (n.status === 'open' && RESOLVABLE.includes(n.type) && !current.has(n.dedupe_key)) { n.status = 'resolved'; n.resolved_at = stamp; res.resolved++; }
+    }
+    return res;
+  }
+
+  /** Never throws, like the server: a notification step cannot fail the action it follows. */
+  function safely(fn: () => void): void {
+    try { fn(); } catch { /* best effort */ }
+  }
+
+  function userEvent(kind: 'created' | 'password_reset' | 'role_changed', actor: MockUser, target: MockUser, roleChange = ''): void {
+    safely(() => {
+      const st = parseNotifSettings(get().settings);
+      const nowMs = now();
+      notifications.push(makeNotification(userEventCandidate(kind, actor, target, roleChange, nowMs), st.retentionDays, nowMs));
+    });
+  }
+
+  const notifVisible = (n: Notification, access: Access, stamp: string): boolean =>
+    n.status === 'open' && !(n.expires_at && n.expires_at <= stamp) && !(n.type === 'user_event' && access.users === 'Hidden');
+
+  const prefsOf = (userId: string): NotificationPrefs => {
+    const out: NotificationPrefs = {};
+    for (const r of notifPrefs) if (r.user_id === userId) out[r.key] = r.value;
+    return out;
+  };
   const editText = (v: unknown): string => (v === true ? 'TRUE' : v === false ? 'FALSE' : v === null || v === undefined ? '' : String(v));
 
   // ------------------------------------------------------------ editing
@@ -441,6 +526,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       batch.warning_count = n;
       batch.status = 'Completed';
       audit(a.user.user_id, 'uploadFinish', 'upload_batches', batchId, `${batch.rows_added} rows added, ${batch.rows_identical} identical`);
+      safely(() => { runChecks(batch); });
       return clone(batch);
     },
 
@@ -568,6 +654,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
         scheduled_hours_per_day: [1, 24], scheduled_days_per_week: [1, 7], repeat_min_events: [2, 100], repeat_window_days: [1, 3650],
         duration_short_max_min: [1, 10000], duration_long_min_min: [1, 100000], lockout_attempts: [1, 100], lockout_minutes: [1, 1440],
         session_hours: [1, 168], session_hours_keep: [1, 8760], min_password_length: [8, 128],
+        notif_long_stop_hours: [1, 720], notif_spike_pct: [1, 1000], notif_upload_gap_days: [1, 3650], notif_retention_days: [1, 3650],
       };
       for (const [k, v] of Object.entries(changes ?? {})) {
         if (!d.settings.some((s) => s.key === k)) throw new ApiError(`There is no setting called "${k}".`, 'bad_request');
@@ -581,6 +668,9 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
         }
         if (k === 'availability_basis' && !['A', 'B', 'C'].includes(val)) throw new ApiError('Availability basis must be A, B or C.', 'bad_request');
         if (k === 'default_comparison' && !['previous_period', 'same_period_last_year'].includes(val)) throw new ApiError('Comparison must be previous_period or same_period_last_year.', 'bad_request');
+        if (k === 'notif_availability_target_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The availability target must be between 0 and 100, or blank.', 'bad_request');
+        if (k === 'notif_repeat_alert' && !['true', 'false'].includes(val)) throw new ApiError('Repeat alerts must be true or false.', 'bad_request');
+        if (k === 'app_url' && val !== '' && (val.length > 300 || !/^https?:\/\/[^\s<>"']+$/i.test(val))) throw new ApiError('The app address must start with http:// or https://, or be blank.', 'bad_request');
         if (k === 'availability_target_pct' && val !== '' && !(Number(val) > 0 && Number(val) <= 100)) throw new ApiError('The availability target must be between 0 and 100, or blank.', 'bad_request');
       }
       for (const [k, v] of Object.entries(changes ?? {})) {
@@ -612,6 +702,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       };
       d.users.push(user);
       audit(a.user.user_id, 'createUser', 'users', user.user_id, `User ${email} created`);
+      userEvent('created', a.user, user);
       return clone({ user: adminUser(user), temp_password: temp });
     },
     async updateUser(token, userId, changes) {
@@ -628,6 +719,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       }
       if (changes.role_id !== undefined) {
         if (!d.roles.some((r) => r.role_id === changes.role_id)) throw new ApiError('Please choose a role.', 'bad_request');
+        if (changes.role_id !== user.role_id) userEvent('role_changed', a.user, user, `from ${user.role_id} to ${changes.role_id}`);
         user.role_id = changes.role_id;
       }
       if (changes.active !== undefined) user.active = !!changes.active;
@@ -644,6 +736,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       user.failed_attempts = 0;
       user.locked_until = undefined;
       audit(a.user.user_id, 'resetPassword', 'users', userId, 'Password reset');
+      userEvent('password_reset', a.user, user);
       return { temp_password: temp };
     },
     async setUserTabAccess(token, userId, overrides) {
@@ -662,6 +755,92 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       user.overrides = clean;
       audit(a.user.user_id, 'setUserTabAccess', 'users', userId, 'Tab access changed');
       return clone(adminUser(user));
+    },
+
+    // --- notifications
+    async getNotifications(token) {
+      const a = auth(token);
+      if (!notifSeeded) runChecks();
+      const stamp = nowTs();
+      const items = notifications.filter((n) => notifVisible(n, a.access, stamp))
+        .sort((x, y) => (x.created_at < y.created_at ? 1 : x.created_at > y.created_at ? -1 : x.notification_id < y.notification_id ? -1 : 1));
+      const ids = new Set(items.map((n) => n.notification_id));
+      return clone({
+        items, state: notifState.filter((s) => s.user_id === a.user.user_id && ids.has(s.notification_id)), prefs: prefsOf(a.user.user_id),
+      });
+    },
+    async setNotificationState(token, notificationId, state, snoozeUntil) {
+      const a = auth(token);
+      if (!notifSeeded) runChecks();
+      const id = String(notificationId ?? '').trim();
+      if (!id) throw new ApiError('Notification is required.', 'bad_request');
+      if (state !== 'seen' && state !== 'snoozed' && state !== 'dismissed') throw new ApiError('State must be seen, snoozed or dismissed.', 'bad_request');
+      let until = '';
+      if (state === 'snoozed') {
+        if (typeof snoozeUntil !== 'string' || !snoozeUntil.trim()) throw new ApiError('Choose how long to snooze.', 'bad_request');
+        const raw = snoozeUntil.trim();
+        const full = isValidDate(raw) ? `${raw} 00:00:00.000` : raw;
+        const ms = parseTs(full);
+        if (ms === null) throw new ApiError('The snooze time is not valid.', 'bad_request');
+        until = fmtTs(ms);
+        if (until <= tsAt(now())) throw new ApiError('The snooze time must be in the future.', 'bad_request');
+        if (until > tsAt(now() + SNOOZE_MAX_DAYS * 86_400_000)) throw new ApiError('The snooze time is too far ahead.', 'bad_request');
+      }
+      const n = notifications.find((x) => x.notification_id === id);
+      if (!n || !notifVisible(n, a.access, nowTs())) throw new ApiError('Notification not found.', 'not_found');
+      const rec: NotificationState = { user_id: a.user.user_id, notification_id: id, state, snooze_until: until, updated_at: nowTs() };
+      const at = notifState.findIndex((s) => s.user_id === rec.user_id && s.notification_id === id);
+      if (at >= 0) notifState[at] = rec; else notifState.push(rec);
+      return clone(rec);
+    },
+    async saveNotificationPrefs(token, prefs) {
+      const a = auth(token);
+      if (!prefs || typeof prefs !== 'object' || Array.isArray(prefs)) throw new ApiError('Preferences are missing.', 'bad_request');
+      const keys = Object.keys(prefs);
+      if (!keys.length) throw new ApiError('No changes to save.', 'bad_request');
+      const csv = (v: string): string[] => v.split(',').map((x) => x.trim()).filter(Boolean);
+      const clean: Record<string, string> = {};
+      for (const k of keys) {
+        const raw = (prefs as Record<string, unknown>)[k];
+        if (!['alert_types', 'watch_areas', 'digest', 'last_seen_at'].includes(k)) throw new ApiError(`Unknown preference: ${oneLine(k, 40)}.`, 'bad_request');
+        if (typeof raw !== 'string') throw new ApiError(`Preference ${k} must be text.`, 'bad_request');
+        const v = raw.trim();
+        if (k === 'digest') {
+          if (!['none', 'daily', 'weekly'].includes(v)) throw new ApiError('Digest must be none, daily or weekly.', 'bad_request');
+          clean[k] = v;
+        } else if (k === 'alert_types') {
+          const picked: string[] = [];
+          for (const t of csv(v)) {
+            if (!(NOTIFICATION_TYPES as string[]).includes(t)) throw new ApiError(`Unknown alert type: ${oneLine(t, 40)}.`, 'bad_request');
+            if (!picked.includes(t)) picked.push(t);
+          }
+          clean[k] = picked.join(',');
+        } else if (k === 'watch_areas') {
+          const chosen: string[] = [];
+          for (const ar of csv(v)) {
+            const real = get().areas.find((x) => x.area_id.toLowerCase() === ar.toLowerCase());
+            if (!real) throw new ApiError(`Area "${oneLine(ar, 40)}" is not in the list of areas.`, 'bad_request');
+            if (!chosen.includes(real.area_id)) chosen.push(real.area_id);
+          }
+          clean[k] = chosen.join(',');
+        } else {
+          const ms = parseTs(v);
+          if (ms === null) throw new ApiError('Last seen must be a time like 2026-03-05 10:00:00.000.', 'bad_request');
+          clean[k] = fmtTs(ms);
+        }
+      }
+      for (const [k, value] of Object.entries(clean)) {
+        const rec = { user_id: a.user.user_id, key: k, value, updated_at: nowTs() };
+        const at = notifPrefs.findIndex((r) => r.user_id === rec.user_id && r.key === k);
+        if (at >= 0) notifPrefs[at] = rec; else notifPrefs.push(rec);
+      }
+      return prefsOf(a.user.user_id);
+    },
+    async runNotificationChecks(token) {
+      const a = need(token, ['settings'], 'Edit');
+      const res = runChecks();
+      audit(a.user.user_id, 'runNotificationChecks', 'notifications', '', `Created ${res.created}, resolved ${res.resolved}, expired ${res.expired}`);
+      return res;
     },
   };
   return api;

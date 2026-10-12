@@ -4,7 +4,7 @@
  * at load time, so file order does not matter.
  */
 
-var APP_VERSION = '1.1.0';
+var APP_VERSION = '1.2.0';
 var TIMEZONE = 'Africa/Cairo';
 
 // Password hashing cost. Run benchmarkHashRounds() and, if it suggests a
@@ -50,7 +50,8 @@ var T = {
   LINES: 'lines', AREAS: 'areas', EQUIPMENT: 'equipment', EQUIPMENT_AREAS: 'equipment_areas',
   ALIASES: 'equipment_aliases', CLASSIFICATIONS: 'classifications', REASONS: 'reasons',
   BATCHES: 'upload_batches', EVENTS: 'events', EDITS: 'event_edits', WARNINGS: 'upload_warnings',
-  ROLES: 'roles', USERS: 'users', TAB_ACCESS: 'tab_access', SETTINGS: 'settings', AUDIT: 'audit_log'
+  ROLES: 'roles', USERS: 'users', TAB_ACCESS: 'tab_access', SETTINGS: 'settings', AUDIT: 'audit_log',
+  NOTIFICATIONS: 'notifications', NOTIFICATION_STATE: 'notification_state', NOTIFICATION_PREFS: 'notification_prefs'
 };
 
 // Script Property names.

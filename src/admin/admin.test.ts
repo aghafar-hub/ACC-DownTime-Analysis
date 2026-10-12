@@ -4,7 +4,10 @@ import { TAB_IDS } from '../api/types';
 import { changedSettings, SETTING_KEYS, validateSettings } from './settingsSchema';
 import { ROLE_DEFAULTS } from './users/roleDefaults';
 
-const defaults = Object.fromEntries((tables as { settingsDefaults: { key: string; value: string }[] }).settingsDefaults.map((s) => [s.key, s.value]));
+const allDefaults = Object.fromEntries((tables as { settingsDefaults: { key: string; value: string }[] }).settingsDefaults.map((s) => [s.key, s.value]));
+// The notification thresholds (notif_*) and app_url are edited on the Notifications subtab, which has its own schema and test.
+const isNotificationSetting = (k: string): boolean => k.startsWith('notif_') || k === 'app_url';
+const defaults = Object.fromEntries(Object.entries(allDefaults).filter(([k]) => !isNotificationSetting(k)));
 
 describe('settings', () => {
   it('knows every setting the schema defines, and the starting values are valid', () => {

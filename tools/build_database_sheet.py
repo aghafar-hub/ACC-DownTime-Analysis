@@ -196,6 +196,7 @@ def build(args):
         ["Safe to edit by hand", "Only the master sheets (equipment, equipment_areas, equipment_aliases, reasons, areas, settings) - the app also edits them, with an audit trail."],
         ["Text columns", "Date, timestamp and text columns are formatted as Plain Text so Google Sheets never converts them. Keep them plain text."],
         ["users", "Empty on purpose. The first admin is created by the setup function in the Apps Script project (a one-time password is shown once)."],
+        ["notifications", "notifications, notification_state and notification_prefs are empty on purpose: the server fills them (alerts, updates, per-person state and preferences). The notif_* settings and app_url are seeded with their defaults."],
         ["events", (f"{len(rows['events'])} events already loaded (see upload_batches). Add new months by uploading the monthly workbook in the app; rows already here are skipped, never duplicated." if rows["events"] else "Empty on purpose. Fill it by uploading the monthly downtime workbook in the app.")],
         ["", ""],
         ["Seeded rows", ""],

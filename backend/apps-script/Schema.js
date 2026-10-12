@@ -1,7 +1,7 @@
 // GENERATED FILE - do not edit by hand.
 // Source: schema/tables.json. Regenerate with: node tools/gen-apps-script-schema.mjs
 var SCHEMA = {
- "version": 1,
+ "version": 2,
  "tableOrder": [
   "lines",
   "areas",
@@ -18,7 +18,10 @@ var SCHEMA = {
   "users",
   "tab_access",
   "settings",
-  "audit_log"
+  "audit_log",
+  "notifications",
+  "notification_state",
+  "notification_prefs"
  ],
  "tables": {
   "lines": {
@@ -834,6 +837,165 @@ var SCHEMA = {
      "required": false
     }
    ]
+  },
+  "notifications": {
+   "description": "Stored alerts and updates (docs/notifications-design.md). Action items are derived live by the app and are never stored. Written by the server only.",
+   "key": [
+    "notification_id"
+   ],
+   "columns": [
+    {
+     "name": "notification_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "type",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "long_stop",
+      "repeat_group",
+      "failure_spike",
+      "availability_low",
+      "upload_gap",
+      "upload_done",
+      "user_event"
+     ]
+    },
+    {
+     "name": "severity",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "alert",
+      "update"
+     ]
+    },
+    {
+     "name": "dedupe_key",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "detail",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "area_id",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "line_id",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "source_ref",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "required": true
+    },
+    {
+     "name": "expires_at",
+     "type": "timestamp",
+     "required": true
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "open",
+      "resolved",
+      "expired"
+     ]
+    },
+    {
+     "name": "resolved_at",
+     "type": "timestamp",
+     "required": false
+    }
+   ]
+  },
+  "notification_state": {
+   "description": "Per user and notification: seen, snoozed or dismissed. One row per user and notification (upsert).",
+   "key": [
+    "user_id",
+    "notification_id"
+   ],
+   "columns": [
+    {
+     "name": "user_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "notification_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "state",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "seen",
+      "snoozed",
+      "dismissed"
+     ]
+    },
+    {
+     "name": "snooze_until",
+     "type": "timestamp",
+     "required": false
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp",
+     "required": true
+    }
+   ]
+  },
+  "notification_prefs": {
+   "description": "Per user notification preferences. One row per user and key (upsert).",
+   "key": [
+    "user_id",
+    "key"
+   ],
+   "columns": [
+    {
+     "name": "user_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "key",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "value",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp",
+     "required": true
+    }
+   ]
   }
  },
  "seeds": {
@@ -907,6 +1069,41 @@ var SCHEMA = {
     "key": "min_password_length",
     "value": "10",
     "description": "Minimum password length"
+   },
+   {
+    "key": "notif_long_stop_hours",
+    "value": "8",
+    "description": "A failure event longer than this many hours raises an alert"
+   },
+   {
+    "key": "notif_spike_pct",
+    "value": "30",
+    "description": "Failures in the last 30 days of data up by more than this percent on the 30 days before (and at least 5 now) raise an alert"
+   },
+   {
+    "key": "notif_upload_gap_days",
+    "value": "35",
+    "description": "Latest stored event older than this many days raises 'No upload since'"
+   },
+   {
+    "key": "notif_availability_target_pct",
+    "value": "",
+    "description": "Availability (basis B) of the latest complete month below this percent raises an alert; blank = rule off"
+   },
+   {
+    "key": "notif_repeat_alert",
+    "value": "true",
+    "description": "true | false. A new repeated-failure group raises an alert"
+   },
+   {
+    "key": "notif_retention_days",
+    "value": "30",
+    "description": "Alerts and updates expire after this many days"
+   },
+   {
+    "key": "app_url",
+    "value": "",
+    "description": "Web address of the app, used for the link in digest emails; blank = no link"
    }
   ],
   "roles": [

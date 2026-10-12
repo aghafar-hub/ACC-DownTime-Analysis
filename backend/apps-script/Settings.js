@@ -14,7 +14,14 @@ var SETTING_RULES = {
   lockout_minutes: { type: 'int', min: 1, max: 1440 },
   session_hours: { type: 'int', min: 1, max: 168 },
   session_hours_keep: { type: 'int', min: 1, max: 8760 },
-  min_password_length: { type: 'int', min: 8, max: 128 }
+  min_password_length: { type: 'int', min: 8, max: 128 },
+  notif_long_stop_hours: { type: 'int', min: 1, max: 720 },
+  notif_spike_pct: { type: 'int', min: 1, max: 1000 },
+  notif_upload_gap_days: { type: 'int', min: 1, max: 3650 },
+  notif_availability_target_pct: { type: 'number_or_blank', min: 0, max: 100 },
+  notif_repeat_alert: { type: 'enum', values: ['true', 'false'] },
+  notif_retention_days: { type: 'int', min: 1, max: 3650 },
+  app_url: { type: 'url_or_blank' }
 };
 
 function readSettings_() { return readTable_(T.SETTINGS); }
@@ -36,6 +43,12 @@ function validateSetting_(key, value) {
   var s = String(value === null || value === undefined ? '' : value).trim();
   if (rule.type === 'enum') {
     if (rule.values.indexOf(s) < 0) throw apiError_(ERR.BAD_REQUEST, 'Setting ' + key + ' must be one of: ' + rule.values.join(', ') + '.');
+    return s;
+  }
+  if (rule.type === 'url_or_blank') {
+    if (s !== '' && (s.length > 300 || !/^https?:\/\/[^\s<>"']+$/i.test(s))) {
+      throw apiError_(ERR.BAD_REQUEST, 'Setting ' + key + ' must be a web address starting with http:// or https://, or blank.');
+    }
     return s;
   }
   if (rule.type === 'number_or_blank' && s === '') return '';

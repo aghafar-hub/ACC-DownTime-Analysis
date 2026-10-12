@@ -45,7 +45,11 @@ var HANDLERS = {
   createUser: function (s, p) { return createUser_(s, p.u); },
   updateUser: function (s, p) { return updateUser_(s, p.userId, p.changes); },
   resetPassword: function (s, p) { return resetPassword_(s, p.userId); },
-  setUserTabAccess: function (s, p) { return setUserTabAccess_(s, p.userId, p.overrides); }
+  setUserTabAccess: function (s, p) { return setUserTabAccess_(s, p.userId, p.overrides); },
+  getNotifications: function (s) { return getNotifications_(s); },
+  setNotificationState: function (s, p) { return setNotificationState_(s, p.notificationId, p.state, p.snoozeUntil); },
+  saveNotificationPrefs: function (s, p) { return saveNotificationPrefs_(s, p.prefs); },
+  runNotificationChecks: function (s) { return runNotificationChecksAction_(s); }
 };
 
 /** Runs one request and returns the response envelope (an object, never throws). */

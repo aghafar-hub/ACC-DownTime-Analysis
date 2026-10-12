@@ -126,7 +126,8 @@ function uploadFinish_(session, batchId, summary, warnings) {
   var skipped = nonNegInt_(summary.rows_skipped, 'Rows skipped');
   if (!Array.isArray(warnings)) throw apiError_(ERR.BAD_REQUEST, 'Warnings must be a list.');
   if (warnings.length > UPLOAD_WARNING_MAX) throw apiError_(ERR.BAD_REQUEST, 'Too many warnings (limit ' + UPLOAD_WARNING_MAX + ').');
-  return withLock_(function () {
+  var fresh = false;
+  var finished = withLock_(function () {
     var batch = batchOrThrow_(batchId);
     if (batch.status === 'Completed') return batch; // finishing twice changes nothing
     if (batch.status !== 'Started') throw apiError_(ERR.CONFLICT, 'This upload cannot be finished.');
@@ -140,8 +141,12 @@ function uploadFinish_(session, batchId, summary, warnings) {
     });
     auditLog_(session.user.user_id, 'upload_finish', T.BATCHES, batch.batch_id,
       'Read ' + read + ', added ' + added + ', identical ' + identical + ', skipped ' + skipped + ', warnings ' + rows.length);
+    fresh = true;
     return readRowAt_(T.BATCHES, batch._row);
   });
+  // Alerts and the 'upload done' update. Best effort: a failure here never fails the upload.
+  if (fresh) notifyAfterUpload_(finished);
+  return finished;
 }
 
 function getUploadHistory_() {

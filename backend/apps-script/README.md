@@ -37,7 +37,7 @@ The repository is public. Secrets live only in **Script Properties** (step 4).
    of `backend/apps-script/appsscript.json` from this repository.
 4. For each `.js` file in this folder (`Schema.js`, `Config.js`, `Utils.js`,
    `Crypto.js`, `Audit.js`, `Settings.js`, `Access.js`, `Auth.js`, `Users.js`,
-   `Master.js`, `Events.js`, `Upload.js`, `Setup.js`, `Code.js`): click **+** next
+   `Master.js`, `Events.js`, `Upload.js`, `Notifications.js`, `Setup.js`, `Code.js`): click **+** next
    to **Files > Script**, name it the same without `.js` (for example `Utils`),
    and paste the content. Delete the empty default `Code.gs` first, or paste
    `Code.js` into it.
@@ -160,7 +160,7 @@ Ping (no login needed):
 curl -L "YOUR_WEB_APP_URL?action=ping"
 ```
 
-Expected: `{"status":"ok","data":{"version":"1.0.0"}}`
+Expected: `{"status":"ok","data":{"version":"1.2.0"}}`
 
 Sign in:
 
@@ -199,6 +199,47 @@ Error codes you may see: `bad_request`, `unauthenticated` (sign in again),
 4. To go back, edit the deployment and pick an earlier version.
 5. Try the test copy first, then repeat on the live project.
 
+## 11. Notifications (alerts, updates and the e-mail digest)
+
+Version 1.2.0 adds the bell in the app (alerts, updates), and an optional daily or weekly e-mail digest. Do this once after
+pasting the new code; everything is safe to run again. See `docs/wire-protocol.md` section 9 for what each alert means.
+
+1. **Paste the files.** From 1.1.0 these files changed or are new: `Notifications.js` (new), `Schema.js`, `Config.js`,
+   `Settings.js`, `Access.js`, `Code.js`, `Upload.js`, `Users.js`, `Setup.js` and `appsscript.json` (it now lists the three
+   permissions the script uses, see step 4). With the one-file bundle (option A2) paste `ACC_Downtime_Backend.gs` again instead;
+   run `node tools/bundle-apps-script.mjs` first, it includes `Notifications.js`. Remember to add `Notifications.js` as a new
+   file if you paste file by file.
+2. **Run `ensureSchema`.** It adds the three new sheets (`notifications`, `notification_state`, `notification_prefs`) and never
+   touches your data.
+3. **Run `seedDefaults`.** It adds the seven new settings (`notif_long_stop_hours`, `notif_spike_pct`, `notif_upload_gap_days`,
+   `notif_availability_target_pct`, `notif_repeat_alert`, `notif_retention_days`, `app_url`) and never overwrites a value you
+   changed. Without it the defaults still apply, but the Settings page cannot show the rows.
+4. **Install the daily trigger and re-authorise.** Run **installNotificationTriggers**. Google asks once for permission again
+   (new: *Send email as you* and *Manage your triggers*; the spreadsheet permission is the one you already gave). Review
+   permissions, choose your account, **Advanced**, **Go to (project)**, **Allow**. If the run stops at the permission screen,
+   run it again. The function removes its own earlier triggers first, so running it twice never leaves two. The log says
+   `Notification trigger installed`; check **Triggers** (clock icon in the left bar) for one `notificationDailyJob` trigger,
+   daily, around 07:00 plant time. `removeNotificationTriggers` switches the daily job off again.
+5. **Set the app address.** In the app (Settings, admin) or directly in the `settings` sheet, set `app_url` to the address people
+   open the app at, for example `https://example.github.io/acc-downtime/`. The digest links to it. Blank = no link.
+6. **Deploy the new version** as in section 10 (**Manage deployments**, pencil, **New version**). The permissions changed, so a
+   new version is needed even though the web app address stays the same.
+7. **Try it.** Run **notificationDailyJob** once from the editor: it runs the checks and sends any digests that are due. The log
+   and **Executions** show what happened. Each person chooses `none`, `daily` or `weekly` (Sunday) under Settings,
+   Notifications; nobody gets e-mail unless they choose it.
+
+Good to know:
+
+- **Mail quota.** E-mail is sent as the deploying account with Apps Script `MailApp`, which has a daily limit on recipients (at the
+  time of writing about 100 for a free Google account and about 1,500 for Google Workspace; Google changes the figures, see
+  *Quotas for Google Services* in the Apps Script documentation). The digest sends at most one e-mail per person per day and nothing when there is
+  nothing to report. When Google refuses a mail, the reason is written to the `audit_log` sheet (`digest_failed`, with the user
+  id, not the address), the checks and the app are not affected, and the person simply gets the digest the next day.
+- **The checks also run** at the end of every upload and when an admin presses *Run checks* (action `runNotificationChecks`,
+  needs Edit on Settings). An upload never fails because of them; a problem is written to `audit_log` (`notification_failed`).
+- **Alerts expire** after `notif_retention_days` and are marked resolved when the cause is gone (event voided, newer data
+  uploaded). Nothing is deleted; the `notifications` sheet is the record.
+
 ## Good to know
 
 - **Access levels** are per tab: Hidden, View, Edit, from the role with optional
@@ -211,5 +252,7 @@ Error codes you may see: `bad_request`, `unauthenticated` (sign in again),
 - **Limits**: one chunk of a workbook upload is about 300 rows; a single call can
   run for up to 6 minutes. The system is meant for the test phase; the plan is to
   move to a real database later (see `docs/architecture-and-build-plan.md`).
+- **Permissions** (`appsscript.json`, `oauthScopes`): the spreadsheet, sending e-mail (digest) and managing the script's own
+  triggers (`installNotificationTriggers`). Nothing else is requested.
 - **Tests** (for developers): `npm run test:backend` in the repository runs the
   backend against an in-memory fake of Google Sheets.

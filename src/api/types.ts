@@ -106,6 +106,49 @@ export interface Startup {
   settings: Setting[]; years: number[];
 }
 
+// ---- notifications (docs/notifications-design.md, docs/wire-protocol.md section 9) ----
+
+/** Stored notification types. Action items are derived by the app and are not stored. */
+export type NotificationType =
+  | 'long_stop' | 'repeat_group' | 'failure_spike' | 'availability_low' | 'upload_gap' | 'upload_done' | 'user_event';
+export const NOTIFICATION_TYPES: NotificationType[] = [
+  'long_stop', 'repeat_group', 'failure_spike', 'availability_low', 'upload_gap', 'upload_done', 'user_event',
+];
+export type NotificationSeverity = 'alert' | 'update';
+/** getNotifications only returns 'open' items; resolved and expired ones stay in the table for the record. */
+export type NotificationStatus = 'open' | 'resolved' | 'expired';
+
+export interface Notification {
+  notification_id: string; type: NotificationType; severity: NotificationSeverity;
+  /** unique over all statuses, e.g. 'long_stop|EV-1234abcd5678ef90' */
+  dedupe_key: string;
+  title: string; detail?: string; area_id?: string; line_id?: string;
+  /** event_id, batch_id or user_id the notification is about */
+  source_ref?: string;
+  created_at: string; expires_at: string; status: NotificationStatus; resolved_at?: string;
+}
+
+export type NotificationStateValue = 'seen' | 'snoozed' | 'dismissed';
+/** One row per user and notification. The server only ever returns the caller's own rows. */
+export interface NotificationState {
+  user_id: string; notification_id: string; state: NotificationStateValue;
+  /** plant-local 'YYYY-MM-DD HH:MM:SS.mmm', only for state 'snoozed' */
+  snooze_until?: string; updated_at: string;
+}
+
+/**
+ * The caller's own preferences. Keys: alert_types (csv of NotificationType, blank = all), watch_areas (csv of
+ * area ids, blank = all), digest ('none' | 'daily' | 'weekly'), last_seen_at (timestamp), and last_digest_at
+ * (read only, written by the server). A key that was never saved is absent.
+ */
+export type NotificationPrefs = Record<string, string>;
+export type NotificationPrefKey = 'alert_types' | 'watch_areas' | 'digest' | 'last_seen_at';
+
+export interface NotificationsPayload {
+  items: Notification[]; state: NotificationState[]; prefs: NotificationPrefs;
+}
+export interface NotificationCheckResult { created: number; resolved: number; expired: number }
+
 export class ApiError extends Error {
   code: string;
   accessDenied: boolean;
@@ -161,4 +204,17 @@ export interface Api {
   updateUser(token: string, userId: string, changes: Partial<Pick<AdminUser, 'display_name' | 'role_id' | 'active'>>): Promise<AdminUser>;
   resetPassword(token: string, userId: string): Promise<{ temp_password: string }>;
   setUserTabAccess(token: string, userId: string, overrides: Partial<Access>): Promise<AdminUser>;
+
+  // --- notifications ---
+  /**
+   * Open alerts and updates (expired and resolved ones are left out; user_event only for people who can see the
+   * Users page), plus the caller's own state rows for them and the caller's own preferences. Any signed-in user.
+   */
+  getNotifications(token: string): Promise<NotificationsPayload>;
+  /** Sets the caller's own state for one notification. `snoozeUntil` is required for 'snoozed' and must be in the future. */
+  setNotificationState(token: string, notificationId: string, state: NotificationStateValue, snoozeUntil?: string): Promise<NotificationState>;
+  /** Saves some of the caller's own preferences (validated) and returns all of them. */
+  saveNotificationPrefs(token: string, prefs: Partial<Record<NotificationPrefKey, string>>): Promise<NotificationPrefs>;
+  /** Runs the server rules now. Needs Edit on the settings tab. */
+  runNotificationChecks(token: string): Promise<NotificationCheckResult>;
 }
