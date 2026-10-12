@@ -97,6 +97,10 @@ def build_rows(args):
                 reason_id=f"R-{cls}-{order:03d}", classification=cls,
                 text_as_listed=str(r["Reason (as listed)"]), match_key=str(r["Match_Key"]),
                 order_no=order, active=True))
+    if getattr(args, "events_json", None) and Path(args.events_json).exists():
+        rows["events"] = json.loads(Path(args.events_json).read_text(encoding="utf-8"))
+    if getattr(args, "batches_json", None) and Path(args.batches_json).exists():
+        rows["upload_batches"] = json.loads(Path(args.batches_json).read_text(encoding="utf-8"))
     return rows
 
 
@@ -192,7 +196,7 @@ def build(args):
         ["Safe to edit by hand", "Only the master sheets (equipment, equipment_areas, equipment_aliases, reasons, areas, settings) - the app also edits them, with an audit trail."],
         ["Text columns", "Date, timestamp and text columns are formatted as Plain Text so Google Sheets never converts them. Keep them plain text."],
         ["users", "Empty on purpose. The first admin is created by the setup function in the Apps Script project (a one-time password is shown once)."],
-        ["events", "Empty on purpose. Fill it by uploading the monthly downtime workbook in the app."],
+        ["events", (f"{len(rows['events'])} events already loaded (see upload_batches). Add new months by uploading the monthly workbook in the app; rows already here are skipped, never duplicated." if rows["events"] else "Empty on purpose. Fill it by uploading the monthly downtime workbook in the app.")],
         ["", ""],
         ["Seeded rows", ""],
     ]
@@ -220,5 +224,7 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--equipment")
     p.add_argument("--reasons")
+    p.add_argument("--events-json", help="optional: events already stored (exported from the backend)")
+    p.add_argument("--batches-json", help="optional: upload batches that go with the events")
     p.add_argument("--out", required=True)
     build(p.parse_args())
