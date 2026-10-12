@@ -1,0 +1,73 @@
+/**
+ * Tab access (Hidden < View < Edit), role defaults with per-user overrides,
+ * and the one table that says what each action needs (docs/wire-protocol.md section 3).
+ */
+
+/**
+ * auth: 'none' (no session), 'session' (any valid session), 'anyTab' (at least
+ * one tab not Hidden), 'tabs' (one of `tabs` at `level` or above).
+ * mustChangeOk: allowed while the user still has a temporary password.
+ */
+var ACTION_RULES = {
+  login: { auth: 'none' },
+  changePassword: { auth: 'session', mustChangeOk: true },
+  getMyAccess: { auth: 'session', mustChangeOk: true },
+  getStartup: { auth: 'anyTab' },
+  getEvents: { auth: 'tabs', tabs: ['overview', 'pareto', 'repeats', 'reliability', 'events'], level: 'View' },
+  getEventEdits: { auth: 'tabs', tabs: ['events'], level: 'View' },
+  getUploadHistory: { auth: 'tabs', tabs: ['upload'], level: 'View' },
+  getUploadWarnings: { auth: 'tabs', tabs: ['upload'], level: 'View' },
+  uploadStart: { auth: 'tabs', tabs: ['upload'], level: 'Edit' },
+  uploadChunk: { auth: 'tabs', tabs: ['upload'], level: 'Edit' },
+  uploadFinish: { auth: 'tabs', tabs: ['upload'], level: 'Edit' },
+  editEvent: { auth: 'tabs', tabs: ['events'], level: 'Edit' },
+  voidEvent: { auth: 'tabs', tabs: ['events'], level: 'Edit' },
+  saveEquipment: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
+  saveArea: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
+  saveReason: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
+  saveAlias: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
+  deleteAlias: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
+  saveSettings: { auth: 'tabs', tabs: ['settings'], level: 'Edit' },
+  listUsers: { auth: 'tabs', tabs: ['users'], level: 'View' },
+  createUser: { auth: 'tabs', tabs: ['users'], level: 'Edit' },
+  updateUser: { auth: 'tabs', tabs: ['users'], level: 'Edit' },
+  resetPassword: { auth: 'tabs', tabs: ['users'], level: 'Edit' },
+  setUserTabAccess: { auth: 'tabs', tabs: ['users'], level: 'Edit' }
+};
+
+function levelRank_(level) { return LEVELS.indexOf(level); }
+
+function isLevel_(v) { return LEVELS.indexOf(v) >= 0; }
+
+/** Access map for a user: user override, else role row, else Hidden. */
+function computeAccess_(user, accessRows) {
+  var access = {};
+  TAB_IDS.forEach(function (tab) { access[tab] = 'Hidden'; });
+  accessRows.forEach(function (r) {
+    if (r.subject_type === 'role' && r.subject_id === user.role_id && isLevel_(r.level) && TAB_IDS.indexOf(r.tab_id) >= 0) access[r.tab_id] = r.level;
+  });
+  accessRows.forEach(function (r) {
+    if (r.subject_type === 'user' && r.subject_id === user.user_id && isLevel_(r.level) && TAB_IDS.indexOf(r.tab_id) >= 0) access[r.tab_id] = r.level;
+  });
+  return access;
+}
+
+function userOverrides_(userId, accessRows) {
+  var o = {};
+  accessRows.forEach(function (r) {
+    if (r.subject_type === 'user' && r.subject_id === userId && isLevel_(r.level) && TAB_IDS.indexOf(r.tab_id) >= 0) o[r.tab_id] = r.level;
+  });
+  return o;
+}
+
+function accessAllows_(rule, access) {
+  if (rule.auth === 'none' || rule.auth === 'session') return true;
+  if (rule.auth === 'anyTab') return TAB_IDS.some(function (t) { return access[t] !== 'Hidden'; });
+  var need = levelRank_(rule.level);
+  return rule.tabs.some(function (t) { return levelRank_(access[t]) >= need; });
+}
+
+function requireAccess_(action, access) {
+  var rule = ACTION_RULES[action];
+  if (!rule || !accessAllows_(rule, access)) throw apiError_(ERR.FORBIDDEN, 'You do not have access to do this.');
+}

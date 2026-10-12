@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "test:backend": "node --test backend/apps-script/tests/",
+    "test:backend": "node --test \"backend/apps-script/tests/*.test.mjs\"",
     "test:e2e": "playwright test"
   },
   "dependencies": {
