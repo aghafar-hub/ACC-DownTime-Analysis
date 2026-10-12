@@ -1,6 +1,6 @@
 /** Reliability trends: monthly series, rolling counts, year-over-year, histograms, heatmaps, longest events. */
 import type { EventRow } from '../api/types';
-import { buildFailureEvents, type ChainedEvent } from './events';
+import { analysableChains, buildFailureEvents, isAnalysable, type ChainedEvent } from './events';
 import { durationBandOf, type DurationBand } from './filters';
 import { addRowHours, compareValues, composeKpis, dataRangeOf, emptySums, type AreaKpis, type Change, type HourSums } from './kpis';
 import type { MasterIndex } from './masters';
@@ -66,7 +66,7 @@ interface MonthSlot { month: string; requested: DateRange; window: DateRange | n
  * each month equals computeKpis for that month's window (clipped to the data range).
  */
 export function monthlySeries(input: MonthlyInput): MonthPoint[] {
-  const rows = input.rows.filter((r) => !r.is_void);
+  const rows = input.rows.filter(isAnalysable);
   const dataRange = input.dataRange === undefined ? dataRangeOf(rows) : input.dataRange;
   const areaIds = input.areaIds ?? [...new Set(rows.map((r) => r.area_id))].sort();
   const areaSet = new Set(areaIds);
@@ -92,7 +92,7 @@ export function monthlySeries(input: MonthlyInput): MonthPoint[] {
     const slot = si >= 0 && si <= last ? slots[si]! : null;
     if (r.is_failure && slot?.interval && span.fromMs >= slot.interval.fromMs && span.fromMs < slot.interval.toMs) slot.sums.failures++;
   }
-  const chains = input.chains ?? buildFailureEvents(rows).chains;
+  const chains = analysableChains(input.chains ?? buildFailureEvents(rows).chains);
   for (const c of chains) {
     if (!c.isFailure || !areaSet.has(c.area_id)) continue;
     const si = monthNumber(c.startDate) - first;
@@ -125,7 +125,7 @@ export function rollingFailureCounts(failureEvents: ChainedEvent[], range: DateR
   const first = addDays(range.from, -lead);
   const perDay = new Array<number>(n + lead).fill(0);
   const firstMs = rangeToInterval({ from: first, to: first }).fromMs;
-  for (const c of failureEvents) {
+  for (const c of analysableChains(failureEvents)) {
     if (!c.isFailure) continue;
     const idx = Math.floor((c.startMs - firstMs) / 86_400_000);
     if (idx >= 0 && idx < perDay.length) perDay[idx]!++;
@@ -201,7 +201,7 @@ export function durationHistogram(
   const bandAcc: Record<DurationBand, { count: number; hours: number }> = { short: { count: 0, hours: 0 }, medium: { count: 0, hours: 0 }, long: { count: 0, hours: 0 } };
   let n = 0;
   let totalHours = 0;
-  for (const c of failureEvents) {
+  for (const c of analysableChains(failureEvents)) {
     if (!c.isFailure || (w && chainValue(c, 'count', w) === 0)) continue;
     const min = c.durationS / 60;
     let bi = bins.length - 1;
@@ -287,7 +287,7 @@ export function equipmentMonthHeatmap(failureEvents: ChainedEvent[], index: Mast
   const w = rangeToInterval(range);
   const months = monthsOfRange(range);
   const cells: HeatCell[] = [];
-  for (const c of failureEvents) {
+  for (const c of analysableChains(failureEvents)) {
     if (!c.isFailure) continue;
     const code = resolvedKey(rowCode(c.head, index));
     if (o.measure === 'count') {
@@ -308,7 +308,7 @@ export function equipmentMonthHeatmap(failureEvents: ChainedEvent[], index: Mast
 export function equipmentReasonHeatmap(failureEvents: ChainedEvent[], index: MasterIndex | undefined, window: DateRange | undefined, o: HeatmapOptions): Heatmap {
   const w = window ? rangeToInterval(window) : null;
   const cells: HeatCell[] = [];
-  for (const c of failureEvents) {
+  for (const c of analysableChains(failureEvents)) {
     if (!c.isFailure) continue;
     const code = resolvedKey(rowCode(c.head, index));
     const rk = matchKey(c.head.reason_raw);
@@ -336,7 +336,7 @@ export interface LongEvent {
 /** The longest events, ranked by chained event duration (not by row). */
 export function longestEvents(chains: ChainedEvent[], n: number, o: { failureOnly?: boolean; window?: DateRange } = {}): LongEvent[] {
   const w = o.window ? rangeToInterval(o.window) : null;
-  return chains
+  return analysableChains(chains)
     .filter((c) => (o.failureOnly === false || c.isFailure) && (!w || (c.startMs >= w.fromMs && c.startMs < w.toMs)))
     .sort((a, b) => b.durationS - a.durationS || a.startMs - b.startMs || (a.id < b.id ? -1 : 1))
     .slice(0, n)

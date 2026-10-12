@@ -159,3 +159,94 @@ test('edit and void need Events Edit; reading edits needs Events View', () => {
   assert.equal(env.call('editEvent', eng.token, { eventId: ev.event_id, changes: { description: 'x' }, note: 'n' }).status, 'ok');
   assert.equal(env.rows('event_edits')[0].edited_by, eng.user_id);
 });
+
+function setupProblems() {
+  const env = createEnv();
+  const admin = bootstrapAdmin(env);
+  seedMaster(env, admin.token);
+  const b = startBatch(env, admin.token);
+  env.ok('uploadChunk', admin.token, {
+    batchId: b,
+    rows: [
+      uploadRow({ source_row: 1, code_raw: '', classification: '', reason_raw: '', criticality: 'INC' }),
+      uploadRow({ source_row: 2, area_id: 'ZZ', line_id: 'L.1' }),
+      uploadRow({ source_row: 3, area_id: 'HD', line_id: 'L.2', code_raw: 'N/A' }),
+      uploadRow({ source_row: 4, code_raw: 'NEWCODE.1' }),
+      uploadRow({ source_row: 5, code_raw: 'OLDNAME.7' }),
+      uploadRow({ source_row: 6, reason_raw: 'Gearbox noise' }),
+    ],
+  });
+  const by = Object.fromEntries(env.rows('events').map((e) => [e.source_row, e]));
+  return { env, admin, by };
+}
+
+test('editing fixes flags: classification, area and line are checked and all flags recomputed', () => {
+  const { env, admin, by } = setupProblems();
+  assert.equal(by[1].flags, 'missing_classification,missing_code,blank_reason');
+  // classification only to one of the six codes, area only to a known area
+  assert.equal(edit(env, admin, by[1], { classification: 'XYZ' }).error.code, 'bad_request');
+  assert.equal(edit(env, admin, by[1], { classification: '' }).error.code, 'bad_request');
+  assert.equal(edit(env, admin, by[2], { area_id: 'STILL-UNKNOWN' }).error.message, 'Area "STILL-UNKNOWN" is not in the list of areas.');
+  assert.equal(edit(env, admin, by[3], { line_id: 'L.9' }).error.code, 'bad_request');
+  let e = edit(env, admin, by[1], { classification: 'mec', code_raw: 'N/A', reason_raw: 'bearing failure' }).data;
+  assert.equal(e.classification, 'MEC');
+  assert.equal(e.flags, '');
+  assert.equal(e.criticality, 'INC', 'the sheet value stays when the old classification was blank');
+  e = edit(env, admin, by[2], { area_id: 'k.1' }).data;
+  assert.equal(e.area_id, 'K.1');
+  assert.equal(e.flags, '', 'unknown_area cleared; line follows the new area');
+  e = edit(env, admin, by[3], { line_id: 'L.1' }).data;
+  assert.equal(e.flags, '', 'line_mismatch cleared');
+  // an edit of an unrelated field on a problem row keeps the other flags
+  e = edit(env, admin, by[6], { description: 'looked at' }).data;
+  assert.equal(e.flags, 'unlisted_reason');
+  // changing the area of a row to one the code does not belong to is flagged
+  e = edit(env, admin, by[6], { area_id: 'CR', code_raw: '100.AB02', reason_raw: 'Bearing failure' }).data;
+  assert.equal(e.flags, 'code_not_in_area');
+});
+
+test('revalidateEvents picks up a code and an alias added to Master Data later', () => {
+  const { env, admin, by } = setupProblems();
+  assert.equal(by[4].flags, 'unknown_code');
+  assert.equal(by[5].flags, 'unknown_code');
+  const writes = () => env.sheet('events').stats.setValues;
+  // nothing changed in Master Data: nothing is written
+  let before = writes();
+  assert.deepEqual(env.ok('revalidateEvents', admin.token, {}), { checked: 6, changed: 0 });
+  assert.equal(writes(), before);
+  env.ok('saveEquipment', admin.token, { row: { equipment_id: 'newcode.1', description: 'New', criticality: 'Low', status: 'Active' }, areaIds: ['K.1'] });
+  env.ok('saveAlias', admin.token, { row: { alias: 'OLDNAME.7', equipment_id: 'NEWCODE.1' } });
+  before = writes();
+  assert.deepEqual(env.ok('revalidateEvents', admin.token, { year: 2025 }), { checked: 0, changed: 0 });
+  assert.deepEqual(env.ok('revalidateEvents', admin.token, { year: 2026 }), { checked: 6, changed: 2 });
+  assert.equal(writes() - before, 1, 'consecutive changed rows are written together');
+  const now = Object.fromEntries(env.rows('events').map((e) => [e.source_row, e]));
+  assert.deepEqual([now[4].flags, now[4].equipment_id], ['', 'NEWCODE.1']);
+  assert.deepEqual([now[5].flags, now[5].equipment_id], ['', 'NEWCODE.1']);
+  assert.equal(now[1].flags, by[1].flags);
+  assert.equal(now[4].edited, false, 'revalidation is not an edit');
+  assert.equal(env.rows('event_edits').length, 0);
+  const audit = env.rows('audit_log').filter((a) => a.action === 'revalidate_events');
+  assert.equal(audit.length, 3);
+  assert.match(audit[2].detail, /Checked 6, changed 2/);
+  // a reason added later clears unlisted_reason
+  env.ok('saveReason', admin.token, { row: { reason_id: '', classification: 'MEC', text_as_listed: 'Gearbox noise', order_no: 0, active: true } });
+  assert.deepEqual(env.ok('revalidateEvents', admin.token, {}), { checked: 6, changed: 1 });
+  const six = env.rows('events').find((e) => e.source_row === 6);
+  assert.deepEqual([six.flags, six.reason_id], ['', 'R-MEC-002']);
+  // voided events are left alone
+  const id = env.rows('events').find((e) => e.source_row === 1).event_id;
+  env.ok('voidEvent', admin.token, { eventId: id, isVoid: true, note: 'x' });
+  assert.equal(env.ok('revalidateEvents', admin.token, {}).checked, 5);
+  assert.equal(env.call('revalidateEvents', admin.token, { year: 'abc' }).error.code, 'bad_request');
+});
+
+test('revalidateEvents needs Events Edit', () => {
+  const { env, admin } = setupProblems();
+  const mgr = makeUser(env, admin.token, 'ROLE-MGR', 'm@example.com');
+  const eng = makeUser(env, admin.token, 'ROLE-ENG', 'e@example.com');
+  const view = makeUser(env, admin.token, 'ROLE-VIEW', 'v@example.com');
+  assert.equal(env.call('revalidateEvents', mgr.token, {}).error.code, 'forbidden');
+  assert.equal(env.call('revalidateEvents', view.token, {}).error.code, 'forbidden');
+  assert.equal(env.call('revalidateEvents', eng.token, {}).status, 'ok');
+});

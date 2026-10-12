@@ -2,7 +2,8 @@
 //
 // - The sheet's formula columns (DATE, Freq, Status, CRITICALITY, Failure,
 //   durations) are read as their CACHED values (a formula cell is read as its
-//   stored result, never as formula text). Empty cached values reject the file.
+//   stored result, never as formula text). Empty cached values reject the file, as do unreadable dates and times and a Freq, CRITICALITY or Failure that is not valid (nothing is imported then).
+//   Every other row is kept, even with a blank area, line, code or classification: it is stored with flags.
 // - The file is read by our own small reader (xlsxReader.ts), which returns the
 //   cached value of every formula cell, including 0 and empty text.
 // - Excel date-times have no time zone. A serial number is converted as if it were
@@ -25,22 +26,19 @@ export const MAX_FILE_BYTES = 30 * 1024 * 1024;
 
 export type ProblemCode =
   | 'unreadable' | 'too_big' | 'no_sheet' | 'no_headings' | 'missing_columns'
-  | 'empty_cached' | 'bad_time' | 'bad_date' | 'no_rows';
+  | 'empty_cached' | 'bad_time' | 'bad_date' | 'bad_value' | 'no_rows';
 
 /** Why the whole file is refused. Messages are plain English for the person uploading. */
 export interface FileProblem { code: ProblemCode; message: string; rows?: number[] }
 
-export interface RowReject { source_row: number; reason: string }
 export interface CaseFix { source_row: number; from: string; to: string }
 
 export interface ParsedFile {
   ok: true;
-  /** rows that can be compared and uploaded (rows with a row-level reject are not here) */
+  /** every row with data: nothing is left out (a row with a data problem is stored with flags) */
   rows: DiffUploadRow[];
-  /** rows with data that cannot be uploaded (listed in the review, never sent) */
-  rejected: RowReject[];
   caseFixes: CaseFix[];
-  /** rows with data (kept + rejected) */
+  /** rows with data */
   rowsRead: number;
   /** rows without any data (formulas only), skipped silently */
   blankRows: number;
@@ -180,7 +178,6 @@ interface RawRow {
 
 export interface Extracted {
   rows: RawRow[];
-  rejected: RowReject[];
   caseFixes: CaseFix[];
   rowsRead: number;
   blankRows: number;
@@ -189,7 +186,7 @@ export interface Extracted {
 
 /** Everything except the fingerprints: works on the sheet as an array of rows (tested without a file). */
 export function extractRows(data: unknown[][], date1904 = false): Extracted {
-  const out: Extracted = { rows: [], rejected: [], caseFixes: [], rowsRead: 0, blankRows: 0, problems: [] };
+  const out: Extracted = { rows: [], caseFixes: [], rowsRead: 0, blankRows: 0, problems: [] };
   const head = findHeaderRow(data);
   if (!head) {
     out.problems.push({ code: 'no_headings', message: t('The "Downtime" sheet does not have the expected column headings (DATE, Freq, Line, EQUIPMENT, EQUIPMENT CODE, Stop Time, Start Time and so on). Check that you chose the monthly downtime workbook.') });
@@ -210,6 +207,7 @@ export function extractRows(data: unknown[][], date1904 = false): Extracted {
   const badTime: { row: number; what: string }[] = [];
   const badDate: number[] = [];
   const emptyCols = new Set<string>();
+  const badValue: { row: number; what: string; text: string }[] = [];
 
   for (let i = head.index + 1; i < data.length; i++) {
     const row = data[i] ?? [];
@@ -239,25 +237,24 @@ export function extractRows(data: unknown[][], date1904 = false): Extracted {
     if (start === null) badTime.push({ row: n, what: t('Start Time') });
     if (cachedMissing || eventDate === null || stop === null || start === null) continue;
 
-    // row-level problems: this row is left out, the rest can still be uploaded
-    const reject = (reason: string) => out.rejected.push({ source_row: n, reason });
+    // Only values that cannot be stored at all refuse the file. Everything else (blank area, line,
+    // code or classification, an unknown area...) is kept as written and flagged by the data checks.
     const area = textOf(cell(row, 'area'));
     const code = textOf(cell(row, 'code'));
     const line = textOf(cell(row, 'line'));
-    if (!area) { reject(t('No equipment (area) is written on this row.')); continue; }
-    if (!line) { reject(t('No line is written on this row.')); continue; }
-    if (!code) { reject(t('No equipment code. Write N/A when the whole area stopped.')); continue; }
     const freqN = readNumber(cell(row, 'freq')) ?? (cell(row, 'freq') === true ? 1 : cell(row, 'freq') === false ? 0 : null);
-    if (freqN !== 0 && freqN !== 1) { reject(t('Freq must be 0 or 1, but this row has "{v}".', { v: textOf(cell(row, 'freq')) })); continue; }
     const critText = textOf(cell(row, 'criticality')).toUpperCase().replace(/[\s-]+/g, '_');
-    if (critText !== 'INC' && critText !== 'NO_INC') { reject(t('CRITICALITY must be INC or NO_INC, but this row has "{v}".', { v: textOf(cell(row, 'criticality')) })); continue; }
     const failText = textOf(cell(row, 'failure')).toUpperCase();
     const failure = ['YES', 'TRUE', '1', 'Y'].includes(failText) ? true : ['NO', 'FALSE', '0', 'N'].includes(failText) ? false : null;
-    if (failure === null) { reject(t('Failure must be YES or NO, but this row has "{v}".', { v: textOf(cell(row, 'failure')) })); continue; }
+    const bad = (what: string, v: unknown, rule: string) => badValue.push({ row: n, what, text: t('{what} must be {rule}, but row {row} has "{v}".', { what, rule, row: n, v: textOf(v) }) });
+    if (freqN !== 0 && freqN !== 1) bad('Freq', cell(row, 'freq'), t('0 or 1'));
+    if (critText !== 'INC' && critText !== 'NO_INC') bad('CRITICALITY', cell(row, 'criticality'), t('INC or NO_INC'));
+    if (failure === null) bad('Failure', cell(row, 'failure'), t('YES or NO'));
+    if (freqN !== 0 && freqN !== 1) continue;
+    if ((critText !== 'INC' && critText !== 'NO_INC') || failure === null) continue;
     const classRaw = textOf(cell(row, 'classification'));
-    const classification = normalizeClassification(classRaw);
-    if (!classification) { reject(t('The classification must be PRO, MEC, ELE, AUT, PL or CIR, but this row has "{v}".', { v: classRaw })); continue; }
-    if (classRaw !== classification) out.caseFixes.push({ source_row: n, from: classRaw, to: classification });
+    const classification = classRaw.toUpperCase();
+    if (classRaw !== classification && normalizeClassification(classRaw)) out.caseFixes.push({ source_row: n, from: classRaw, to: classification });
 
     const totalH = readNumber(cell(row, 'total'));
     out.rows.push({
@@ -289,6 +286,14 @@ export function extractRows(data: unknown[][], date1904 = false): Extracted {
       code: 'bad_date',
       rows: badDate,
       message: t('The date cannot be read in row {rows}. The DATE cell must hold a real date.', { rows: describeRows(badDate) }),
+    });
+  }
+  if (badValue.length) {
+    const rows = [...new Set(badValue.map((b) => b.row))];
+    out.problems.push({
+      code: 'bad_value',
+      rows,
+      message: t('These rows hold a value that cannot be stored: {list}. Fix them in Excel and choose the file again. Nothing has been imported.', { list: describeRows(rows) }) + ' ' + first(badValue, 3).map((b) => b.text).join(' '),
     });
   }
   if (out.rowsRead === 0 && out.problems.length === 0) {
@@ -355,7 +360,7 @@ async function finish(ex: Extracted): Promise<ParsedFile> {
     if (r.event_date < from) from = r.event_date;
     if (r.event_date > to) to = r.event_date;
   }
-  return { ok: true, rows, rejected: ex.rejected, caseFixes: ex.caseFixes, rowsRead: ex.rowsRead, blankRows: ex.blankRows, dateFrom: rows.length ? from : '', dateTo: rows.length ? to : '' };
+  return { ok: true, rows, caseFixes: ex.caseFixes, rowsRead: ex.rowsRead, blankRows: ex.blankRows, dateFrom: rows.length ? from : '', dateTo: rows.length ? to : '' };
 }
 
 /** Test helper: finish a sheet given as arrays. */

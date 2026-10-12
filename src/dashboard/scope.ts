@@ -28,7 +28,7 @@ export interface BaseScope {
 export function buildBase(rows: EventRow[], startup: Startup, f: Pick<DashFilters, 'lineIds' | 'areaIds'>, master: Master): BaseScope {
   const areaIds = areasInScope(startup.areas, { ...f } as DashFilters);
   const filter: Filter = { ...emptyFilter(), lineIds: f.lineIds, areaIds };
-  const kept = applyFilters(rows, filter, { settings: master.settings });
+  const kept = applyFilters(rows, filter, { settings: master.settings, index: master.index });
   return { areaIds, rows: kept, chains: buildFailureEvents(kept).chains };
 }
 

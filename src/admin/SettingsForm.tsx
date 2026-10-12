@@ -10,7 +10,7 @@ import { BASIS_FORMULA, changedSettings, groups, validateSettings, WHEN_TEXT, ty
 import './admin.css';
 
 /** The editable settings. Saved together with one call: all or nothing. */
-export default function SettingsForm({ settings, canEdit, onSaved }: { settings: Setting[]; canEdit: boolean; onSaved: (text: string) => void }) {
+export default function SettingsForm({ settings, canEdit, onSaved, groupIds }: { settings: Setting[]; canEdit: boolean; onSaved: (text: string) => void; groupIds?: string[] }) {
   const stored = useMemo(() => Object.fromEntries(settings.map((s) => [s.key, s.value])) as Record<string, string>, [settings]);
   const meta = useMemo(() => new Map(settings.map((s) => [s.key, s])), [settings]);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -72,7 +72,7 @@ export default function SettingsForm({ settings, canEdit, onSaved }: { settings:
       </section>
       {error && <div className="callout callout--danger" role="alert" data-testid="server-error"><Icon name="alert" size={16} /><span>{error}</span></div>}
       {shown && Object.keys(problems).length > 0 && <div className="callout callout--warning" role="alert" data-testid="settings-problems"><Icon name="alert" size={16} /><span>{t('Fix the marked settings first. Nothing was saved.')}</span></div>}
-      {groups().map((g) => (
+      {groups().filter((g) => !groupIds || groupIds.includes(g.id)).map((g) => (
         <section className="card" key={g.id} data-testid={`settings-${g.id}`}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 }}>
             <h2 style={{ margin: 0 }}><Icon name={g.icon} size={16} style={{ verticalAlign: '-2px', marginInlineEnd: 6 }} />{g.title}</h2>

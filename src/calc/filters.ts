@@ -1,5 +1,6 @@
 import type { ClassificationCode, Criticality, EventRow } from '../api/types';
-import { rowSpan } from './events';
+import { rowSeconds, rowSpan } from './events';
+import { blockingFlagsOf, isBlocked, BLOCKING_FLAGS } from './flags';
 import type { MasterIndex } from './masters';
 import { codeKey, matchKey, rowCode } from './normalize';
 import type { CalcSettings } from './settings';
@@ -28,6 +29,8 @@ export interface Filter {
   /** band of the row's own duration, from the duration settings */
   durationBand: DurationBand | null;
   includeVoid: boolean;
+  /** keep records with a blocking data problem (see flags.ts); default false: they stay out of every calculation until fixed */
+  includeInvalid: boolean;
 }
 
 export interface FilterContext {
@@ -39,7 +42,7 @@ export function emptyFilter(): Filter {
   return {
     lineIds: [], areaIds: [], equipmentIds: [], equipmentTypes: [], equipmentCriticality: [],
     dateRange: null, classifications: [], criticality: [], failureOnly: false,
-    reasonKeys: [], durationBand: null, includeVoid: false,
+    reasonKeys: [], durationBand: null, includeVoid: false, includeInvalid: false,
   };
 }
 
@@ -54,11 +57,14 @@ export function durationBandOf(seconds: number, s: Pick<CalcSettings, 'durationS
 export function activeFilterCount(f: Filter): number {
   return [f.lineIds, f.areaIds, f.equipmentIds, f.equipmentTypes, f.equipmentCriticality, f.classifications, f.criticality, f.reasonKeys]
     .filter((a) => a.length > 0).length
-    + (f.dateRange ? 1 : 0) + (f.failureOnly ? 1 : 0) + (f.durationBand ? 1 : 0) + (f.includeVoid ? 1 : 0);
+    + (f.dateRange ? 1 : 0) + (f.failureOnly ? 1 : 0) + (f.durationBand ? 1 : 0) + (f.includeVoid ? 1 : 0) + (f.includeInvalid ? 1 : 0);
 }
 
 /**
- * Row-level filter. Voided events are always dropped unless includeVoid. Dates are matched on the stop
+ * Row-level filter. Voided events are always dropped unless includeVoid, and so are blocked events (a blocking
+ * data problem, see flags.ts) unless includeInvalid. The line filter resolves through the area master
+ * (area -> line) when `ctx.index` is given: the sheet's own line can be wrong. Without an index it falls back
+ * to the event's line_id. Dates are matched on the stop
  * timestamp: a row is kept when it overlaps the date range (a row that crosses the range edge is kept).
  * Note: row-level filters can remove continuation rows of an event; build events from rows filtered only
  * by date/area when event chains must stay whole.
@@ -74,7 +80,8 @@ export function applyFilters(events: EventRow[], filter: Filter, ctx: FilterCont
   const needEquipment = sets.equip.size > 0 || sets.type.size > 0 || sets.ecrit.size > 0;
   return events.filter((e) => {
     if (e.is_void && !filter.includeVoid) return false;
-    if (sets.line.size && !sets.line.has(e.line_id)) return false;
+    if (!filter.includeInvalid && isBlocked(e)) return false;
+    if (sets.line.size && !sets.line.has(lineOf(e, ctx.index))) return false;
     if (sets.area.size && !sets.area.has(e.area_id)) return false;
     if (sets.cls.size && !sets.cls.has(e.classification)) return false;
     if (sets.crit.size && !sets.crit.has(e.criticality)) return false;
@@ -89,6 +96,41 @@ export function applyFilters(events: EventRow[], filter: Filter, ctx: FilterCont
     if (needEquipment && !matchesEquipment(e, sets, ctx.index)) return false;
     return true;
   });
+}
+
+/** The line an event belongs to: the area's line from the master (an unknown area has none), else the event's own. */
+function lineOf(e: EventRow, index: MasterIndex | undefined): string {
+  if (!index) return e.line_id;
+  return index.areaById.get(e.area_id)?.line_id ?? '';
+}
+
+export interface BlockedTotals { count: number; hours: number }
+export interface BlockedSummary {
+  /** records with at least one blocking flag (each counted once) */
+  total: BlockedTotals;
+  /** per blocking flag; a record with two blocking flags counts under both (every flag is present, possibly zero) */
+  byFlag: Record<(typeof BLOCKING_FLAGS)[number], BlockedTotals>;
+}
+
+/** Counts and hours of the records kept out of the numbers because of a blocking flag. Voided events are ignored. */
+export function blockedSummary(events: readonly EventRow[]): BlockedSummary {
+  const out: BlockedSummary = {
+    total: { count: 0, hours: 0 },
+    byFlag: Object.fromEntries(BLOCKING_FLAGS.map((f) => [f, { count: 0, hours: 0 }])) as BlockedSummary['byFlag'],
+  };
+  for (const e of events) {
+    if (e.is_void) continue;
+    const flags = blockingFlagsOf(e);
+    if (!flags.length) continue;
+    const h = rowSeconds(e) / 3600;
+    out.total.count++;
+    out.total.hours += h;
+    for (const f of new Set(flags)) {
+      const t = out.byFlag[f as keyof BlockedSummary['byFlag']];
+      if (t) { t.count++; t.hours += h; }
+    }
+  }
+  return out;
 }
 
 function matchesEquipment(

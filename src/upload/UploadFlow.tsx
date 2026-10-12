@@ -118,6 +118,18 @@ export default function UploadFlow({ onDone }: { onDone: () => void }) {
         {b.rows_added !== expected && (
           <div className="callout callout--warning" role="status" data-testid="result-mismatch"><Icon name="info" size={16} /><span>{t('The review expected {a} new rows but the server added {b}. Another upload may have run at the same time. Check Event Explorer.', { a: expected, b: b.rows_added })}</span></div>
         )}
+        {r.plan.flagged.total > 0 && (
+          <div className="callout callout--warning" role="status" data-testid="result-needs-checking">
+            <Icon name="alert" size={16} />
+            <span>
+              <b>{tn(r.plan.flagged.total, '{n} record needs checking.', '{n} records need checking.')}</b>{' '}
+              {r.plan.flagged.blockedRows > 0 && <span data-testid="result-blocking">{tn(r.plan.flagged.blockedRows, '{n} has a blocking problem and is left out of the numbers until fixed.', '{n} have a blocking problem and are left out of the numbers until fixed.')} </span>}
+              {r.plan.flagged.warningRows > 0 && <span data-testid="result-warning-rows">{tn(r.plan.flagged.warningRows, '{n} has warnings only.', '{n} have warnings only.')} </span>}
+              {t('Nothing was dropped: every row is stored.')}{' '}
+              <Link to="/validate" data-testid="result-validate-link">{t('Open the Validate page')}</Link>
+            </span>
+          </div>
+        )}
         {r.progress.rejected.length > 0 && (
           <div className="callout callout--warning" role="status" data-testid="result-rejected">
             <Icon name="alert" size={16} />
@@ -149,7 +161,7 @@ export default function UploadFlow({ onDone }: { onDone: () => void }) {
         <div className="adm-actionbar" data-testid="upload-bar">
           <div className="adm-actionbar-text" role="status" data-testid="upload-bar-text">
             {!complete
-              ? <><span aria-hidden="true">▲ </span>{tn(open, 'Choose Add or Skip for the {n} late entry to continue.', 'Choose Add or Skip for the {n} late entries to continue.')}</>
+              ? <><span aria-hidden="true">▲ </span>{tn(open, 'Choose Add or Skip for the {n} late entry or month to continue.', 'Choose Add or Skip for the {n} late entries and months to continue.')}</>
               : plan && plan.willAdd > 0
                 ? tn(plan.willAdd, 'Ready: {n} row will be added.', 'Ready: {n} rows will be added.')
                 : t('Ready: there is nothing new to add. The upload will only be recorded.')}
@@ -173,10 +185,10 @@ export default function UploadFlow({ onDone }: { onDone: () => void }) {
             <ul className="up-list">
               <li>{tn(plan.willAdd, '{n} row will be added.', '{n} rows will be added.')}</li>
               <li>{tn(review.counts.identical, '{n} row is already stored and is skipped.', '{n} rows are already stored and are skipped.')}</li>
-              {plan.skippedLate > 0 && <li>{tn(plan.skippedLate, '{n} late entry you chose to skip is not added.', '{n} late entries you chose to skip are not added.')}</li>}
-              {review.counts.rejected > 0 && <li>{tn(review.counts.rejected, '{n} row is left out.', '{n} rows are left out.')}</li>}
+              {plan.skippedLate > 0 && <li>{tn(plan.skippedLate, '{n} late row you chose to skip is not added.', '{n} late rows you chose to skip are not added.')}</li>}
+              {plan.flagged.total > 0 && <li>{tn(plan.flagged.total, '{n} of them will need checking on the Validate page.', '{n} of them will need checking on the Validate page.')}</li>}
             </ul>
-            <p style={{ margin: '8px 0 0' }}>{t('Stored rows are never changed by an upload. A wrong row can be corrected or voided later in Event Explorer.')}</p>
+            <p style={{ margin: '8px 0 0' }}>{t('Stored rows are never changed by an upload. A wrong row can be corrected or voided later in Event Explorer or on the Validate page.')}</p>
           </ConfirmDialog>
         )}
       </>

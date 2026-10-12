@@ -3,7 +3,7 @@ import { tapHaptic } from '../haptics';
 import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
-import { BOTTOM_BAR_ORDER, pageShort } from '../navigation';
+import { BOTTOM_BAR_ORDER, isSettingsPath, pageShort } from '../navigation';
 import './BottomNav.css';
 
 // The phone's bottom bar (only drawn at 860 px and below): up to three of
@@ -12,7 +12,8 @@ export default function BottomNav({ onOpenMore, moreOpen }: { onOpenMore: () => 
   const pages = useVisiblePages();
   const location = useLocation();
   const slots = BOTTOM_BAR_ORDER.map((id) => pages.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p).slice(0, 3);
-  const onSlot = slots.some((p) => location.pathname.startsWith(p.path));
+  // the gear in the header owns /settings, so no bottom-bar item is lit there
+  const onSlot = slots.some((p) => location.pathname.startsWith(p.path)) || isSettingsPath(location.pathname);
   return (
     <nav className="bottom-nav" aria-label={t('Primary')} style={{ gridTemplateColumns: `repeat(${slots.length + 1}, 1fr)` }} data-testid="bottom-nav">
       {slots.map((p) => (

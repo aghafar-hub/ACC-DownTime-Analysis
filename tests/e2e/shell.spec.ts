@@ -5,7 +5,7 @@ import { noSidewaysScroll, PASSWORD, signIn, signInAndWait, smallTargets, stubFo
 
 const DASH = ['Overview', 'Pareto', 'Repeated Failures', 'Reliability', 'Event Explorer'];
 const TABS: Record<Role, string[]> = {
-  admin: [...DASH, 'Upload', 'Master Data', 'Settings', 'Users'],
+  admin: [...DASH, 'Upload', 'Master Data'],
   manager: [...DASH, 'Master Data'],
   engineer: [...DASH, 'Upload', 'Master Data'],
   viewer: DASH,
@@ -57,6 +57,8 @@ test.describe('desktop', () => {
     await signInAndWait(page, 'viewer');
     await page.goto('/#/users');
     await expect(page.getByTestId('no-access')).toContainText('You do not have access');
+    await page.goto('/#/settings/security');
+    await expect(page.getByTestId('no-access')).toBeVisible();
     await page.goto('/#/upload');
     await expect(page.getByTestId('no-access')).toBeVisible();
   });
@@ -71,15 +73,22 @@ test.describe('desktop', () => {
       ['Reliability', 'page-reliability'],
       ['Upload', 'page-upload'],
       ['Master Data', 'page-master'],
-      ['Users', 'page-users'],
-      ['Settings', 'page-settings'],
     ];
     for (const [label, id] of pages) {
       await nav.getByRole('link', { name: label }).first().click();
       await expect(page.getByTestId(id)).toBeVisible({ timeout: 20000 });
       await expect(page.getByText('Built in the next step')).toHaveCount(0);
     }
+    // Settings and its subtabs are reached from the gear
+    await page.getByTestId('settings-btn').click();
+    await expect(page.getByTestId('page-settings')).toBeVisible();
     await expect(page.getByTestId('theme-picker')).toBeVisible();
+    const subs: [string, string][] = [['Calculations', 'settings-calculations'], ['Security', 'settings-security'], ['Users and access', 'page-users'], ['Appearance', 'settings-appearance']];
+    for (const [label, id] of subs) {
+      await page.getByTestId('settings-tabs').getByRole('link', { name: label }).click();
+      await expect(page.getByTestId(id)).toBeVisible({ timeout: 20000 });
+      await expect(page.getByTestId('breadcrumb')).toHaveText(`ACC Downtime›Settings›${label}`);
+    }
   });
 
   test('Event Explorer: list, paging, filters, year switch', async ({ page }) => {
@@ -223,10 +232,9 @@ test.describe('desktop', () => {
 
   test('theme choice is kept, and sign-out returns to the login screen', async ({ page }) => {
     await signInAndWait(page, 'viewer');
-    await page.getByTestId('appearance-btn').click();
+    await page.getByTestId('settings-btn').click();
     await page.getByRole('radio', { name: /Navy Dark/ }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'Navy Dark');
-    await page.getByTestId('modal-close').click();
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'Navy Dark');
     await page.getByTestId('user-menu-trigger').click();
@@ -259,7 +267,7 @@ test.describe('desktop', () => {
 
   test('every page has no sideways scroll at 1280', async ({ page }) => {
     await signInAndWait(page, 'admin');
-    for (const hash of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users']) {
+    for (const hash of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings/appearance', 'settings/calculations', 'settings/security', 'settings/users']) {
       await page.goto(`/#/${hash}`);
       await expect(page.getByTestId('page-title')).toBeVisible();
       expect((await noSidewaysScroll(page)).ok, hash).toBe(true);
@@ -288,6 +296,7 @@ test.describe('phone', () => {
     await expect(sheet).toBeVisible();
     for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events']) await expect(sheet.getByTestId(`more-tile-${id}`)).toBeVisible();
     for (const id of ['upload', 'master', 'settings', 'users']) await expect(sheet.getByTestId(`more-tile-${id}`)).toHaveCount(0);
+    await expect(sheet.getByTestId('more-appearance')).toHaveCount(0);
     await expect(sheet.getByTestId('more-role')).toHaveText('Viewer');
     // Back closes the sheet
     await page.goBack();
@@ -310,10 +319,11 @@ test.describe('phone', () => {
     await page.reload();
     await signInAndWait(page, 'admin');
     await page.getByTestId('bottom-more').click();
-    for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users']) {
+    for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master']) {
       await expect(page.getByTestId(`more-tile-${id}`)).toBeVisible();
     }
-    await expect(page.getByTestId('more-tile-users')).toContainText('Can edit');
+    for (const id of ['settings', 'users']) await expect(page.getByTestId(`more-tile-${id}`)).toHaveCount(0);
+    await expect(page.getByTestId('more-tile-master')).toContainText('Can edit');
   });
 
   test('Event Explorer on a phone: cards, 50 at a time, filters in a sheet, detail opens', async ({ page }) => {
@@ -341,7 +351,7 @@ test.describe('phone', () => {
     await page.goto('/');
     expect(await smallTargets(page), 'login').toEqual([]);
     await signInAndWait(page, 'admin');
-    for (const hash of ['overview', 'events', 'settings', 'upload', 'users']) {
+    for (const hash of ['overview', 'events', 'settings/appearance', 'settings/calculations', 'settings/security', 'upload', 'settings/users']) {
       await page.goto(`/#/${hash}`);
       await expect(page.getByTestId('page-title')).toBeVisible();
       expect(await smallTargets(page), hash).toEqual([]);
@@ -365,7 +375,7 @@ test.describe('phone', () => {
       await page.goto('/');
       expect((await noSidewaysScroll(page)).ok, 'login').toBe(true);
       await signInAndWait(page, 'admin');
-      for (const hash of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users']) {
+      for (const hash of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings/appearance', 'settings/calculations', 'settings/security', 'settings/users']) {
         await page.goto(`/#/${hash}`);
         await expect(page.getByTestId('page-title')).toBeVisible();
         const r = await noSidewaysScroll(page);

@@ -127,16 +127,13 @@ test('a partly new file adds only the new rows', () => {
   assert.equal(events(env).length, 4);
 });
 
-test('hard rejects: reported with the source row and a reason, never inserted', () => {
+test('hard rejects: only rows that cannot be stored at all, reported with the source row and a reason', () => {
   const { env, admin } = setup();
   const b = startBatch(env, admin.token);
   const cases = [
-    ['unknown area', { area_id: 'ZZ' }, /Unknown area/],
-    ['line not matching area', { line_id: 'L.2' }, /does not match/],
     ['bad stop time', { stop_ts: '2026-13-40 10:00:00' }, /stop time/],
     ['bad start time', { start_ts: 'yesterday' }, /start time/],
     ['bad date', { event_date: '05/03/2026' }, /date/],
-    ['bad classification', { classification: 'XYZ' }, /Classification/],
     ['freq 2', { freq: 2 }, /Freq/],
     ['criticality', { criticality: 'MAYBE' }, /Criticality/],
     ['failure not boolean', { is_failure: 'YES' }, /Failure/],
@@ -154,6 +151,37 @@ test('hard rejects: reported with the source row and a reason, never inserted', 
   assert.equal(events(env)[0].source_row, 900);
   // non-object rows are rejected too
   assert.equal(chunk(env, admin.token, b, [null, 'x', 5]).rejected.length, 3);
+});
+
+test('import never drops a row: problem rows are stored with their flags', () => {
+  const { env, admin } = setup();
+  const b = startBatch(env, admin.token);
+  const r = chunk(env, admin.token, b, [
+    uploadRow({ source_row: 1, code_raw: '', classification: '', reason_raw: '' }), // blank code + classification + reason
+    uploadRow({ source_row: 2, area_id: 'HD', line_id: 'L.2', code_raw: 'N/A' }), // HD belongs to L.1
+    uploadRow({ source_row: 3, area_id: 'ZZ', line_id: 'L.9' }),
+    uploadRow({ source_row: 4, classification: 'xyz' }),
+    uploadRow({ source_row: 5, area_id: '', line_id: '' }),
+    uploadRow({ source_row: 6, code_raw: '100.AB02', area_id: 'CR' }), // 100.AB02 belongs to K.1 and RM.1
+    uploadRow({ source_row: 7, classification: 'mec' }),
+  ]);
+  assert.deepEqual(r, { added: 7, identical: 0, rejected: [] });
+  const by = Object.fromEntries(events(env).map((e) => [e.source_row, e]));
+  assert.equal(by[1].flags, 'missing_classification,missing_code,blank_reason');
+  assert.deepEqual([by[1].code_raw, by[1].classification, by[1].reason_raw, by[1].equipment_id, by[1].is_area_level], ['', '', '', '', false]);
+  assert.deepEqual([by[1].is_failure, by[1].criticality, by[1].duration_s], [true, 'INC', 30], 'sheet values kept');
+  assert.equal(by[2].flags, 'line_mismatch', 'HD under L.2 is stored as given, flagged');
+  assert.equal(by[2].line_id, 'L.2');
+  assert.equal(by[3].flags, 'unknown_area'); assert.deepEqual([by[3].area_id, by[3].line_id], ['ZZ', 'L.9']);
+  assert.equal(by[4].flags, 'invalid_classification'); assert.equal(by[4].classification, 'XYZ');
+  assert.equal(by[5].flags, 'unknown_area'); assert.deepEqual([by[5].area_id, by[5].line_id], ['', '']);
+  assert.equal(by[6].flags, 'code_not_in_area'); assert.equal(by[6].equipment_id, '100.AB02');
+  assert.equal(by[7].flags, ''); assert.equal(by[7].classification, 'MEC');
+  // stored rows are counted by the batch; re-sending them adds nothing
+  const again = chunk(env, admin.token, startBatch(env, admin.token), [
+    uploadRow({ source_row: 1, code_raw: '', classification: '', reason_raw: '' }),
+  ]);
+  assert.equal(again.added + again.identical, 1);
 });
 
 test('flags: unknown_code, unlisted_reason, blank_reason, end_before_start, placeholder', () => {

@@ -223,3 +223,8 @@
     min-height: 48px;
   }
 }
+.up-sub {
+  margin: 12px 0 6px;
+  font-size: 13.5px;
+  color: var(--tk-text-secondary);
+}

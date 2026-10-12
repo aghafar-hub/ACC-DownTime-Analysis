@@ -1,5 +1,5 @@
 /** Pareto analysis. Percentages are always against the COMPLETE filtered total, never the displayed top N. */
-import { chainHours, startedIn, type ChainedEvent } from './events';
+import { analysableChains, chainHours, startedIn, type ChainedEvent } from './events';
 import { areasOf, type MasterIndex } from './masters';
 import { matchKey, resolvedKey, rowCode, type ResolvedCode } from './normalize';
 import { rangeToInterval, type DateRange, type Interval } from './time';
@@ -120,7 +120,7 @@ function chainPareto(
   chains: ChainedEvent[], o: ChainParetoOptions, keyOf: (c: ChainedEvent) => string, labelOf: (c: ChainedEvent) => string,
 ): ParetoResult {
   const w = windowOf(o);
-  return pareto(chains, { key: keyOf, label: labelOf, measure: (c) => chainValue(c, o.measure, w), eventId: (c) => c.id }, o.topN ?? 'all');
+  return pareto(analysableChains(chains), { key: keyOf, label: labelOf, measure: (c) => chainValue(c, o.measure, w), eventId: (c) => c.id }, o.topN ?? 'all');
 }
 
 export interface EquipmentParetoResult {
@@ -155,7 +155,7 @@ export function classifyOwnStop(c: ChainedEvent, index: MasterIndex): { cls: Own
  */
 export function equipmentPareto(chains: ChainedEvent[], index: MasterIndex, o: ChainParetoOptions): EquipmentParetoResult {
   const groups: Record<OwnStopClass, ChainedEvent[]> = { own: [], otherAreas: [], unassigned: [], areaLevel: [], unknown: [] };
-  for (const c of chains) if (c.isFailure) groups[classifyOwnStop(c, index).cls].push(c);
+  for (const c of analysableChains(chains)) if (c.isFailure) groups[classifyOwnStop(c, index).cls].push(c);
   const build = (cs: ChainedEvent[]): ParetoResult => chainPareto(cs, o, (c) => resolvedKey(rowCode(c.head, index)), (c) => resolvedKey(rowCode(c.head, index)));
   return {
     own: build(groups.own), otherAreas: build(groups.otherAreas), unassigned: build(groups.unassigned),

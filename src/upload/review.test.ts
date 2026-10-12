@@ -6,7 +6,8 @@ import { createMockApi } from '../api/mockApi';
 import type { SyntheticDb } from '../mock/synthetic';
 import { parseWorkbook, type ParsedFile } from './parseWorkbook';
 import {
-  buildPlan, buildReview, checkGroups, csvCell, csvText, decideAll, decisionsComplete, reviewCsv, storedWarningsCsv, undecidedCount,
+  buildPlan, buildReview, checkGroups, csvCell, csvText, decideAll, decisionsComplete, flagSummary, monthKey, monthLabel, reviewCsv,
+  storedWarningsCsv, undecidedCount,
 } from './review';
 import { yearsToLoad } from './loadReview';
 import { CHUNK_SIZE, runUpload, UploadStopped } from './uploadRunner';
@@ -122,18 +123,59 @@ describe('review of an upload', () => {
     expect(again.counts.changed).toBe(1);
   });
 
-  it('leaves out rows with an unknown area or the wrong line', async () => {
-    const rows = [...simpleRows(2, '2026-11-02'), { ...simpleRows(1, '2026-11-04')[0]!, area: 'ZZ.9' }, { ...simpleRows(1, '2026-11-05')[0]!, line: 'L.2' }];
+  it('keeps every row: an unknown area, the wrong line and a blank classification are stored with flags', async () => {
+    const rows = [
+      ...simpleRows(2, '2026-11-02'),
+      { ...simpleRows(1, '2026-11-04')[0]!, area: 'ZZ.9' },
+      { ...simpleRows(1, '2026-11-05')[0]!, line: 'L.2' },
+      { ...simpleRows(1, '2026-11-06')[0]!, classification: null as never },
+    ];
     const parsed = await parse(rows);
     const review = buildReview(parsed, startup, stored);
-    expect(review.counts.rowsRead).toBe(4);
-    expect(review.counts.rejected).toBe(2);
-    expect(review.counts.new).toBe(2);
-    expect(review.rejects[0]!.reason).toMatch(/not in the master data/);
-    expect(review.rejects[1]!.reason).toMatch(/belongs to line L\.1/);
+    expect(review.counts.rowsRead).toBe(5);
+    expect(review.counts.new).toBe(5);
+    expect('rejects' in review).toBe(false);
     const plan = buildPlan(review, {});
-    expect(plan.rows).toHaveLength(2);
-    expect(plan.summary.rows_skipped).toBe(2);
+    expect(plan.rows).toHaveLength(5);
+    expect(plan.willAdd).toBe(5);
+    expect(plan.summary).toEqual({ rows_read: 5, rows_skipped: 0 });
+    const f = flagSummary(review, {});
+    expect(f.flags.map((x) => [x.flag, x.count, x.blocking])).toEqual([
+      ['missing_classification', 1, true], ['unknown_area', 1, true], ['line_mismatch', 1, false],
+    ]);
+    expect(f.blockedRows).toBe(2);
+    expect(f.warningRows).toBe(1);
+    expect(plan.flagged.total).toBe(3);
+  });
+
+  it('late months: one decision per month, per-row decisions only for months that already have stored rows', async () => {
+    const june = simpleRows(3, '2026-03-04'); // no events are stored in March 2026? see below
+    const parsed = await parse(june);
+    const review = buildReview(parsed, startup, stored);
+    const monthsStored = new Set(stored.filter((e) => !e.is_void).map((e) => e.event_date.slice(0, 7)));
+    expect(monthsStored.has('2026-03')).toBe(true);
+    expect(review.lateMonths).toEqual([]);
+    expect(review.counts.late).toBe(3);
+
+    // a month older than the first stored month is a late month
+    const old = await parse(simpleRows(4, '2025-01-10'));
+    const r2 = buildReview(old, startup, stored);
+    expect(r2.counts).toMatchObject({ late: 0, lateMonths: 1, lateMonthRows: 4, new: 0 });
+    expect(r2.lateMonths[0]).toMatchObject({ month: '2025-01', rows: 4 });
+    expect(undecidedCount(r2, {})).toBe(1);
+    expect(() => buildPlan(r2, {})).toThrow(/decision/);
+    const add = buildPlan(r2, { [monthKey('2025-01')]: 'add' });
+    expect(add.willAdd).toBe(4);
+    expect(add.rows).toHaveLength(4);
+    expect(add.warnings.find((w) => w.type === 'late_month')).toMatchObject({ resolution: 'added' });
+    const skip = buildPlan(r2, { [monthKey('2025-01')]: 'skip' });
+    expect(skip.willAdd).toBe(0);
+    expect(skip.rows).toHaveLength(0);
+    expect(skip.skippedLate).toBe(4);
+    expect(skip.summary).toEqual({ rows_read: 4, rows_skipped: 4 });
+    expect(skip.warnings.find((w) => w.type === 'late_month')).toMatchObject({ resolution: 'skipped' });
+    expect(buildPlan(r2, decideAll(r2, 'add')).willAdd).toBe(4);
+    expect(monthLabel('2025-01')).toBe('January 2025');
   });
 
   it('flags data problems on rows that will be added and drops them for skipped late rows', async () => {
@@ -197,7 +239,7 @@ describe('the downloadable list', () => {
     expect(lines[0]).toBe('Sheet row,Kind,Type,What we found,What happens');
     expect(csv).toMatch(/^2,Warning,Late entries,.*,Skipped/m);
     expect(csv).toMatch(/^3,Warning,Equipment code not in the master list/m);
-    expect(csv).toMatch(/^4,Left out,Row cannot be uploaded/m);
+    expect(csv).toMatch(/^4,Warning,Area not in the master list,.*Added and flagged/m);
     const stored2 = storedWarningsCsv([{ warning_id: 'W1', batch_id: 'B', type: 'blank_reason', source_row: 9, detail: '=1+1', resolution: 'accepted', event_id: 'EV-1' }]);
     expect(stored2).toContain("'=1+1");
     expect(stored2).toContain('Added and flagged');

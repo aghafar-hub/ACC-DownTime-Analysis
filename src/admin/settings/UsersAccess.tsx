@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, describeError } from '../api';
-import type { AdminUser } from '../api/types';
-import { useAuth } from '../auth/AuthContext';
-import CreateUserModal from '../admin/users/CreateUserModal';
-import TempPasswordDialog from '../admin/users/TempPasswordDialog';
-import UserModal, { roleName } from '../admin/users/UserModal';
-import { useToast } from '../admin/useToast';
-import { PageHeader, Tile } from '../components/Tile';
-import { useIsMobile } from '../hooks/useIsMobile';
-import { t } from '../i18n/t';
-import { Icon } from '../icons';
-import { pageById, pageLabel } from '../navigation';
-import { num, whenText } from '../util/format';
-import '../components/ui.css';
-import '../admin/admin.css';
+import { api, describeError } from '../../api';
+import type { AdminUser } from '../../api/types';
+import { useAuth } from '../../auth/AuthContext';
+import { Tile } from '../../components/Tile';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { t } from '../../i18n/t';
+import { Icon } from '../../icons';
+import { num, whenText } from '../../util/format';
+import { useToast } from '../useToast';
+import CreateUserModal from '../users/CreateUserModal';
+import TempPasswordDialog from '../users/TempPasswordDialog';
+import UserModal, { roleName } from '../users/UserModal';
+import '../../components/ui.css';
+import '../admin.css';
 
 function Badges({ u }: { u: AdminUser }) {
   return (
@@ -25,7 +24,8 @@ function Badges({ u }: { u: AdminUser }) {
   );
 }
 
-export default function Users() {
+/** Settings > Users and access: the accounts, roles, one-time passwords and per-page access exceptions. */
+export default function UsersAccess() {
   const { token, user: me, canEdit } = useAuth();
   const mobile = useIsMobile();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
@@ -53,12 +53,13 @@ export default function Users() {
   const signedIn = (u: AdminUser) => (u.last_login_at ? u.last_login_at.slice(0, 16) : t('never'));
 
   return (
-    <div className="page" data-testid="page-users">
-      <PageHeader
-        title={pageLabel(pageById('users'))}
-        subtitle={users ? t('{n} accounts · {active} active · {pending} waiting to choose a password', { n: users.length, active, pending }) : error ?? t('Loading…')}
-        right={edit ? <button type="button" className="btn-primary" onClick={() => setCreating(true)} data-testid="add-user"><Icon name="plus" size={15} /> {t('Add a person')}</button> : undefined}
-      />
+    <div data-testid="page-users" data-section="users">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <p className="status-line" style={{ margin: 0, flex: '1 1 240px' }} data-testid="users-summary">
+          {users ? t('{n} accounts · {active} active · {pending} waiting to choose a password', { n: users.length, active, pending }) : error ?? t('Loading…')}
+        </p>
+        {edit && <button type="button" className="btn-primary" onClick={() => setCreating(true)} data-testid="add-user"><Icon name="plus" size={15} /> {t('Add a person')}</button>}
+      </div>
       <p className="status-line" style={{ marginBottom: 12 }} data-testid="access-level">
         {edit ? t('Your access to this page: can edit.') : t('Your access to this page: view only.')}
       </p>

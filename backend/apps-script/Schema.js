@@ -573,7 +573,13 @@ var SCHEMA = {
       "orphan_continuation",
       "overlap_in_area",
       "placeholder_code",
-      "edited_in_app"
+      "edited_in_app",
+      "missing_code",
+      "missing_classification",
+      "invalid_classification",
+      "unknown_area",
+      "line_mismatch",
+      "late_month"
      ]
     },
     {

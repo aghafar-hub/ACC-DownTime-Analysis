@@ -29,7 +29,6 @@ describe('parseWorkbook: cached formula values', () => {
     const r = ok(await parseWorkbook(bytes));
     expect(r.rowsRead).toBe(3);
     expect(r.blankRows).toBe(200);
-    expect(r.rejected).toEqual([]);
     expect(r.rows).toHaveLength(3);
     const [a, b, c] = r.rows;
     expect(a).toMatchObject({
@@ -79,17 +78,38 @@ describe('parseWorkbook: cached formula values', () => {
     expect(r.caseFixes).toEqual([{ source_row: 2, from: 'Aut', to: 'AUT' }, { source_row: 3, from: 'Aut', to: 'AUT' }]);
   });
 
-  it('lists rows that cannot be uploaded and keeps the rest', async () => {
-    const rows = simpleRows(4);
+  it('keeps every row: blank code, classification, area and line are stored as blanks, other classification text upper-cased', async () => {
+    const rows = simpleRows(5);
     const bytes = await buildWorkbook(rows, {
-      overrides: [[0, 'STOPPAGE CLASIFICATION', 'XYZ'], [1, 'EQUIPMENT', null], [2, 'Failure', 'MAYBE']],
+      overrides: [
+        [0, 'EQUIPMENT CODE', null], [0, 'STOPPAGE CLASIFICATION', null], [0, 'REASON', null],
+        [1, 'EQUIPMENT', null], [1, 'Line', null],
+        [2, 'STOPPAGE CLASIFICATION', 'xyz'],
+        [3, 'STOPPAGE CLASIFICATION', ' mec '],
+      ],
     });
     const r = ok(await parseWorkbook(bytes));
-    expect(r.rowsRead).toBe(4);
-    expect(r.rows.map((x) => x.source_row)).toEqual([5]);
-    expect(r.rejected.map((x) => x.source_row)).toEqual([2, 3, 4]);
-    expect(r.rejected[0]!.reason).toMatch(/classification/i);
-    expect(r.rejected[2]!.reason).toMatch(/YES or NO/);
+    expect(r.rowsRead).toBe(5);
+    expect(r.rows.map((x) => x.source_row)).toEqual([2, 3, 4, 5, 6]);
+    expect(r.rows[0]).toMatchObject({ code_raw: '', classification: '' });
+    expect(r.rows[0]!.reason_raw).toBeUndefined();
+    expect(r.rows[1]).toMatchObject({ area_id: '', line_id: '' });
+    expect(r.rows[2]!.classification).toBe('XYZ');
+    expect(r.rows[3]!.classification).toBe('MEC');
+    expect(r.caseFixes).toEqual([{ source_row: 5, from: 'mec', to: 'MEC' }]);
+    expect(new Set(r.rows.map((x) => x.fingerprint)).size).toBe(5);
+    expect('rejected' in r).toBe(false);
+  });
+
+  it('refuses the whole file, listing the rows, only for values that cannot be stored', async () => {
+    const bytes = await buildWorkbook(simpleRows(5), {
+      overrides: [[0, 'Failure', 'MAYBE'], [1, 'CRITICALITY', 'HIGH'], [2, 'Freq', 7]],
+    });
+    const r = refused(await parseWorkbook(bytes));
+    const p = r.problems.find((x) => x.code === 'bad_value')!;
+    expect(p.rows).toEqual([2, 3, 4]);
+    expect(p.message).toMatch(/Fix them in Excel and choose the file again/);
+    expect(p.message).toMatch(/YES or NO/);
   });
 });
 
@@ -127,7 +147,6 @@ describe('parseWorkbook: time zones and daylight saving', () => {
       }
       const bytes = await buildWorkbook(all);
       const r = ok(await parseWorkbook(bytes));
-      expect(r.rejected).toEqual([]);
       expect(r.rows).toHaveLength(all.length);
       r.rows.forEach((row, i) => {
         expect(row.stop_ts, `row ${row.source_row} stop`).toBe(all[i]!.stop);

@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
-import { pageForPath, pageLabel, ROLE_LABELS } from '../navigation';
+import { isSettingsPath, pageForPath, pageLabel, ROLE_LABELS, settingsSubFromPath, settingsSubLabel } from '../navigation';
 import { useOnlineStatus } from '../useOnlineStatus';
 import './TopBar.css';
 
-export const OPEN_APPEARANCE_EVENT = 'acc-dt-open-appearance';
-
 // Top bar (56 px): breadcrumb "ACC Downtime > Page", online dot, a search
-// shortcut to the Event Explorer, the theme picker, and the avatar menu.
+// shortcut to the Event Explorer, the Settings button (gear, every page, every
+// role) and the avatar menu.
 export default function TopBar() {
   const { user, logout, canView } = useAuth();
   const location = useLocation();
@@ -21,7 +20,10 @@ export default function TopBar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const page = pageForPath(location.pathname);
-  const pageName = page ? pageLabel(page) : '';
+  const onSettings = isSettingsPath(location.pathname);
+  const sub = onSettings ? settingsSubFromPath(location.pathname) : undefined;
+  const pageName = onSettings ? t('Settings') : page ? pageLabel(page) : '';
+  const subName = sub ? settingsSubLabel(sub) : '';
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -42,11 +44,6 @@ export default function TopBar() {
   const role = user ? t(ROLE_LABELS[user.role_id] || user.role_id) : '';
   const canSearch = canView('events');
   const goSearch = () => navigate('/events', { state: { focusSearch: Date.now() } });
-  const openAppearance = () => {
-    setMenuOpen(false);
-    window.dispatchEvent(new CustomEvent(OPEN_APPEARANCE_EVENT));
-  };
-
   return (
     <header className="shell-topbar">
       <div className="shell-topbar-crumb" data-testid="breadcrumb">
@@ -59,6 +56,12 @@ export default function TopBar() {
               <>
                 <span className="shell-topbar-sep" aria-hidden="true">›</span>
                 <span className="shell-topbar-page">{pageName}</span>
+              </>
+            )}
+            {subName && (
+              <>
+                <span className="shell-topbar-sep" aria-hidden="true">›</span>
+                <span className="shell-topbar-page" data-testid="breadcrumb-sub">{subName}</span>
               </>
             )}
           </>
@@ -88,9 +91,17 @@ export default function TopBar() {
           </button>
         )}
 
-        <button type="button" className="shell-topbar-icon-btn" aria-label={t('Appearance')} title={t('Appearance')} onClick={openAppearance} data-testid="appearance-btn">
-          <Icon name="palette" size={18} />
-        </button>
+        <Link
+          to="/settings"
+          className={onSettings ? 'shell-topbar-settings shell-topbar-settings--active' : 'shell-topbar-settings'}
+          aria-label={t('Settings')}
+          aria-current={onSettings ? 'page' : undefined}
+          title={t('Settings')}
+          data-testid="settings-btn"
+        >
+          <Icon name="settings" size={18} />
+          <span className="shell-topbar-settings-label">{t('Settings')}</span>
+        </Link>
 
         <div className="shell-topbar-user" ref={menuRef}>
           <button
@@ -110,9 +121,6 @@ export default function TopBar() {
           </button>
           {menuOpen && (
             <div className="shell-topbar-user-menu" role="menu">
-              <button type="button" role="menuitem" className="shell-topbar-user-menu-item" onClick={openAppearance}>
-                <Icon name="palette" size={15} /> {t('Appearance')}
-              </button>
               <button type="button" role="menuitem" className="shell-topbar-user-menu-item" onClick={() => logout()} data-testid="sign-out">
                 <Icon name="logout" size={15} /> {t('Sign out')}
               </button>

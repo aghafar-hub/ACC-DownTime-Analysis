@@ -3,7 +3,6 @@ import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import RequireAuth from './auth/RequireAuth';
 import RequireTab from './auth/RequireTab';
-import AppearanceModal from './components/AppearanceModal';
 import BottomNav from './components/BottomNav';
 import { InstallBanner } from './components/InstallGuide';
 import OfflineBanner from './components/OfflineBanner';
@@ -29,7 +28,6 @@ import Reliability from './pages/Reliability';
 import Repeats from './pages/Repeats';
 import Settings from './pages/Settings';
 import Upload from './pages/Upload';
-import Users from './pages/Users';
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import './App.css';
 
@@ -78,7 +76,6 @@ function ShellLayout() {
       </div>
       <SaveBlockedToast />
       <UpdatePrompt />
-      <AppearanceModal />
     </div>
   );
 }
@@ -144,8 +141,8 @@ export default function App() {
                 <Route path="/events" element={<RequireTab tab="events"><EventExplorer /></RequireTab>} />
                 <Route path="/upload" element={<RequireTab tab="upload"><Upload /></RequireTab>} />
                 <Route path="/master" element={<RequireTab tab="master"><Master /></RequireTab>} />
-                <Route path="/settings" element={<RequireTab tab="settings"><Settings /></RequireTab>} />
-                <Route path="/users" element={<RequireTab tab="users"><Users /></RequireTab>} />
+                <Route path="/settings/:sub?" element={<Settings />} />
+                <Route path="/users" element={<Navigate to="/settings/users" replace />} />
                 <Route path="*" element={<NotFound />} />
               </Route>
             </Route>

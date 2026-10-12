@@ -7,7 +7,8 @@ import type {
   Line, Reason, Setting, TabId, UploadBatch, UploadWarning, WarningType,
 } from '../api/types';
 import { TAB_IDS } from '../api/types';
-import { buildLookup, eventIdOf, fingerprintOf, isAreaLevelCode, matchKey, mergeFlags, resolveRow } from '../util/normalize';
+import { buildIndex, deriveEventFields } from '../calc';
+import { eventIdOf, fingerprintOf, matchKey } from '../util/normalize';
 
 import { DEMO_PASSWORD } from './demoAccounts';
 export { DEMO_PASSWORD };
@@ -171,12 +172,13 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
     mk('U-DEMO-NEW', DEMO_TEMP_EMAIL, 'Demo New Hire', 'ROLE-VIEW', true, DEMO_TEMP_PASSWORD),
   ];
 
-  const look = buildLookup({ equipment, equipment_areas, aliases, reasons, areas });
+  const look = buildIndex({ equipment, equipment_areas, aliases, reasons, areas });
 
   // ---- events
   interface RawRow {
     area_id: string; line_id: string; code_raw: string; stop: number; start: number; freq: 0 | 1;
-    classification: ClassificationCode; reason_raw: string; description: string;
+    /** a valid code, or a problem written in the sheet ('' or unknown text) that is stored and flagged */
+    classification: string; reason_raw: string; description: string;
   }
   const raw: RawRow[] = [];
   const startMs = Date.parse(`${GEN_START}T00:00:00Z`);
@@ -265,6 +267,12 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
   for (let i = 0; i < 8; i++) raw[take()].reason_raw = pick(['Operator error see note', 'Unknown cause', 'Other', 'Checked and OK']);
   for (let i = 0; i < 5; i++) raw[take()].reason_raw = '';
   for (let i = 0; i < 3; i++) { const r = raw[take()]; const s = r.stop; r.stop = r.start; r.start = s; }
+  // import never drops a row: problem rows are stored with flags (a few of every kind)
+  for (let i = 0; i < 3; i++) raw[take()].classification = ''; // missing_classification (blocking)
+  for (let i = 0; i < 2; i++) raw[take()].classification = pick(['XYZ', 'MECH']); // invalid_classification (blocking)
+  for (let i = 0; i < 2; i++) raw[take()].area_id = pick(['ZZ.9', 'K.9']); // unknown_area (blocking)
+  for (let i = 0; i < 3; i++) raw[take()].code_raw = ''; // missing_code
+  for (let i = 0; i < 5; i++) { const r = raw[take()]; r.line_id = r.line_id === 'L.1' ? 'L.2' : 'L.1'; } // line_mismatch
   const orphanIdx = [take(), take()];
   for (const i of orphanIdx) raw[i].freq = 0;
   const durationMismatch = new Set([take(), take()]);
@@ -298,6 +306,8 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
   });
 
   const events: EventRow[] = [];
+  const derivedNotes = new Map<number, string>(); // raw index -> comparison warning recorded with the upload
+  const eventNotes = new Map<string, string>(); // event_id -> same
   const seen = new Map<string, number>();
   const rowInYear = new Map<number, number>();
   raw.forEach((r, idx) => {
@@ -306,11 +316,12 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
     const occ = (seen.get(key) ?? 0) + 1;
     seen.set(key, occ);
     const fingerprint = fingerprintOf(r.area_id, r.code_raw, stop_ts, start_ts, occ);
-    const res = resolveRow(look, { area_id: r.area_id, code_raw: r.code_raw, classification: r.classification, reason_raw: r.reason_raw, stop_ts, start_ts });
+    const res = deriveEventFields({ area_id: r.area_id, line_id: r.line_id, code_raw: r.code_raw, classification: r.classification, reason_raw: r.reason_raw, stop_ts, start_ts }, look);
+    // stored flags are the server's data checks only; orphans, overlaps and duration differences are found by comparing rows
     const flags = [...res.flags];
-    if (orphanIdx.includes(idx)) flags.push('orphan_continuation');
-    if (overlapRows.has(idx)) flags.push('overlap_in_area');
-    if (durationMismatch.has(idx)) flags.push('duration_mismatch');
+    if (orphanIdx.includes(idx)) derivedNotes.set(idx, 'orphan_continuation');
+    if (overlapRows.has(idx)) derivedNotes.set(idx, 'overlap_in_area');
+    if (durationMismatch.has(idx)) derivedNotes.set(idx, 'duration_mismatch');
     const crit = r.classification === 'PL' || r.classification === 'CIR' ? 'NO_INC' : 'INC';
     const year = new Date(r.stop).getUTCFullYear();
     const srow = (rowInYear.get(year) ?? 5) + 1;
@@ -327,7 +338,7 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
       stop_ts, start_ts,
       duration_s: (r.start - r.stop) / 1000,
       freq: r.freq,
-      classification: r.classification,
+      classification: r.classification as ClassificationCode,
       criticality: crit,
       is_failure: crit === 'INC' && r.freq === 1,
       reason_raw: r.reason_raw || undefined,
@@ -341,13 +352,14 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
       is_void: false,
       created_at: batchTimes.get(batchOfMonth.get(monthOf(r.stop))!)!,
     });
+    if (derivedNotes.has(idx)) eventNotes.set(events[events.length - 1].event_id, derivedNotes.get(idx)!);
   });
 
   // ---- batch history and warnings
   const upload_batches: UploadBatch[] = [];
   const upload_warnings: UploadWarning[] = [];
   const cumulative = new Map<number, number>();
-  const WARN_TYPES: WarningType[] = ['unknown_code', 'code_not_in_area', 'unlisted_reason', 'blank_reason', 'end_before_start', 'orphan_continuation', 'overlap_in_area', 'placeholder_code', 'duration_mismatch'];
+  const WARN_TYPES: WarningType[] = ['missing_classification', 'invalid_classification', 'unknown_area', 'missing_code', 'line_mismatch', 'placeholder_code', 'unknown_code', 'code_not_in_area', 'unlisted_reason', 'blank_reason', 'end_before_start', 'orphan_continuation', 'overlap_in_area', 'placeholder_code', 'duration_mismatch'];
   const detailOf: Record<string, string> = {
     unknown_code: 'The equipment code is not in the equipment list.',
     code_not_in_area: 'The equipment code is not listed under this area.',
@@ -358,7 +370,13 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
     overlap_in_area: 'This stop overlaps another stop in the same area.',
     placeholder_code: 'The equipment code is a placeholder.',
     duration_mismatch: 'The duration differs from the sheet total.',
+    missing_classification: 'The classification is empty.',
+    invalid_classification: 'The classification is not one of PRO, MEC, ELE, AUT, PL, CIR.',
+    unknown_area: 'The area is not in the list of areas.',
+    missing_code: 'The equipment code is empty.',
+    line_mismatch: 'The line in the sheet differs from the line of the area.',
   };
+  const warningTypeOf = (flag: string): WarningType => (flag === 'placeholder' ? 'placeholder_code' : (flag as WarningType));
   months.forEach((m) => {
     const id = batchOfMonth.get(m)!;
     const rows = events.filter((e) => e.batch_id === id);
@@ -367,12 +385,13 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
     cumulative.set(year, before + rows.length);
     let wn = 0;
     for (const e of rows) {
-      for (const f of String(e.flags ?? '').split(',').filter(Boolean)) {
-        if (!WARN_TYPES.includes(f as WarningType)) continue;
+      const kinds = [...String(e.flags ?? '').split(',').filter(Boolean).map(warningTypeOf), ...(eventNotes.has(e.event_id) ? [eventNotes.get(e.event_id) as WarningType] : [])];
+      for (const f of kinds) {
+        if (!WARN_TYPES.includes(f)) continue;
         wn++;
         upload_warnings.push({
-          warning_id: `W-${id}-${wn}`, batch_id: id, type: f as WarningType, source_row: e.source_row, event_id: e.event_id,
-          detail: `${detailOf[f]} (${e.area_id}, ${e.code_raw || 'no code'}, ${e.event_date})`, resolution: 'accepted', resolved_by: 'U-DEMO-ENG',
+          warning_id: `W-${id}-${wn}`, batch_id: id, type: f, source_row: e.source_row, event_id: e.event_id,
+          detail: `${detailOf[f]} (${e.area_id || 'no area'}, ${e.code_raw || 'no code'}, ${e.event_date})`, resolution: 'accepted', resolved_by: 'U-DEMO-ENG',
         });
       }
     }
@@ -390,4 +409,3 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
   };
 }
 
-export { isAreaLevelCode, mergeFlags };

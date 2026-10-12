@@ -1,6 +1,6 @@
 /** Repeated failures: same equipment code and reason, several failure events inside a sliding window. */
 import type { ChainedEvent } from './events';
-import { chainHours } from './events';
+import { analysableChains, chainHours } from './events';
 import { matchKey, rowCode, type CodeLookup } from './normalize';
 import type { CalcSettings } from './settings';
 import { MS_DAY, formatDate, rangeToInterval, type DateRange } from './time';
@@ -107,7 +107,7 @@ export function findRepeatedFailures(chains: ChainedEvent[], o: RepeatOptions): 
   const prev = o.previousWindow ? rangeToInterval(o.previousWindow) : null;
   const groups: RepeatGroup[] = [];
   const recurrences: RecurrenceEvent[] = [];
-  for (const [key, list] of groupChains(chains, o)) {
+  for (const [key, list] of groupChains(analysableChains(chains), o)) {
     list.sort((a, b) => a.chain.startMs - b.chain.startMs || (a.chain.id < b.chain.id ? -1 : 1));
     const clusters = findClusters(list.map((k) => k.chain.startMs), o.settings.repeatMinEvents, o.settings.repeatWindowDays);
     const inWin = (idx: number): boolean => win === null || (list[idx]!.chain.startMs >= win.fromMs && list[idx]!.chain.startMs < win.toMs);

@@ -170,7 +170,7 @@
       "columns": [
         {"name": "warning_id", "type": "text", "required": true, "description": "W-<batch>-<n>"},
         {"name": "batch_id", "type": "text", "required": true, "description": ""},
-        {"name": "type", "type": "enum", "required": true, "enum": ["late_row", "changed_row", "missing_row", "unknown_code", "code_not_in_area", "unlisted_reason", "blank_reason", "end_before_start", "duration_mismatch", "orphan_continuation", "overlap_in_area", "placeholder_code", "edited_in_app"], "description": ""},
+        {"name": "type", "type": "enum", "required": true, "enum": ["late_row", "changed_row", "missing_row", "unknown_code", "code_not_in_area", "unlisted_reason", "blank_reason", "end_before_start", "duration_mismatch", "orphan_continuation", "overlap_in_area", "placeholder_code", "edited_in_app", "missing_code", "missing_classification", "invalid_classification", "unknown_area", "line_mismatch", "late_month"], "description": ""},
         {"name": "source_row", "type": "int", "required": false, "description": "Row number in the uploaded sheet"},
         {"name": "event_id", "type": "text", "required": false, "description": ""},
         {"name": "detail", "type": "text", "required": false, "description": "Plain-English description with stored and uploaded values"},

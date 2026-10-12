@@ -1,6 +1,13 @@
 /** Chaining of downtime rows into events (docs section 8). */
 import type { EventRow } from '../api/types';
+import { isBlocked } from './flags';
 import { MS_SECOND, clippedHours, parseTs, type Interval } from './time';
+
+/** A record the calculations may use: not voided and without a blocking data problem (see flags.ts). */
+export const isAnalysable = (row: Pick<EventRow, 'is_void' | 'flags'>): boolean => !row.is_void && !isBlocked(row);
+
+/** Guard for functions that take chains: drops chains whose head row is voided or blocked. */
+export const analysableChains = (chains: ChainedEvent[]): ChainedEvent[] => chains.filter((c) => isAnalysable(c.head));
 
 /** [stop, restart) of a row in ms, or null when a timestamp is unreadable. */
 export function rowSpan(row: Pick<EventRow, 'stop_ts' | 'start_ts'>): Interval | null {
@@ -49,6 +56,8 @@ export interface BuildOptions {
   toleranceMs?: number;
   /** keep voided rows (default false: voided rows are removed before chaining) */
   includeVoid?: boolean;
+  /** keep rows with a blocking data problem (default false: they are left out until fixed) */
+  includeInvalid?: boolean;
 }
 
 export interface EventBuild {
@@ -129,6 +138,7 @@ export function buildFailureEvents(rows: EventRow[], options: BuildOptions = {})
   const unreadable: EventRow[] = [];
   rows.forEach((row, idx) => {
     if (row.is_void && !options.includeVoid) return;
+    if (isBlocked(row) && !options.includeInvalid) return;
     const stop = parseTs(row.stop_ts);
     const start = parseTs(row.start_ts);
     if (stop === null || start === null) {

@@ -1,12 +1,14 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { DiffUploadRow } from '../calc';
 import { PAGE_SIZE, ShowMore } from '../components/PhoneParts';
 import { t, tn } from '../i18n/t';
 import { num } from '../util/format';
 import {
-  checkGroups, undecidedCount, type CheckGroup, type Decision, type Decisions, type Review,
+  checkGroups, flagProblem, flagSummary, flagTitle, monthKey, monthLabel, undecidedCount,
+  type CheckGroup, type Decision, type Decisions, type FlagCount, type Review,
 } from './review';
-import { fieldName, warningHelp, warningLabel, warningSymbol, warningTone } from './warningText';
+import { fieldName, OTHER_CHECK_TYPES, warningHelp, warningLabel, warningSymbol, warningTone } from './warningText';
 import './upload.css';
 
 const shortTime = (ts: string): string => ts.slice(0, 16);
@@ -47,6 +49,47 @@ function LateRowItem({ row, checks, decision, onDecide }: { row: DiffUploadRow; 
   );
 }
 
+function LateMonthCard({ month, rows, hours, decision, onDecide }: {
+  month: string; rows: number; hours: number; decision?: Decision; onDecide: (d: Decision) => void;
+}) {
+  const label = monthLabel(month);
+  return (
+    <li className="up-late" data-testid="late-month" data-month={month} data-decision={decision ?? 'none'}>
+      <div className="up-late-info">
+        <div className="up-late-top"><b>{label}</b></div>
+        <div className="up-late-line">{t('{label}: {rows} rows, {hours} hours, not stored yet', { label, rows: num(rows), hours: num(Math.round(hours * 10) / 10) })}</div>
+      </div>
+      <div className="chip-row up-late-choice" role="group" aria-label={t('{label}: add or skip the month', { label })}>
+        <button type="button" className={decision === 'add' ? 'chip chip--on' : 'chip'} aria-pressed={decision === 'add'} onClick={() => onDecide('add')} data-testid="month-add">
+          <span aria-hidden="true">✓</span> {t('Add month')}
+        </button>
+        <button type="button" className={decision === 'skip' ? 'chip chip--on' : 'chip'} aria-pressed={decision === 'skip'} onClick={() => onDecide('skip')} data-testid="month-skip">
+          <span aria-hidden="true">✕</span> {t('Skip month')}
+        </button>
+      </div>
+    </li>
+  );
+}
+
+function FlagBlock({ f }: { f: FlagCount }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? f.rows : f.rows.slice(0, 12);
+  return (
+    <details className="up-group" data-testid={`flag-${f.flag}`} data-blocking={f.blocking ? 'yes' : 'no'}>
+      <summary>
+        <span className={`badge badge--${f.blocking ? 'danger' : 'warning'}`}><span aria-hidden="true">{f.blocking ? '◆' : '▲'}</span> {num(f.count)}</span>
+        <span className="up-group-title">{flagTitle(f.flag)}</span>
+        {f.blocking && <span className="adm-muted-sm"> {t('left out of the numbers until fixed')}</span>}
+      </summary>
+      <p className="adm-note">{flagProblem(f.flag)}</p>
+      <p className="adm-muted-sm">{t('Sheet rows')}: <span className="mono">{shown.join(', ')}{!all && f.rows.length > shown.length ? ', …' : ''}</span></p>
+      {!all && f.rows.length > shown.length && (
+        <button type="button" className="btn btn-sm" onClick={() => setAll(true)}>{t('Show all {n}', { n: f.rows.length })}</button>
+      )}
+    </details>
+  );
+}
+
 function CheckBlock({ g }: { g: CheckGroup }) {
   const [all, setAll] = useState(false);
   const shown = all ? g.items : g.items.slice(0, 8);
@@ -76,9 +119,11 @@ export default function ReviewPanel({ review, decisions, onDecide, onDecideAll }
 }) {
   const c = review.counts;
   const open = undecidedCount(review, decisions);
+  const totalLate = review.late.length + review.lateMonths.length;
   const [lateShown, setLateShown] = useState(PAGE_SIZE);
   const [changedShown, setChangedShown] = useState(10);
-  const groups = checkGroups(review, decisions);
+  const groups = checkGroups(review, decisions, OTHER_CHECK_TYPES);
+  const flags = flagSummary(review, decisions);
   const lateChecks = new Map(review.late.map((l) => [l.fingerprint, l.warnings.length]));
   return (
     <div data-testid="review">
@@ -92,28 +137,36 @@ export default function ReviewPanel({ review, decisions, onDecide, onDecideAll }
           <Count n={c.rowsRead} label={t('Rows read')} testid="count-read" />
           <Count n={c.identical} label={t('Already stored')} hint={t('skipped')} tone="success" testid="count-identical" />
           <Count n={c.new} label={t('New')} hint={t('will be added')} tone="info" testid="count-new" />
+          <Count n={c.lateMonths} label={t('Late months')} hint={t('{n} rows, you choose', { n: num(c.lateMonthRows) })} tone="warning" testid="count-late-months" />
           <Count n={c.late} label={t('Late entries')} hint={t('you choose')} tone="warning" testid="count-late" />
           <Count n={c.changed} label={t('Differ from stored')} hint={t('stored kept')} tone="warning" testid="count-changed" />
           <Count n={c.missing} label={t('Missing from file')} hint={t('information')} tone="info" testid="count-missing" />
-          <Count n={c.rejected} label={t('Left out')} hint={t('cannot be uploaded')} tone="danger" testid="count-rejected" />
         </div>
       </section>
 
-      {review.late.length > 0 && (
+      {(review.late.length > 0 || review.lateMonths.length > 0) && (
         <section className="card" aria-label={t('Late entries')} data-testid="late-section">
           <div className="up-head">
-            <h2>{warningLabel('late_row')}</h2>
+            <h2>{review.lateMonths.length > 0 ? t('Late months and entries') : warningLabel('late_row')}</h2>
             <div className="chip-row">
               <button type="button" className="btn btn-sm" onClick={() => onDecideAll('add')} data-testid="add-all">{t('Add all')}</button>
               <button type="button" className="btn btn-sm" onClick={() => onDecideAll('skip')} data-testid="skip-all">{t('Skip all')}</button>
             </div>
           </div>
-          <p className="adm-note">{warningHelp('late_row')}</p>
+          <p className="adm-note">{review.lateMonths.length > 0 ? warningHelp('late_month') : ''} {review.late.length > 0 ? warningHelp('late_row') : ''}</p>
           <p className={open ? 'up-decided up-decided--open' : 'up-decided'} data-testid="late-progress" role="status">
             {open
-              ? <><span aria-hidden="true">▲ </span>{t('{done} of {total} decided. {open} still to choose.', { done: review.late.length - open, total: review.late.length, open })}</>
-              : <><span aria-hidden="true">✓ </span>{t('All {n} late entries decided.', { n: review.late.length })}</>}
+              ? <><span aria-hidden="true">▲ </span>{t('{done} of {total} decided. {open} still to choose.', { done: totalLate - open, total: totalLate, open })}</>
+              : <><span aria-hidden="true">✓ </span>{t('All {n} late decisions made.', { n: totalLate })}</>}
           </p>
+          {review.lateMonths.length > 0 && (
+            <ul className="up-list up-list--rows" data-testid="late-months">
+              {review.lateMonths.map((m) => (
+                <LateMonthCard key={m.month} month={m.month} rows={m.rows} hours={m.hours} decision={decisions[monthKey(m.month)]} onDecide={(d) => onDecide(monthKey(m.month), d)} />
+              ))}
+            </ul>
+          )}
+          {review.late.length > 0 && review.lateMonths.length > 0 && <h3 className="up-sub">{t('Single late rows in months that already have stored rows')}</h3>}
           <ul className="up-list up-list--rows">
             {review.late.slice(0, lateShown).map((l) => (
               <LateRowItem key={l.fingerprint} row={l.row} checks={lateChecks.get(l.fingerprint) ?? 0} decision={decisions[l.fingerprint]} onDecide={(d) => onDecide(l.fingerprint, d)} />
@@ -123,10 +176,30 @@ export default function ReviewPanel({ review, decisions, onDecide, onDecideAll }
         </section>
       )}
 
+      <section className="card" aria-label={t('Records that will need checking')} data-testid="flags-section">
+        <h2>{t('Records that will need checking')}</h2>
+        <p className="adm-note" data-testid="nothing-dropped">
+          {t('Nothing is dropped: every row is stored. These records wait on the Validate page.')}{' '}
+          <Link to="/validate" data-testid="open-validate">{t('Open the Validate page')}</Link>
+        </p>
+        {flags.total === 0 ? (
+          <p className="up-decided" data-testid="flags-none"><span aria-hidden="true">✓ </span>{t('No record has a data problem.')}</p>
+        ) : (
+          <>
+            <p className="adm-note" data-testid="flags-total">
+              {tn(flags.total, '{n} record will need checking', '{n} records will need checking')}
+              {flags.blockedRows > 0 && <>{': '}<b>{tn(flags.blockedRows, '{n} is left out of the numbers until fixed', '{n} are left out of the numbers until fixed')}</b></>}
+              {flags.warningRows > 0 && <>{flags.blockedRows > 0 ? ', ' : ': '}{tn(flags.warningRows, '{n} has warnings only', '{n} have warnings only')}</>}.
+            </p>
+            {flags.flags.map((f) => <FlagBlock key={f.flag} f={f} />)}
+          </>
+        )}
+      </section>
+
       {groups.length > 0 && (
         <section className="card" aria-label={t('Data checks')} data-testid="checks-section">
-          <h2>{t('Data checks on rows that will be added')}</h2>
-          <p className="adm-note">{t('These rows are added and flagged in Event Explorer. Nothing is blocked. Download the list to fix the workbook itself.')}</p>
+          <h2>{t('Other checks on rows that will be added')}</h2>
+          <p className="adm-note">{t('These rows are added and flagged. Nothing is blocked. Download the list to fix the workbook itself.')}</p>
           {groups.map((g) => <CheckBlock key={g.type} g={g} />)}
         </section>
       )}
@@ -181,16 +254,6 @@ export default function ReviewPanel({ review, decisions, onDecide, onDecideAll }
         </section>
       )}
 
-      {review.rejects.length > 0 && (
-        <section className="card" aria-label={t('Rows left out')} data-testid="rejects-section">
-          <h2><span aria-hidden="true">◆ </span>{t('Rows left out')}</h2>
-          <p className="adm-note">{t('These rows cannot be uploaded and are not sent. Fix them in the workbook and upload it again.')}</p>
-          <ul className="up-list">
-            {review.rejects.slice(0, 50).map((r) => <li key={r.source_row} data-testid="reject-row"><b className="mono">{t('Row {n}', { n: r.source_row })}</b> <span className="adm-wrap">{r.reason}</span></li>)}
-          </ul>
-          {review.rejects.length > 50 && <p className="adm-muted-sm">{t('and {n} more (they are in the downloadable list)', { n: review.rejects.length - 50 })}</p>}
-        </section>
-      )}
     </div>
   );
 }

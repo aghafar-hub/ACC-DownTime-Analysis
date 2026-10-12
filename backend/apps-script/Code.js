@@ -32,6 +32,7 @@ var HANDLERS = {
   uploadStart: function (s, p) { return uploadStart_(s, p.fileName, p.fileHash); },
   uploadChunk: function (s, p) { return uploadChunk_(s, p.batchId, p.rows); },
   uploadFinish: function (s, p) { return uploadFinish_(s, p.batchId, p.summary, p.warnings); },
+  revalidateEvents: function (s, p) { return revalidateEvents_(s, p.year); },
   editEvent: function (s, p) { return editEvent_(s, p.eventId, p.changes, p.note); },
   voidEvent: function (s, p) { return voidEvent_(s, p.eventId, p.isVoid, p.note); },
   saveEquipment: function (s, p) { return saveEquipment_(s, p.row, p.areaIds); },

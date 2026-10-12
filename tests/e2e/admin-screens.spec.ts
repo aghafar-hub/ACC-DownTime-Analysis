@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { buildWorkbook, simpleRows } from '../helpers/makeWorkbook';
 import { noSidewaysScroll, setTheme, signInAndWait, stubFonts, watchConsole } from './helpers';
 
-// Screenshots of Upload, Master Data, Settings and Users in every theme, phone and desktop,
+// Screenshots of Upload, Master Data, Settings (Calculations) and Users and access in every theme, phone and desktop,
 // saved to test-results/screens-admin/ for a visual check.
 const THEMES = ['ACC Light', 'Warm Paper', 'High Contrast', 'Navy Dark', 'Carbon Dark'];
 const VIEWPORTS = [
@@ -49,12 +49,12 @@ for (const theme of THEMES) {
       await page.getByRole('button', { name: /^Reasons/ }).click();
       await shot('6-master-reasons');
 
-      await page.goto('/#/settings');
+      await page.goto('/#/settings/calculations');
       await expect(page.getByTestId('settings-form')).toBeVisible();
       await page.getByTestId('settings-availability').scrollIntoViewIfNeeded();
-      await shot('7-settings');
+      await shot('7-settings-calculations');
 
-      await page.goto('/#/users');
+      await page.goto('/#/settings/users');
       await expect(page.getByTestId(vp.phone ? 'user-card' : 'user-row').first()).toBeVisible();
       await shot('8-users');
       await (vp.phone ? page.getByTestId('user-card').nth(1) : page.getByTestId('user-row').nth(1).getByRole('button')).click();

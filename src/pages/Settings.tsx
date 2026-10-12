@@ -1,51 +1,69 @@
+import { Navigate, NavLink, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import SettingsForm from '../admin/SettingsForm';
-import { useToast } from '../admin/useToast';
-import DataNotes from '../components/DataNotes';
-import { InstallCard } from '../components/InstallGuide';
-import ThemePicker from '../components/ThemePicker';
-import { PageHeader, Tile } from '../components/Tile';
-import { useStartup } from '../data/useStartup';
+import Appearance from '../admin/settings/Appearance';
+import Calculations from '../admin/settings/Calculations';
+import Security from '../admin/settings/Security';
+import UsersAccess from '../admin/settings/UsersAccess';
+import { PageHeader } from '../components/Tile';
+import { tapHaptic } from '../haptics';
 import { t } from '../i18n/t';
-import { pageById, pageLabel } from '../navigation';
-import { useTheme } from '../theme/ThemeContext';
-import { whenText } from '../util/format';
+import { Icon } from '../icons';
+import { SETTINGS_SUBS, settingsSubById, settingsSubLabel, type SettingsSub } from '../navigation';
+import { store } from '../storagePrefix';
+import NoAccess from './NoAccess';
 import '../components/ui.css';
-import '../admin/admin.css';
+import './Settings.css';
 
+const LAST_SUB_KEY = 'settings_sub';
+
+/** The subtabs this person may open: Appearance always, the rest need View on their tab. */
+export function useVisibleSubs(): SettingsSub[] {
+  const { canView } = useAuth();
+  return SETTINGS_SUBS.filter((s) => s.tab === null || canView(s.tab));
+}
+
+function Body({ id }: { id: string }) {
+  switch (id) {
+    case 'calculations': return <Calculations />;
+    case 'security': return <Security />;
+    case 'users': return <UsersAccess />;
+    default: return <Appearance />;
+  }
+}
+
+/** Settings: a bar of subtabs (Appearance, Calculations, Security, Users and access) under one page header. */
 export default function Settings() {
-  const st = useStartup();
-  const { canEdit } = useAuth();
-  const { themeName } = useTheme();
-  const [toastNode, toast] = useToast();
-  const settings = st.startup?.settings ?? [];
-  const last = settings.map((s) => s.updated_at).filter(Boolean).sort().pop();
-  const edit = canEdit('settings');
+  const { sub } = useParams();
+  const visible = useVisibleSubs();
+  const current = settingsSubById(sub);
+
+  // /settings and unknown names go to the subtab used last (if still allowed), else Appearance
+  if (!current) {
+    const remembered = store.get(LAST_SUB_KEY);
+    const target = visible.find((s) => s.id === remembered) ?? visible[0];
+    return <Navigate to={`/settings/${target.id}`} replace />;
+  }
+  if (!visible.some((s) => s.id === current.id)) return <NoAccess />;
+  store.set(LAST_SUB_KEY, current.id);
+
   return (
-    <div className="page" data-testid="page-settings">
-      <PageHeader
-        title={pageLabel(pageById('settings'))}
-        subtitle={st.startup ? t('{n} settings · theme {theme}', { n: settings.length, theme: t(themeName) }) : t('Loading…')}
-      />
-      <p className="status-line" style={{ marginBottom: 12 }} data-testid="access-level">
-        {edit ? t('Your access to this page: can edit.') : t('Your access to this page: view only.')}
-      </p>
-      <div className="tiles">
-        <Tile icon="settings" label={t('Settings on record')} value={st.startup ? settings.length : '-'} testid="fact-settings" />
-        <Tile icon="palette" label={t('Theme on this device')} value={t(themeName)} testid="fact-theme" />
-        <Tile icon="clock" label={t('Last changed')} value={last ? last.slice(0, 10) : t('never')} sub={last ? whenText(last.replace(' ', 'T')) : undefined} testid="fact-last-changed" />
-      </div>
-      <DataNotes st={st} />
-      <section className="card" data-testid="appearance-section">
-        <h2>{t('Appearance')}</h2>
-        <p style={{ marginBottom: 12 }}>{t('Pick the theme that suits where you work. It is kept on this device.')}</p>
-        <ThemePicker />
-      </section>
-      <InstallCard />
-      {st.startup && (
-        <SettingsForm settings={settings} canEdit={edit} onSaved={(text) => { toast(text); st.reload(); }} />
-      )}
-      {toastNode}
+    <div className="page" data-testid="page-settings" data-sub={current.id}>
+      <PageHeader title={t('Settings')} subtitle={t(current.blurb)} />
+      <nav className="set-tabs" aria-label={t('Settings sections')} data-testid="settings-tabs">
+        {visible.map((s) => (
+          <NavLink
+            key={s.id}
+            to={`/settings/${s.id}`}
+            onClick={tapHaptic}
+            className={({ isActive }) => (isActive ? 'set-tab set-tab--active' : 'set-tab')}
+            data-sub={s.id}
+          >
+            <Icon name={s.icon} size={15} />
+            <span>{settingsSubLabel(s)}</span>
+          </NavLink>
+        ))}
+      </nav>
+      <Body id={current.id} />
     </div>
   );
 }

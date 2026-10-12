@@ -59,8 +59,8 @@ for (const theme of THEMES) {
         await expect(page.getByTestId('more-sheet')).toBeVisible();
         await shot('6-more-sheet');
       } else {
-        await page.getByTestId('appearance-btn').click();
-        await expect(page.getByTestId('appearance-modal')).toBeVisible();
+        await page.getByTestId('settings-btn').click();
+        await expect(page.getByTestId('settings-appearance')).toBeVisible();
         await shot('6-appearance');
       }
       expect(errors, 'console errors').toEqual([]);

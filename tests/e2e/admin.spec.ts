@@ -2,10 +2,10 @@ import { expect, test, type Page } from '@playwright/test';
 import { noSidewaysScroll, signInAndWait, smallTargets, stubFonts, watchConsole, type Role } from './helpers';
 
 // Master Data, Settings and Users in mock mode.
-async function go(page: Page, role: Role, hash: string) {
+async function go(page: Page, role: Role, hash: string, testid = hash) {
   await signInAndWait(page, role);
   await page.goto(`/#/${hash}`);
-  await expect(page.getByTestId(`page-${hash}`)).toBeVisible();
+  await expect(page.getByTestId(`page-${testid}`)).toBeVisible();
 }
 
 test.describe('master data', () => {
@@ -185,25 +185,21 @@ test.describe('settings', () => {
   test.afterEach(() => expect(errors, 'console errors').toEqual([]));
 
   test('admin: edit, validate, save all at once, last changed', async ({ page }) => {
-    await go(page, 'admin', 'settings');
-    await expect(page.getByTestId('theme-picker')).toBeVisible();
+    await go(page, 'admin', 'settings/calculations', 'settings');
     await expect(page.getByTestId('when-availability')).toContainText('Applies right away');
-    await expect(page.getByTestId('when-signin')).toContainText('Applies to new sign-ins');
+    await expect(page.getByTestId('settings-signin')).toHaveCount(0); // lives under Security
     await expect(page.getByTestId('basis-formula')).toContainText('scheduled hours − planned');
     await expect(page.getByTestId('last-changed')).toContainText('No setting has been changed yet');
 
     // a bad value blocks the whole save
     await page.getByTestId('availability_basis-C').click();
     await page.getByTestId('set-scheduled_hours_per_day').fill('30');
-    await page.getByTestId('set-min_password_length').fill('4');
     await page.getByTestId('settings-save').click();
     await expect(page.getByTestId('settings-problems')).toBeVisible();
     await expect(page.getByTestId('error-scheduled_hours_per_day')).toContainText('1 to 24');
-    await expect(page.getByTestId('error-min_password_length')).toContainText('8 to 128');
     await expect(page.getByTestId('saved-toast')).toHaveCount(0);
 
     await page.getByTestId('set-scheduled_hours_per_day').fill('20');
-    await page.getByTestId('set-min_password_length').fill('12');
     await page.getByTestId('set-availability_target_pct').fill('92.5');
     await page.getByTestId('set-duration_short_max_min').fill('200');
     await page.getByTestId('settings-save').click();
@@ -219,16 +215,32 @@ test.describe('settings', () => {
 
     // the dashboards use the new values straight away
     await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Event Explorer' }).click();
-    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Settings' }).click();
+    await page.getByTestId('settings-btn').click(); // opens the subtab used last
+    await expect(page.getByTestId('settings-calculations')).toBeVisible();
     await expect(page.getByTestId('availability_basis-C')).toHaveAttribute('aria-pressed', 'true');
     await page.getByTestId('availability_basis-B').click();
     await page.getByTestId('settings-revert').click();
     await expect(page.getByTestId('availability_basis-C')).toHaveAttribute('aria-pressed', 'true');
   });
 
-  test('engineer cannot open Settings', async ({ page }) => {
+  test('admin: Security subtab saves the sign-in rules', async ({ page }) => {
+    await go(page, 'admin', 'settings/security', 'settings');
+    await expect(page.getByTestId('when-signin')).toContainText('Applies to new sign-ins');
+    await expect(page.getByTestId('settings-availability')).toHaveCount(0);
+    await page.getByTestId('set-min_password_length').fill('4');
+    await page.getByTestId('settings-save').click();
+    await expect(page.getByTestId('error-min_password_length')).toContainText('8 to 128');
+    await page.getByTestId('set-min_password_length').fill('12');
+    await page.getByTestId('settings-save').click();
+    await expect(page.getByTestId('saved-toast')).toContainText('Settings saved');
+    await expect(page.getByTestId('set-min_password_length')).toHaveValue('12');
+  });
+
+  test('engineer cannot open the Calculations or Security subtabs', async ({ page }) => {
     await signInAndWait(page, 'engineer');
-    await page.goto('/#/settings');
+    await page.goto('/#/settings/calculations');
+    await expect(page.getByTestId('no-access')).toBeVisible();
+    await page.goto('/#/settings/security');
     await expect(page.getByTestId('no-access')).toBeVisible();
   });
 });
@@ -243,7 +255,7 @@ test.describe('users', () => {
 
   test('admin: create (one-time password), edit, reset, guards, page access', async ({ page }) => {
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => undefined);
-    await go(page, 'admin', 'users');
+    await go(page, 'admin', 'settings/users', 'users');
     await expect(page.getByTestId('user-row')).toHaveCount(5);
     await expect(page.locator('body')).not.toContainText(/hash|token/i);
 
@@ -381,11 +393,14 @@ for (const width of PHONES) {
       await page.getByTestId('modal-close').click();
       await page.waitForTimeout(300); // a closed popup removes its history entry just after
 
-      await page.goto('/#/settings');
+      await page.goto('/#/settings/calculations');
       await expect(page.getByTestId('settings-form')).toBeVisible();
-      await check('settings');
+      await check('settings calculations');
+      await page.goto('/#/settings/security');
+      await expect(page.getByTestId('settings-form')).toBeVisible();
+      await check('settings security');
 
-      await page.goto('/#/users');
+      await page.goto('/#/settings/users');
       await expect(page.getByTestId('user-card').first()).toBeVisible();
       await check('users');
       await page.getByTestId('user-card').nth(2).click();

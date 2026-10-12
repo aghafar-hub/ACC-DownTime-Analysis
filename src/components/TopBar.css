@@ -477,3 +477,44 @@
     display: none;
   }
 }
+
+/* Settings button: a gear with its label (icon only on a phone), always a 44 px target. */
+.shell-topbar-settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  border: 1px solid var(--shell-border, #1e3a5f);
+  border-radius: var(--radius-pill);
+  background: var(--shell-card-bg, #0d1e35);
+  color: var(--shell-text, #e2e8f0);
+  font: 600 13px var(--sans);
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease);
+}
+.shell-topbar-settings:hover,
+.shell-topbar-settings--active {
+  border-color: var(--shell-accent, #38bdf8);
+}
+.shell-topbar-settings:active {
+  transform: scale(0.95);
+}
+.shell-topbar-settings:focus-visible {
+  outline: 2px solid var(--shell-accent, #38bdf8);
+  outline-offset: 2px;
+}
+@media (max-width: 860px) {
+  .shell-topbar-settings {
+    width: 44px;
+    padding: 0;
+  }
+  .shell-topbar-settings-label {
+    display: none;
+  }
+}

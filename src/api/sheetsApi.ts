@@ -50,6 +50,7 @@ export function createSheetsApi(url: string): Api {
     uploadChunk: (token, batchId, rows) => call('uploadChunk', token, { batchId, rows }),
     uploadFinish: (token, batchId, summary, warnings) => call('uploadFinish', token, { batchId, summary, warnings }),
 
+    revalidateEvents: (token, year) => call('revalidateEvents', token, year === undefined ? {} : { year }),
     editEvent: (token, eventId, changes, note) => call('editEvent', token, { eventId, changes, note }),
     voidEvent: (token, eventId, isVoid, note) => call('voidEvent', token, { eventId, isVoid, note }),
 

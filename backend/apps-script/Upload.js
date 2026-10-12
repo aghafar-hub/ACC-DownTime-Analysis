@@ -65,7 +65,7 @@ function uploadChunk_(session, batchId, rows) {
         rejected.push({ source_row: toIntOr_(row && row.source_row, 0), reason: norm.error });
         return;
       }
-      var rec = norm.rec;
+      var rec = norm.rec; // a row with a data problem is stored with flags, never dropped
       var key = rec.area_id + '|' + rec.code_key + '|' + rec.stop_ts + '|' + rec.start_ts;
       var srcRow = toIntOr_(row.source_row, null);
       var n = verifiedHint_(key, row.fingerprint);

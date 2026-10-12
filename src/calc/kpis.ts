@@ -1,6 +1,6 @@
 /** Area-hour KPIs, availability bases A/B/C, reliability figures and comparison (docs section 8). */
 import type { EventRow } from '../api/types';
-import { buildFailureEvents, rowSpan, type ChainedEvent } from './events';
+import { analysableChains, buildFailureEvents, isAnalysable, rowSpan, type ChainedEvent } from './events';
 import type { MasterIndex } from './masters';
 import { avail, ratio, unavail, type Metric } from './metric';
 import { equipmentPareto } from './pareto';
@@ -82,7 +82,7 @@ export function dataRangeOf(rows: EventRow[]): DateRange | null {
   let lo = '';
   let hi = '';
   for (const r of rows) {
-    if (r.is_void) continue;
+    if (!isAnalysable(r)) continue;
     const a = dateOf(r.stop_ts);
     const b = dateOf(r.start_ts) > a ? dateOf(r.start_ts) : a;
     if (lo === '' || a < lo) lo = a;
@@ -134,7 +134,7 @@ export function addRowHours(acc: HourSums, row: Pick<EventRow, 'classification'>
  * covers only the elapsed days). With no data covering the window the result is `no_data`, never zeros.
  */
 export function computeKpis(input: KpiInput): KpiResult {
-  const rows = input.rows.filter((r) => !r.is_void);
+  const rows = input.rows.filter(isAnalysable);
   const range = input.dataRange === undefined ? dataRangeOf(rows) : input.dataRange;
   if (range === null) return { status: 'no_data', requestedWindow: input.window, reason: 'No downtime data has been loaded' };
   const eff = intersectRanges(input.window, range);
@@ -150,7 +150,7 @@ export function computeKpis(input: KpiInput): KpiResult {
     if (h > 0) addRowHours(acc, r, h);
     if (r.is_failure && span.fromMs >= w.fromMs && span.fromMs < w.toMs) acc.failures++;
   }
-  const chains = (input.chains ?? buildFailureEvents(rows).chains).filter((c) => accs.has(c.area_id));
+  const chains = analysableChains(input.chains ?? buildFailureEvents(rows).chains).filter((c) => accs.has(c.area_id));
   const failureChains = chains.filter((c) => c.isFailure);
   for (const c of failureChains) {
     if (c.startMs >= w.fromMs && c.startMs < w.toMs) {

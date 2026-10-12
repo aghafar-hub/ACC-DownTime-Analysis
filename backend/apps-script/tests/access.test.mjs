@@ -14,7 +14,7 @@ const REQ = {
   getEvents: [DASH, 'View'], getEventEdits: [['events'], 'View'],
   getUploadHistory: [['upload'], 'View'], getUploadWarnings: [['upload'], 'View'],
   uploadStart: [['upload'], 'Edit'], uploadChunk: [['upload'], 'Edit'], uploadFinish: [['upload'], 'Edit'],
-  editEvent: [['events'], 'Edit'], voidEvent: [['events'], 'Edit'],
+  editEvent: [['events'], 'Edit'], revalidateEvents: [['events'], 'Edit'], voidEvent: [['events'], 'Edit'],
   saveEquipment: [['master'], 'Edit'], saveArea: [['master'], 'Edit'], saveReason: [['master'], 'Edit'],
   saveAlias: [['master'], 'Edit'], deleteAlias: [['master'], 'Edit'], saveSettings: [['settings'], 'Edit'],
   listUsers: [['users'], 'View'], createUser: [['users'], 'Edit'], updateUser: [['users'], 'Edit'],

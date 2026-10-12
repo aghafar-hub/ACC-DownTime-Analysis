@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { OPEN_APPEARANCE_EVENT } from '../components/TopBar';
 import { tapHaptic } from '../haptics';
 import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
@@ -14,7 +13,7 @@ export const OPEN_MORE_EVENT = 'acc-dt-open-more';
 
 // The phone's "More" (bottom bar): search the pages, every page you may open
 // as a tile (with View or Edit under its name), the account in one row, and
-// Appearance and Sign out. Back closes it.
+// Sign out. Settings (with Appearance and Users) is the gear in the header. Back closes it.
 export default function MoreSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, logout, levelOf } = useAuth();
   const navigate = useNavigate();
@@ -77,16 +76,7 @@ export default function MoreSheet({ open, onClose }: { open: boolean; onClose: (
               <span data-testid="more-role">{role}</span>
             </span>
           </div>
-          <div className="more-account-actions" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
-            <button
-              type="button"
-              className="more-action"
-              onClick={() => { onClose(); window.dispatchEvent(new CustomEvent(OPEN_APPEARANCE_EVENT)); }}
-              data-testid="more-appearance"
-            >
-              <Icon name="palette" size={18} />
-              {t('Appearance')}
-            </button>
+          <div className="more-account-actions" style={{ gridTemplateColumns: 'minmax(0, 1fr)' }}>
             <button type="button" className="more-action more-signout" onClick={() => { onClose(); logout(); }} data-testid="more-logout">
               <Icon name="logout" size={18} />
               {t('Sign out')}

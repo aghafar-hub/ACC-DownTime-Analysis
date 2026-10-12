@@ -9,7 +9,37 @@ interface Text { label: string; help: string; tone: Tone; symbol: string }
 const TEXT: Record<WarningType, Text> = {
   late_row: {
     label: 'Late entries',
-    help: 'New rows on a date that already has stored rows, or before the latest stored date. Choose Add or Skip for each one.',
+    help: 'New rows dated on or before the latest stored date, in a month that already has stored rows. Choose Add or Skip for each one.',
+    tone: 'warning', symbol: '▲',
+  },
+  late_month: {
+    label: 'Late months',
+    help: 'A whole month older than the latest stored date with nothing stored for it yet. Choose Add month or Skip month.',
+    tone: 'warning', symbol: '▲',
+  },
+  missing_code: {
+    label: 'Equipment code left blank',
+    help: 'The row is stored and flagged. Choose the equipment (or N/A when the whole area stopped) on the Validate page.',
+    tone: 'warning', symbol: '▲',
+  },
+  missing_classification: {
+    label: 'No classification',
+    help: 'The row is stored but left out of the numbers until a classification is chosen on the Validate page.',
+    tone: 'danger', symbol: '◆',
+  },
+  invalid_classification: {
+    label: 'Unknown classification',
+    help: 'The classification is not PRO, MEC, ELE, AUT, PL or CIR. The row is stored but left out of the numbers until it is fixed on the Validate page.',
+    tone: 'danger', symbol: '◆',
+  },
+  unknown_area: {
+    label: 'Area not in the master list',
+    help: 'The area is not in Master Data. The row is stored but left out of the numbers until the area is fixed on the Validate page.',
+    tone: 'danger', symbol: '◆',
+  },
+  line_mismatch: {
+    label: 'Line does not match the area',
+    help: 'The line written in the sheet differs from the line of the area. The row is stored and flagged; the area decides the line.',
     tone: 'warning', symbol: '▲',
   },
   changed_row: {
@@ -81,9 +111,12 @@ export const warningSymbol = (type: WarningType | string): string => TEXT[type a
 
 /** Checks that apply to rows that will be added (shown as "data checks"). */
 export const CHECK_TYPES: WarningType[] = [
-  'unknown_code', 'code_not_in_area', 'unlisted_reason', 'blank_reason', 'end_before_start',
+  'missing_classification', 'invalid_classification', 'unknown_area', 'missing_code', 'line_mismatch', 'unknown_code', 'code_not_in_area', 'unlisted_reason', 'blank_reason', 'end_before_start',
   'duration_mismatch', 'orphan_continuation', 'overlap_in_area', 'placeholder_code',
 ];
+
+/** Checks listed in detail under "Other checks" (the flag-based ones are counted under "Records that will need checking"). */
+export const OTHER_CHECK_TYPES: WarningType[] = ['duration_mismatch', 'orphan_continuation', 'placeholder_code'];
 
 export function resolutionLabel(r: WarningResolution | undefined): string {
   switch (r) {

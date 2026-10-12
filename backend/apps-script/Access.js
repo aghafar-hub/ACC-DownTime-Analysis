@@ -20,6 +20,7 @@ var ACTION_RULES = {
   uploadStart: { auth: 'tabs', tabs: ['upload'], level: 'Edit' },
   uploadChunk: { auth: 'tabs', tabs: ['upload'], level: 'Edit' },
   uploadFinish: { auth: 'tabs', tabs: ['upload'], level: 'Edit' },
+  revalidateEvents: { auth: 'tabs', tabs: ['events'], level: 'Edit' },
   editEvent: { auth: 'tabs', tabs: ['events'], level: 'Edit' },
   voidEvent: { auth: 'tabs', tabs: ['events'], level: 'Edit' },
   saveEquipment: { auth: 'tabs', tabs: ['master'], level: 'Edit' },

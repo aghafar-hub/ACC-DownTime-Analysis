@@ -6,14 +6,15 @@ import type {
   Access, AccessLevel, AdminUser, Api, Area, ClassificationCode, Equipment, EquipmentAlias, EventChanges,
   EventRow, Reason, Session, SessionUser, TabId, UploadRow,
 } from './types';
+import { buildIndex, deriveEventFields, findArea, type MasterIndex } from '../calc';
 import { ApiError, TAB_IDS } from './types';
 import { buildSyntheticDb, fmtTs, type MockUser, type SyntheticDb } from '../mock/synthetic';
-import {
-  buildLookup, codeKey, durationSeconds, eventIdOf, isValidDate, matchKey, mergeFlags, parseTs, resolveRow,
-} from '../util/normalize';
+import { codeKey, eventIdOf, fingerprintOf, isValidDate, matchKey, parseTs } from '../util/normalize';
 
 const LEVEL_RANK: Record<AccessLevel, number> = { Hidden: 0, View: 1, Edit: 2 };
 const CLASS_CODES: ClassificationCode[] = ['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'];
+const TEXT_MAX = 1000;
+const FINGERPRINT_HINT_MAX = 20;
 const EDITABLE: string[] = [
   'event_date', 'line_id', 'area_id', 'code_raw', 'stop_ts', 'start_ts', 'freq', 'classification', 'criticality', 'is_failure', 'reason_raw', 'description',
 ];
@@ -126,101 +127,124 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
   }
 
   const clone = <T,>(x: T): T => structuredClone(x);
-  const lookup = () => buildLookup({ equipment: get().equipment, equipment_areas: get().equipment_areas, aliases: get().aliases, reasons: get().reasons, areas: get().areas });
+  const lookup = (): MasterIndex => buildIndex({ equipment: get().equipment, equipment_areas: get().equipment_areas, aliases: get().aliases, reasons: get().reasons, areas: get().areas });
+
+  // ------------------------------------------------------------ validation shared by upload and edit (mirrors Events.js)
+  interface Rec {
+    event_date: string; line_id: string; area_id: string; code_raw: string; stop_ts: string; start_ts: string; freq: 0 | 1;
+    classification: string; criticality: 'INC' | 'NO_INC'; is_failure: boolean; reason_raw: string; description: string;
+    equipment_id?: string; is_area_level: boolean; duration_s: number; reason_id?: string; flags: string; code_key: string;
+  }
+  /** Only what cannot be stored at all is refused; everything else is stored as given and flagged. */
+  function normalizeRecord(f: unknown, index: MasterIndex): { error: string } | { rec: Rec } {
+    if (!f || typeof f !== 'object') return { error: 'Row is not readable.' };
+    const x = f as Record<string, unknown>;
+    if (!isValidDate(String(x.event_date ?? '')) || typeof x.event_date !== 'string') return { error: 'Unreadable date.' };
+    const stopMs = typeof x.stop_ts === 'string' ? parseTs(x.stop_ts) : null;
+    const startMs = typeof x.start_ts === 'string' ? parseTs(x.start_ts) : null;
+    if (stopMs === null) return { error: 'Unreadable stop time.' };
+    if (startMs === null) return { error: 'Unreadable start time.' };
+    const freq = x.freq === 0 || x.freq === 1 ? x.freq : x.freq === '0' ? 0 : x.freq === '1' ? 1 : null;
+    if (freq === null) return { error: 'Freq must be 0 or 1.' };
+    if (x.criticality !== 'INC' && x.criticality !== 'NO_INC') return { error: 'Criticality must be INC or NO_INC.' };
+    if (typeof x.is_failure !== 'boolean') return { error: 'Failure must be true or false.' };
+    const code = x.code_raw === null || x.code_raw === undefined ? '' : x.code_raw;
+    if (typeof code !== 'string' || code.length > 200) return { error: 'Equipment code is not readable.' };
+    const texts: Record<string, string> = {};
+    for (const [k, label, max] of [['area_id', 'Area', 40], ['line_id', 'Line', 20], ['classification', 'Classification', 20]] as const) {
+      const v = x[k] === null || x[k] === undefined ? '' : x[k];
+      if (typeof v !== 'string' || v.length > max) return { error: `${label} is not readable.` };
+      texts[k] = v.trim();
+    }
+    const optional = (v: unknown, label: string): string | { error: string } => {
+      if (v === null || v === undefined) return '';
+      if (typeof v !== 'string') return { error: `${label} must be text.` };
+      if (v.length > TEXT_MAX) return { error: `${label} is too long.` };
+      return v.trim();
+    };
+    const reason = optional(x.reason_raw, 'Reason');
+    const description = optional(x.description, 'Description');
+    if (typeof reason === 'object') return reason;
+    if (typeof description === 'object') return description;
+    const stop = fmtTs(stopMs);
+    const start = fmtTs(startMs);
+    const area = findArea(index, texts.area_id);
+    const cls = texts.classification.toUpperCase();
+    const row = { area_id: area ? area.area_id : texts.area_id, line_id: texts.line_id, code_raw: code.trim(), classification: cls, reason_raw: reason, stop_ts: stop, start_ts: start };
+    const derived = deriveEventFields(row, index);
+    return {
+      rec: {
+        event_date: x.event_date, line_id: texts.line_id, area_id: row.area_id, code_raw: row.code_raw, stop_ts: stop, start_ts: start, freq,
+        classification: cls, criticality: x.criticality, is_failure: x.is_failure, reason_raw: reason, description,
+        equipment_id: derived.equipment_id, is_area_level: derived.is_area_level, duration_s: (startMs - stopMs) / 1000,
+        reason_id: derived.reason_id, flags: derived.flags.join(','), code_key: codeKey(code),
+      },
+    };
+  }
+  const stored = (v: string | undefined): string | undefined => v || undefined;
+  const editText = (v: unknown): string => (v === true ? 'TRUE' : v === false ? 'FALSE' : v === null || v === undefined ? '' : String(v));
 
   // ------------------------------------------------------------ editing
   function applyEdit(userId: string, eventId: string, changes: EventChanges, note: string, at: string): EventRow {
     const d = get();
-    const ev = d.events.find((e) => e.event_id === eventId);
-    if (!ev) throw new ApiError('That event was not found.', 'not_found');
-    if (!String(note ?? '').trim()) throw new ApiError('Please write a short note saying why you are changing this event.', 'bad_request');
-    if (ev.is_void) throw new ApiError('This event is voided. Restore it before you edit it.', 'conflict');
-    const incoming = changes as Record<string, unknown>;
-    for (const k of Object.keys(incoming)) {
+    const why = String(note ?? '').trim();
+    if (!why) throw new ApiError('Please write a short note saying why you are changing this event.', 'bad_request');
+    const incoming = (changes ?? {}) as Record<string, unknown>;
+    const fields = Object.keys(incoming);
+    if (!fields.length) throw new ApiError('No changes to save.', 'bad_request');
+    for (const k of fields) {
       if (!EDITABLE.includes(k)) throw new ApiError(`The field "${k}" cannot be edited.`, 'bad_request');
     }
-    const next: Record<string, unknown> = {};
+    const ev = d.events.find((e) => e.event_id === eventId);
+    if (!ev) throw new ApiError('Event not found.', 'not_found');
+    if (ev.is_void) throw new ApiError('This event is void. Restore it before editing.', 'conflict');
     const bad = (m: string) => new ApiError(m, 'bad_request');
-    for (const k of Object.keys(incoming)) {
-      const v = incoming[k];
-      switch (k) {
-        case 'event_date':
-          if (!isValidDate(String(v))) throw bad('The date must look like 2026-03-15.');
-          next[k] = String(v); break;
-        case 'stop_ts': case 'start_ts': {
-          const t = parseTs(String(v));
-          if (t === null) throw bad('Stop and restart times must look like 2026-03-15 13:45:00.');
-          next[k] = fmtTs(t); break;
-        }
-        case 'area_id':
-          if (!d.areas.some((a) => a.area_id === v)) throw bad(`The area "${String(v)}" does not exist.`);
-          next[k] = v; break;
-        case 'line_id':
-          if (!d.lines.some((l) => l.line_id === v)) throw bad(`The line "${String(v)}" does not exist.`);
-          next[k] = v; break;
-        case 'code_raw':
-          if (!String(v ?? '').trim()) throw bad('The equipment code cannot be empty. Use N/A when the whole area stopped.');
-          next[k] = String(v).trim(); break;
-        case 'freq':
-          if (v !== 0 && v !== 1) throw bad('Frequency must be 1 (a new stop) or 0 (continues the stop above).');
-          next[k] = v; break;
-        case 'classification': {
-          const c = String(v ?? '').toUpperCase();
-          if (!CLASS_CODES.includes(c as ClassificationCode)) throw bad('Classification must be one of PRO, MEC, ELE, AUT, PL or CIR.');
-          next[k] = c; break;
-        }
-        case 'criticality':
-          if (v !== 'INC' && v !== 'NO_INC') throw bad('Criticality must be INC (incident) or NO_INC.');
-          next[k] = v; break;
-        case 'is_failure':
-          if (typeof v !== 'boolean') throw bad('Failure must be yes or no.');
-          next[k] = v; break;
-        default: // reason_raw, description
-          next[k] = String(v ?? '').trim() || undefined;
-      }
+    const index = lookup();
+    const cand: Record<string, unknown> = {};
+    for (const f of EDITABLE) cand[f] = (ev as unknown as Record<string, unknown>)[f];
+    for (const f of fields) cand[f] = incoming[f];
+    if ('classification' in incoming) {
+      const c = typeof incoming.classification === 'string' ? incoming.classification.trim().toUpperCase() : '';
+      if (!CLASS_CODES.includes(c as ClassificationCode)) throw bad(`Classification must be one of ${CLASS_CODES.join(', ')}.`);
+      cand.classification = c;
     }
-    // area and line must agree
-    const area = d.areas.find((a) => a.area_id === (next.area_id ?? ev.area_id))!;
-    if (next.area_id && next.line_id === undefined && !('line_id' in incoming)) next.line_id = area.line_id;
-    const lineNow = (next.line_id ?? ev.line_id) as string;
-    if (('area_id' in incoming || 'line_id' in incoming) && area.line_id !== lineNow) {
-      throw bad(`Area ${area.area_id} belongs to line ${area.line_id}, not ${lineNow}.`);
+    if ('area_id' in incoming) {
+      const a = findArea(index, typeof incoming.area_id === 'string' ? incoming.area_id : '');
+      if (!a) throw bad(`Area "${String(incoming.area_id).slice(0, 40)}" is not in the list of areas.`);
+      cand.area_id = a.area_id;
+      if (!('line_id' in incoming)) cand.line_id = a.line_id;
     }
-    // derived values (wire-protocol section 6)
-    if ('classification' in next && !('criticality' in incoming)) {
-      const cl = d.classifications.find((c) => c.code === next.classification)!;
-      next.criticality = cl.is_incident ? 'INC' : 'NO_INC';
+    if ('line_id' in incoming) {
+      const ln = typeof incoming.line_id === 'string' ? incoming.line_id.trim() : '';
+      if (!d.lines.some((l) => l.line_id === ln)) throw bad(`Line "${String(incoming.line_id).slice(0, 20)}" is not in the list of lines.`);
+      cand.line_id = ln;
     }
-    const critChanged = next.criticality !== undefined && next.criticality !== ev.criticality;
-    const freqChanged = next.freq !== undefined && next.freq !== ev.freq;
-    if ((critChanged || freqChanged) && !('is_failure' in incoming)) {
-      next.is_failure = (next.criticality ?? ev.criticality) === 'INC' && (next.freq ?? ev.freq) === 1;
+    const norm = normalizeRecord(cand, index);
+    if ('error' in norm) throw bad(norm.error);
+    const rec = norm.rec;
+    // criticality follows a changed classification, unless the old one was blank or unknown (then the sheet's value stays)
+    if ('classification' in incoming && !('criticality' in incoming) && CLASS_CODES.includes(ev.classification) && rec.classification !== ev.classification) {
+      rec.criticality = d.classifications.find((c) => c.code === rec.classification)!.is_incident ? 'INC' : 'NO_INC';
     }
-    // what really changed
-    const changed = Object.keys(next).filter((k) => (ev as unknown as Record<string, unknown>)[k] !== next[k]
-      && !((ev as unknown as Record<string, unknown>)[k] === undefined && next[k] === undefined));
-    if (changed.length === 0) throw bad('Nothing was changed.');
-
+    if (!('is_failure' in incoming) && (rec.criticality !== ev.criticality || rec.freq !== ev.freq)) {
+      rec.is_failure = rec.criticality === 'INC' && rec.freq === 1;
+    }
+    const order = EDITABLE.filter((f) => editText((rec as unknown as Record<string, unknown>)[f]) !== editText((ev as unknown as Record<string, unknown>)[f]));
+    if (!order.length) throw bad('Nothing was changed.');
     const before = { ...ev } as unknown as Record<string, unknown>;
-    Object.assign(ev, next);
-    const dur = durationSeconds(ev.stop_ts, ev.start_ts);
-    ev.duration_s = dur ?? 0;
-    const res = resolveRow(lookup(), ev);
-    ev.equipment_id = res.equipment_id;
-    ev.is_area_level = res.is_area_level;
-    ev.reason_id = res.reason_id;
-    ev.flags = mergeFlags(ev.flags, res.flags) || undefined;
-    ev.edited = true;
-
-    const order = EDITABLE.filter((f) => changed.includes(f));
+    Object.assign(ev, {
+      event_date: rec.event_date, line_id: rec.line_id, area_id: rec.area_id, code_raw: rec.code_raw, stop_ts: rec.stop_ts, start_ts: rec.start_ts,
+      freq: rec.freq, classification: rec.classification, criticality: rec.criticality, is_failure: rec.is_failure,
+      reason_raw: stored(rec.reason_raw), description: stored(rec.description), equipment_id: rec.equipment_id, is_area_level: rec.is_area_level,
+      duration_s: rec.duration_s, reason_id: rec.reason_id, flags: stored(rec.flags), edited: true,
+    });
     order.forEach((f) => {
-      const asText = (x: unknown) => (x === undefined || x === null ? undefined : String(x === true ? 'TRUE' : x === false ? 'FALSE' : x));
       d.event_edits.push({
         edit_id: `ED-${at.replace(/\D/g, '').slice(0, 14)}-${++counter}`, event_id: ev.event_id, edited_at: at, edited_by: userId,
-        field: f, old_value: asText(before[f]), new_value: asText(ev[f as keyof EventRow]), note: String(note).trim(),
+        field: f, old_value: stored(editText(before[f])), new_value: stored(editText(ev[f as keyof EventRow])), note: why,
       });
     });
-    d.audit_log.push({ at, user_id: userId, action: 'editEvent', entity: 'events', entity_id: ev.event_id, detail: `Changed ${order.join(', ')}. ${String(note).trim()}` });
+    d.audit_log.push({ at, user_id: userId, action: 'editEvent', entity: 'events', entity_id: ev.event_id, detail: `Changed ${order.join(', ')}. ${why}` });
     return ev;
   }
 
@@ -356,25 +380,46 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       if (batch.status !== 'Started') throw new ApiError('This upload is already finished.', 'conflict');
       if (!Array.isArray(rows)) throw new ApiError('No rows were sent.', 'bad_request');
       const known = new Set(d.events.map((e) => e.fingerprint));
-      const look = lookup();
+      const inBatch = new Map<string, number | undefined>();
+      for (const e of d.events) if (e.batch_id === batch.batch_id) inBatch.set(e.fingerprint, e.source_row);
+      const index = lookup();
       const rejected: { source_row: number; reason: string }[] = [];
+      const base = new Map<string, (number | undefined)[]>();
+      const extra = new Map<string, number>();
       let added = 0, identical = 0;
       for (const r of rows as UploadRow[]) {
-        const why = validateUploadRow(r, d);
-        if (why) { rejected.push({ source_row: r.source_row, reason: why }); continue; }
-        if (known.has(r.fingerprint)) { identical++; continue; }
-        const cls = String(r.classification).toUpperCase() as ClassificationCode;
-        const stop = fmtTs(parseTs(r.stop_ts)!), start = fmtTs(parseTs(r.start_ts)!);
-        const res = resolveRow(look, { area_id: r.area_id, code_raw: r.code_raw, classification: cls, reason_raw: r.reason_raw, stop_ts: stop, start_ts: start });
+        const norm = normalizeRecord(r, index);
+        if ('error' in norm) { rejected.push({ source_row: Number((r as Partial<UploadRow> | null)?.source_row) || 0, reason: norm.error }); continue; }
+        const rec = norm.rec;
+        const key = `${rec.area_id}|${rec.code_key}|${rec.stop_ts}|${rec.start_ts}`;
+        const srcRow = Number.isFinite(Number(r.source_row)) && String(r.source_row ?? '') !== '' ? Math.trunc(Number(r.source_row)) : undefined;
+        const fpOf = (n: number) => fingerprintOf(rec.area_id, rec.code_key, rec.stop_ts, rec.start_ts, n);
+        // the occurrence number the browser used counts only when its fingerprint verifies
+        let n = 0;
+        if (/^[0-9a-f]{64}$/.test(String(r.fingerprint ?? ''))) {
+          for (let k = 1; k <= FINGERPRINT_HINT_MAX; k++) if (fpOf(k) === r.fingerprint) { n = k; break; }
+        }
+        if (!n) {
+          let list = base.get(key);
+          if (!list) {
+            list = [];
+            while (inBatch.has(fpOf(list.length + 1))) list.push(inBatch.get(fpOf(list.length + 1)));
+            base.set(key, list);
+          }
+          const at = srcRow === undefined ? -1 : list.indexOf(srcRow);
+          if (at >= 0) n = at + 1; // the same file row sent again (a retry)
+          else { extra.set(key, (extra.get(key) ?? 0) + 1); n = list.length + (extra.get(key) as number); }
+        }
+        const fp = fpOf(n);
+        if (known.has(fp)) { identical++; continue; }
+        known.add(fp);
         d.events.push({
-          event_id: eventIdOf(r.fingerprint), batch_id: batchId, event_date: r.event_date, line_id: r.line_id, area_id: r.area_id,
-          code_raw: String(r.code_raw).trim(), equipment_id: res.equipment_id, is_area_level: res.is_area_level, stop_ts: stop, start_ts: start,
-          duration_s: durationSeconds(stop, start) ?? 0, freq: r.freq, classification: cls, criticality: r.criticality, is_failure: !!r.is_failure,
-          reason_raw: String(r.reason_raw ?? '').trim() || undefined, reason_id: res.reason_id, description: String(r.description ?? '').trim() || undefined,
-          source_file: batch.file_name, source_row: r.source_row, fingerprint: r.fingerprint, flags: res.flags.join(',') || undefined,
-          edited: false, is_void: false, created_at: nowTs(),
+          event_id: eventIdOf(fp), batch_id: batchId, event_date: rec.event_date, line_id: rec.line_id, area_id: rec.area_id,
+          code_raw: rec.code_raw, equipment_id: rec.equipment_id, is_area_level: rec.is_area_level, stop_ts: rec.stop_ts, start_ts: rec.start_ts,
+          duration_s: rec.duration_s, freq: rec.freq, classification: rec.classification as ClassificationCode, criticality: rec.criticality,
+          is_failure: rec.is_failure, reason_raw: stored(rec.reason_raw), reason_id: rec.reason_id, description: stored(rec.description),
+          source_file: batch.file_name, source_row: srcRow, fingerprint: fp, flags: stored(rec.flags), edited: false, is_void: false, created_at: nowTs(),
         });
-        known.add(r.fingerprint);
         added++;
       }
       batch.rows_added += added;
@@ -397,6 +442,32 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       batch.status = 'Completed';
       audit(a.user.user_id, 'uploadFinish', 'upload_batches', batchId, `${batch.rows_added} rows added, ${batch.rows_identical} identical`);
       return clone(batch);
+    },
+
+    // --- data checks
+    async revalidateEvents(token, year) {
+      const a = need(token, ['events'], 'Edit');
+      if (year !== undefined && year !== null && (!Number.isInteger(year) || year < 1990 || year > 2200)) throw new ApiError('Year is not valid.', 'bad_request');
+      const index = lookup();
+      let checked = 0, changed = 0;
+      for (const ev of get().events) {
+        if (ev.is_void) continue;
+        if (year !== undefined && year !== null && !ev.event_date.startsWith(`${year}-`)) continue;
+        checked++;
+        const norm = normalizeRecord(ev, index);
+        if ('error' in norm) continue;
+        const rec = norm.rec;
+        if (rec.flags === (ev.flags ?? '') && (rec.equipment_id ?? '') === (ev.equipment_id ?? '') && (rec.reason_id ?? '') === (ev.reason_id ?? '')
+          && rec.is_area_level === ev.is_area_level && rec.duration_s === ev.duration_s) continue;
+        ev.flags = stored(rec.flags);
+        ev.equipment_id = rec.equipment_id;
+        ev.reason_id = rec.reason_id;
+        ev.is_area_level = rec.is_area_level;
+        ev.duration_s = rec.duration_s;
+        changed++;
+      }
+      audit(a.user.user_id, 'revalidateEvents', 'events', year === undefined || year === null ? 'all' : String(year), `Checked ${checked}, changed ${changed}`);
+      return { checked, changed };
     },
 
     // --- event correction
@@ -594,20 +665,6 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
     },
   };
   return api;
-}
-
-function validateUploadRow(r: UploadRow, d: SyntheticDb): string | null {
-  if (!d.areas.some((a) => a.area_id === r.area_id)) return `Unknown area "${r.area_id}".`;
-  const area = d.areas.find((a) => a.area_id === r.area_id)!;
-  if (area.line_id !== r.line_id) return `Area ${r.area_id} belongs to line ${area.line_id}, not ${r.line_id}.`;
-  if (parseTs(r.stop_ts) === null || parseTs(r.start_ts) === null) return 'The stop or restart time cannot be read.';
-  if (!isValidDate(r.event_date)) return 'The date cannot be read.';
-  if (!(['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'] as string[]).includes(String(r.classification).toUpperCase())) return `Unknown classification "${r.classification}".`;
-  if (r.freq !== 0 && r.freq !== 1) return 'Frequency must be 0 or 1.';
-  if (r.criticality !== 'INC' && r.criticality !== 'NO_INC') return 'Criticality must be INC or NO_INC.';
-  if (!/^[0-9a-f]{64}$/.test(String(r.fingerprint ?? ''))) return 'The row fingerprint is missing or not valid.';
-  if (!String(r.code_raw ?? '').trim()) return 'The equipment code is empty.';
-  return null;
 }
 
 export const mockApi: MockApi = createMockApi();

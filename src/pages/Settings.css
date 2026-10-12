@@ -1,0 +1,53 @@
+/* Settings subtabs: underlined on a desktop (like the page tabs), chips on a phone. Wraps, never scrolls sideways. */
+.set-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 4px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid var(--shell-border, #d9e0e8);
+  font-family: var(--sans);
+}
+.set-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 14px;
+  margin-bottom: -1px;
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+  color: var(--shell-text-secondary, #4a5a70);
+  font: 600 14px var(--sans);
+  white-space: nowrap;
+}
+.set-tab:hover {
+  color: var(--shell-text, #0f1b2d);
+}
+.set-tab--active {
+  color: var(--shell-text, #0f1b2d);
+  border-bottom-color: var(--shell-accent, #1e5bb8);
+}
+.set-tab:focus-visible {
+  outline: 2px solid var(--shell-accent, #1e5bb8);
+  outline-offset: -2px;
+}
+@media (max-width: 860px) {
+  .set-tabs {
+    gap: 6px;
+    border-bottom: 0;
+    margin-bottom: 14px;
+  }
+  .set-tab {
+    margin: 0;
+    padding: 0 14px;
+    border: 1px solid var(--shell-border, #d9e0e8);
+    border-radius: 999px;
+    background: var(--shell-card-bg, #fff);
+    font-size: 13.5px;
+  }
+  .set-tab--active {
+    background: var(--shell-accent, #1e5bb8);
+    border-color: var(--shell-accent, #1e5bb8);
+    color: var(--shell-accent-text, #fff);
+  }
+}

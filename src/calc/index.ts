@@ -12,3 +12,4 @@ export * from './trends';
 export * from './uploadDiff';
 export * from './flags';
 export * from './overlaps';
+export * from './validate';

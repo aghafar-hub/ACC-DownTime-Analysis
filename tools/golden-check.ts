@@ -36,7 +36,7 @@ for (const r of parsed.rows) {
 }
 
 const analysis = await readXlsxSheet(file, 'Analysis');
-console.log(`Read ${parsed.rows.length} rows (${parsed.dateFrom} to ${parsed.dateTo}); ${parsed.rejected.length} rejected; ${parsed.blankRows} empty formula rows skipped.`);
+console.log(`Read ${parsed.rows.length} rows (${parsed.dateFrom} to ${parsed.dateTo}); ${parsed.blankRows} empty formula rows skipped.`);
 if (!analysis.ok) {
   console.log('No "Analysis" sheet to compare with. Totals from the Downtime sheet:');
   for (const [k, v] of Object.entries(mine)) console.log(`  ${k.padEnd(4)} ${v.h.toFixed(2).padStart(9)} h  ${String(v.n).padStart(5)} stops`);
