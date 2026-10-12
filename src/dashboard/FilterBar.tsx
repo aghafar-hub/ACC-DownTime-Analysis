@@ -1,13 +1,15 @@
-// The one filter bar every dashboard page shows. State lives in the URL query (see useDash.ts). Desktop: a card
-// of fields; phone: one chip row with a Filters chip (count) that opens a bottom sheet.
+// The one filter bar every Analyze page shows. State lives in the URL query and is shared between the four pages
+// (see useDash.ts and sharedFilters.ts). One compact row: date range, comparison, and a Filters button with the
+// number of active filters. The button opens the full set of fields as an inline panel on a desktop and as the
+// bottom sheet on a phone; the active filters sit below as removable chips with Reset.
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { ClassificationCode } from '../api/types';
 import { matchKey } from '../calc';
-import { BottomSheet, ChipRow, CountChip, FiltersPill } from '../components/PhoneParts';
+import { BottomSheet, ChipRow, CountChip } from '../components/PhoneParts';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
-import { areasInScope, activeCount, PRESET_LABELS, RANGE_PRESETS, type CompareMode, type RangePreset } from './filters';
+import { areasInScope, activeCount, DEFAULT_PRESET, PRESET_LABELS, RANGE_PRESETS, type CompareMode, type RangePreset } from './filters';
 import { dayLabel, fint, rangeLabel } from './format';
 import type { Dash } from './useDash';
 
@@ -68,11 +70,83 @@ export function MultiPick({ id, label, options, value, onChange, allLabel, searc
 }
 
 const CMP_LABELS: Record<CompareMode, string> = {
-  previous_period: 'Previous period', same_period_last_year: 'Same period last year', none: 'No comparison',
+  previous_period: 'Previous period', same_period_last_year: 'Same period last year', none: 'None',
 };
+const CMP_SHORT: Record<CompareMode, string> = { previous_period: 'Previous', same_period_last_year: 'Last year', none: 'None' };
 
-function Fields({ dash, stacked, hideCompare }: { dash: Dash; stacked?: boolean; hideCompare?: boolean }) {
-  const { filters: f, setFilters, startup, ctx, range } = dash;
+/** Date range select and its extra pickers (year, month, custom dates). */
+function RangeFields({ dash }: { dash: Dash }) {
+  const { filters: f, setFilters, startup, range } = dash;
+  const uid = useId().replace(/:/g, '');
+  const id = (n: string) => `fb-${n}-${uid}`;
+  const years = startup?.years ?? [];
+  const setPreset = (p: RangePreset) => setFilters({
+    preset: p,
+    year: p === 'year' ? (f.year ?? years[0] ?? null) : f.year,
+    month: p === 'month' ? (f.month ?? (range ? range.to.slice(0, 7) : null)) : f.month,
+    from: p === 'custom' ? (f.from || range?.from || '') : f.from,
+    to: p === 'custom' ? (f.to || range?.to || '') : f.to,
+  });
+  return (
+    <>
+      <div className="field fb-range-field">
+        <label htmlFor={id('preset')}>{t('Date range')}</label>
+        <select id={id('preset')} className="select" value={f.preset} onChange={(e) => setPreset(e.target.value as RangePreset)} data-testid="fb-preset">
+          {RANGE_PRESETS.map((p) => <option key={p} value={p}>{t(PRESET_LABELS[p])}</option>)}
+        </select>
+      </div>
+      {f.preset === 'year' && (
+        <div className="field fb-extra">
+          <label htmlFor={id('year')}>{t('Year')}</label>
+          <select id={id('year')} className="select" value={f.year ?? ''} onChange={(e) => setFilters({ year: Number(e.target.value) })} data-testid="fb-year">
+            {years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </div>
+      )}
+      {f.preset === 'month' && (
+        <div className="field fb-extra">
+          <label htmlFor={id('month')}>{t('Month')}</label>
+          <input id={id('month')} className="input mono" type="month" value={f.month ?? ''} onChange={(e) => e.target.value && setFilters({ month: e.target.value })} data-testid="fb-month" />
+        </div>
+      )}
+      {f.preset === 'custom' && (
+        <>
+          <div className="field fb-extra">
+            <label htmlFor={id('from')}>{t('From date')}</label>
+            <input id={id('from')} className="input mono" type="date" value={f.from} max={f.to || undefined} onChange={(e) => setFilters({ from: e.target.value })} data-testid="fb-from" />
+          </div>
+          <div className="field fb-extra">
+            <label htmlFor={id('to')}>{t('To date')}</label>
+            <input id={id('to')} className="input mono" type="date" value={f.to} min={f.from || undefined} onChange={(e) => setFilters({ to: e.target.value })} data-testid="fb-to" />
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/** Previous period / Same period last year / None. */
+function CompareToggle({ dash, short }: { dash: Dash; short: boolean }) {
+  const { filters: f, setFilters, ctx } = dash;
+  const cmp: CompareMode = f.compare ?? ctx?.master.settings.defaultComparison ?? 'previous_period';
+  return (
+    <div className="field fb-compare">
+      <span className="field-label">{t('Compare with')}</span>
+      <ChipRow label={t('Comparison')}>
+        {(['previous_period', 'same_period_last_year', 'none'] as CompareMode[]).map((c) => (
+          <button key={c} type="button" className={cmp === c ? 'chip chip--on' : 'chip'} aria-pressed={cmp === c} onClick={() => setFilters({ compare: c })}
+            aria-label={c === 'none' ? t('No comparison') : t(CMP_LABELS[c])} data-testid={`fb-cmp-${c}`}>
+            {t(short ? CMP_SHORT[c] : CMP_LABELS[c])}
+          </button>
+        ))}
+      </ChipRow>
+    </div>
+  );
+}
+
+/** The narrowing fields: line, area, equipment, type, reason and the classification / criticality / failure / duration chips. */
+function Fields({ dash, stacked }: { dash: Dash; stacked?: boolean }) {
+  const { filters: f, setFilters, startup, ctx } = dash;
   const uid = useId().replace(/:/g, '');
   const id = (n: string) => `fb-${stacked ? 's' : 'd'}-${n}-${uid}`;
   const lines = startup?.lines ?? [];
@@ -106,15 +180,6 @@ function Fields({ dash, stacked, hideCompare }: { dash: Dash; stacked?: boolean;
   }, [dash.allRows]);
   const settings = ctx?.master.settings;
   const toggleCls = (c: ClassificationCode) => setFilters({ classifications: f.classifications.includes(c) ? f.classifications.filter((x) => x !== c) : [...f.classifications, c] });
-  const years = startup?.years ?? [];
-  const setPreset = (p: RangePreset) => setFilters({
-    preset: p,
-    year: p === 'year' ? (f.year ?? years[0] ?? null) : f.year,
-    month: p === 'month' ? (f.month ?? (range ? range.to.slice(0, 7) : null)) : f.month,
-    from: p === 'custom' ? (f.from || range?.from || '') : f.from,
-    to: p === 'custom' ? (f.to || range?.to || '') : f.to,
-  });
-  const cmp: CompareMode = f.compare ?? settings?.defaultComparison ?? 'previous_period';
   const gridClass = stacked ? 'bottom-sheet-body' : 'fb-grid';
 
   return (
@@ -129,38 +194,6 @@ function Fields({ dash, stacked, hideCompare }: { dash: Dash; stacked?: boolean;
           <MultiPick id={id('type')} label={t('Equipment type')} testid="fb-type" stacked={stacked} allLabel={t('All types')} options={typeOpts} value={f.equipmentTypes} onChange={(v) => setFilters({ equipmentTypes: v })} />
         )}
         <MultiPick id={id('reason')} label={t('Reason')} testid="fb-reason" stacked={stacked} allLabel={t('All reasons')} searchable options={reasonOpts} value={f.reasonKeys} onChange={(v) => setFilters({ reasonKeys: v })} />
-        <div className="field">
-          <label htmlFor={id('preset')}>{t('Date range')}</label>
-          <select id={id('preset')} className="select" value={f.preset} onChange={(e) => setPreset(e.target.value as RangePreset)} data-testid="fb-preset">
-            {RANGE_PRESETS.map((p) => <option key={p} value={p}>{t(PRESET_LABELS[p])}</option>)}
-          </select>
-        </div>
-        {f.preset === 'year' && (
-          <div className="field">
-            <label htmlFor={id('year')}>{t('Year')}</label>
-            <select id={id('year')} className="select" value={f.year ?? ''} onChange={(e) => setFilters({ year: Number(e.target.value) })} data-testid="fb-year">
-              {years.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-          </div>
-        )}
-        {f.preset === 'month' && (
-          <div className="field">
-            <label htmlFor={id('month')}>{t('Month')}</label>
-            <input id={id('month')} className="input mono" type="month" value={f.month ?? ''} onChange={(e) => e.target.value && setFilters({ month: e.target.value })} data-testid="fb-month" />
-          </div>
-        )}
-        {f.preset === 'custom' && (
-          <>
-            <div className="field">
-              <label htmlFor={id('from')}>{t('From date')}</label>
-              <input id={id('from')} className="input mono" type="date" value={f.from} max={f.to || undefined} onChange={(e) => setFilters({ from: e.target.value })} data-testid="fb-from" />
-            </div>
-            <div className="field">
-              <label htmlFor={id('to')}>{t('To date')}</label>
-              <input id={id('to')} className="input mono" type="date" value={f.to} min={f.from || undefined} onChange={(e) => setFilters({ to: e.target.value })} data-testid="fb-to" />
-            </div>
-          </>
-        )}
       </div>
 
       <div className="fb-line">
@@ -194,22 +227,12 @@ function Fields({ dash, stacked, hideCompare }: { dash: Dash; stacked?: boolean;
             ))}
           </ChipRow>
         </div>
-        {!hideCompare && (
-          <div className="field">
-            <span className="field-label">{t('Compare with')}</span>
-            <ChipRow label={t('Comparison')}>
-              {(['previous_period', 'same_period_last_year', 'none'] as CompareMode[]).map((c) => (
-                <CountChip key={c} on={cmp === c} onClick={() => setFilters({ compare: c })} testid={`fb-cmp-${c}`}>{t(CMP_LABELS[c])}</CountChip>
-              ))}
-            </ChipRow>
-          </div>
-        )}
       </div>
     </>
   );
 }
 
-/** Removable chips for every active filter. */
+/** Removable chips for every active filter, then Reset. */
 function ActiveChips({ dash }: { dash: Dash }) {
   const { filters: f, setFilters, startup } = dash;
   const items: { id: string; text: string; clear: () => void }[] = [];
@@ -223,7 +246,8 @@ function ActiveChips({ dash }: { dash: Dash }) {
   if (f.failureOnly) items.push({ id: 'fail', text: t('Failures only'), clear: () => setFilters({ failureOnly: false }) });
   f.reasonKeys.forEach((v) => items.push({ id: `reason-${v}`, text: `${t('Reason')}: ${v.length > 28 ? `${v.slice(0, 27)}…` : v}`, clear: () => setFilters({ reasonKeys: f.reasonKeys.filter((x) => x !== v) }) }));
   if (f.durationBand) items.push({ id: 'band', text: `${t('Duration')}: ${f.durationBand}`, clear: () => setFilters({ durationBand: null }) });
-  if (items.length === 0) return null;
+  const changed = items.length > 0 || f.preset !== DEFAULT_PRESET || f.compare !== null;
+  if (!changed) return null;
   return (
     <div className="fb-active" role="group" aria-label={t('Active filters')} data-testid="fb-active">
       {items.map((it) => (
@@ -231,68 +255,69 @@ function ActiveChips({ dash }: { dash: Dash }) {
           {it.text} <Icon name="close" size={12} />
         </button>
       ))}
+      <button type="button" className="chip" onClick={dash.reset} data-testid="fb-reset">{t('Reset')}</button>
     </div>
   );
 }
 
 export default function FilterBar({ dash, eventCount, hideCompare }: { dash: Dash; eventCount: number | null; hideCompare?: boolean }) {
   const mobile = useIsMobile();
-  const [sheet, setSheet] = useState(false);
+  const [open, setOpen] = useState(false);
+  const panelId = useId().replace(/:/g, '');
   const { filters: f, range, ctx } = dash;
   const n = activeCount(f);
   const effective = ctx?.win.effective ?? null;
   const cov = ctx?.coverage ?? null;
   const rangeText = range ? rangeLabel(range) : '…';
   const days = range ? Math.round((Date.parse(range.to) - Date.parse(range.from)) / 86_400_000) + 1 : 0;
-  const scope = (
-    <div className="fb-scope" data-testid="fb-scope">
-      <span data-testid="fb-range">{t('Range')}: <b>{rangeText}</b>{range && ` (${t('{n} days', { n: days })})`}</span>
-      <span data-testid="fb-count"><b>{eventCount === null ? '…' : fint(eventCount)}</b> {t('events in scope')}</span>
-      {cov && <span data-testid="fb-coverage">{t('Data covers')} <b>{dayLabel(cov.from)}</b> {t('to')} <b>{dayLabel(cov.to)}</b></span>}
-      {range && effective && (effective.from !== range.from || effective.to !== range.to) && (
-        <span data-testid="fb-clipped">{t('Calculated for {r}, where data exists', { r: rangeLabel(effective) })}</span>
-      )}
-    </div>
+  const filtersBtn = (
+    <button
+      type="button" className={n ? 'btn fb-filters-btn fb-filters-btn--on' : 'btn fb-filters-btn'} onClick={() => setOpen((v) => !v)}
+      aria-expanded={open} aria-controls={mobile ? undefined : `fb-panel-${panelId}`} aria-haspopup={mobile ? 'dialog' : undefined} data-testid="fb-filters-pill"
+    >
+      <Icon name="filter" size={14} /> {t('Filters')}
+      {n > 0 && <span className="fb-badge" data-testid="fb-badge" aria-label={t('{n} active', { n })}>{n}</span>}
+      {!mobile && <Icon name={open ? 'chevronUp' : 'chevronDown'} size={14} />}
+    </button>
   );
 
-  if (mobile) {
-    return (
-      <div className="filter-bar" data-testid="filter-bar">
-        <ChipRow label={t('Quick filters')}>
-          <FiltersPill count={n} onClick={() => setSheet(true)} testid="fb-filters-pill" />
-          <button type="button" className="chip" onClick={() => setSheet(true)} data-testid="fb-range-chip"><Icon name="calendar" size={14} /> {t(PRESET_LABELS[f.preset])}</button>
-          <CountChip on={f.failureOnly} onClick={() => dash.setFilters({ failureOnly: !f.failureOnly })} testid="fb-fail">{t('Failures only')}</CountChip>
-          {(n > 0 || f.preset !== 'last90' || f.compare) && <button type="button" className="chip" onClick={dash.reset} data-testid="fb-reset">{t('Reset')}</button>}
-        </ChipRow>
-        {scope}
-        <ActiveChips dash={dash} />
-        {sheet && (
-          <BottomSheet
-            title={t('Filters')}
-            onClose={() => setSheet(false)}
-            testid="fb-sheet"
-            footer={
-              <>
-                <button type="button" className="btn" onClick={dash.reset} data-testid="fb-sheet-reset">{t('Reset')}</button>
-                <button type="button" className="btn-primary" onClick={() => setSheet(false)} data-testid="fb-sheet-apply">{eventCount === null ? t('Show events') : t('Show {n} events', { n: fint(eventCount) })}</button>
-              </>
-            }
-          >
-            <Fields dash={dash} stacked hideCompare={hideCompare} />
-            <p className="field-hint" style={{ marginTop: 8 }}>{rangeText}</p>
-          </BottomSheet>
-        )}
-      </div>
-    );
-  }
   return (
     <section className="card filter-bar" aria-label={t('Filters')} data-testid="filter-bar">
-      <Fields dash={dash} hideCompare={hideCompare} />
-      <div className="fb-line" style={{ justifyContent: 'space-between' }}>
-        {scope}
-        <button type="button" className="btn" onClick={dash.reset} data-testid="fb-reset">{t('Reset filters')}</button>
+      <div className="fb-row">
+        <RangeFields dash={dash} />
+        {filtersBtn}
+        {!hideCompare && <CompareToggle dash={dash} short={mobile} />}
       </div>
+      {!mobile && open && (
+        <div className="fb-panel" id={`fb-panel-${panelId}`} role="group" aria-label={t('All filters')} data-testid="fb-panel">
+          <Fields dash={dash} />
+        </div>
+      )}
       <ActiveChips dash={dash} />
+      <div className="fb-scope" data-testid="fb-scope">
+        <span data-testid="fb-range">{t('Range')}: <b>{rangeText}</b>{range && ` (${t('{n} days', { n: days })})`}</span>
+        <span data-testid="fb-count"><b>{eventCount === null ? '…' : fint(eventCount)}</b> {t('events in scope')}</span>
+        {cov && <span data-testid="fb-coverage">{t('Data covers')} <b>{dayLabel(cov.from)}</b> {t('to')} <b>{dayLabel(cov.to)}</b></span>}
+        {range && effective && (effective.from !== range.from || effective.to !== range.to) && (
+          <span data-testid="fb-clipped">{t('Calculated for {r}, where data exists', { r: rangeLabel(effective) })}</span>
+        )}
+      </div>
+      {mobile && open && (
+        <BottomSheet
+          title={t('Filters')}
+          onClose={() => setOpen(false)}
+          testid="fb-sheet"
+          footer={
+            <>
+              <button type="button" className="btn" onClick={dash.reset} data-testid="fb-sheet-reset">{t('Reset')}</button>
+              <button type="button" className="btn-primary" onClick={() => setOpen(false)} data-testid="fb-sheet-apply">{eventCount === null ? t('Show events') : t('Show {n} events', { n: fint(eventCount) })}</button>
+            </>
+          }
+        >
+          <Fields dash={dash} stacked />
+          <p className="field-hint" style={{ marginTop: 8 }}>{rangeText}</p>
+        </BottomSheet>
+      )}
     </section>
   );
 }

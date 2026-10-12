@@ -1,10 +1,10 @@
 // Page adapters: pick the calc function for each dashboard element and hand it the scope. No arithmetic of
 // their own beyond joining calc outputs (tests compare every headline number with a direct calc call).
 import {
-  areaPareto, buildPareto, classificationPareto, compareValues, avail, durationHistogram, equipmentMonthHeatmap,
+  areaPareto, availabilityByArea, buildPareto, classificationPareto, dailySeries, daysInRange, monthlyHoursByClassification, compareValues, avail, durationHistogram, equipmentMonthHeatmap,
   equipmentPareto, equipmentReasonHeatmap, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
   reasonParetoForEquipment, resolvedKey, rollingFailureCounts, rowCode, yearOverYear,
-  type AreaKpis, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
+  type AreaAvailability, type AreaKpis, type ClassMonthPoint, type DayPoint, type Metric, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
   type KpiChanges, type KpiOk, type LongEvent, type MonthPoint, type ParetoBar, type ParetoMeasure, type ParetoResult, type RepeatResult,
   type RollingPoint, type TopN, type YoyMonth,
 } from '../calc';
@@ -26,7 +26,17 @@ export interface OverviewModel {
   repeatedChange: Change | null;
   monthly: MonthPoint[];
   perArea: AreaKpis[];
+  /** one point per day of the effective window, with the 7-day rolling mean of the stopped hours */
+  daily: DayPoint[];
+  /** stopped hours per month and classification */
+  byClass: ClassMonthPoint[];
+  /** the ten equipment codes with most failure hours (own-stop rule); shares are against the full total */
+  topEquipment: { bars: ParetoBar[]; total: number };
+  /** availability per area (lowest first) and for all areas together */
+  availability: { areas: AreaAvailability[]; overall: Metric } | null;
 }
+
+export const ROLLING_DAYS = 7;
 
 export function overviewModel(ctx: DashCtx): OverviewModel {
   const cur = ctx.kpis.current;
@@ -45,7 +55,66 @@ export function overviewModel(ctx: DashCtx): OverviewModel {
     repeatedChange: both ? compareValues(avail(kpi.repeatedFailureCount), avail(prev.repeatedFailureCount), 'lower') : null,
     monthly: monthly(ctx),
     perArea: kpi?.areas ?? [],
+    daily: daily(ctx),
+    byClass: ctx.win.range ? monthlyHoursByClassification({ rows: ctx.scope.kpiRows, range: ctx.win.range, dataRange: ctx.coverage, areaIds: ctx.base.areaIds }) : [],
+    topEquipment: topEquipment(ctx, 10),
+    availability: kpi ? availabilityByArea(kpi) : null,
   };
+}
+
+/** One point per day of the window the numbers are calculated for (range clipped to the data). */
+export function daily(ctx: DashCtx): DayPoint[] {
+  const range = ctx.win.effective;
+  if (!range) return [];
+  return dailySeries({
+    rows: ctx.scope.kpiRows, chains: ctx.scope.chains, range, dataRange: ctx.coverage, areaIds: ctx.base.areaIds,
+    settings: ctx.master.settings, rollingDays: ROLLING_DAYS,
+  });
+}
+
+/** Equipment Pareto bars by failure hours (own-stop rule), largest first. */
+export function topEquipment(ctx: DashCtx, n: number): { bars: ParetoBar[]; total: number } {
+  const window = ctx.win.effective;
+  if (!window) return { bars: [], total: 0 };
+  const own = equipmentPareto(ctx.scope.failureChains, ctx.master.index, { measure: 'hours', window }).own;
+  return { bars: own.bars.filter((b) => !b.isOthers).slice(0, n), total: own.total };
+}
+
+export interface SparkSeries {
+  mode: 'daily' | 'monthly';
+  /** first and last label, for the accessible name */
+  labels: string[];
+  downtimeHours: (number | null)[];
+  failureCount: (number | null)[];
+  /** 0..1 */
+  availability: (number | null)[];
+  mttrHours: (number | null)[];
+}
+
+const num = (m: Metric): number | null => (m.available ? m.value : null);
+
+/** Daily points for a window of up to 120 days, monthly points beyond; the same series feed the hero KPI sparklines. */
+export function sparkSeries(days: DayPoint[], months: MonthPoint[], windowDays: number): SparkSeries {
+  if (windowDays <= 120) {
+    return {
+      mode: 'daily', labels: days.map((d) => d.date),
+      downtimeHours: days.map((d) => (d.hasData ? d.downtimeHours : null)),
+      failureCount: days.map((d) => (d.hasData ? d.failureCount : null)),
+      availability: days.map((d) => (d.kpis ? num(d.kpis.availabilityHeadline) : null)),
+      mttrHours: days.map((d) => (d.kpis ? num(d.kpis.mttrHours) : null)),
+    };
+  }
+  return {
+    mode: 'monthly', labels: months.map((m) => m.month),
+    downtimeHours: months.map((m) => (m.hasData ? m.failureHours + m.plannedHours + m.otherHours : null)),
+    failureCount: months.map((m) => (m.hasData ? m.failureCount : null)),
+    availability: months.map((m) => num(m.availability)),
+    mttrHours: months.map((m) => num(m.mttrHours)),
+  };
+}
+
+export function windowDays(ctx: DashCtx): number {
+  return ctx.win.effective ? daysInRange(ctx.win.effective) : 0;
 }
 
 /** One point per month of the range, for all areas in scope or for one area. */

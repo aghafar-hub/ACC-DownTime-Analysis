@@ -6,7 +6,7 @@ import {
 } from '../calc';
 import { buildSyntheticDb } from '../mock/synthetic';
 import { defaultFilters, resolveRange } from './filters';
-import { areaModel, cutPareto, equipmentModel, overviewModel, reasonModel, reliabilityModel, repeatsModel } from './models';
+import { areaModel, cutPareto, equipmentModel, overviewModel, reasonModel, reliabilityModel, repeatsModel, sparkSeries, windowDays } from './models';
 import { noChangeText } from './format';
 import { buildCtx, rowsInRange, yearsNeeded } from './scope';
 
@@ -115,6 +115,45 @@ describe('page adapters equal the calculation layer on the mock data', () => {
     expect(yearsNeeded({ from: '2025-11-01', to: '2026-02-28' }, f4, settings, [2026, 2025, 2024])).toEqual([2025, 2026]);
     expect(yearsNeeded({ from: '2026-01-10', to: '2026-02-28' }, f4, settings, [2026, 2025])).toEqual([2025, 2026]);
     expect(yearsNeeded({ from: '2026-06-10', to: '2026-07-28' }, { ...f4, compare: 'none' }, settings, [2026, 2025])).toEqual([2026]);
+  });
+});
+
+describe('Overview chart models match the headline numbers', () => {
+  const m = overviewModel(ctx);
+  const k = m.kpi!;
+  it('daily hours add up to the total stoppage hours and the days cover the effective window', () => {
+    expect(m.daily.length).toBe(windowDays(ctx));
+    expect(m.daily[0]!.date).toBe(ctx.win.effective!.from);
+    expect(m.daily.reduce((s, d) => s + d.downtimeHours, 0)).toBeCloseTo(k.total.downtimeHours, 6);
+    expect(m.daily.reduce((s, d) => s + d.failureCount, 0)).toBe(k.total.failureCount);
+    expect(m.daily.every((d) => d.rollingDowntimeHours !== null)).toBe(true);
+  });
+  it('hours by classification add up to the total and to the monthly stack', () => {
+    expect(m.byClass.reduce((s, x) => s + x.total, 0)).toBeCloseTo(k.total.downtimeHours, 6);
+    m.byClass.forEach((c, i) => expect(c.total).toBeCloseTo(m.monthly[i]!.failureHours + m.monthly[i]!.plannedHours + m.monthly[i]!.otherHours, 6));
+  });
+  it('top equipment is the own-stop Pareto by hours with shares against the full total', () => {
+    const direct = equipmentPareto(failures, index, { measure: 'hours', window: ctx.win.effective! }).own;
+    expect(m.topEquipment.total).toBeCloseTo(direct.total, 9);
+    expect(m.topEquipment.bars.length).toBeLessThanOrEqual(10);
+    expect(m.topEquipment.bars.map((b) => b.key)).toEqual(direct.bars.slice(0, m.topEquipment.bars.length).map((b) => b.key));
+    expect(m.topEquipment.bars[0]!.sharePct).toBeCloseTo((m.topEquipment.bars[0]!.value / direct.total) * 100, 9);
+  });
+  it('availability per area is sorted, uses the headline basis and carries the all-area figure', () => {
+    const a = m.availability!;
+    expect(a.areas).toHaveLength(m.perArea.length);
+    const vals = a.areas.flatMap((x) => (x.availability.available ? [x.availability.value] : []));
+    expect(vals).toEqual([...vals].sort((x, y) => x - y));
+    expect(a.overall).toEqual(k.total.availabilityHeadline);
+  });
+  it('sparklines use daily points up to 120 days and monthly points beyond', () => {
+    const d = sparkSeries(m.daily, m.monthly, 90);
+    expect(d.mode).toBe('daily');
+    expect(d.downtimeHours).toHaveLength(m.daily.length);
+    expect(d.downtimeHours.reduce<number>((s, v) => s + (v ?? 0), 0)).toBeCloseTo(k.total.downtimeHours, 6);
+    const mo = sparkSeries(m.daily, m.monthly, 365);
+    expect(mo.mode).toBe('monthly');
+    expect(mo.downtimeHours).toHaveLength(m.monthly.length);
   });
 });
 

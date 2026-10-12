@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { noSidewaysScroll, signInAndWait, smallTargets, stubFonts, watchConsole } from './helpers';
+import { noSidewaysScroll, signInAndWait, smallTargets, smallText, stubFonts, watchConsole } from './helpers';
 
 /** The first number in a text (tiles also carry a label). */
 const num = (s: string | null): number => Number(((s ?? '').match(/-?[\d,]+(\.\d+)?/)?.[0] ?? 'NaN').replace(/,/g, ''));
@@ -47,6 +47,9 @@ test.describe('dashboards (desktop)', () => {
     const allAreas = num(await page.getByTestId('kpi-total-hours-value').textContent());
     expect(allAreas).toBeGreaterThan(0);
 
+    await expect(page.getByTestId('fb-panel')).toHaveCount(0); // the panel is collapsed by default
+    await page.getByTestId('fb-filters-pill').click();
+    await expect(page.getByTestId('fb-panel')).toBeVisible();
     await page.getByTestId('fb-area').click();
     const before = await page.getByTestId('fb-area-opt').count();
     await page.keyboard.press('Escape');
@@ -62,6 +65,7 @@ test.describe('dashboards (desktop)', () => {
     await expect(page.getByTestId('fb-area-opt').first()).toBeChecked();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('fb-active')).toBeVisible();
+    await expect(page.getByTestId('fb-badge')).toHaveText('2');
     const areaHours = num(await page.getByTestId('kpi-total-hours-value').textContent());
     expect(areaHours).toBeLessThan(allAreas);
     await expect(page.getByTestId('fb-count')).toContainText('events in scope');
@@ -230,6 +234,156 @@ test.describe('dashboards (desktop)', () => {
   });
 });
 
+test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)', () => {
+  test.beforeEach(async ({ page }) => {
+    await stubFonts(page);
+  });
+
+  test('filters are shared across the four Analyze pages, chips are removable, Reset clears all', async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    await open(page, '/overview', 'page-overview');
+    await page.getByTestId('fb-preset').selectOption('last30');
+    await page.getByTestId('fb-cmp-none').click();
+    await page.getByTestId('fb-filters-pill').click();
+    await page.getByTestId('fb-cls-MEC').click();
+    await page.getByTestId('fb-cls-ELE').click();
+    await page.getByTestId('fb-fail').click();
+    await expect(page.getByTestId('fb-badge')).toHaveText('2');
+    for (const [link, id] of [['Pareto', 'pareto'], ['Repeated Failures', 'repeats'], ['Reliability', 'reliability'], ['Overview', 'overview']] as const) {
+      await page.getByRole('link', { name: link, exact: true }).first().click();
+      await expect(page.getByTestId(`page-${id}`)).toBeVisible();
+      await expect(page.getByTestId('fb-preset')).toHaveValue('last30');
+      await expect(page.getByTestId('fb-chip-cls-MEC')).toBeVisible();
+      await expect(page.getByTestId('fb-chip-cls-ELE')).toBeVisible();
+      await expect(page.getByTestId('fb-chip-fail')).toBeVisible();
+      await expect(page.getByTestId('fb-panel')).toHaveCount(0);
+    }
+    expect(await page.evaluate(() => Object.entries(sessionStorage).some(([k, v]) => k.endsWith('dash_filters') && v.includes('cls=MEC')))).toBe(true);
+    // remove one chip: the badge counts down, the other filters stay
+    await page.getByTestId('fb-chip-cls-ELE').click();
+    await expect(page.getByTestId('fb-chip-cls-ELE')).toHaveCount(0);
+    await expect(page.getByTestId('fb-badge')).toHaveText('2');
+    await page.getByTestId('fb-chip-fail').click();
+    await expect(page.getByTestId('fb-badge')).toHaveText('1');
+    const chip = await page.getByTestId('fb-chip-cls-MEC').boundingBox();
+    expect(chip!.height).toBeGreaterThanOrEqual(43.5);
+    await page.getByRole('link', { name: 'Pareto', exact: true }).first().click();
+    await expect(page.getByTestId('fb-chip-cls-MEC')).toBeVisible();
+    // Event Explorer keeps its own filters: the shared chips are not there
+    await page.goto('/#/events');
+    await expect(page.getByTestId('page-events')).toBeVisible();
+    await expect(page.getByTestId('fb-chip-cls-MEC')).toHaveCount(0);
+    await page.goto('/#/pareto');
+    await expect(page.getByTestId('fb-chip-cls-MEC')).toBeVisible();
+    await page.getByTestId('fb-reset').click();
+    await expect(page.getByTestId('fb-active')).toHaveCount(0);
+    await expect(page.getByTestId('fb-badge')).toHaveCount(0);
+    await expect(page.getByTestId('fb-preset')).toHaveValue('last90');
+    await page.getByRole('link', { name: 'Reliability', exact: true }).first().click();
+    await expect(page.getByTestId('fb-active')).toHaveCount(0);
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  test('every page has a takeaway sentence built from its numbers', async ({ page }) => {
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    for (const p of ['overview', 'pareto', 'repeats', 'reliability']) {
+      await open(page, `/${p}`, `page-${p}`);
+      const text = (await page.getByTestId('takeaway').textContent()) ?? '';
+      expect(text.length, p).toBeGreaterThan(20);
+      expect(text, p).not.toContain('Loading');
+    }
+    await open(page, '/overview', 'page-overview');
+    await expect(page.getByTestId('takeaway')).toContainText(/area-hours stopped.*largest contributor/);
+    const hours = num(await page.getByTestId('kpi-total-hours-value').textContent());
+    expect(num(await page.getByTestId('takeaway').textContent())).toBe(hours);
+  });
+
+  test('Overview: hero KPIs with sparklines and an info popover, More figures toggle', async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    await open(page, '/overview', 'page-overview');
+    for (const id of ['total-hours', 'failure-count', 'availability', 'mttr']) {
+      const card = page.getByTestId(`kpi-${id}`);
+      await expect(card).toBeVisible();
+      await expect(card.getByTestId('spark')).toHaveAttribute('aria-label', /trend: from .* to /);
+      const info = await card.getByTestId(`kpi-${id}-info`).boundingBox();
+      expect(info!.width).toBeGreaterThanOrEqual(43.5);
+      expect(info!.height).toBeGreaterThanOrEqual(43.5);
+    }
+    await page.getByTestId('kpi-availability-info').click();
+    await expect(page.getByTestId('kpi-info')).toContainText('Basis B');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('kpi-info')).toHaveCount(0);
+    await page.getByTestId('kpi-mttr-info').click();
+    await expect(page.getByTestId('kpi-info')).toContainText('failure');
+    await page.getByTestId('kpi-info-close').click();
+    await expect(page.getByTestId('kpi-info')).toHaveCount(0);
+
+    // More figures: open on a desktop, every other figure is in it
+    await expect(page.getByTestId('more-figures-toggle')).toHaveAttribute('aria-expanded', 'true');
+    for (const id of ['failure-hours', 'planned-hours', 'other-hours', 'operating-hours', 'mtbf', 'repeated', 'top-area', 'top-equipment']) {
+      await expect(page.getByTestId('more-figures').getByTestId(`kpi-${id}`)).toBeVisible();
+    }
+    await page.getByTestId('more-figures-toggle').click();
+    await expect(page.getByTestId('kpi-failure-hours')).toHaveCount(0);
+    await expect(page.getByTestId('kpi-total-hours')).toBeVisible();
+    await page.getByTestId('more-figures-toggle').click();
+    await expect(page.getByTestId('kpi-failure-hours')).toBeVisible();
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  test('Overview: the six charts in order, View as table works, removed items are gone', async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    await open(page, '/overview', 'page-overview');
+    const ids = ['chart-daily', 'chart-monthly-stack', 'chart-class-month', 'chart-downtime-area', 'chart-top-equipment', 'chart-area-availability'];
+    const order = await page.locator('[data-testid^="chart-"][data-testid$="-daily"], section.chart-card').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
+    expect(order).toEqual(ids);
+    for (const id of ids) {
+      const card = page.getByTestId(id);
+      await expect(card.getByTestId('chart-summary')).not.toBeEmpty();
+      await card.getByTestId('view-table').click();
+      await expect(card.locator('table')).toBeVisible();
+      await card.getByTestId('view-table').click();
+      await expect(card.locator('svg[role=img]').first()).toBeVisible();
+    }
+    await expect(page.getByTestId('chart-daily').getByTestId('chart-legend')).toContainText('7-day average');
+    await expect(page.getByTestId('chart-area-availability').getByTestId('hbars-ref')).toBeVisible();
+    // top 10 bars open the events behind them
+    const rows = page.getByTestId('chart-top-equipment').locator('rect.chart-hit');
+    expect(await rows.count()).toBeLessThanOrEqual(10);
+    await rows.first().click();
+    await expect(page).toHaveURL(/#\/events/);
+    await expect(page.getByTestId('drill-chip')).toBeVisible();
+    await page.goBack();
+    await expect(page.getByTestId('page-overview')).toBeVisible();
+    // removed from Overview
+    for (const id of ['chart-operating', 'chart-monthly-aligned', 'chart-availability', 'area-table-card', 'area-table']) await expect(page.getByTestId(id)).toHaveCount(0);
+    await expect(page.getByText('Operating and stopped hours per area')).toHaveCount(0);
+    await expect(page.getByText('Failure hours and failure count by month')).toHaveCount(0);
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  test('Reliability: Areas section (availability trend and By area table) comes first, monthly charts below', async ({ page }) => {
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    await open(page, '/reliability', 'page-reliability');
+    await expect(page.getByTestId('areas-block').getByRole('heading', { name: 'Areas', exact: true })).toBeVisible();
+    await expect(page.getByTestId('chart-availability')).toBeVisible();
+    await expect(page.getByTestId('trend-areas')).toBeVisible();
+    await expect(page.getByTestId('area-table')).toBeVisible();
+    expect(await page.getByTestId('area-row').count()).toBeGreaterThan(1);
+    const y = async (id: string) => (await page.getByTestId(id).first().boundingBox())!.y;
+    expect(await y('area-table-card')).toBeLessThan(await y('chart-mtbf'));
+    expect(await y('chart-availability')).toBeLessThan(await y('chart-mtbf'));
+  });
+});
+
 for (const width of [360, 390]) {
   test.describe(`dashboards (phone ${width})`, () => {
     test.use({ viewport: { width, height: 800 }, isMobile: true, hasTouch: true });
@@ -242,7 +396,7 @@ for (const width of [360, 390]) {
         await open(page, `/${p}`, `page-${p}`);
         expect((await noSidewaysScroll(page)).ok, `${p} sideways scroll`).toBe(true);
         await expect(page.getByTestId('fb-filters-pill')).toBeVisible();
-        await expect(page.getByTestId('phone-summary')).toBeVisible();
+        await expect(page.getByTestId('takeaway')).toBeVisible();
       }
       await open(page, '/overview', 'page-overview');
       // the Filters chip opens a sheet with all fields; the count of active filters shows on the chip
@@ -252,6 +406,7 @@ for (const width of [360, 390]) {
       await page.getByTestId('fb-cls-MEC').click();
       await page.getByTestId('fb-sheet-apply').click();
       await expect(page.getByTestId('fb-filters-pill')).toContainText('1');
+      await expect(page.getByTestId('fb-chip-cls-MEC')).toBeVisible();
       expect((await noSidewaysScroll(page)).ok).toBe(true);
       // a collapsed section opens; tapping a chart column pins a tooltip
       const hit = page.getByTestId('chart-monthly-stack').locator('rect.chart-hit').first();
@@ -259,6 +414,42 @@ for (const width of [360, 390]) {
       await hit.tap();
       await expect(page.getByTestId('chart-tip')).toBeVisible();
       expect(await smallTargets(page)).toEqual([]);
+      expect(errors, errors.join('\n')).toEqual([]);
+    });
+
+    test(`Overview at ${width}px: two hero KPIs per row, More figures folded, targets and text sizes`, async ({ page }) => {
+      const errors = watchConsole(page);
+      await stubFonts(page);
+      await page.goto('/');
+      await signInAndWait(page, 'engineer');
+      await open(page, '/overview', 'page-overview');
+      const boxes = await Promise.all(['total-hours', 'failure-count', 'availability', 'mttr'].map((id) => page.getByTestId(`kpi-${id}`).boundingBox()));
+      expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThan(2);
+      expect(Math.abs(boxes[2]!.y - boxes[3]!.y)).toBeLessThan(2);
+      expect(boxes[2]!.y).toBeGreaterThan(boxes[0]!.y + 40);
+      await expect(page.getByTestId('more-figures-toggle')).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByTestId('kpi-failure-hours')).toHaveCount(0);
+      await page.getByTestId('more-figures-toggle').click();
+      const a = await page.getByTestId('kpi-failure-hours').boundingBox();
+      const b = await page.getByTestId('kpi-planned-hours').boundingBox();
+      expect(Math.abs(a!.y - b!.y)).toBeLessThan(2);
+      await page.getByTestId('kpi-total-hours-info').click();
+      await expect(page.getByTestId('kpi-info')).toBeVisible();
+      expect(await smallTargets(page)).toEqual([]);
+      await page.getByTestId('kpi-info-close').click();
+      await page.getByTestId('sec-where-toggle').click();
+      for (const id of ['chart-daily', 'chart-class-month', 'chart-top-equipment', 'chart-area-availability']) await expect(page.getByTestId(id)).toBeVisible();
+      expect((await noSidewaysScroll(page)).ok).toBe(true);
+      expect(await smallText(page)).toEqual([]);
+      expect(await smallTargets(page)).toEqual([]);
+      // the compact filter bar: remove a chip with a 44 px target
+      await page.getByTestId('fb-filters-pill').click();
+      await page.getByTestId('fb-cls-PRO').click();
+      await page.getByTestId('fb-sheet-apply').click();
+      const chip = await page.getByTestId('fb-chip-cls-PRO').boundingBox();
+      expect(chip!.height).toBeGreaterThanOrEqual(43.5);
+      await page.getByTestId('fb-chip-cls-PRO').click();
+      await expect(page.getByTestId('fb-chip-cls-PRO')).toHaveCount(0);
       expect(errors, errors.join('\n')).toEqual([]);
     });
   });

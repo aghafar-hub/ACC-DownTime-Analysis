@@ -256,3 +256,22 @@ export function computeKpisWithComparison(input: KpiInput, kind: ComparisonKind 
     changes: previous.status === 'ok' ? kpiChanges(current.total, previous.total) : null,
   };
 }
+
+// ---- availability per area ----
+
+export interface AreaAvailability { area_id: string; availability: Metric }
+
+/**
+ * Availability (the basis chosen in settings) of every area, lowest first; areas without a value (no scheduled
+ * time) come last. `overall` is the all-area figure from the area-hours aggregate, the reference line of the chart.
+ */
+export function availabilityByArea(k: Pick<KpiOk, 'areas' | 'total'>): { areas: AreaAvailability[]; overall: Metric } {
+  const areas = k.areas
+    .map((a) => ({ area_id: a.area_id, availability: a.availabilityHeadline }))
+    .sort((a, b) => {
+      const x = a.availability.available ? a.availability.value : Infinity;
+      const y = b.availability.available ? b.availability.value : Infinity;
+      return x - y || (a.area_id < b.area_id ? -1 : a.area_id > b.area_id ? 1 : 0);
+    });
+  return { areas, overall: k.total.availabilityHeadline };
+}

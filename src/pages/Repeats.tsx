@@ -7,16 +7,15 @@ import ScatterChart from '../charts/ScatterChart';
 import TimelineChart from '../charts/TimelineChart';
 import { ACCENT } from '../charts/palette';
 import { BottomSheet, PAGE_SIZE, ShowMore } from '../components/PhoneParts';
-import { PageHeader, Tile } from '../components/Tile';
-import FilterBar from '../dashboard/FilterBar';
-import { dayLabel, fh, fh2, fint, rangeLabel } from '../dashboard/format';
+import { Tile } from '../components/Tile';
+import DashTop from '../dashboard/DashTop';
+import { dayLabel, fh, fh2, fint } from '../dashboard/format';
+import { repeatsTakeaway } from '../dashboard/takeaways';
 import { eventsOfEquipment, repeatsModel, rolling } from '../dashboard/models';
-import { DashStatus, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
-import { PhoneBar } from '../dashboard/PhoneBar';
+import { NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import { useDash } from '../dashboard/useDash';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
-import { ValidationBanner } from '../validate/ValidationBanner';
 import { Icon } from '../icons';
 import '../components/ui.css';
 import '../dashboard/dashboard.css';
@@ -78,9 +77,14 @@ export default function Repeats() {
   const groupHours = res?.groups.reduce((s, g) => s + g.totalHours, 0) ?? 0;
   const win = model?.window;
   const settings = ctx?.master.settings;
-  const subtitle = !ctx ? t('Loading…') : res && win
-    ? t('{g} repeated-failure groups · {r} recurrence events · {r2}', { g: fint(res.groups.length), r: fint(res.recurrences.length), r2: rangeLabel(win) })
-    : t('No data for this range');
+  const topGroup = res?.groups.reduce<RepeatGroup | null>((b, g) => (!b || g.occurrences > b.occurrences || (g.occurrences === b.occurrences && g.totalHours > b.totalHours) ? g : b), null) ?? null;
+  const takeaway = !ctx ? t('Loading…') : res && settings
+    ? repeatsTakeaway({
+      groups: res.groups.length, recurrences: res.recurrences.length, equipmentCount: equipCount,
+      top: topGroup && { equipmentId: topGroup.equipmentId, occurrences: topGroup.occurrences, totalHours: topGroup.totalHours, reason: topGroup.reasonLabel },
+      minEvents: settings.repeatMinEvents, windowDays: settings.repeatWindowDays,
+    })
+    : repeatsTakeaway(null);
 
   const select = (code: string) => {
     setSel(code);
@@ -122,10 +126,10 @@ export default function Repeats() {
 
   return (
     <div className="page dash-page" data-testid="page-repeats">
-      <PageHeader title={t('Repeated Failures')} subtitle={subtitle} right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>} />
-      <ValidationBanner />
-      <DashStatus dash={dash} />
-      <PhoneBar>{res ? <><b>{fint(res.groups.length)}</b> {t('groups')}<span><span aria-hidden="true">◆</span> {fint(res.recurrences.length)} {t('recurrences')}</span></> : subtitle}</PhoneBar>
+      <DashTop
+        title={t('Repeated Failures')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null}
+        right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>}
+      />
       {res && settings && (
         <div className="kpi-grid" data-testid="repeat-tiles">
           <Tile icon="repeat" label={t('Qualifying groups')} value={<span data-testid="rt-groups">{fint(res.groups.length)}</span>} sub={t('same code and reason, at least {n} events within {d} days', { n: settings.repeatMinEvents, d: settings.repeatWindowDays })} />
@@ -134,7 +138,6 @@ export default function Repeats() {
           <Tile icon="equipment" label={t('Equipment affected')} value={fint(equipCount)} sub={t('different equipment codes')} />
         </div>
       )}
-      <FilterBar dash={dash} eventCount={rows ? rows.length : null} />
       {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}
       {model && res && (
         <>

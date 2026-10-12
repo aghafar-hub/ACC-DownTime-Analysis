@@ -40,6 +40,13 @@ export function dayLabel(d: string): string {
   return `${Number(day)} ${names[Number(m) - 1] ?? m} ${y}`;
 }
 
+/** "2026-03-05" -> "5 Mar" */
+export function dayShort(d: string): string {
+  const [, m, day] = d.split('-');
+  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${Number(day)} ${names[Number(m) - 1] ?? m}`;
+}
+
 export function rangeLabel(r: { from: string; to: string }): string {
   return r.from === r.to ? dayLabel(r.from) : `${dayLabel(r.from)} – ${dayLabel(r.to)}`;
 }

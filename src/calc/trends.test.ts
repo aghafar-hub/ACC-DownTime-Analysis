@@ -3,7 +3,7 @@ import { buildFailureEvents } from './events';
 import { createRowFactory, fixtureIndex, type RowSpec } from './fixtures';
 import { DEFAULT_SETTINGS } from './settings';
 import {
-  buildHeatmap, durationHistogram, equipmentMonthHeatmap, equipmentReasonHeatmap, longestEvents, monthlySeries, rollingFailureCounts, yearOverYear,
+  buildHeatmap, dailySeries, durationHistogram, monthlyHoursByClassification, rollingMean, equipmentMonthHeatmap, equipmentReasonHeatmap, longestEvents, monthlySeries, rollingFailureCounts, yearOverYear,
 } from './trends';
 
 const settings = DEFAULT_SETTINGS;
@@ -186,5 +186,85 @@ describe('longestEvents', () => {
   it('can include non-failure events, limit n and filter by window', () => {
     expect(longestEvents(chains, 1, { failureOnly: false })[0]!.hours).toBe(12);
     expect(longestEvents(chains, 5, { window: { from: '2026-03-03', to: '2026-03-31' } })).toHaveLength(0); // the chain started on 2 Mar
+  });
+});
+
+describe('dailySeries', () => {
+  const rows = rowsOf([
+    { stop: '2026-03-01 22:00', start: '2026-03-02 02:00' }, // 4 h failure over midnight: 2 h on the 1st, 2 h on the 2nd
+    { stop: '2026-03-03 08:00', start: '2026-03-03 09:00', cls: 'PL' }, // planned 1 h
+    { stop: '2026-03-03 10:00', start: '2026-03-03 10:30', cls: 'CIR' }, // other 0.5 h
+    { stop: '2026-03-05 08:00', start: '2026-03-05 09:00', area: 'RM.1' }, // other area, 1 h
+    { stop: '2026-03-04 08:00', start: '2026-03-04 09:00', isVoid: true }, // voided: ignored
+  ]);
+  const range = { from: '2026-03-01', to: '2026-03-07' };
+  const cov = { from: '2026-03-01', to: '2026-03-07' };
+  const days = dailySeries({ rows, range, dataRange: cov, areaIds: ['K.1', 'RM.1'], settings });
+
+  it('has one point per day and days without events are 0, not missing', () => {
+    expect(days.map((d) => d.date)).toEqual(['2026-03-01', '2026-03-02', '2026-03-03', '2026-03-04', '2026-03-05', '2026-03-06', '2026-03-07']);
+    expect(days.every((d) => d.hasData)).toBe(true);
+    expect(days.map((d) => d.downtimeHours)).toEqual([2, 2, 1.5, 0, 1, 0, 0]);
+  });
+  it('splits at midnight, counts the failure on the day it starts and splits the hours by kind', () => {
+    expect(days[0]!.failureCount).toBe(1);
+    expect(days[1]!.failureCount).toBe(0);
+    expect(days[2]).toMatchObject({ plannedHours: 1, otherHours: 0.5, failureHours: 0 });
+  });
+  it('sums to the window KPIs and to the monthly series', () => {
+    const total = days.reduce((s, d) => s + d.downtimeHours, 0);
+    const m = monthlySeries({ rows, range, dataRange: cov, areaIds: ['K.1', 'RM.1'], settings })[0]!;
+    expect(total).toBeCloseTo(m.plannedHours + m.failureHours + m.otherHours, 9);
+    expect(days.reduce((s, d) => s + d.failureCount, 0)).toBe(m.failureCount);
+  });
+  it('rolling mean is the trailing mean over up to 7 days of the range', () => {
+    expect(days[0]!.rollingDowntimeHours).toBe(2);
+    expect(days[1]!.rollingDowntimeHours).toBe(2);
+    expect(days[2]!.rollingDowntimeHours).toBeCloseTo((2 + 2 + 1.5) / 3, 9);
+    expect(days[6]!.rollingDowntimeHours).toBeCloseTo((2 + 2 + 1.5 + 0 + 1 + 0 + 0) / 7, 9);
+    const short = dailySeries({ rows, range, dataRange: cov, areaIds: ['K.1', 'RM.1'], settings, rollingDays: 2 });
+    expect(short[3]!.rollingDowntimeHours).toBeCloseTo(0.75, 9);
+  });
+  it('days outside the data coverage have no data (not zero hours) and are skipped by the average', () => {
+    const d = dailySeries({ rows, range, dataRange: { from: '2026-03-01', to: '2026-03-04' }, areaIds: ['K.1', 'RM.1'], settings });
+    expect(d[5]).toMatchObject({ hasData: false, downtimeHours: 0, kpis: null, rollingDowntimeHours: null });
+    expect(d[3]!.hasData).toBe(true);
+  });
+  it('a day KPI uses the day scheduled time times the areas', () => {
+    expect(days[0]!.kpis!.scheduledHours).toBe(48);
+  });
+  it('rollingMean ignores gaps', () => {
+    expect(rollingMean([1, null, 3, 5], 3)).toEqual([1, null, 2, 4]);
+  });
+});
+
+describe('monthlyHoursByClassification', () => {
+  const rows = rowsOf([
+    { stop: '2026-01-31 22:00', start: '2026-02-01 01:00', cls: 'MEC' }, // 2 h Jan, 1 h Feb
+    { stop: '2026-02-10 08:00', start: '2026-02-10 10:00', cls: 'ELE' },
+    { stop: '2026-02-11 08:00', start: '2026-02-11 09:00', cls: 'PL' },
+    { stop: '2026-02-12 08:00', start: '2026-02-12 08:30', cls: 'CIR' },
+    { stop: '2026-02-13 08:00', start: '2026-02-13 08:30', cls: 'PRO', area: 'RM.1' },
+    { stop: '2026-02-14 08:00', start: '2026-02-14 08:30', cls: 'AUT', isVoid: true },
+  ]);
+  const input = { rows, range: { from: '2026-01-01', to: '2026-02-28' }, dataRange: { from: '2026-01-01', to: '2026-02-28' }, areaIds: ['K.1', 'RM.1'], settings };
+  const pts = monthlyHoursByClassification(input);
+  it('splits hours per classification and month, ignoring voided rows', () => {
+    expect(pts[0]!.hours).toMatchObject({ MEC: 2, ELE: 0, PL: 0 });
+    expect(pts[1]!.hours).toMatchObject({ MEC: 1, ELE: 2, PL: 1, CIR: 0.5, PRO: 0.5, AUT: 0 });
+    expect(pts[1]!.total).toBeCloseTo(5, 9);
+  });
+  it('sums to the planned + failure + other hours of the monthly series', () => {
+    const m = monthlySeries(input);
+    pts.forEach((p, i) => expect(p.total).toBeCloseTo(m[i]!.plannedHours + m[i]!.failureHours + m[i]!.otherHours, 9));
+  });
+  it('honours the area list, the partial flag and months without data', () => {
+    const k1 = monthlyHoursByClassification({ ...input, areaIds: ['K.1'] });
+    expect(k1[1]!.hours.PRO).toBe(0);
+    const part = monthlyHoursByClassification({ ...input, dataRange: { from: '2026-01-15', to: '2026-02-12' } });
+    expect(part[0]).toMatchObject({ hasData: true, partial: true });
+    expect(part[1]).toMatchObject({ hasData: true, partial: true });
+    const none = monthlyHoursByClassification({ ...input, range: { from: '2025-11-01', to: '2026-01-31' }, dataRange: { from: '2026-01-01', to: '2026-02-28' } });
+    expect(none.map((p) => p.hasData)).toEqual([false, false, true]);
   });
 });

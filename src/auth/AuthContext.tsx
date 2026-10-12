@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { ACCESS_DENIED_EVENT, api, SESSION_EXPIRED_EVENT } from '../api';
 import type { Access, AccessLevel, Session, SessionUser, TabId } from '../api/types';
 import { ApiError } from '../api/types';
+import { forgetDashFilters } from '../dashboard/sharedFilters';
 import { clearDataCaches } from '../data/cache';
 import { resetDataStores } from '../data/stores';
 import { t } from '../i18n/t';
@@ -77,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStored(null);
     setNotice(why ?? null);
     resetDataStores();
+    forgetDashFilters();
     void clearDataCaches();
   }, []);
 

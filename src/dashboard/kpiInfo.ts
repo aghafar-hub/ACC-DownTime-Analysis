@@ -1,0 +1,51 @@
+// Plain-words explanations for the hero KPIs (the (i) buttons). They describe the rules the numbers follow.
+import { t } from '../i18n/t';
+
+export type HeroId = 'total-hours' | 'failure-count' | 'availability' | 'mttr';
+
+export interface KpiInfo { title: string; paragraphs: string[] }
+
+const BASIS_TEXT = {
+  A: 'Basis A: scheduled time minus all stops, divided by scheduled time.',
+  B: 'Basis B: scheduled time minus planned stops is the time the area was expected to run. Availability is that time minus failure and other stops, divided by it.',
+  C: 'Basis C: scheduled time minus planned and other (circumstantial) stops is the time the area was expected to run. Availability is that time minus failure stops, divided by it.',
+} as const;
+
+export function kpiInfo(id: HeroId, basis: 'A' | 'B' | 'C'): KpiInfo {
+  switch (id) {
+    case 'total-hours':
+      return {
+        title: t('Total stoppage hours'),
+        paragraphs: [
+          t('Every hour an area stood still in the selected range: failures, planned stops (PL) and other circumstantial stops (CIR) added together.'),
+          t('The hours are counted per area and then added up (area-hours), so two areas stopped at the same time count twice. A stop that crosses midnight or the end of the range counts only the hours inside the range.'),
+          t('Records with a blocking data problem and voided records are left out.'),
+        ],
+      };
+    case 'failure-count':
+      return {
+        title: t('Failure count'),
+        paragraphs: [
+          t('How many failures started in the selected range. Only rows marked as a failure count; a stop that carries on in the next row is the same failure and is not counted again.'),
+          t('Planned stops and other circumstantial stops are not failures.'),
+        ],
+      };
+    case 'availability':
+      return {
+        title: t('Availability (basis {b})', { b: basis }),
+        paragraphs: [
+          t('The share of the expected running time in which the areas were actually available.'),
+          t(BASIS_TEXT[basis]),
+          t('It is worked out from the summed area-hours, never as an average of area percentages. The basis is chosen in Settings; all three bases are shown on the card.'),
+        ],
+      };
+    case 'mttr':
+      return {
+        title: t('Mean restoration time'),
+        paragraphs: [
+          t('The average length of a failure: from the stop until production restarted, for failures that started in the selected range.'),
+          t('A failure that continues over several rows is one failure with its full length. If there was no failure in the range the value is not defined.'),
+        ],
+      };
+  }
+}

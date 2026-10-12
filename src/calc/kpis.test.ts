@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRowFactory, fixtureIndex } from './fixtures';
-import { compareValues, composeKpis, computeKpis, computeKpisWithComparison, emptySums, type KpiOk } from './kpis';
+import { availabilityByArea, compareValues, composeKpis, computeKpis, computeKpisWithComparison, emptySums, type KpiOk } from './kpis';
 import { avail, unavail, type Metric } from './metric';
 import { DEFAULT_SETTINGS, parseSettings } from './settings';
 
@@ -268,5 +268,28 @@ describe('midnight splits and 24 h stops in the KPIs', () => {
     const rows = [row({ stop: '2026-03-02 00:00', start: '2026-03-03 00:00' }), row({ stop: '2026-03-02 00:00', start: '2026-03-03 00:00', cls: 'ELE' })];
     const k = ok(computeKpis({ rows, window: { from: '2026-03-02', to: '2026-03-02' }, dataRange: MARCH, settings }));
     expect(val(k.total.availability.A)).toBe(0);
+  });
+});
+
+describe('availabilityByArea', () => {
+  const row = createRowFactory();
+  const rows = [
+    row({ area: 'K.1', stop: '2026-03-02 08:00', start: '2026-03-02 11:00' }), // 3 h
+    row({ area: 'RM.1', stop: '2026-03-03 08:00', start: '2026-03-03 16:00' }), // 8 h
+    row({ area: 'RM.1', stop: '2026-03-04 08:00', start: '2026-03-04 20:00', cls: 'PL' }), // 12 h planned: basis B takes it out of T
+  ];
+  const k = ok(computeKpis({ rows, window: FIRST10, dataRange: MARCH, areaIds: ['K.1', 'RM.1', 'CM.1'], settings }));
+  const a = availabilityByArea(k);
+  it('lists the areas lowest first on the headline basis with the all-area figure as the reference', () => {
+    expect(a.areas.map((x) => x.area_id)).toEqual(['RM.1', 'K.1', 'CM.1']);
+    expect(val(a.areas[0]!.availability)).toBeCloseTo((228 - 8) / 228, 9);
+    expect(val(a.areas[1]!.availability)).toBeCloseTo(237 / 240, 9);
+    expect(a.overall).toEqual(k.total.availabilityHeadline);
+    expect(val(a.overall)).toBeCloseTo((720 - 12 - 11) / (720 - 12), 9);
+  });
+  it('areas without a value come last', () => {
+    const none = availabilityByArea({ areas: [{ ...k.areas[0]!, availabilityHeadline: unavail('no_scheduled_time', 'x') }, k.areas[1]!], total: k.total });
+    expect(none.areas.map((x) => x.area_id)).toEqual(['RM.1', 'K.1']);
+    expect(none.areas[1]!.availability.available).toBe(false);
   });
 });

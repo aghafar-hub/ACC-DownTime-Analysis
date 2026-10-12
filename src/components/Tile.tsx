@@ -6,23 +6,27 @@ import { useTheme } from '../theme/ThemeContext';
 // reference app (Tile.jsx): PageHeader, Tile, TabBar.
 
 /** Number tile: icon square, big number, label, sub-line; a coloured left edge when it needs attention. */
-export function Tile({ icon, label, value, sub, tone, onClick, testid }: {
+export function Tile({ icon, label, value, sub, tone, onClick, testid, compact }: {
   icon: string; label: string; value: ReactNode; sub?: ReactNode; tone?: string; onClick?: () => void; testid?: string;
+  /** smaller padding and number, no icon square: for strips of secondary figures */
+  compact?: boolean;
 }) {
   const { T, s } = useTheme();
   const c = tone || T.accent;
   const style: CSSProperties = {
-    ...s.card, marginBottom: 0, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'center', width: '100%', boxSizing: 'border-box',
+    ...s.card, marginBottom: 0, padding: compact ? '8px 12px' : '14px 16px', display: 'flex', gap: 12, alignItems: 'center', width: '100%', boxSizing: 'border-box',
     textAlign: 'left', font: 'inherit', cursor: onClick ? 'pointer' : 'default', minWidth: 0,
     borderLeft: `3px solid ${tone && tone !== T.accent ? tone : T.border}`,
   };
   const body = (
     <>
-      <span style={{ width: 38, height: 38, borderRadius: 10, background: c + '1A', color: c, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <Icon name={icon} size={19} />
-      </span>
+      {!compact && (
+        <span style={{ width: 38, height: 38, borderRadius: 10, background: c + '1A', color: c, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <Icon name={icon} size={19} />
+        </span>
+      )}
       <span style={{ minWidth: 0 }}>
-        <span style={{ display: 'block', fontSize: 22, fontWeight: 800, color: tone || T.textPrimary, lineHeight: 1.15, fontFamily: 'var(--mono)' }}>{value}</span>
+        <span style={{ display: 'block', fontSize: compact ? 18 : 22, fontWeight: 800, color: tone || T.textPrimary, lineHeight: 1.15, fontFamily: 'var(--mono)' }}>{value}</span>
         <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: T.textSecondary }}>{label}</span>
         {sub && <span style={{ display: 'block', fontSize: 12, color: T.textMuted }}>{sub}</span>}
       </span>

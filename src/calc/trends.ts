@@ -1,15 +1,15 @@
 /** Reliability trends: monthly series, rolling counts, year-over-year, histograms, heatmaps, longest events. */
-import type { EventRow } from '../api/types';
+import type { ClassificationCode, EventRow } from '../api/types';
 import { analysableChains, buildFailureEvents, isAnalysable, type ChainedEvent } from './events';
 import { durationBandOf, type DurationBand } from './filters';
 import { addRowHours, compareValues, composeKpis, dataRangeOf, emptySums, type AreaKpis, type Change, type HourSums } from './kpis';
 import type { MasterIndex } from './masters';
 import { avail, unavail, type Metric } from './metric';
-import { matchKey, resolvedKey, rowCode } from './normalize';
+import { CLASSIFICATION_CODES, matchKey, resolvedKey, rowCode } from './normalize';
 import { chainValue, type ParetoMeasure } from './pareto';
 import type { CalcSettings } from './settings';
 import {
-  addDays, clippedHours, daysInRange, formatTs, intersectRanges, monthKey, monthRange, monthsOfRange, rangeToInterval, sameRange,
+  MS_DAY, addDays, clippedHours, daysInRange, formatTs, intersectRanges, monthKey, monthRange, monthsOfRange, rangeToInterval, sameRange,
   scheduledHours, splitByMonth, type DateRange, type Interval,
 } from './time';
 import { rowSpan } from './events';
@@ -112,6 +112,136 @@ export function monthlySeries(input: MonthlyInput): MonthPoint[] {
       availability: t.availabilityHeadline, kpis: t,
     };
   });
+}
+
+// ---- daily series ----
+
+export interface DayPoint {
+  date: string;
+  /** the day lies inside the data coverage; without data every figure is 0 and `kpis` is null */
+  hasData: boolean;
+  plannedHours: number;
+  failureHours: number;
+  otherHours: number;
+  /** planned + failure + other (area-hours; blocked and voided rows are not counted) */
+  downtimeHours: number;
+  failureCount: number;
+  /** the day's KPIs (scheduled time of the day x areas); null without data */
+  kpis: AreaKpis | null;
+  /** trailing mean of `downtimeHours` over the last `rollingDays` days of the range that have data (fewer at the start of the range) */
+  rollingDowntimeHours: number | null;
+}
+
+export interface DailyInput extends MonthlyInput {
+  /** length of the trailing mean; default 7 */
+  rollingDays?: number;
+}
+
+/** Trailing mean of the last `n` values (fewer at the start); null entries are skipped and a window with no values stays null. */
+export function rollingMean(values: (number | null)[], n: number): (number | null)[] {
+  const k = Math.max(1, Math.floor(n));
+  return values.map((v, i) => {
+    if (v === null) return null;
+    let sum = 0;
+    let cnt = 0;
+    for (let j = Math.max(0, i - k + 1); j <= i; j++) {
+      const x = values[j];
+      if (x !== null && x !== undefined) { sum += x; cnt++; }
+    }
+    return cnt > 0 ? sum / cnt : null;
+  });
+}
+
+/**
+ * One point per calendar day of the range, aggregated over the areas (area-hours). Days without any event are 0
+ * (not missing) as long as the data covers them. Hours are split at midnight; failures count on the day they start.
+ * Summed over the range the hours equal the monthly series and computeKpis for the same window.
+ */
+export function dailySeries(input: DailyInput): DayPoint[] {
+  const rows = input.rows.filter(isAnalysable);
+  const dataRange = input.dataRange === undefined ? dataRangeOf(rows) : input.dataRange;
+  const areaIds = input.areaIds ?? [...new Set(rows.map((r) => r.area_id))].sort();
+  const areaSet = new Set(areaIds);
+  const n = daysInRange(input.range);
+  const firstMs = rangeToInterval({ from: input.range.from, to: input.range.from }).fromMs;
+  const dates = Array.from({ length: n }, (_, i) => addDays(input.range.from, i));
+  const covered = dates.map((d) => !!dataRange && d >= dataRange.from && d <= dataRange.to);
+  const sums = dates.map(() => emptySums());
+  const dayIndex = (ms: number): number => Math.floor((ms - firstMs) / MS_DAY);
+  for (const r of rows) {
+    const span = areaSet.has(r.area_id) ? rowSpan(r) : null;
+    if (!span) continue;
+    const lo = Math.max(0, dayIndex(span.fromMs));
+    const hi = Math.min(n - 1, dayIndex(span.toMs - 1));
+    for (let i = lo; i <= hi; i++) {
+      if (!covered[i]) continue;
+      const h = clippedHours(span, { fromMs: firstMs + i * MS_DAY, toMs: firstMs + (i + 1) * MS_DAY });
+      if (h > 0) addRowHours(sums[i]!, r, h);
+    }
+    const si = dayIndex(span.fromMs);
+    if (r.is_failure && si >= 0 && si < n && covered[si]) sums[si]!.failures++;
+  }
+  for (const c of analysableChains(input.chains ?? buildFailureEvents(rows).chains)) {
+    if (!c.isFailure || !areaSet.has(c.area_id)) continue;
+    const si = dayIndex(c.startMs);
+    if (si >= 0 && si < n && covered[si]) {
+      sums[si]!.events++;
+      sums[si]!.eventSeconds += c.durationS;
+    }
+  }
+  const points = dates.map((date, i): Omit<DayPoint, 'rollingDowntimeHours'> => {
+    const s = sums[i]!;
+    if (!covered[i]) {
+      return { date, hasData: false, plannedHours: 0, failureHours: 0, otherHours: 0, downtimeHours: 0, failureCount: 0, kpis: null };
+    }
+    const kpis = composeKpis('ALL', scheduledHours({ from: date, to: date }, input.settings) * areaIds.length, s, input.settings);
+    return { date, hasData: true, plannedHours: s.pl, failureHours: s.inc, otherHours: s.cir, downtimeHours: s.pl + s.inc + s.cir, failureCount: s.failures, kpis };
+  });
+  const rolling = rollingMean(points.map((p) => (p.hasData ? p.downtimeHours : null)), input.rollingDays ?? 7);
+  return points.map((p, i) => ({ ...p, rollingDowntimeHours: rolling[i] ?? null }));
+}
+
+// ---- monthly hours by classification ----
+
+export interface ClassMonthPoint {
+  month: string;
+  hasData: boolean;
+  partial: boolean;
+  window: DateRange | null;
+  /** stopped hours per classification (area-hours) */
+  hours: Record<ClassificationCode, number>;
+  total: number;
+}
+
+/** Stopped hours per month and classification code (PRO, MEC, ELE, AUT, PL, CIR). Months sum to the monthly series' planned + failure + other hours. */
+export function monthlyHoursByClassification(input: Omit<MonthlyInput, 'chains' | 'settings'>): ClassMonthPoint[] {
+  const rows = input.rows.filter(isAnalysable);
+  const dataRange = input.dataRange === undefined ? dataRangeOf(rows) : input.dataRange;
+  const areaSet = new Set(input.areaIds ?? rows.map((r) => r.area_id));
+  const zero = (): Record<ClassificationCode, number> => Object.fromEntries(CLASSIFICATION_CODES.map((c) => [c, 0])) as Record<ClassificationCode, number>;
+  const slots = monthsOfRange(input.range).map((month) => {
+    const requested = intersectRanges(monthRange(month), input.range) ?? monthRange(month);
+    const window = dataRange ? intersectRanges(requested, dataRange) : null;
+    return { month, requested, window, interval: window ? rangeToInterval(window) : null, hours: zero() };
+  });
+  const first = monthNumber(slots[0]?.month ?? '1970-01');
+  const last = slots.length - 1;
+  for (const r of rows) {
+    const span = areaSet.has(r.area_id) ? rowSpan(r) : null;
+    if (!span || !CLASSIFICATION_CODES.includes(r.classification)) continue;
+    const lo = Math.max(0, monthNumber(r.stop_ts) - first);
+    const hi = Math.min(last, monthNumber(r.start_ts) - first);
+    for (let i = lo; i <= hi; i++) {
+      const s = slots[i]!;
+      if (!s.interval) continue;
+      const h = clippedHours(span, s.interval);
+      if (h > 0) s.hours[r.classification] += h;
+    }
+  }
+  return slots.map((s) => ({
+    month: s.month, hasData: !!s.window, partial: !!s.window && !sameRange(s.window, s.requested), window: s.window,
+    hours: s.hours, total: CLASSIFICATION_CODES.reduce((sum, c) => sum + s.hours[c], 0),
+  }));
 }
 
 // ---- rolling counts ----

@@ -8,22 +8,30 @@ import { linear, niceTicks, axisNum } from './scale';
 export interface HSeg { key: string; label: string; color: string; value: number }
 export interface HRow { key: string; label: string; segments: HSeg[]; note?: string }
 
+export interface HRef { value: number; label: string }
+
 export default function HBars({
-  rows, width, format, ariaLabel, totalLabel, onRow, openLabel,
+  rows, width, format, ariaLabel, totalLabel, onRow, openLabel, xMax, axisFormat = axisNum, refLine,
 }: {
   rows: HRow[]; width: number; format: (n: number) => string; ariaLabel: string; totalLabel?: (r: HRow, total: number) => string;
+  /** a mouse click on a row (or the button in a tapped row's tooltip) opens something, e.g. the events behind it */
   onRow?: (r: HRow) => void; openLabel?: string;
+  /** fix the end of the value axis (e.g. 100 for percentages) instead of the largest bar */
+  xMax?: number;
+  axisFormat?: (n: number) => string;
+  /** a vertical reference line across all rows, labelled above the plot */
+  refLine?: HRef;
 }) {
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const { tip, bind, hide } = useChartTip({ current: box } as React.RefObject<HTMLDivElement | null>);
   const labelW = Math.min(96, Math.max(52, Math.max(0, ...rows.map((r) => r.label.length)) * 7 + 8));
   const totals = rows.map((r) => r.segments.reduce((s, x) => s + Math.max(0, x.value), 0));
-  const valueW = Math.max(...totals.map((v) => (totalLabel ? 60 : format(v).length * 7 + 8)), 40);
-  const m = { l: labelW, r: valueW, t: 6, b: 24 };
+  const valueW = Math.max(...rows.map((r, i) => (totalLabel ? totalLabel(r, totals[i]!) : format(totals[i]!)).length * 7 + 10), 40);
+  const m = { l: labelW, r: valueW, t: refLine ? 24 : 6, b: 24 };
   const rowH = 28;
   const height = m.t + rows.length * rowH + m.b;
   const pw = Math.max(60, width - m.l - m.r);
-  const scale = niceTicks(0, Math.max(0, ...totals), 4);
+  const scale = xMax !== undefined ? { ...niceTicks(0, xMax, 4), min: 0, max: xMax } : niceTicks(0, Math.max(0, ...totals), 4);
   const x = linear(0, scale.max, m.l, m.l + pw);
 
   const node = (r: HRow, total: number): ReactNode => (
@@ -44,10 +52,10 @@ export default function HBars({
     <div ref={setBox} style={{ position: 'relative' }}>
       <svg width={width} height={height} role="img" aria-label={ariaLabel} onClick={hide}>
         <title>{ariaLabel}</title>
-        {scale.ticks.map((v) => (
+        {scale.ticks.filter((v) => v <= scale.max).map((v) => (
           <g key={v}>
             <line x1={x(v)} x2={x(v)} y1={m.t} y2={height - m.b} stroke="var(--tk-border2)" />
-            <text x={x(v)} y={height - 6} textAnchor="middle">{axisNum(v)}</text>
+            <text x={x(v)} y={height - 6} textAnchor="middle">{axisFormat(v)}</text>
           </g>
         ))}
         <line x1={m.l} x2={m.l} y1={m.t} y2={height - m.b} stroke={AXIS} />
@@ -63,11 +71,17 @@ export default function HBars({
                 acc += s.value;
                 return <rect key={s.key} x={x0} y={top + 4} width={Math.max(1, x(acc) - x0)} height={rowH - 8} fill={s.color} stroke="var(--tk-card-bg)" strokeWidth="0.75" />;
               })}
-              <text x={x(totals[i]!) + 6} y={top + rowH / 2 + 4} className="chart-ink">{totalLabel ? totalLabel(r, totals[i]!) : format(totals[i]!)}</text>
-              <rect className="chart-hit" x={0} y={top} width={width} height={rowH} {...bind(node(r, totals[i]!))} />
+              <text x={(xMax !== undefined ? m.l + pw : x(totals[i]!)) + 6} y={top + rowH / 2 + 4} className="chart-ink">{totalLabel ? totalLabel(r, totals[i]!) : format(totals[i]!)}</text>
+              <rect className="chart-hit" x={0} y={top} width={width} height={rowH} {...bind(node(r, totals[i]!), onRow ? () => onRow(r) : undefined)} />
             </g>
           );
         })}
+        {refLine && (
+          <g data-testid="hbars-ref">
+            <line x1={x(refLine.value)} x2={x(refLine.value)} y1={m.t - 6} y2={height - m.b} stroke="var(--tk-text-primary)" strokeWidth="1.75" strokeDasharray="6 4" />
+            <text x={x(refLine.value)} y={m.t - 10} textAnchor={x(refLine.value) > m.l + pw / 2 ? 'end' : 'start'} className="chart-ink">{refLine.label}</text>
+          </g>
+        )}
       </svg>
       <TipLayer tip={tip} width={width} />
     </div>

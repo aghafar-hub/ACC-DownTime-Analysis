@@ -9,44 +9,43 @@ import { eventsResource, type ResState } from '../data/stores';
 import { useStartup, type StartupHook } from '../data/useStartup';
 import { formatDate } from '../calc';
 import { defaultFilters, hasFilterParams, parseFilters, resolveRange, serializeFilters, type DashFilters } from './filters';
+import { forgetDashFilters, rememberedQuery, rememberQuery } from './sharedFilters';
 import { buildBase, buildEventScope, buildKpis, buildMaster, buildWindows, coverageOf, yearsNeeded, type DashCtx } from './scope';
 
 // ---------------------------------------------------------------- filters in the URL
 
-let lastQuery = '';
-
-/** The filters of this page. The query string is the source of truth; the last one is remembered between tabs. */
+/**
+ * The filters of this page. The query string is the source of truth; the last one is remembered between the four
+ * Analyze tabs (and in sessionStorage, see sharedFilters.ts), so moving to another tab keeps every filter.
+ */
 export function useDashFilters(): { filters: DashFilters; setFilters: (patch: Partial<DashFilters>) => void; reset: () => void } {
   const [sp, setSp] = useSearchParams();
   const own = hasFilterParams(sp);
-  const effective = own ? sp : new URLSearchParams(lastQuery);
+  const effective = own ? sp : new URLSearchParams(rememberedQuery());
   const key = effective.toString();
   const filters = useMemo(() => parseFilters(new URLSearchParams(key)), [key]);
   useEffect(() => {
-    if (own) lastQuery = serializeFilters(parseFilters(sp)).toString();
-    else if (lastQuery) setSp(new URLSearchParams(lastQuery), { replace: true });
+    if (own) rememberQuery(serializeFilters(parseFilters(sp)).toString());
+    else if (rememberedQuery()) setSp(new URLSearchParams(rememberedQuery()), { replace: true });
   }, [own, sp, setSp]);
   const ref = useRef(filters);
   ref.current = filters;
   const setFilters = useCallback(
     (patch: Partial<DashFilters>) => {
       const next = serializeFilters({ ...ref.current, ...patch });
-      lastQuery = next.toString();
+      rememberQuery(next.toString());
       setSp(next, { replace: true });
     },
     [setSp],
   );
   const reset = useCallback(() => {
-    lastQuery = '';
+    forgetDashFilters();
     setSp(new URLSearchParams(), { replace: true });
   }, [setSp]);
   return { filters, setFilters, reset };
 }
 
-/** Forget the remembered filters (tests / sign-out). */
-export function forgetDashFilters(): void {
-  lastQuery = '';
-}
+export { forgetDashFilters };
 
 // ---------------------------------------------------------------- several years of events
 

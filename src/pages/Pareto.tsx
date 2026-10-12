@@ -1,15 +1,14 @@
 import { useMemo, useState } from 'react';
 import type { ParetoResult } from '../calc';
-import { PageHeader, Tile } from '../components/Tile';
+import { Tile } from '../components/Tile';
 import { areaModel, classModel, equipmentModel, reasonForEquipmentModel, reasonModel } from '../dashboard/models';
-import { DashStatus, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
+import { NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import ParetoCard from '../dashboard/ParetoCard';
-import FilterBar from '../dashboard/FilterBar';
-import { PhoneBar } from '../dashboard/PhoneBar';
-import { fh, fint, rangeLabel } from '../dashboard/format';
+import DashTop from '../dashboard/DashTop';
+import { fh, fint } from '../dashboard/format';
+import { paretoTakeaway } from '../dashboard/takeaways';
 import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
-import { ValidationBanner } from '../validate/ValidationBanner';
 import { Icon } from '../icons';
 import '../components/ui.css';
 import '../dashboard/dashboard.css';
@@ -62,21 +61,22 @@ export default function Pareto() {
   const open = (prefix: string) => (label: string, ids: string[]) => drill(`${prefix} ${label}`, { eventIds: ids });
   const win = ctx?.win.effective;
   const hoursTot = eq?.hours.own.total ?? 0;
-  const subtitle = !ctx ? t('Loading…') : eq && win
-    ? t('{h} failure hours on own equipment · {n} failure events · {r}', { h: fh(hoursTot), n: fint(eq.count.own.total), r: rangeLabel(win) })
-    : t('No data for this range');
+  const takeaway = !ctx ? t('Loading…') : eq && win
+    ? paretoTakeaway({
+      totalHours: hoursTot, codeCount: eq.hours.own.entryCount,
+      top: eq.hours.own.bars.filter((b) => !b.isOthers).slice(0, 3).map((b) => ({ label: b.label, value: b.value, sharePct: b.sharePct })),
+    })
+    : paretoTakeaway(null);
 
   const bucketTotal = (r: ParetoResult) => r.total;
   const tabs: { id: Sub; label: string }[] = [{ id: 'equipment', label: t('Equipment') }, { id: 'reason', label: t('Reasons') }, { id: 'area', label: t('Areas and classes') }];
 
   return (
     <div className="page dash-page" data-testid="page-pareto">
-      <PageHeader title={t('Pareto & Contributors')} subtitle={subtitle} right={
-        <button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>
-      } />
-      <ValidationBanner />
-      <DashStatus dash={dash} />
-      <PhoneBar>{eq ? <><b>{fh(hoursTot)} h</b> {t('failure')}<span><span aria-hidden="true">◆</span> {fint(eq.count.own.total)} {t('events')}</span></> : subtitle}</PhoneBar>
+      <DashTop
+        title={t('Pareto & Contributors')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} hideCompare
+        right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>}
+      />
       {eq && (
         <div className="kpi-grid" data-testid="pareto-tiles">
           <Tile icon="clock" label={t('Failure hours (own equipment)')} value={<span data-testid="pt-hours">{fh(eq.hours.own.total)} h</span>} sub={t('equipment code belongs to the stopped area')} />
@@ -85,7 +85,6 @@ export default function Pareto() {
           <Tile icon="info" label={t('Not counted as own')} value={fh(bucketTotal(eq.hours.otherAreas) + bucketTotal(eq.hours.areaLevel) + bucketTotal(eq.hours.unknown) + bucketTotal(eq.hours.unassigned)) + ' h'} sub={t('other areas, area-level, unknown codes')} />
         </div>
       )}
-      <FilterBar dash={dash} eventCount={rows ? rows.length : null} hideCompare />
       {ctx && !eq && <NoData reason={t('No data covers the selected period.')} />}
       {eq && (
         <>

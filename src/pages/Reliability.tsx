@@ -3,15 +3,15 @@ import type { Metric } from '../calc';
 import { ChartCard } from '../charts/ChartKit';
 import CartesianChart, { seriesTable, type CartCategory, type CartSeries } from '../charts/CartesianChart';
 import { seriesColor } from '../charts/palette';
-import { PageHeader, Tile } from '../components/Tile';
-import FilterBar from '../dashboard/FilterBar';
-import { dayLabel, fh, fh2, fint, monthLabel, rangeLabel } from '../dashboard/format';
+import { Tile } from '../components/Tile';
+import AreasBlock from '../dashboard/AreasBlock';
+import DashTop from '../dashboard/DashTop';
+import { dayLabel, fh, fh2, fint, monthLabel } from '../dashboard/format';
+import { reliabilityTakeaway } from '../dashboard/takeaways';
 import { reliabilityModel } from '../dashboard/models';
-import { DashStatus, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
-import { PhoneBar } from '../dashboard/PhoneBar';
+import { NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
-import { ValidationBanner } from '../validate/ValidationBanner';
 import { Icon } from '../icons';
 import { useTheme } from '../theme/ThemeContext';
 import '../components/ui.css';
@@ -88,18 +88,21 @@ export default function Reliability() {
   const yoyLabels: Record<YoyMetric, string> = { failureHours: t('Failure hours'), failureCount: t('Failure count'), mtbf: t('MTBF (h)'), rate: t('Failures per 1,000 h') };
 
   const longest = model?.longest ?? [];
-  const subtitle = !ctx ? t('Loading…') : model && win ? t('Reliability for {a} · {r}', { a: areaLabel, r: rangeLabel(win) }) : t('No data for this range');
   const total = ctx && model && ctx.kpis.current.status === 'ok' ? ctx.kpis.current.total : null;
   const areaKpi = areaId && ctx && ctx.kpis.current.status === 'ok' ? ctx.kpis.current.areas.find((a) => a.area_id === areaId) ?? null : null;
   const k = areaKpi ?? total;
+  const lastMonths = months.flatMap((m) => (m.mtbfHours.available ? [{ month: m.month, mtbf: m.mtbfHours.value }] : [])).slice(-2);
+  const takeaway = !ctx ? t('Loading…') : model && win && k
+    ? reliabilityTakeaway({ mtbf: k.mtbfHours, mttr: k.mttrHours, failureEvents: k.failureEventCount, lastMonths, areaId: areaId || null })
+    : reliabilityTakeaway(null);
   const mt = (m: Metric, f: (n: number) => string) => (m.available ? `${f(m.value)} h` : m.code === 'no_failures' ? t('None recorded') : t('Unavailable'));
 
   return (
     <div className="page dash-page" data-testid="page-reliability">
-      <PageHeader title={t('Reliability Trends')} subtitle={subtitle} right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>} />
-      <ValidationBanner />
-      <DashStatus dash={dash} />
-      <PhoneBar>{k ? <><b>{k.mtbfHours.available ? `${fh(k.mtbfHours.value)} h` : t('no MTBF')}</b> MTBF<span><span aria-hidden="true">◆</span> {fint(k.failureCount)} {t('failures')}</span></> : subtitle}</PhoneBar>
+      <DashTop
+        title={t('Reliability Trends')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} hideCompare
+        right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>}
+      />
       {k && (
         <div className="kpi-grid" data-testid="reliability-tiles">
           <Tile icon="trend" label={t('MTBF ({a})', { a: areaId || t('aggregate over areas') })} value={<span data-testid="rt-mtbf">{mt(k.mtbfHours, fh)}</span>} sub={k.mtbfHours.available ? t('operating hours per failure') : (k.mtbfHours.reason)} />
@@ -108,10 +111,11 @@ export default function Reliability() {
           <Tile icon="clock" label={t('Failure events')} value={fint(k.failureEventCount)} sub={t('{n} failure rows', { n: fint(k.failureCount) })} />
         </div>
       )}
-      <FilterBar dash={dash} eventCount={rows ? rows.length : null} hideCompare />
       {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}
       {model && ctx && (
         <>
+          <AreasBlock ctx={ctx} />
+          <h2 className="dash-section-title">{t('Monthly trends')}</h2>
           <div className="field" style={{ maxWidth: 280, marginBottom: 12 }}>
             <label htmlFor="rel-area">{t('Area for the monthly charts')}</label>
             <select id="rel-area" className="select" value={areaId} onChange={(e) => setArea(e.target.value)} data-testid="rel-area">
