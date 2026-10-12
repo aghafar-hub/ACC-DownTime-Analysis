@@ -9,6 +9,7 @@ import { PhoneBar } from '../dashboard/PhoneBar';
 import { fh, fint, rangeLabel } from '../dashboard/format';
 import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
+import { ValidationBanner } from '../validate/ValidationBanner';
 import { Icon } from '../icons';
 import '../components/ui.css';
 import '../dashboard/dashboard.css';
@@ -72,6 +73,7 @@ export default function Pareto() {
       <PageHeader title={t('Pareto & Contributors')} subtitle={subtitle} right={
         <button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>
       } />
+      <ValidationBanner />
       <DashStatus dash={dash} />
       <PhoneBar>{eq ? <><b>{fh(hoursTot)} h</b> {t('failure')}<span><span aria-hidden="true">◆</span> {fint(eq.count.own.total)} {t('events')}</span></> : subtitle}</PhoneBar>
       {eq && (

@@ -16,6 +16,7 @@ import { PhoneBar } from '../dashboard/PhoneBar';
 import { useDash } from '../dashboard/useDash';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
+import { ValidationBanner } from '../validate/ValidationBanner';
 import { Icon } from '../icons';
 import '../components/ui.css';
 import '../dashboard/dashboard.css';
@@ -120,6 +121,7 @@ export default function Repeats() {
   return (
     <div className="page dash-page" data-testid="page-repeats">
       <PageHeader title={t('Repeated Failures')} subtitle={subtitle} right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>} />
+      <ValidationBanner />
       <DashStatus dash={dash} />
       <PhoneBar>{res ? <><b>{fint(res.groups.length)}</b> {t('groups')}<span><span aria-hidden="true">◆</span> {fint(res.recurrences.length)} {t('recurrences')}</span></> : subtitle}</PhoneBar>
       {res && settings && (

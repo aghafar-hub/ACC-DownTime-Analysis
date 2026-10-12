@@ -59,3 +59,23 @@ export async function smallTargets(page: Page): Promise<string[]> {
       .map(({ el, r }) => `${el.tagName}.${el.className} ${Math.round(r.width)}x${Math.round(r.height)}`),
   );
 }
+
+/** Every visible text node smaller than 12 px. */
+export async function smallText(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const out: string[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let n: Node | null;
+    while ((n = walker.nextNode())) {
+      const txt = (n.textContent ?? '').trim();
+      const el = n.parentElement;
+      if (!txt || !el) continue;
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (parseFloat(cs.fontSize) < 12 - 0.01) out.push(`${el.tagName}.${el.className} "${txt.slice(0, 30)}" ${cs.fontSize}`);
+    }
+    return out;
+  });
+}

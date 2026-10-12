@@ -6,6 +6,7 @@ import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { pageLabel, ROLE_LABELS } from '../navigation';
+import ValidateBadge from '../validate/NavBadge';
 import { useBackClose } from './useBackClose';
 import './mobile.css';
 
@@ -38,8 +39,8 @@ export default function MoreSheet({ open, onClose }: { open: boolean; onClose: (
   const tile = (p: (typeof pages)[number]) => (
     <button key={p.id} type="button" className="more-tile" onClick={() => go(p.path)} data-testid={`more-tile-${p.id}`}>
       <span className="more-tile-icon more-tile-icon--other"><Icon name={p.icon} size={22} /></span>
-      <b>{pageLabel(p)}</b>
-      <small>{levelOf(p.id) === 'Edit' ? t('Can edit') : t('View only')}</small>
+      <b>{pageLabel(p)} {p.id === 'validate' && <ValidateBadge testid="validate-badge-more" />}</b>
+      <small>{levelOf(p.access) === 'Edit' ? t('Can edit') : t('View only')}</small>
     </button>
   );
   const dash = hits.filter((p) => p.group === 'dashboard');

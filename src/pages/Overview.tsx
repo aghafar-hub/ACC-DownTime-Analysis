@@ -12,6 +12,7 @@ import { monthly, overviewModel } from '../dashboard/models';
 import { Collapsible, DashStatus, NoData, rowsInRange, useDrill } from '../dashboard/parts';
 import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
+import { ValidationBanner } from '../validate/ValidationBanner';
 import { Icon } from '../icons';
 import { useTheme } from '../theme/ThemeContext';
 import '../components/ui.css';
@@ -218,6 +219,7 @@ export default function Overview() {
           </>
         )}
       />
+      <ValidationBanner />
       <DashStatus dash={dash} />
       <PhoneBar>
         {kpi && tot ? (

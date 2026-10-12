@@ -6,12 +6,13 @@ import DataNotes from '../components/DataNotes';
 import { BottomSheet, ChipRow, CountChip, FiltersPill, PAGE_SIZE, ShowMore } from '../components/PhoneParts';
 import { PageHeader, Tile } from '../components/Tile';
 import YearSwitch from '../components/YearSwitch';
-import { buildFailureEvents } from '../calc';
+import { buildFailureEvents, isBlocked } from '../calc';
 import { readDrill } from '../dashboard/drill';
 import { useEventsForYears } from '../dashboard/useDash';
 import { useYearData } from '../data/useYearData';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
+import { ValidationBanner } from '../validate/ValidationBanner';
 import { Icon } from '../icons';
 import { useTheme } from '../theme/ThemeContext';
 import { duration, hours, num, shortTs } from '../util/format';
@@ -174,7 +175,7 @@ export default function EventExplorer() {
     let sec = 0, failures = 0, issues = 0;
     for (const e of filtered) {
       if (e.flags) issues++;
-      if (e.is_void) continue;
+      if (e.is_void || isBlocked(e)) continue; // left out of the numbers like everywhere else, but still listed below
       if (e.duration_s > 0) sec += e.duration_s;
       if (e.is_failure) failures++;
     }
@@ -213,6 +214,7 @@ export default function EventExplorer() {
           </>
         }
       />
+      <ValidationBanner />
       <DataNotes st={st} ev={ev} />
       {drill && (
         <div className="callout" role="status" data-testid="drill-chip">
@@ -228,8 +230,8 @@ export default function EventExplorer() {
         <>
           <div className="tiles" data-testid="event-tiles">
             <Tile icon="list" label={t('Events shown')} value={num(filtered.length)} sub={drill ? t('of {n} in the opened events', { n: num(total) }) : t('of {n} in {year}', { n: num(total), year: year ?? '' })} testid="tile-shown" />
-            <Tile icon="clock" label={t('Stoppage hours shown')} value={hours(stats.sec)} sub={t('area-hours, not voided')} testid="tile-hours" />
-            <Tile icon="alert" label={t('Failures shown')} value={num(stats.failures)} tone={stats.failures ? T.danger : undefined} sub={t('not voided')} testid="tile-failures" />
+            <Tile icon="clock" label={t('Stoppage hours shown')} value={hours(stats.sec)} sub={t('area-hours, not voided or left out')} testid="tile-hours" />
+            <Tile icon="alert" label={t('Failures shown')} value={num(stats.failures)} tone={stats.failures ? T.danger : undefined} sub={t('not voided or left out')} testid="tile-failures" />
             <Tile icon="info" label={t('Rows with data issues')} value={num(stats.issues)} tone={stats.issues ? T.warning : undefined} sub={t('{n} edited · {v} voided in {year}', { n: facts.edited, v: facts.voided, year: year ?? '' })} testid="tile-issues" />
           </div>
           <section className="card" aria-label={t('Filters')} data-testid="filters">

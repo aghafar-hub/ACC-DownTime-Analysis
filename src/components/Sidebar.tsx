@@ -3,6 +3,7 @@ import { Icon } from '../icons';
 import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
 import { pageLabel } from '../navigation';
+import ValidateBadge from '../validate/NavBadge';
 import './Sidebar.css';
 
 // Left rail (desktop and tablet): 68 px with the leaf mark, 248 px with the
@@ -24,6 +25,7 @@ export default function Sidebar() {
               <NavLink to={p.path} className={({ isActive }) => (isActive ? 'sidebar-link sidebar-link--active' : 'sidebar-link')} title={pageLabel(p)}>
                 <span className="sidebar-link-icon"><Icon name={p.icon} size={18} /></span>
                 <span className="sidebar-link-label">{pageLabel(p)}</span>
+                {p.id === 'validate' && <ValidateBadge testid="validate-badge-rail" />}
               </NavLink>
             </li>
           ))}

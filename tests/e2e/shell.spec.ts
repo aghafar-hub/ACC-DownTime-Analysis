@@ -3,7 +3,7 @@ import { noSidewaysScroll, PASSWORD, signIn, signInAndWait, smallTargets, stubFo
 
 // Runs against `vite preview` of a production build in mock mode (made-up data).
 
-const DASH = ['Overview', 'Pareto', 'Repeated Failures', 'Reliability', 'Event Explorer'];
+const DASH = ['Overview', 'Pareto', 'Repeated Failures', 'Reliability', 'Event Explorer', 'Validate'];
 const TABS: Record<Role, string[]> = {
   admin: [...DASH, 'Upload', 'Master Data'],
   manager: [...DASH, 'Master Data'],
@@ -41,8 +41,9 @@ test.describe('desktop', () => {
   for (const role of Object.keys(TABS) as Role[]) {
     test(`${role}: sees exactly the tabs the role allows`, async ({ page }) => {
       await signInAndWait(page, role);
-      const tabs = await page.getByRole('navigation', { name: 'Pages' }).getByRole('link').allTextContents();
-      expect(tabs.map((s) => s.trim())).toEqual(TABS[role]);
+      // the Validate tab carries a count badge: compare the names without it
+      const tabs = await page.getByRole('navigation', { name: 'Pages' }).getByRole('link').evaluateAll((els) => els.map((el) => (el.firstChild?.textContent ?? '').trim()));
+      expect(tabs).toEqual(TABS[role]);
       await expect(page.getByTestId('user-name')).toContainText(`Demo ${role[0].toUpperCase()}${role.slice(1)}`);
       await expect(page.getByTestId('breadcrumb')).toContainText('ACC Downtime');
       await expect(page.getByTestId('breadcrumb')).toContainText('Overview');
@@ -294,7 +295,7 @@ test.describe('phone', () => {
     await page.getByTestId('bottom-more').click();
     const sheet = page.getByTestId('more-sheet');
     await expect(sheet).toBeVisible();
-    for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events']) await expect(sheet.getByTestId(`more-tile-${id}`)).toBeVisible();
+    for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'validate']) await expect(sheet.getByTestId(`more-tile-${id}`)).toBeVisible();
     for (const id of ['upload', 'master', 'settings', 'users']) await expect(sheet.getByTestId(`more-tile-${id}`)).toHaveCount(0);
     await expect(sheet.getByTestId('more-appearance')).toHaveCount(0);
     await expect(sheet.getByTestId('more-role')).toHaveText('Viewer');

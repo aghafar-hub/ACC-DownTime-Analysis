@@ -7,6 +7,7 @@ import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { pageForPath, pageShort, pageTab } from '../navigation';
 import { OPEN_MORE_EVENT } from '../mobile/MoreSheet';
+import ValidateBadge from '../validate/NavBadge';
 import './PageTabs.css';
 
 // The pages as tabs under the top bar (design system D2).
@@ -45,6 +46,7 @@ export default function PageTabs() {
           {pages.map((p) => (
             <NavLink key={p.id} to={p.path} className={({ isActive }) => (isActive ? 'module-tab module-tab--active' : 'module-tab')} data-page={p.id}>
               {pageTab(p)}
+              {p.id === 'validate' && <ValidateBadge testid="validate-badge-tab" />}
             </NavLink>
           ))}
         </nav>
@@ -62,6 +64,7 @@ export default function PageTabs() {
           {shown.map((p) => (
             <NavLink key={p.id} to={p.path} onClick={tapHaptic} className={({ isActive }) => (isActive ? 'mt-chip mt-chip--on' : 'mt-chip')} data-phone-page={p.id}>
               {pageShort(p)}
+              {p.id === 'validate' && <ValidateBadge testid="validate-badge-chip" />}
             </NavLink>
           ))}
           {pages.length > shown.length && (

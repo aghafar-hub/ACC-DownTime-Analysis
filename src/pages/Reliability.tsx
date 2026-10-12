@@ -11,6 +11,7 @@ import { DashStatus, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/
 import { PhoneBar } from '../dashboard/PhoneBar';
 import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
+import { ValidationBanner } from '../validate/ValidationBanner';
 import { Icon } from '../icons';
 import { useTheme } from '../theme/ThemeContext';
 import '../components/ui.css';
@@ -88,6 +89,7 @@ export default function Reliability() {
   return (
     <div className="page dash-page" data-testid="page-reliability">
       <PageHeader title={t('Reliability Trends')} subtitle={subtitle} right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>} />
+      <ValidationBanner />
       <DashStatus dash={dash} />
       <PhoneBar>{k ? <><b>{k.mtbfHours.available ? `${fh(k.mtbfHours.value)} h` : t('no MTBF')}</b> MTBF<span><span aria-hidden="true">◆</span> {fint(k.failureCount)} {t('failures')}</span></> : subtitle}</PhoneBar>
       {k && (

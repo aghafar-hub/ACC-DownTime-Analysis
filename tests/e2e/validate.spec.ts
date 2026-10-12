@@ -1,0 +1,432 @@
+import { expect, test, type Page } from '@playwright/test';
+import { noSidewaysScroll, signInAndWait, smallTargets, smallText, stubFonts, watchConsole, type Role } from './helpers';
+
+// The Validate page in mock mode (made-up data with records of every flag).
+
+/** The first number in a text (tiles also carry a label). */
+const num = (s: string | null): number => Number(((s ?? '').match(/-?[\d,]+(\.\d+)?/)?.[0] ?? 'NaN').replace(/,/g, ''));
+
+async function openValidate(page: Page, role: Role) {
+  await signInAndWait(page, role);
+  await page.goto('/#/validate');
+  await expect(page.getByTestId('page-validate')).toBeVisible();
+  await expect(page.getByTestId('page-subtitle')).toContainText('need');
+  await expect(page.getByTestId('v-count-blocked')).toBeVisible();
+}
+const rows = (page: Page) => page.locator('[data-testid="v-row"], [data-testid="v-card"]');
+const blockedCount = async (page: Page) => num(await page.getByTestId('v-count-blocked').textContent());
+const chip = (page: Page, flag: string) => page.getByTestId(`v-chip-${flag}`);
+const chipCount = async (page: Page, flag: string) => ((await chip(page, flag).count()) ? num(await chip(page, flag).locator('b').textContent()) : 0);
+/** Seconds in "2 h 05 min (7500 s)" of the open record. */
+const detailSeconds = async (page: Page) => num((await page.getByTestId('detail-duration').textContent())!.match(/\((\d+) s\)/)![1]);
+
+test.describe('validate (desktop)', () => {
+  test.use({ viewport: { width: 1280, height: 900 } });
+  let errors: string[];
+  test.beforeEach(async ({ page }) => {
+    await stubFonts(page);
+    errors = watchConsole(page);
+  });
+  test.afterEach(() => expect(errors, 'console errors').toEqual([]));
+
+  for (const [role, fixes] of [['viewer', false], ['manager', false], ['engineer', true], ['admin', true]] as [Role, boolean][]) {
+    test(`${role}: sees the Validate tab and ${fixes ? 'can fix records' : 'reads only'}`, async ({ page }) => {
+      await signInAndWait(page, role);
+      const tab = page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Validate/ });
+      await expect(tab).toBeVisible();
+      await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Validate/ })).toBeVisible();
+      await tab.click();
+      await expect(page.getByTestId('page-validate')).toBeVisible();
+      await expect(rows(page).first()).toBeVisible();
+      // the page tab sits right after Event Explorer and carries the count
+      const names = await page.getByRole('navigation', { name: 'Pages' }).getByRole('link').evaluateAll((els) => els.map((el) => (el.firstChild?.textContent ?? '').trim()));
+      expect(names.indexOf('Validate')).toBe(names.indexOf('Event Explorer') + 1);
+      const badge = page.getByTestId('validate-badge-tab');
+      await expect(badge).toBeVisible();
+      await expect(badge).toContainText('◆');
+      await expect(badge).toHaveAttribute('aria-label', /need checking, .* left out of the numbers/);
+      if (fixes) {
+        await expect(page.getByTestId('v-fix-btn').first()).toBeVisible();
+        await expect(page.getByTestId('v-tick').first()).toBeVisible();
+        await expect(page.getByTestId('v-recheck')).toBeVisible();
+      } else {
+        await expect(page.getByTestId('v-fix-btn')).toHaveCount(0);
+        await expect(page.getByTestId('v-void-btn')).toHaveCount(0);
+        await expect(page.getByTestId('v-tick')).toHaveCount(0);
+        await expect(page.getByTestId('v-recheck')).toHaveCount(0);
+        // everything is readable: the popup opens with the problems explained and no Edit button
+        await rows(page).first().getByRole('button').first().click();
+        await expect(page.getByTestId('event-detail')).toBeVisible();
+        await expect(page.getByTestId('detail-flag-fix').first()).toContainText('What to do');
+        await expect(page.getByTestId('edit-event')).toHaveCount(0);
+        await expect(page.getByTestId('void-event')).toHaveCount(0);
+      }
+    });
+  }
+
+  test('summary, subtitle, problem chips for every kind of problem, and the hint line', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    const blocked = await blockedCount(page);
+    const review = num(await page.getByTestId('v-count-review').textContent());
+    expect(blocked).toBeGreaterThan(0);
+    expect(review).toBeGreaterThan(0);
+    await expect(page.getByTestId('page-subtitle')).toHaveText(new RegExp(`^[\\d,]+ records need checking, ${blocked} of them left out of the numbers \\([\\d,.]+ h\\)$`));
+    for (const f of ['missing_classification', 'invalid_classification', 'unknown_area', 'end_before_start', 'missing_code', 'unknown_code', 'unlisted_reason', 'blank_reason', 'line_mismatch', 'overlap_in_area']) {
+      await expect(chip(page, f), f).toBeVisible();
+    }
+    // blocking chips carry ◆ and warning chips ▲
+    await expect(chip(page, 'missing_classification')).toContainText('◆');
+    await expect(chip(page, 'unknown_code')).toContainText('▲');
+    await expect(page.getByTestId('v-hint')).toContainText('Master Data');
+    // the first row is a blocking one, with its fix hint
+    await expect(rows(page).first()).toHaveAttribute('data-blocking', 'yes');
+    await expect(rows(page).first().getByTestId('v-fix')).not.toBeEmpty();
+  });
+
+  test('filters: chip, area, month, search, Blocking only, Reset; 50 at a time', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    const total = num((await page.getByTestId('v-list-count').textContent())!.match(/of ([\d,]+)/)![1]);
+    await chip(page, 'unknown_code').click();
+    const n = await chipCount(page, 'unknown_code');
+    await expect(rows(page)).toHaveCount(n);
+    await expect(page.getByTestId('v-flag').first()).toBeVisible();
+    await page.getByTestId('v-reset').click();
+    await expect(page.getByTestId('v-list-count')).toContainText(`of ${total}`);
+    await page.getByTestId('v-blocking-only').click();
+    await expect(rows(page).first()).toHaveAttribute('data-blocking', 'yes');
+    await expect(rows(page)).toHaveCount(await blockedCount(page));
+    await page.getByTestId('v-reset').click();
+    const area = await rows(page).first().locator('td').nth(2).locator('xpath=self::td').textContent();
+    const areaId = area!.trim().split(/\s/)[0].replace(/[^A-Z0-9.]/gi, '').slice(0, 4);
+    await page.getByTestId('d-area').selectOption({ index: 1 });
+    const afterArea = await rows(page).count();
+    expect(afterArea).toBeGreaterThan(0);
+    expect(afterArea).toBeLessThanOrEqual(total);
+    await page.getByTestId('d-month').selectOption({ index: 1 });
+    expect(await rows(page).count()).toBeLessThanOrEqual(afterArea);
+    expect(areaId.length).toBeGreaterThan(0);
+    await page.getByTestId('v-reset').click();
+    await page.getByTestId('v-search').fill('zzzz-no-such-text');
+    await expect(page.getByTestId('v-no-results')).toBeVisible();
+    await page.getByTestId('v-reset').click();
+    if (total > 50) {
+      await expect(rows(page)).toHaveCount(50);
+      await page.getByTestId('show-more').click();
+      await expect(rows(page)).toHaveCount(Math.min(100, total));
+    }
+  });
+
+  test('fixing a missing classification: leaves the list, lowers banner, tile and badge, raises the Overview total', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'missing_classification').click();
+    const first = rows(page).first();
+    const id = (await first.getAttribute('data-event-id'))!;
+    const stop = (await first.locator('.row-link').textContent())!;
+    const month = stop.slice(0, 7);
+    const blocked0 = await blockedCount(page);
+    const badge0 = num(await page.getByTestId('validate-badge-tab').textContent());
+
+    // the Overview total for that month and the banner, before the fix
+    await page.goto(`/#/overview?r=month&m=${month}&cmp=none`);
+    await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
+    const banner = page.getByTestId('validation-banner');
+    await expect(banner).toContainText('left out of these numbers because they need checking');
+    expect(num(await banner.textContent())).toBe(blocked0);
+    const hours0 = num(await page.getByTestId('kpi-total-hours-value').textContent());
+
+    await page.goto('/#/validate');
+    await chip(page, 'missing_classification').click();
+    await page.locator(`[data-event-id="${id}"]`).getByTestId('v-fix-btn').click();
+    await expect(page.getByTestId('f-note')).toHaveValue('Checked on the Validate page');
+    await expect(page.getByTestId('f-class')).toHaveValue('');
+    await page.getByTestId('f-class').selectOption('MEC');
+    // the sheet's reason may not be listed under the chosen classification: pick a listed one so nothing is left to fix
+    if ((await page.getByTestId('f-reason-pick').inputValue()) === '') await page.getByTestId('f-reason-pick').selectOption({ index: 1 });
+    await page.getByTestId('save-edit').click();
+    await expect(page.getByTestId('v-fixed')).toContainText('Fixed');
+    await expect(page.getByTestId('event-detail')).toHaveCount(0);
+    await expect(page.locator(`[data-event-id="${id}"]`)).toHaveCount(0);
+    expect(await blockedCount(page)).toBe(blocked0 - 1);
+    expect(num(await page.getByTestId('validate-badge-tab').textContent())).toBe(badge0 - 1);
+
+    // the record is in the Event Explorer history with the note
+    await page.goto('/#/events');
+    await page.getByTestId('event-search').fill(id);
+    const exRow = page.locator(`[data-event-id="${id}"]`);
+    await expect(exRow).toBeVisible();
+    await expect(exRow.getByTestId('badge-edited')).toBeVisible();
+    await exRow.getByRole('button').click();
+    await expect(page.getByTestId('history-item').first()).toContainText('Checked on the Validate page');
+    const secs = await detailSeconds(page);
+    await page.getByTestId('modal-close').click();
+
+    await page.goto(`/#/overview?r=month&m=${month}&cmp=none`);
+    await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId('validation-banner')).toBeVisible();
+    expect(num(await page.getByTestId('validation-banner').textContent())).toBe(blocked0 - 1);
+    // a record can straddle the month edge: only the part inside the month is added
+    await expect.poll(async () => num(await page.getByTestId('kpi-total-hours-value').textContent()) - hours0).toBeGreaterThan(0);
+    const delta = num(await page.getByTestId('kpi-total-hours-value').textContent()) - hours0;
+    expect(delta).toBeLessThanOrEqual(secs / 3600 + 0.11);
+  });
+
+  test('unlisted reason: the reason picker offers only the listed reasons of the classification', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'unlisted_reason').click();
+    const n0 = await chipCount(page, 'unlisted_reason');
+    const row = rows(page).first();
+    const id = (await row.getAttribute('data-event-id'))!;
+    await row.getByTestId('v-fix-btn').click();
+    const pick = page.getByTestId('f-reason-pick');
+    const cls = await page.getByTestId('f-class').inputValue();
+    const options = await pick.locator('option').allTextContents();
+    expect(options.length).toBeGreaterThan(2);
+    expect(options[0]).toContain(`Pick a listed reason for ${cls}`);
+    // none of the listed reasons of another classification leaks in
+    const other = (await page.getByTestId('f-class').locator('option').evaluateAll((els) => els.map((e) => (e as HTMLOptionElement).value))).filter((c) => c && c !== cls);
+    expect(other.length).toBeGreaterThan(0);
+    await pick.selectOption({ index: 1 });
+    const chosen = await page.getByTestId('f-reason').inputValue();
+    expect(options).toContain(chosen);
+    await page.getByTestId('save-edit').click();
+    // the record leaves the list unless it still has another problem; either way it no longer has this one
+    await expect(page.locator(`[data-event-id="${id}"] [data-flag="unlisted_reason"]`)).toHaveCount(0);
+    await expect(chip(page, 'unlisted_reason')).toHaveCount(n0 > 1 ? 1 : 0);
+    if (n0 > 1) expect(await chipCount(page, 'unlisted_reason')).toBe(n0 - 1);
+  });
+
+  test('equipment finder: only the area\'s codes and N/A', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'missing_code').click();
+    await rows(page).first().getByTestId('v-fix-btn').click();
+    await expect(page.getByTestId('code-na')).toBeVisible();
+    const area = await page.getByTestId('f-area').inputValue();
+    expect(area).not.toBe('');
+    const options = page.getByTestId('code-option');
+    expect(await options.count()).toBeGreaterThan(0);
+    await page.getByTestId('f-code-find').fill('zzzz-nothing');
+    await expect(options).toHaveCount(0);
+    await page.getByTestId('f-code-find').fill('');
+    await options.first().click();
+    await expect(page.getByTestId('f-code')).not.toHaveValue('');
+    await page.getByTestId('code-na').click();
+    await expect(page.getByTestId('f-code')).toHaveValue('N/A');
+  });
+
+  test('bulk: classification set on several records, one refusal is reported and the run goes on', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'missing_classification').click();
+    const n = await chipCount(page, 'missing_classification');
+    expect(n).toBeGreaterThanOrEqual(2);
+    await page.getByTestId('v-select-all').click();
+    await expect(page.getByTestId('v-selected')).toContainText(`${n} record`);
+    // add one record that already has the classification we will set, so the server refuses it
+    await page.getByTestId('v-reset').click();
+    await chip(page, 'unknown_code').click();
+    const target = (await rows(page).first().locator('.badge--class').textContent())!.trim();
+    const sameId = (await rows(page).first().getAttribute('data-event-id'))!;
+    await rows(page).first().getByTestId('v-tick').check();
+    await expect(page.getByTestId('v-selected')).toContainText(`${n + 1} records`);
+    await page.getByTestId('v-bulk-open').click();
+    await expect(page.getByTestId('bulk-modal')).toBeVisible();
+    await expect(page.getByTestId('b-note')).toHaveValue('Checked on the Validate page');
+    // nothing chosen yet: a plain message
+    await page.getByTestId('bulk-apply').click();
+    await expect(page.getByTestId('bulk-error')).toContainText('Choose at least one thing');
+    await page.getByTestId('b-class').selectOption(target);
+    await page.getByTestId('bulk-apply').click();
+    await expect(page.getByTestId('bulk-result')).toContainText(`Saved ${n} of ${n + 1} records`);
+    await expect(page.getByTestId('bulk-refused-item')).toHaveCount(1);
+    await expect(page.getByTestId('bulk-refused-item')).toHaveAttribute('data-event-id', sameId);
+    await expect(page.getByTestId('bulk-refused-item')).toContainText('already has these values');
+    await page.getByTestId('bulk-close').click();
+    await expect(chip(page, 'missing_classification')).toHaveCount(0);
+    // the refused record stays ticked
+    await expect(page.getByTestId('v-selected')).toContainText('1 record');
+  });
+
+  test('void a duplicate: needs a note, then the record and its overlap leave the list', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'overlap_in_area').click();
+    const n0 = await chipCount(page, 'overlap_in_area');
+    const o0 = num(await page.getByTestId('v-count-overlap').textContent());
+    const row = rows(page).first();
+    const id = (await row.getAttribute('data-event-id'))!;
+    await row.getByTestId('v-void-btn').click();
+    await expect(page.getByTestId('confirm-void')).toBeVisible();
+    await page.getByTestId('confirm-void').click();
+    await expect(page.getByTestId('error-note')).toBeVisible();
+    await page.getByTestId('f-note').fill('Duplicate of the other record');
+    await page.getByTestId('confirm-void').click();
+    await expect(page.getByTestId('v-fixed')).toContainText('Voided');
+    await expect(page.locator(`[data-event-id="${id}"]`)).toHaveCount(0);
+    expect(await chipCount(page, 'overlap_in_area')).toBeLessThan(n0);
+    expect(num(await page.getByTestId('v-count-overlap').textContent())).toBeLessThan(o0);
+  });
+
+  test('an overlapping record shows the other record, with a button to open it', async ({ page }) => {
+    await openValidate(page, 'viewer');
+    await chip(page, 'overlap_in_area').click();
+    const row = rows(page).first();
+    const id = (await row.getAttribute('data-event-id'))!;
+    await row.locator('.row-link').click();
+    const partner = page.getByTestId('overlap-partner').first();
+    await expect(partner).toBeVisible();
+    await expect(partner).toContainText('→');
+    const otherId = (await partner.getAttribute('data-event-id'))!;
+    expect(otherId).not.toBe(id);
+    await expect(page.getByTestId('event-detail')).toContainText(id);
+    await page.getByTestId('open-partner').first().click();
+    await expect(page.getByTestId('event-detail')).toContainText(otherId);
+    await expect(page.getByTestId('overlap-partner').first()).toHaveAttribute('data-event-id', id);
+  });
+
+  test('Re-check after adding an equipment code in Master Data clears unknown_code', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'unknown_code').click();
+    const n0 = await chipCount(page, 'unknown_code');
+    const code = (await rows(page).first().locator('td.mono').first().textContent())!.trim();
+    const sameCode = await rows(page).filter({ has: page.locator('td.mono', { hasText: new RegExp(`^${code.replace('.', '\\.')}$`) }) }).count();
+    expect(sameCode).toBeGreaterThan(0);
+    await page.goto('/#/master');
+    await page.getByTestId('add-equipment').click();
+    await page.getByTestId('eq-code').fill(code);
+    await page.getByTestId('eq-desc').fill('Added for the Validate test (synthetic)');
+    await page.getByTestId('area-K.1').check();
+    await page.getByTestId('save-equipment').click();
+    await expect(page.getByTestId('saved-toast')).toBeVisible();
+    await page.goto('/#/validate');
+    await expect(page.getByTestId('page-validate')).toBeVisible();
+    // nothing changes by itself
+    await expect(chip(page, 'unknown_code')).toBeVisible();
+    await page.getByTestId('v-recheck').click();
+    await expect(page.getByTestId('v-recheck-result')).toContainText(/Checked [\d,]+, changed [\d,]+/);
+    const changed = num((await page.getByTestId('v-recheck-result').textContent())!.match(/changed ([\d,]+)/)![1]);
+    expect(changed).toBeGreaterThanOrEqual(sameCode);
+    const n1 = await chipCount(page, 'unknown_code');
+    expect(n1).toBe(n0 - sameCode);
+  });
+
+  test('banner: one line on every dashboard and the Event Explorer, links to Validate, comes back after a reload', async ({ page }) => {
+    await signInAndWait(page, 'viewer');
+    await expect(page.getByTestId('validation-banner')).toBeVisible();
+    for (const p of ['overview', 'pareto', 'repeats', 'reliability', 'events']) {
+      await page.goto(`/#/${p}`);
+      await expect(page.getByTestId(`page-${p}`)).toBeVisible();
+      await expect(page.getByTestId('validation-banner')).toBeVisible();
+      await expect(page.getByTestId('validation-banner')).toContainText(/records? \([\d,.]+ h\) (is|are) left out of these numbers because (it|they) needs? checking/);
+      const box = await page.getByTestId('validation-banner').boundingBox();
+      expect(box!.height).toBeLessThan(70);
+    }
+    await page.getByTestId('validation-banner-open').click();
+    await expect(page.getByTestId('page-validate')).toBeVisible();
+    await expect(page.getByTestId('validation-banner')).toHaveCount(0); // the Validate page does not repeat it
+    await page.goto('/#/overview');
+    await page.getByTestId('validation-banner-close').click();
+    await expect(page.getByTestId('validation-banner')).toHaveCount(0);
+    await page.goto('/#/events');
+    await expect(page.getByTestId('page-events')).toBeVisible();
+    await expect(page.getByTestId('validation-banner')).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByTestId('page-events')).toBeVisible();
+    await expect(page.getByTestId('validation-banner')).toBeVisible({ timeout: 20000 });
+  });
+
+  test('Event Explorer still lists blocked records, with their flag badges', async ({ page }) => {
+    await openValidate(page, 'viewer');
+    const id = (await rows(page).first().getAttribute('data-event-id'))!;
+    await expect(rows(page).first()).toHaveAttribute('data-blocking', 'yes');
+    await page.goto('/#/events');
+    await page.getByTestId('event-search').fill(id);
+    const row = page.locator(`[data-event-id="${id}"]`);
+    await expect(row).toBeVisible();
+    await expect(row.getByTestId('badge-flag').first()).toBeVisible();
+    // the Explorer's hour tile leaves blocked records out, like every chart
+    await expect(page.getByTestId('tile-hours')).toContainText('not voided or left out');
+  });
+
+  test('deep link and reload keep the page', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await page.reload();
+    await expect(page.getByTestId('page-validate')).toBeVisible();
+    await expect(page.getByTestId('v-count-blocked')).toBeVisible({ timeout: 20000 });
+    await expect(rows(page).first()).toBeVisible();
+    await expect(page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Validate/ })).toHaveClass(/module-tab--active/);
+  });
+
+  test('size and text on the desktop page', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await rows(page).first().locator('.row-link').click();
+    await expect(page.getByTestId('event-detail')).toBeVisible();
+    expect(await smallText(page)).toEqual([]);
+    await page.getByTestId('modal-close').click();
+    expect(await smallText(page)).toEqual([]);
+    expect((await noSidewaysScroll(page)).ok).toBe(true);
+  });
+});
+
+for (const width of [360, 390]) {
+  test.describe(`validate (phone ${width})`, () => {
+    test.use({ viewport: { width, height: 800 }, isMobile: true, hasTouch: true });
+    let errors: string[];
+    test.beforeEach(async ({ page }) => {
+      await stubFonts(page);
+      errors = watchConsole(page);
+    });
+    test.afterEach(() => expect(errors, 'console errors').toEqual([]));
+
+    test('cards, chip row, filters sheet, no sideways scroll, 44 px targets, readable text', async ({ page }) => {
+      await signInAndWait(page, 'engineer');
+      await page.goto('/#/validate');
+      await expect(page.getByTestId('page-validate')).toBeVisible();
+      await expect(page.getByTestId('v-cards')).toBeVisible();
+      await expect(page.getByTestId('v-phone-summary')).toBeVisible();
+      expect((await noSidewaysScroll(page)).ok).toBe(true);
+      expect(await smallTargets(page)).toEqual([]);
+      expect(await smallText(page)).toEqual([]);
+      // the More sheet lists Validate with its count
+      await page.getByTestId('bottom-more').click();
+      await expect(page.getByTestId('more-tile-validate')).toContainText('Validate');
+      await expect(page.getByTestId('validate-badge-more')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await page.goBack().catch(() => undefined);
+      await page.goto('/#/validate');
+      await expect(page.getByTestId('v-cards')).toBeVisible();
+      // filters sheet
+      await page.getByTestId('v-filters-pill').click();
+      await expect(page.getByTestId('v-filters-sheet')).toBeVisible();
+      await page.getByTestId('s-area').selectOption({ index: 1 });
+      expect(await smallTargets(page)).toEqual([]);
+      await page.getByTestId('v-sheet-apply').click();
+      await expect(page.getByTestId('v-filters-sheet')).toHaveCount(0);
+      await expect(page.getByTestId('v-filters-pill')).toContainText('1');
+      await page.getByTestId('v-reset').click();
+      // a card opens the popup; Back closes it
+      await page.getByTestId('v-card').first().getByRole('button').first().click();
+      await expect(page.getByTestId('event-detail')).toBeVisible();
+      expect(await smallText(page)).toEqual([]);
+      await page.goBack();
+      await expect(page.getByTestId('event-detail')).toHaveCount(0);
+      // a fix form on a phone
+      await page.getByTestId('v-card').first().getByTestId('v-fix-btn').click();
+      await expect(page.getByTestId('f-note')).toBeVisible();
+      expect(await smallTargets(page)).toEqual([]);
+      expect(await smallText(page)).toEqual([]);
+      expect((await noSidewaysScroll(page)).ok).toBe(true);
+    });
+
+    test('ticking cards shows the bar; the bulk form fits', async ({ page }) => {
+      await signInAndWait(page, 'engineer');
+      await page.goto('/#/validate');
+      await expect(page.getByTestId('v-cards')).toBeVisible();
+      await page.getByTestId('v-tick').first().check();
+      await page.getByTestId('v-tick').nth(1).check();
+      await expect(page.getByTestId('v-bulkbar')).toBeVisible();
+      expect((await noSidewaysScroll(page)).ok).toBe(true);
+      await page.getByTestId('v-bulk-open').click();
+      await expect(page.getByTestId('bulk-modal')).toBeVisible();
+      expect(await smallTargets(page)).toEqual([]);
+      expect((await noSidewaysScroll(page)).ok).toBe(true);
+    });
+  });
+}

@@ -377,3 +377,35 @@
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, var(--shell-sidebar-text-secondary) 28%, transparent);
 }
+
+/* Validate: the count sits on the icon while the rail is narrow, and at the end of the row when it is open */
+.sidebar-link .vbadge {
+  position: absolute;
+  top: 2px;
+  left: 31px;
+  margin: 0;
+  padding: 0 5px;
+}
+.sidebar-link .vbadge .vbadge-sym {
+  display: none;
+}
+.sidebar-rail:hover .sidebar-link .vbadge,
+.sidebar-rail:focus-within .sidebar-link .vbadge {
+  position: static;
+  margin-inline-start: auto;
+  padding: 1px 7px;
+}
+.sidebar-rail:hover .sidebar-link .vbadge .vbadge-sym,
+.sidebar-rail:focus-within .sidebar-link .vbadge .vbadge-sym {
+  display: inline;
+}
+@media (hover: none) and (min-width: 861px) {
+  .sidebar-link .vbadge {
+    position: static;
+    margin-inline-start: auto;
+    padding: 1px 7px;
+  }
+  .sidebar-link .vbadge .vbadge-sym {
+    display: inline;
+  }
+}

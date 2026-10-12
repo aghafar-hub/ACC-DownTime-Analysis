@@ -28,6 +28,8 @@ import Reliability from './pages/Reliability';
 import Repeats from './pages/Repeats';
 import Settings from './pages/Settings';
 import Upload from './pages/Upload';
+import Validate from './pages/Validate';
+import { ValidationProvider } from './validate/ValidationContext';
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import './App.css';
 
@@ -60,6 +62,7 @@ function ShellLayout() {
   }, [dark]);
 
   return (
+    <ValidationProvider>
     <div className="app-shell">
       {!mobile && <Sidebar />}
       <div className="app-shell-right">
@@ -77,6 +80,7 @@ function ShellLayout() {
       <SaveBlockedToast />
       <UpdatePrompt />
     </div>
+    </ValidationProvider>
   );
 }
 
@@ -139,6 +143,7 @@ export default function App() {
                 <Route path="/repeats" element={<RequireTab tab="repeats"><Repeats /></RequireTab>} />
                 <Route path="/reliability" element={<RequireTab tab="reliability"><Reliability /></RequireTab>} />
                 <Route path="/events" element={<RequireTab tab="events"><EventExplorer /></RequireTab>} />
+                <Route path="/validate" element={<RequireTab tab="events"><Validate /></RequireTab>} />
                 <Route path="/upload" element={<RequireTab tab="upload"><Upload /></RequireTab>} />
                 <Route path="/master" element={<RequireTab tab="master"><Master /></RequireTab>} />
                 <Route path="/settings/:sub?" element={<Settings />} />

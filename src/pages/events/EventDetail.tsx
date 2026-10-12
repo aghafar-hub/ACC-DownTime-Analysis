@@ -3,12 +3,15 @@ import { api, describeError } from '../../api';
 import type { ClassificationCode, EventChanges, EventEdit, EventRow, Startup } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import ShellModal, { FormSection } from '../../components/ShellModal';
+import { FLAG_INFO, isBlockingFlag } from '../../calc/flags';
 import { SAVE_BLOCKED_EVENT } from '../../components/SaveBlockedToast';
 import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
 import { useOnlineStatus } from '../../useOnlineStatus';
 import { duration } from '../../util/format';
 import { flagList, isValidDate, parseTs } from '../../util/normalize';
+import { shortTs } from '../../util/format';
+import type { ValidateAssist } from './assist';
 import EventBadges from './EventBadges';
 import { fieldLabel, flagHelp, flagLabel, historyValue } from './eventLabels';
 
@@ -28,10 +31,10 @@ interface Form {
   freq: 0 | 1; classification: ClassificationCode; criticality: 'INC' | 'NO_INC'; is_failure: boolean;
   reason_raw: string; description: string; note: string;
 }
-const initialForm = (r: EventRow): Form => ({
+const initialForm = (r: EventRow, note = ''): Form => ({
   event_date: r.event_date, line_id: r.line_id, area_id: r.area_id, code_raw: r.code_raw, stop_ts: toInput(r.stop_ts), start_ts: toInput(r.start_ts),
   freq: r.freq, classification: r.classification, criticality: r.criticality, is_failure: r.is_failure,
-  reason_raw: r.reason_raw ?? '', description: r.description ?? '', note: '',
+  reason_raw: r.reason_raw ?? '', description: r.description ?? '', note,
 });
 
 /** Plain-English problems, and the changes to send (only what differs from the stored row). */
@@ -76,15 +79,18 @@ function resultSummary(startup: Startup | null, u: EventRow): string[] {
   ];
 }
 
-export default function EventDetail({ row, startup, canEdit, onClose, onChanged }: {
+export default function EventDetail({ row, startup, canEdit, onClose, onChanged, assist }: {
   row: EventRow; startup: Startup | null; canEdit: boolean; onClose: () => void; onChanged: (row: EventRow) => void;
+  /** set by the Validate page: problems explained, helps in the edit form, overlapping records */
+  assist?: ValidateAssist;
 }) {
   const { token, user } = useAuth();
   const online = useOnlineStatus();
-  const [mode, setMode] = useState<Mode>('view');
+  const [mode, setMode] = useState<Mode>(canEdit && assist?.initialMode ? assist.initialMode : 'view');
   const [history, setHistory] = useState<EventEdit[] | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [form, setForm] = useState<Form>(() => initialForm(row));
+  const [form, setForm] = useState<Form>(() => initialForm(row, canEdit && assist?.initialMode === 'edit' ? assist.defaultNote : ''));
+  const [codeQ, setCodeQ] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -108,12 +114,24 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged 
     () => (startup?.reasons.filter((r) => r.classification === form.classification && r.active).map((r) => r.text_as_listed.trim()) ?? []),
     [startup, form.classification],
   );
-  const flags = flagList(row);
+  // the stored problems, plus the overlap found by comparing records (Validate page)
+  const flags = [...flagList(row), ...(assist?.overlaps?.length ? ['overlap_in_area'] : [])];
+  const unknownArea = !startup?.areas.some((a) => a.area_id === form.area_id);
+  const areaCodes = useMemo(() => {
+    if (!assist || !startup) return [];
+    const ids = new Set(startup.equipment_areas.filter((e) => e.area_id === form.area_id).map((e) => e.equipment_id));
+    const q = codeQ.trim().toLowerCase();
+    return startup.equipment
+      .filter((e) => ids.has(e.equipment_id) && e.status !== 'Retired')
+      .filter((e) => !q || `${e.equipment_id} ${e.description ?? ''}`.toLowerCase().includes(q))
+      .sort((a, b) => a.equipment_id.localeCompare(b.equipment_id));
+  }, [assist, startup, form.area_id, codeQ]);
   const blockedOffline = !online;
 
   function startEdit() {
     if (blockedOffline) return window.dispatchEvent(new CustomEvent(SAVE_BLOCKED_EVENT, { detail: { message: t('Editing needs a connection.') } }));
-    setForm(initialForm(row));
+    setForm(initialForm(row, assist?.defaultNote));
+    setCodeQ('');
     setErrors({});
     setServerError(null);
     setResult(null);
@@ -137,6 +155,10 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged 
     try {
       const updated = await api.editEvent(token, row.event_id, changes, form.note.trim());
       onChanged(updated);
+      if (assist?.autoClose?.(updated)) {
+        onClose();
+        return;
+      }
       setResult({ title: t('Saved. The values below were recalculated.'), lines: resultSummary(startup, updated) });
       setMode('view');
       loadHistory();
@@ -156,6 +178,10 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged 
     try {
       const updated = await api.voidEvent(token, row.event_id, !row.is_void, form.note.trim());
       onChanged(updated);
+      if (assist?.autoClose?.(updated)) {
+        onClose();
+        return;
+      }
       setResult({ title: updated.is_void ? t('This event is now voided. Charts and totals leave it out.') : t('This event is restored and counts again.'), lines: [] });
       setMode('view');
       loadHistory();
@@ -265,9 +291,33 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged 
               <p className="muted" style={{ margin: 0 }}>{t('No data issues found.')}</p>
             ) : (
               <ul className="history" data-testid="detail-flags">
-                {flags.map((f) => (
-                  <li key={f}><span className="badge badge--warning"><span aria-hidden="true">▲</span> {flagLabel(f)}</span> <span>{flagHelp(f)}</span></li>
-                ))}
+                {flags.map((f) => {
+                  const info = (FLAG_INFO as Record<string, { problem: string; fix: string } | undefined>)[f];
+                  const blocking = isBlockingFlag(f);
+                  return (
+                    <li key={f} data-testid="detail-flag" data-flag={f}>
+                      <span className={blocking ? 'badge badge--danger' : 'badge badge--warning'}>
+                        <span aria-hidden="true">{blocking ? '◆' : '▲'}</span> {flagLabel(f)}
+                      </span>{' '}
+                      <span>{info ? t(info.problem) : flagHelp(f)}</span>
+                      {info && <div className="muted" data-testid="detail-flag-fix"><b>{t('What to do')}:</b> {t(info.fix)}</div>}
+                      {f === 'overlap_in_area' && assist?.overlaps && (
+                        <ul className="history" style={{ marginTop: 8 }} data-testid="overlap-partners">
+                          {assist.overlaps.map((o) => (
+                            <li key={o.event_id} className="v-partner" data-testid="overlap-partner" data-event-id={o.event_id}>
+                              <span>
+                                <b className="mono">{shortTs(o.stop_ts)} → {shortTs(o.start_ts)}</b> · {o.area_id} · <span className="mono">{o.code_raw || 'N/A'}</span> · {o.classification}
+                              </span>
+                              {assist.onOpenOther && (
+                                <button type="button" className="btn btn-sm" onClick={() => assist.onOpenOther!(o.event_id)} data-testid="open-partner">{t('Open this record')}</button>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </FormSection>
@@ -303,6 +353,21 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged 
       {mode === 'edit' && startup && (
         <>
           {serverError && <div className="callout callout--danger" role="alert" data-testid="server-error"><Icon name="alert" size={16} /><span>{serverError}</span></div>}
+          {assist && flags.length > 0 && (
+            <div className="callout v-edit-problems" data-testid="edit-problems">
+              <span>
+                <b>{t('To fix')}</b>
+                <ul>
+                  {flags.map((f) => (
+                    <li key={f}>
+                      <span className={isBlockingFlag(f) ? 'badge badge--danger' : 'badge badge--warning'}><span aria-hidden="true">{isBlockingFlag(f) ? '◆' : '▲'}</span> {flagLabel(f)}</span>{' '}
+                      {(FLAG_INFO as Record<string, { fix: string } | undefined>)[f] ? t((FLAG_INFO as Record<string, { fix: string }>)[f].fix) : ''}
+                    </li>
+                  ))}
+                </ul>
+              </span>
+            </div>
+          )}
           {errors.form && <div className="callout callout--warning" role="alert" data-testid="error-form"><Icon name="info" size={16} /><span>{errors.form}</span></div>}
           <FormSection icon="clock" title={t('When')}>
             <div className="form-grid">
@@ -343,6 +408,7 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged 
                     setForm((f) => ({ ...f, area_id: e.target.value, line_id: a?.line_id ?? f.line_id }));
                   }}
                 >
+                  {unknownArea && <option value={form.area_id} disabled>{form.area_id ? t('{id} (not in the list of areas)', { id: form.area_id }) : t('Choose the area')}</option>}
                   {startup.areas.map((a) => <option key={a.area_id} value={a.area_id}>{a.area_id} · {a.name}</option>)}
                 </select>
                 <span className="field-hint">{t('Line: {line}', { line: form.line_id })}</span>
@@ -351,12 +417,36 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged 
                 <label htmlFor="f-code">{t('Equipment code')}</label>
                 <input id="f-code" className="input mono" value={form.code_raw} onChange={(e) => upd('code_raw', e.target.value)} autoCapitalize="characters" data-testid="f-code" />
                 {err('code_raw')}
+                {assist && (
+                  <div data-testid="code-finder">
+                    <label htmlFor="f-code-find" className="field-hint">{t('Find equipment listed under {area}', { area: form.area_id || t('this area') })}</label>
+                    <input id="f-code-find" className="input" type="search" value={codeQ} onChange={(e) => setCodeQ(e.target.value)} placeholder={t('Code or description')} autoComplete="off" data-testid="f-code-find" />
+                    <div className="v-picker" role="group" aria-label={t('Equipment of this area')}>
+                      <button type="button" className={form.code_raw.trim().toUpperCase() === 'N/A' ? 'chip chip--on' : 'chip'} aria-pressed={form.code_raw.trim().toUpperCase() === 'N/A'} onClick={() => upd('code_raw', 'N/A')} data-testid="code-na">
+                        N/A · {t('the whole area stopped')}
+                      </button>
+                      {areaCodes.slice(0, 6).map((e) => (
+                        <button key={e.equipment_id} type="button" className={form.code_raw.trim() === e.equipment_id ? 'chip chip--on' : 'chip'} aria-pressed={form.code_raw.trim() === e.equipment_id} onClick={() => upd('code_raw', e.equipment_id)} data-testid="code-option">
+                          <span className="mono">{e.equipment_id}</span>{e.description ? <span> · {e.description.slice(0, 28)}</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                    {areaCodes.length > 6 && <span className="field-hint">{t('{n} more match. Type to narrow the list.', { n: areaCodes.length - 6 })}</span>}
+                    {areaCodes.length === 0 && <span className="field-hint">{t('No equipment is listed under this area{match}.', { match: codeQ.trim() ? t(' for that search') : '' })}</span>}
+                  </div>
+                )}
               </div>
               <div className="field">
                 <label htmlFor="f-class">{t('Classification')}</label>
                 <select id="f-class" className="select" value={form.classification} onChange={(e) => upd('classification', e.target.value as ClassificationCode)} data-testid="f-class">
+                  {!startup.classifications.some((c) => c.code === form.classification) && <option value={form.classification} disabled>{t('Choose the classification')}</option>}
                   {startup.classifications.map((c) => <option key={c.code} value={c.code}>{c.code} · {c.name}</option>)}
                 </select>
+                {assist?.suggestion && form.classification !== assist.suggestion.code && (
+                  <button type="button" className="chip" onClick={() => upd('classification', assist.suggestion!.code as ClassificationCode)} data-testid="suggest-class">
+                    {t('Use {c}: the most common for this area and code ({n} records)', { c: assist.suggestion.code, n: assist.suggestion.count })}
+                  </button>
+                )}
                 {form.classification !== row.classification && form.criticality === row.criticality && form.is_failure === row.is_failure && (
                   <span className="field-hint">{t('Criticality and failure are set again from the classification when you save, unless you change them here.')}</span>
                 )}
@@ -377,6 +467,17 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged 
               </div>
               <div className="field">
                 <label htmlFor="f-reason">{t('Reason')}</label>
+                {assist && (
+                  <select
+                    className="select" aria-label={t('Pick a listed reason')} data-testid="f-reason-pick"
+                    value={listedReasons.includes(form.reason_raw.trim()) ? form.reason_raw.trim() : ''}
+                    onChange={(e) => e.target.value && upd('reason_raw', e.target.value)}
+                    disabled={listedReasons.length === 0}
+                  >
+                    <option value="">{listedReasons.length ? t('Pick a listed reason for {c}', { c: form.classification }) : t('Choose the classification first')}</option>
+                    {listedReasons.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                )}
                 <input id="f-reason" className="input" list="f-reason-list" value={form.reason_raw} onChange={(e) => upd('reason_raw', e.target.value)} data-testid="f-reason" />
                 <datalist id="f-reason-list">{listedReasons.map((r) => <option key={r} value={r} />)}</datalist>
                 {form.reason_raw.trim() && !listedReasons.some((r) => r.toLowerCase().replace(/\s+/g, ' ') === form.reason_raw.trim().toLowerCase().replace(/\s+/g, ' ')) && (
