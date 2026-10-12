@@ -2,11 +2,14 @@
 // allowed range (the same ranges the server enforces) and when it takes effect.
 import { t } from '../i18n/t';
 
-export type When = 'now' | 'signin' | 'password';
+export type When = 'now' | 'signin' | 'password' | 'checks';
 
-export interface NumberField { key: string; kind: 'int' | 'number_or_blank'; min: number; max: number; label: string; help: string; unit?: string }
-export interface ChoiceField { key: string; kind: 'choice'; label: string; help: string; options: { value: string; label: string; detail?: string }[] }
-export type Field = NumberField | ChoiceField;
+/** `fallback`: the value the server uses while the database has no row for the key (databases made before the key existed). */
+export interface NumberField { key: string; kind: 'int' | 'number_or_blank'; min: number; max: number; label: string; help: string; unit?: string; fallback?: string }
+export interface ChoiceField { key: string; kind: 'choice'; label: string; help: string; options: { value: string; label: string; detail?: string }[]; fallback?: string }
+/** Free text; blank is allowed. Used for the app's web address. */
+export interface TextField { key: string; kind: 'text'; maxLength: number; label: string; help: string; placeholder?: string; fallback?: string }
+export type Field = NumberField | ChoiceField | TextField;
 
 export interface Group { id: string; title: string; icon: string; when: When; intro: string; fields: Field[] }
 
@@ -14,6 +17,7 @@ export const WHEN_TEXT: Record<When, { badge: string; detail: string }> = {
   now: { badge: 'Applies right away', detail: 'The dashboards recalculate as soon as this is saved.' },
   signin: { badge: 'Applies to new sign-ins', detail: 'People who are already signed in keep their current session.' },
   password: { badge: 'Applies from the next password change', detail: 'Existing passwords stay valid.' },
+  checks: { badge: 'Applies at the next check', detail: 'Alerts already raised stay until they resolve or expire. Use "Run checks now" to apply it straight away.' },
 };
 
 export const BASIS_FORMULA: Record<string, string> = {
@@ -59,6 +63,25 @@ export function groups(): Group[] {
       ],
     },
     {
+      id: 'alert-rules', title: t('Alert rules'), icon: 'bell', when: 'checks',
+      intro: t('When the system raises an alert or an update for everyone who follows the area. Checks run after every upload and once a day.'),
+      fields: [
+        { key: 'notif_long_stop_hours', kind: 'int', min: 1, max: 720, label: t('Long stop: more than'), unit: t('hours'), fallback: '8', help: t('A failure event that lasts longer than this raises an alert (1 to 720 whole hours).') },
+        { key: 'notif_spike_pct', kind: 'int', min: 1, max: 1000, label: t('Failure spike: rise above'), unit: '%', fallback: '30', help: t('Failures of the last 30 days against the 30 days before, per area. At least 5 failures are needed now.') },
+        { key: 'notif_upload_gap_days', kind: 'int', min: 1, max: 3650, label: t('No upload for'), unit: t('days'), fallback: '35', help: t('The newest stored event is older than this many days.') },
+        { key: 'notif_availability_target_pct', kind: 'number_or_blank', min: 0, max: 100, label: t('Availability alert below'), unit: '%', fallback: '', help: t('An area under this availability (basis B) in the latest complete month raises an alert. Leave blank to turn the rule off.') },
+        {
+          key: 'notif_repeat_alert', kind: 'choice', label: t('Repeated-failure alerts'), fallback: 'true', help: t('Raise an alert when a new repeated-failure group appears.'),
+          options: [
+            { value: 'true', label: t('On') },
+            { value: 'false', label: t('Off') },
+          ],
+        },
+        { key: 'notif_retention_days', kind: 'int', min: 1, max: 3650, label: t('Keep alerts and updates for'), unit: t('days'), fallback: '30', help: t('After this many days they expire and disappear.') },
+        { key: 'app_url', kind: 'text', maxLength: 300, label: t('App web address'), placeholder: 'https://', fallback: '', help: t('Used for the link in digest emails. Leave blank for no link.') },
+      ],
+    },
+    {
       id: 'signin', title: t('Sign-in rules'), icon: 'shield', when: 'signin',
       intro: t('How long sessions last and when an account is locked.'),
       fields: [
@@ -74,12 +97,22 @@ export function groups(): Group[] {
 
 export const SETTING_KEYS: string[] = groups().flatMap((g) => g.fields.map((f) => f.key));
 
+/** The values the server uses for keys the database has no row for yet. */
+export const SETTING_FALLBACKS: Record<string, string> = Object.fromEntries(
+  groups().flatMap((g) => g.fields.filter((f) => f.fallback !== undefined).map((f) => [f.key, f.fallback as string])),
+);
+
 /** Plain-English problems by setting key; an empty object means every value is fine. */
 export function validateSettings(values: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const g of groups()) {
     for (const f of g.fields) {
       const raw = (values[f.key] ?? '').trim();
+      if (f.kind === 'text') {
+        if (raw.length > f.maxLength) out[f.key] = t('Use at most {n} characters.', { n: f.maxLength });
+        else if (raw !== '' && !/^https?:\/\/[^\s"'<>]+$/i.test(raw)) out[f.key] = t('Write a web address that starts with http:// or https://, with no spaces or quotes.');
+        continue;
+      }
       if (f.kind === 'choice') {
         if (!f.options.some((o) => o.value === raw)) out[f.key] = t('Choose one of the options.');
         continue;

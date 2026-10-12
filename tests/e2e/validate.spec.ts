@@ -472,11 +472,11 @@ for (const width of [360, 390]) {
       expect((await noSidewaysScroll(page)).ok).toBe(true);
       expect(await smallTargets(page)).toEqual([]);
       expect(await smallText(page)).toEqual([]);
-      // Validate is not on the bar, so More carries its count (danger colour, number as text)
+      // More carries the open action items (the bell's number): danger colour, number as text
       const moreBadge = page.getByTestId('bottom-more').getByTestId('more-badge');
       await expect(moreBadge).toBeVisible();
       expect(await moreBadge.textContent()).toMatch(/^\d+\+?$/);
-      await expect(moreBadge).toHaveAttribute('aria-label', /records? to review/);
+      await expect(moreBadge).toHaveAttribute('aria-label', /items? needs? action/);
       // the More sheet lists Validate with its count
       await page.getByTestId('bottom-more').click();
       await expect(page.getByTestId('more-tile-validate')).toContainText('Validate');

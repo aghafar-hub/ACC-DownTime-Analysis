@@ -116,6 +116,20 @@ export const EMPTY_FILTER: ValidateFilter = { flags: [], area: '', month: '', q:
 /** How many filters are on (the search text counts as one). */
 export const filterCount = (f: ValidateFilter): number => f.flags.length + [f.area, f.month, f.q.trim(), f.blockingOnly].filter(Boolean).length;
 
+/**
+ * The filter named by a link's query: `flag` (comma separated problems), `area`, `month` (YYYY-MM), `q` and `blocking=1`.
+ * null when the query names none of them (so opening the page by hand keeps whatever the person had set).
+ */
+export function filterFromParams(sp: URLSearchParams): ValidateFilter | null {
+  const flags = (sp.get('flag') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  const area = (sp.get('area') ?? '').trim();
+  const month = /^\d{4}-\d{2}$/.test(sp.get('month') ?? '') ? sp.get('month')! : '';
+  const q = (sp.get('q') ?? '').trim();
+  const blockingOnly = sp.get('blocking') === '1';
+  if (!flags.length && !area && !month && !q && !blockingOnly) return null;
+  return { flags, area, month, q, blockingOnly };
+}
+
 export function applyValidateFilter(records: readonly ValidationRecord[], f: ValidateFilter): ValidationRecord[] {
   const needle = f.q.trim().toLowerCase();
   return records.filter((r) => {

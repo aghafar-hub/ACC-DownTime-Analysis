@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { api, describeError } from '../api';
 import type { EventRow } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -16,7 +17,7 @@ import { useOnlineStatus } from '../useOnlineStatus';
 import { duration, hours, num, shortTs } from '../util/format';
 import BulkModal, { BULK_NOTE } from '../validate/BulkModal';
 import {
-  applyValidateFilter, areasOf, BULK_CAP, EMPTY_FILTER, filterCount, firstFixHint, flagCounts, monthsOf,
+  applyValidateFilter, areasOf, BULK_CAP, EMPTY_FILTER, filterCount, filterFromParams, firstFixHint, flagCounts, monthsOf,
   type BulkResult, type ValidateFilter, type ValidationRecord,
 } from '../validate/model';
 import { useValidation } from '../validate/ValidationContext';
@@ -64,7 +65,13 @@ export default function Validate() {
   const startup = st.startup;
   const { summary } = list;
 
-  const [f, setF] = useState<ValidateFilter>(EMPTY_FILTER);
+  const location = useLocation();
+  // a link from a notification names its filter in the address (?flag=unknown_code&q=AFR2)
+  const [f, setF] = useState<ValidateFilter>(() => filterFromParams(new URLSearchParams(location.search)) ?? EMPTY_FILTER);
+  useEffect(() => {
+    const fromLink = filterFromParams(new URLSearchParams(location.search));
+    if (fromLink) setF(fromLink);
+  }, [location.search]);
   const [sheet, setSheet] = useState(false);
   const [shown, setShown] = useState(PAGE_SIZE);
   const [sel, setSel] = useState<Set<string>>(new Set());

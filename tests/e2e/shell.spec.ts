@@ -337,11 +337,8 @@ test.describe('phone', () => {
     await expect(bar.locator('a, button')).toHaveText([/^Overview$/, /^Causes$/, /^Events$/, /More$/]);
     await expect(page.getByTestId('bottom-pareto')).toHaveAttribute('href', /#\/pareto$/);
     await expect(page.getByTestId('bottom-upload')).toHaveCount(0);
-    // the Validate count rides on More (Validate is not on the bar)
-    const moreBadge = page.getByTestId('bottom-more').getByTestId('more-badge');
-    await expect(moreBadge).toBeVisible();
-    await expect(moreBadge).toHaveAttribute('aria-label', /record/);
-    expect(Number((await moreBadge.textContent())!.replace(/\D/g, ''))).toBeGreaterThan(0);
+    // a viewer has no action items, so More carries no count (Validate keeps its own badge in the sheet)
+    await expect(page.getByTestId('bottom-more').getByTestId('more-badge')).toHaveCount(0);
     await page.getByTestId('bottom-more').click();
     const sheet = page.getByTestId('more-sheet');
     await expect(sheet).toBeVisible();

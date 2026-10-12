@@ -2,6 +2,7 @@ import { Navigate, NavLink, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import Appearance from '../admin/settings/Appearance';
 import Calculations from '../admin/settings/Calculations';
+import Notifications from '../admin/settings/Notifications';
 import Security from '../admin/settings/Security';
 import UsersAccess from '../admin/settings/UsersAccess';
 import { PageHeader } from '../components/Tile';
@@ -24,6 +25,7 @@ export function useVisibleSubs(): SettingsSub[] {
 
 function Body({ id }: { id: string }) {
   switch (id) {
+    case 'notifications': return <Notifications />;
     case 'calculations': return <Calculations />;
     case 'security': return <Security />;
     case 'users': return <UsersAccess />;

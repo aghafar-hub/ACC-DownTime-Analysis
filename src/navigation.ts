@@ -84,6 +84,7 @@ export interface SettingsSub {
 
 export const SETTINGS_SUBS: SettingsSub[] = [
   { id: 'appearance', label: 'Appearance', tab: null, icon: 'palette', blurb: 'Theme and install. Kept on this device.' },
+  { id: 'notifications', label: 'Notifications', tab: null, icon: 'bell', blurb: 'Which alerts you get, the areas you follow and the digest email.' },
   { id: 'calculations', label: 'Calculations', tab: 'settings', icon: 'trend', blurb: 'How availability, repeated failures and durations are worked out.' },
   { id: 'security', label: 'Security', tab: 'settings', icon: 'shield', blurb: 'Sign-in limits, sessions and passwords.' },
   { id: 'users', label: 'Users and access', tab: 'users', icon: 'users', blurb: 'Who can sign in and which pages they can open.' },

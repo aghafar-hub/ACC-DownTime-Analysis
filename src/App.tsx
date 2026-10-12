@@ -29,6 +29,7 @@ import Repeats from './pages/Repeats';
 import Settings from './pages/Settings';
 import Upload from './pages/Upload';
 import Validate from './pages/Validate';
+import { NotificationsProvider } from './notifications/NotificationsContext';
 import { ValidationProvider } from './validate/ValidationContext';
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import './App.css';
@@ -63,6 +64,7 @@ function ShellLayout() {
 
   return (
     <ValidationProvider>
+    <NotificationsProvider>
     <div className="app-shell">
       {!mobile && <Sidebar />}
       <div className="app-shell-right">
@@ -80,6 +82,7 @@ function ShellLayout() {
       <SaveBlockedToast />
       <UpdatePrompt />
     </div>
+    </NotificationsProvider>
     </ValidationProvider>
   );
 }

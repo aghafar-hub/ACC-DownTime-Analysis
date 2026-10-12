@@ -3,7 +3,7 @@ import { noSidewaysScroll, PASSWORD, setTheme, signInAndWait, smallTargets, stub
 
 // Settings: the gear in the top bar and its subtabs (Appearance, Calculations, Security,
 // Users and access), by role. Runs against the mock build with made-up data.
-const SUBS = ['Appearance', 'Calculations', 'Security', 'Users and access'];
+const SUBS = ['Appearance', 'Notifications', 'Calculations', 'Security', 'Users and access'];
 const subTabs = (page: Page) => page.getByTestId('settings-tabs').getByRole('link');
 
 test.describe('desktop', () => {
@@ -37,16 +37,16 @@ test.describe('desktop', () => {
     });
   }
 
-  test('admin sees all four subtabs', async ({ page }) => {
+  test('admin sees all five subtabs', async ({ page }) => {
     await signInAndWait(page, 'admin');
     await page.goto('/#/settings');
     expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(SUBS);
   });
 
-  test('viewer sees only Appearance and the theme choice survives a reload', async ({ page }) => {
+  test('viewer sees Appearance and Notifications and the theme choice survives a reload', async ({ page }) => {
     await signInAndWait(page, 'viewer');
     await page.getByTestId('settings-btn').click();
-    expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(['Appearance']);
+    expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(['Appearance', 'Notifications']);
     await expect(page.getByTestId('theme-picker')).toBeVisible();
     await page.getByRole('radio', { name: /Carbon Dark/ }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'Carbon Dark');
@@ -55,10 +55,10 @@ test.describe('desktop', () => {
     await expect(page.getByRole('radio', { name: /Carbon Dark/ })).toHaveAttribute('aria-checked', 'true');
   });
 
-  test('engineer (settings and users Hidden) sees only Appearance', async ({ page }) => {
+  test('engineer (settings and users Hidden) sees Appearance and Notifications', async ({ page }) => {
     await signInAndWait(page, 'engineer');
     await page.goto('/#/settings');
-    expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(['Appearance']);
+    expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(['Appearance', 'Notifications']);
     for (const sub of ['calculations', 'security', 'users']) {
       await page.goto(`/#/settings/${sub}`);
       await expect(page.getByTestId('no-access')).toBeVisible();
@@ -103,7 +103,7 @@ test.describe('desktop', () => {
     await page.getByTestId('login-submit').click();
     await expect(page.getByTestId('page-title')).toBeVisible();
     await page.getByTestId('settings-btn').click();
-    expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(['Appearance', 'Users and access']);
+    expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(['Appearance', 'Notifications', 'Users and access']);
     await subTabs(page).filter({ hasText: 'Users and access' }).click();
     await expect(page.getByTestId('access-level')).toContainText('view only');
     await expect(page.getByTestId('user-row').first()).toBeVisible();

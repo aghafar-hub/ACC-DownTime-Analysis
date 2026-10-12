@@ -13,8 +13,6 @@ export default function BottomNav({ onOpenMore, moreOpen }: { onOpenMore: () => 
   const pages = useVisiblePages();
   const location = useLocation();
   const slots = bottomBarPages(pages);
-  // Validate lives in More unless it has a slot of its own: its count shows on More then
-  const validateInMore = pages.some((p) => p.id === 'validate') && !slots.some((p) => p.id === 'validate');
   // the gear in the header owns /settings, so no bottom-bar item is lit there
   const onSlot = slots.some((p) => location.pathname.startsWith(p.path)) || isSettingsPath(location.pathname);
   return (
@@ -38,7 +36,7 @@ export default function BottomNav({ onOpenMore, moreOpen }: { onOpenMore: () => 
         onClick={() => { tapHaptic(); onOpenMore(); }}
         data-testid="bottom-more"
       >
-        <span className="bottom-nav-icon"><Icon name="menu" size={22} />{validateInMore && <MoreCountBadge />}</span>
+        <span className="bottom-nav-icon"><Icon name="menu" size={22} /><MoreCountBadge /></span>
         <span>{t('More')}</span>
       </button>
     </nav>

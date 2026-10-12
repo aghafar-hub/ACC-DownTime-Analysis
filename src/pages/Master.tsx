@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import AliasesTab from '../admin/master/AliasesTab';
 import AreasTab from '../admin/master/AreasTab';
@@ -19,7 +20,13 @@ type Sub = 'equipment' | 'areas' | 'reasons' | 'aliases';
 export default function Master() {
   const st = useStartup();
   const { canEdit } = useAuth();
+  const [sp] = useSearchParams();
+  // ?review=1 (the bell's "equipment needs review" item) opens Equipment with the review filter on
+  const reviewOnly = sp.get('review') === '1';
   const [sub, setSub] = useState<Sub>('equipment');
+  useEffect(() => {
+    if (reviewOnly) setSub('equipment');
+  }, [reviewOnly]);
   const [toastNode, toast] = useToast();
   const s = st.startup;
   const edit = canEdit('master');
@@ -48,7 +55,7 @@ export default function Master() {
               ]}
             />
           </div>
-          {sub === 'equipment' && <EquipmentTab {...props} />}
+          {sub === 'equipment' && <EquipmentTab {...props} reviewOnly={reviewOnly} />}
           {sub === 'areas' && <AreasTab {...props} />}
           {sub === 'reasons' && <ReasonsTab {...props} />}
           {sub === 'aliases' && <AliasesTab {...props} />}

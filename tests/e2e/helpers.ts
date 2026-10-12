@@ -49,10 +49,10 @@ export async function noSidewaysScroll(page: Page): Promise<{ scrollWidth: numbe
   });
 }
 
-/** Visible controls smaller than 44 px (checkboxes excluded: their label is the target). */
+/** Visible controls smaller than 44 px (checkboxes and radios excluded: their label is the target). */
 export async function smallTargets(page: Page): Promise<string[]> {
   return page.evaluate(() =>
-    [...document.querySelectorAll<HTMLElement>('button, a, select, input:not([type=hidden]):not([type=checkbox]), textarea')]
+    [...document.querySelectorAll<HTMLElement>('button, a, select, input:not([type=hidden]):not([type=checkbox]):not([type=radio]), textarea')]
       .filter((el) => el.offsetParent !== null || getComputedStyle(el).position === 'fixed')
       .map((el) => ({ el, r: el.getBoundingClientRect() }))
       .filter(({ r }) => r.height > 0 && (r.height < 43.5 || r.width < 43.5))

@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
 import type { Equipment } from '../../api/types';
 import { codeKey } from '../../calc';
@@ -161,11 +161,15 @@ function EquipmentModal({ row, startup, canEdit, onClose, onSaved }: {
   );
 }
 
-export default function EquipmentTab({ startup, canEdit, reload, toast }: TabProps) {
+export default function EquipmentTab({ startup, canEdit, reload, toast, reviewOnly }: TabProps & { reviewOnly?: boolean }) {
   const mobile = useIsMobile();
   const [q, setQ] = useState('');
   const [area, setArea] = useState('');
-  const [review, setReview] = useState(false);
+  const [review, setReview] = useState(!!reviewOnly);
+  // a link from a notification asks for the "Needs review" filter (also when the tab is already open)
+  useEffect(() => {
+    if (reviewOnly) setReview(true);
+  }, [reviewOnly]);
   const [status, setStatus] = useState('');
   const [origin, setOrigin] = useState('');
   const [shown, setShown] = useState(PAGE_SIZE);

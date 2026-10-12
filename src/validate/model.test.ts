@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EventRow } from '../api/types';
 import {
-  applyValidateFilter, buildClassificationSuggester, buildValidation, capSelection, compareRecords, EMPTY_FILTER, filterCount, firstFixHint,
+  applyValidateFilter, buildClassificationSuggester, buildValidation, capSelection, compareRecords, EMPTY_FILTER, filterCount, filterFromParams, firstFixHint,
   flagCounts, planBulk, plainReason, recheckRecord, runBulk, storedProblems, BULK_CAP, OVERLAP_FLAG,
 } from './model';
 
@@ -183,5 +183,16 @@ describe('bulk planner', () => {
       { id: 'b', reason: expect.stringMatching(/already has these values/) },
       { id: 'c', reason: 'Classification must be one of PRO, MEC.' },
     ]);
+  });
+});
+
+describe('filterFromParams', () => {
+  it('reads a link\'s query into a filter, and null when it names none', () => {
+    expect(filterFromParams(new URLSearchParams('flag=unknown_code,placeholder&q=AFR2&area=K.1&month=2026-03&blocking=1'))).toEqual({
+      flags: ['unknown_code', 'placeholder'], area: 'K.1', month: '2026-03', q: 'AFR2', blockingOnly: true,
+    });
+    expect(filterFromParams(new URLSearchParams('flag=placeholder'))).toEqual({ ...EMPTY_FILTER, flags: ['placeholder'] });
+    expect(filterFromParams(new URLSearchParams('month=bogus'))).toBeNull();
+    expect(filterFromParams(new URLSearchParams(''))).toBeNull();
   });
 });

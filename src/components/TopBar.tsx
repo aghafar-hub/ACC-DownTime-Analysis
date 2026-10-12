@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import BellButton from '../notifications/BellButton';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
@@ -10,7 +11,7 @@ import './TopBar.css';
 
 // Top bar (56 px): breadcrumb "ACC Downtime > Section > Page", online dot, a search
 // shortcut to the Event Explorer, the Settings button (gear, every page, every
-// role) and the avatar menu.
+// role), the notification bell and the avatar menu.
 export default function TopBar() {
   const { user, logout, canView } = useAuth();
   const location = useLocation();
@@ -108,6 +109,8 @@ export default function TopBar() {
           <Icon name="settings" size={18} />
           <span className="shell-topbar-settings-label">{t('Settings')}</span>
         </Link>
+
+        <BellButton />
 
         <div className="shell-topbar-user" ref={menuRef}>
           <button

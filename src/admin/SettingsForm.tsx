@@ -6,12 +6,12 @@ import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { useAuth } from '../auth/AuthContext';
 import { useAction } from './useAction';
-import { BASIS_FORMULA, changedSettings, groups, validateSettings, WHEN_TEXT, type Field } from './settingsSchema';
+import { BASIS_FORMULA, changedSettings, groups, SETTING_FALLBACKS, validateSettings, WHEN_TEXT, type Field } from './settingsSchema';
 import './admin.css';
 
 /** The editable settings. Saved together with one call: all or nothing. */
 export default function SettingsForm({ settings, canEdit, onSaved, groupIds }: { settings: Setting[]; canEdit: boolean; onSaved: (text: string) => void; groupIds?: string[] }) {
-  const stored = useMemo(() => Object.fromEntries(settings.map((s) => [s.key, s.value])) as Record<string, string>, [settings]);
+  const stored = useMemo(() => ({ ...SETTING_FALLBACKS, ...Object.fromEntries(settings.map((s) => [s.key, s.value])) }) as Record<string, string>, [settings]);
   const meta = useMemo(() => new Map(settings.map((s) => [s.key, s])), [settings]);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [shown, setShown] = useState(false);
@@ -51,6 +51,17 @@ export default function SettingsForm({ settings, canEdit, onSaved, groupIds }: {
       );
     }
     const m = meta.get(f.key);
+    if (f.kind === 'text') {
+      return (
+        <div className={bad ? 'field field--error span-2' : 'field span-2'} key={f.key}>
+          <label htmlFor={`set-${f.key}`}>{f.label}</label>
+          <input id={`set-${f.key}`} className="input mono" type="url" inputMode="url" autoComplete="off" placeholder={f.placeholder} maxLength={f.maxLength + 20} value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} data-testid={`set-${f.key}`} aria-describedby={`help-${f.key}`} />
+          <span className="field-hint" id={`help-${f.key}`}>{f.help}</span>
+          {bad && <span className="field-error" role="alert" data-testid={`error-${f.key}`}>{problems[f.key]}</span>}
+          {m?.updated_at && <span className="field-hint">{t('Changed {when}{who}', { when: m.updated_at.slice(0, 16), who: m.updated_by ? ` · ${who(m.updated_by)}` : '' })}</span>}
+        </div>
+      );
+    }
     return (
       <div className={bad ? 'field field--error' : 'field'} key={f.key}>
         <label htmlFor={`set-${f.key}`}>{f.label}{f.unit ? ` (${f.unit})` : ''}</label>

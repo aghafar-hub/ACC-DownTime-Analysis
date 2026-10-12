@@ -1,4 +1,6 @@
 import { t, tn } from '../i18n/t';
+import { badgeText } from '../notifications/merge';
+import { useNotificationsOptional } from '../notifications/NotificationsContext';
 import { num } from '../util/format';
 import { useValidationOptional } from './ValidationContext';
 import './validate.css';
@@ -21,16 +23,14 @@ export default function ValidateBadge({ testid = 'validate-badge' }: { testid?: 
   );
 }
 
-/** The Validate count as a small danger-coloured dot with the number, for the bottom bar's More slot. Nothing when there is nothing to check. */
+/** The open action items (the bell's number) as a small danger-coloured badge for the bottom bar's More slot. Nothing when there are none. */
 export function MoreCountBadge({ testid = 'more-badge' }: { testid?: string }) {
-  const v = useValidationOptional();
-  if (!v || !v.ready) return null;
-  const { total } = v.list.summary;
-  if (total === 0) return null;
-  const label = tn(total, '{n} record to review', '{n} records to review');
+  const n = useNotificationsOptional();
+  if (!n || n.actionCount === 0) return null;
+  const label = tn(n.actionCount, '{n} item needs action', '{n} items need action');
   return (
     <span className="bottom-nav-badge" role="img" aria-label={label} data-testid={testid}>
-      {total > 99 ? '99+' : num(total)}
+      {badgeText(n.actionCount)}
     </span>
   );
 }

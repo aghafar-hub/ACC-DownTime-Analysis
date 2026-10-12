@@ -16,6 +16,7 @@ import { Collapsible, NoData, rowsInRange, useDrill } from '../dashboard/parts';
 import { overviewTakeaway } from '../dashboard/takeaways';
 import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
+import SinceLastVisit from '../notifications/SinceLastVisit';
 import { Icon } from '../icons';
 import { useTheme } from '../theme/ThemeContext';
 import '../components/ui.css';
@@ -236,7 +237,7 @@ export default function Overview() {
   return (
     <div className="page dash-page" data-testid="page-overview">
       <DashTop
-        title={t('Overview')} takeaway={takeaway} dash={dash} eventCount={eventCount}
+        title={t('Overview')} takeaway={takeaway} dash={dash} eventCount={eventCount} belowTakeaway={<SinceLastVisit />}
         right={(
           <>
             {rows && rows.length > 0 && <button type="button" className="btn btn-sm" onClick={openEvents} data-testid="open-events"><Icon name="list" size={14} /> {t('Open {n} events', { n: fint(rows.length) })}</button>}
