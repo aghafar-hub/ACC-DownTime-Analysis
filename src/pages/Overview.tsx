@@ -47,6 +47,7 @@ export default function Overview() {
   const kpi = model?.kpi ?? null;
   const settings = ctx?.master.settings;
   const basis = settings?.availabilityBasis ?? 'B';
+  const cmpMode = model?.compare ?? 'none';
   const cmpLabel = ctx ? (ctx.win.compare === 'same_period_last_year' ? t('vs same period last year') : t('vs previous period')) : '';
 
   const subtitle = !ctx || !model
@@ -142,27 +143,27 @@ export default function Overview() {
       ) : (
         <>
           <Kpi id="total-hours" icon="clock" label={t('Total stoppage hours')} value={`${fh(tot.downtimeHours)} h`} sub={t('area-hours: summed over {n} areas', { n: perArea.length })}
-            change={<ChangeLine change={model.downtimeChange} fmt={fh} unit=" h" label={cmpLabel} />} />
+            change={<ChangeLine change={model.downtimeChange} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} />
           <Kpi id="failure-hours" icon="alert" label={t('Failure (INC) hours')} value={`${fh(tot.failureHours)} h`} sub={t('area-hours')} tone={redIf(tot.failureHours)}
-            change={<ChangeLine change={ch?.failureHours ?? null} fmt={fh} unit=" h" label={cmpLabel} />} />
+            change={<ChangeLine change={ch?.failureHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} />
           <Kpi id="planned-hours" icon="calendar" label={t('Planned (PL) hours')} value={`${fh(tot.plannedHours)} h`} sub={t('area-hours')}
-            change={<ChangeLine change={ch?.plannedHours ?? null} fmt={fh} unit=" h" label={cmpLabel} />} />
+            change={<ChangeLine change={ch?.plannedHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} />
           <Kpi id="other-hours" icon="info" label={t('Other (CIR) hours')} value={`${fh(tot.otherHours)} h`} sub={t('circumstantial, area-hours')}
-            change={<ChangeLine change={model.otherChange} fmt={fh} unit=" h" label={cmpLabel} />} />
+            change={<ChangeLine change={model.otherChange} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} />
           <Kpi id="failure-count" icon="tool" label={t('Failure count')} value={tot.failureCount === 0 ? t('None recorded') : fint(tot.failureCount)} unavailable={tot.failureCount === 0}
-            sub={t('{n} failure events started in the window', { n: fint(tot.failureEventCount) })} change={<ChangeLine change={ch?.failureCount ?? null} fmt={fint} label={cmpLabel} />} />
+            sub={t('{n} failure events started in the window', { n: fint(tot.failureEventCount) })} change={<ChangeLine change={ch?.failureCount ?? null} fmt={fint} label={cmpLabel} compare={cmpMode} />} />
           <Kpi id="operating-hours" icon="clock" label={t('Operating hours')} value={metricText(tot.operatingHours, fh, ' h').text} unavailable={!tot.operatingHours.available}
-            sub={sumNote(tot.operatingHours, fh, ' h') || t('scheduled minus all stops, area-hours')} change={<ChangeLine change={ch?.operatingHours ?? null} fmt={fh} unit=" h" label={cmpLabel} />} />
+            sub={sumNote(tot.operatingHours, fh, ' h') || t('scheduled minus all stops, area-hours')} change={<ChangeLine change={ch?.operatingHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} />
           <Kpi id="availability" icon="compliance" label={t('Availability (basis {b})', { b: basis })} value={avText!.text} unavailable={avText!.unavailable}
             sub={<span data-testid="kpi-availability-abc">A {metricText(tot.availability.A, fpct).text} · B {metricText(tot.availability.B, fpct).text} · C {metricText(tot.availability.C, fpct).text}<br />{t(BASIS_NAME[basis])}</span>}
-            change={<ChangeLine change={ch?.availability ?? null} fmt={(n) => (n * 100).toFixed(1)} unit=" pts" label={cmpLabel} />} />
+            change={<ChangeLine change={ch?.availability ?? null} fmt={(n) => (n * 100).toFixed(1)} unit=" pts" label={cmpLabel} compare={cmpMode} />} />
           <Kpi id="mtbf" icon="trend" label={t('MTBF (area level)')} value={mtbf ? mtbf.text : t('Select one area')} unavailable={!mtbf || mtbf.unavailable || perArea.length !== 1}
             sub={mtbf ? mtbf.reason ?? t('operating hours per failure') : t('Per-area table below; the aggregate is not an MTBF')}
-            change={mtbf ? <ChangeLine change={ch?.mtbfHours ?? null} fmt={fh} unit=" h" label={cmpLabel} /> : undefined} />
+            change={mtbf ? <ChangeLine change={ch?.mtbfHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} /> : undefined} />
           <Kpi id="mttr" icon="repeat" label={t('Mean restoration time')} value={mttr!.text} unavailable={mttr!.unavailable}
-            sub={mttr!.reason ?? t('mean duration of failure events')} change={<ChangeLine change={ch?.mttrHours ?? null} fmt={fh2} unit=" h" label={cmpLabel} />} />
+            sub={mttr!.reason ?? t('mean duration of failure events')} change={<ChangeLine change={ch?.mttrHours ?? null} fmt={fh2} unit=" h" label={cmpLabel} compare={cmpMode} />} />
           <Kpi id="repeated" icon="repeat" label={t('Repeated failures')} value={kpi.repeatedFailureCount === 0 ? t('None recorded') : fint(kpi.repeatedFailureCount)} unavailable={kpi.repeatedFailureCount === 0}
-            sub={t('{g} groups; recurrence events after the first', { g: fint(kpi.repeatGroups) })} tone={redIf(kpi.repeatedFailureCount)} change={<ChangeLine change={model.repeatedChange} fmt={fint} label={cmpLabel} />} />
+            sub={t('{g} groups; recurrence events after the first', { g: fint(kpi.repeatGroups) })} tone={redIf(kpi.repeatedFailureCount)} change={<ChangeLine change={model.repeatedChange} fmt={fint} label={cmpLabel} compare={cmpMode} />} />
           <Kpi id="top-area" icon="limits" label={t('Highest downtime contributor')}
             value={kpi.topArea.available ? (kpi.topArea.areaId ?? '-') : t('None recorded')} unavailable={!kpi.topArea.available}
             sub={kpi.topArea.available

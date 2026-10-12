@@ -6,7 +6,7 @@ import { HatchDefs, TipLayer, TipRows, Swatch, useChartTip, useUid, type ChartTa
 import { AXIS, GRID, INK, MARKERS, type Marker } from './palette';
 import { labelEvery, linear, niceTicks, axisNum } from './scale';
 
-export interface CartCategory { key: string; label: string; partial?: boolean; note?: string }
+export interface CartCategory { key: string; label: string; /** long wording for the tooltip and the table when the axis label is shortened */ full?: string; partial?: boolean; note?: string }
 export interface CartSeries {
   key: string;
   label: string;
@@ -47,7 +47,7 @@ export function seriesTable(categories: CartCategory[], series: CartSeries[], fi
 }
 
 export default function CartesianChart({
-  categories, series, width, height = 240, ariaLabel, yFormat = axisNum, zeroBased = true, refLines = [], yMax, yMin, onCategory, maxBarWidth = 44, marginLeft,
+  categories, series, width, height = 240, ariaLabel, yFormat = axisNum, zeroBased = true, refLines = [], yMax, yMin, onCategory, maxBarWidth = 44, marginLeft, rotateLabels = false,
 }: {
   categories: CartCategory[];
   series: CartSeries[];
@@ -64,6 +64,8 @@ export default function CartesianChart({
   maxBarWidth?: number;
   /** fixed left margin, so stacked charts line up */
   marginLeft?: number;
+  /** tilt the category labels when they are wider than their slot, instead of leaving some out */
+  rotateLabels?: boolean;
 }) {
   const uid = useUid();
   const [boxRef, setBox] = useState<HTMLDivElement | null>(null);
@@ -97,13 +99,15 @@ export default function CartesianChart({
   const yBot = yMin !== undefined ? yMin : scale.min;
 
   const labelW = Math.max(...scale.ticks.map((v) => yFormat(v).length)) * 7 + 10;
-  const m = { l: marginLeft ?? Math.max(34, labelW), r: 12, t: 12, b: 28 };
+  const widest = Math.max(0, ...categories.map((c) => c.label.length + (c.partial ? 1 : 0))) * 6.6;
+  const tilt = rotateLabels && n > 1 && (width - (marginLeft ?? Math.max(34, labelW)) - 12) / n < widest + 6;
+  const m = { l: marginLeft ?? Math.max(34, labelW), r: 12, t: 12, b: tilt ? 28 + Math.ceil(widest * 0.72) : 28 };
   const pw = Math.max(40, width - m.l - m.r);
   const ph = height - m.t - m.b;
   const y = linear(yBot, yTop, m.t + ph, m.t);
   const band = pw / Math.max(1, n);
   const cx = (i: number): number => m.l + band * (i + 0.5);
-  const every = labelEvery(n, pw, 46);
+  const every = tilt ? 1 : labelEvery(n, pw, 46);
 
   const groupW = Math.min(band * 0.78, maxBarWidth * Math.max(1, slots.length));
   const slotW = slots.length ? groupW / slots.length : 0;
@@ -111,7 +115,7 @@ export default function CartesianChart({
   const tipNode = (i: number): ReactNode => (
     <>
       <TipRows
-        title={categories[i]!.partial ? `${categories[i]!.label} (${t('partial')})` : categories[i]!.label}
+        title={categories[i]!.partial ? `${categories[i]!.full ?? categories[i]!.label} (${t('partial')})` : categories[i]!.full ?? categories[i]!.label}
         rows={series.map((s) => {
           const v = s.values[i];
           const fmt = s.format ?? yFormat;
@@ -141,7 +145,9 @@ export default function CartesianChart({
         ))}
         <line x1={m.l} x2={m.l + pw} y1={y(Math.max(0, yBot))} y2={y(Math.max(0, yBot))} stroke={AXIS} strokeWidth="1" />
         {categories.map((c, i) => (i % every === 0 ? (
-          <text key={c.key} x={cx(i)} y={height - 8} textAnchor="middle">{c.label}{c.partial ? '*' : ''}</text>
+          tilt
+            ? <text key={c.key} transform={`translate(${cx(i) + 4} ${m.t + ph + 14}) rotate(-40)`} textAnchor="end">{c.label}{c.partial ? '*' : ''}</text>
+            : <text key={c.key} x={cx(i)} y={height - 8} textAnchor="middle">{c.label}{c.partial ? '*' : ''}</text>
         ) : null))}
 
         {active !== null && tip && <rect x={m.l + band * active} y={m.t} width={band} height={ph} fill="var(--tk-nav-active)" />}

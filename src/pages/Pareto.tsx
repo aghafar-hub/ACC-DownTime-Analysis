@@ -18,6 +18,7 @@ type Sub = 'equipment' | 'reason' | 'area';
 
 function Bucket({ title, note, result, testid, onOpen }: { title: string; note: string; result: ParetoResult; testid: string; onOpen: (label: string, ids: string[]) => void }) {
   const bars = result.bars.slice(0, 5);
+  const blank = t('(blank code)');
   return (
     <section className="card" data-testid={testid}>
       <h2>{title}</h2>
@@ -27,7 +28,7 @@ function Bucket({ title, note, result, testid, onOpen }: { title: string; note: 
         <ul className="bucket-list">
           {bars.map((b) => (
             <li key={b.key}>
-              <button type="button" className="row-btn mono" onClick={() => onOpen(`${title}: ${b.label}`, b.eventIds)}>{b.label}</button>
+              <button type="button" className="row-btn mono" onClick={() => onOpen(`${title}: ${b.label || blank}`, b.eventIds)}>{b.label.trim() ? b.label : blank}</button>
               <b>{fh(b.value)} h</b>
             </li>
           ))}

@@ -11,6 +11,15 @@ describe('scale helpers', () => {
     const flat = niceTicks(5, 5);
     expect(flat.max).toBeGreaterThanOrEqual(5);
   });
+  it('niceTicks has no floating-point noise in its ticks', () => {
+    for (const [a, b] of [[0, 0.62], [0, 0.9], [0, 1.7], [0, 0.35], [0.1, 0.7], [0, 3.3]] as const) {
+      const r = niceTicks(a, b, 5);
+      for (const v of [...r.ticks, r.min, r.max]) expect(String(v).length).toBeLessThanOrEqual(6);
+      expect(r.max).toBeGreaterThanOrEqual(b);
+    }
+    expect(niceTicks(0, 0.62, 5).ticks).toContain(0.6);
+    expect(niceTicks(0, 0.62, 5).ticks).not.toContain(0.6000000000000001);
+  });
   it('linear maps and tolerates a flat domain', () => {
     expect(linear(0, 10, 100, 0)(5)).toBe(50);
     expect(linear(3, 3, 0, 10)(3)).toBe(0);

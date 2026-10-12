@@ -154,6 +154,9 @@
   gap: 0 16px;
   align-items: start;
 }
+.chart-grid--even {
+  align-items: stretch;
+}
 .chart-grid > .card {
   margin-bottom: 16px;
 }

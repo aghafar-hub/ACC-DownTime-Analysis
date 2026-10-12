@@ -13,8 +13,13 @@ export function niceTicks(min: number, max: number, target = 5): { ticks: number
   const lo = Math.floor(min / step) * step;
   const hi = Math.ceil(max / step) * step;
   const ticks: number[] = [];
-  for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v / step) * step);
-  return { ticks, min: lo, max: hi };
+  // derive each tick from an integer multiple and trim float noise (0.6000000000000001 -> 0.6)
+  const decimals = Math.max(0, 6 - Math.floor(Math.log10(step)));
+  const clean = (v: number): number => Number(v.toFixed(Math.min(decimals, 12)));
+  const k0 = Math.round(lo / step);
+  const k1 = Math.round(hi / step);
+  for (let k = k0; k <= k1; k++) ticks.push(clean(k * step));
+  return { ticks, min: clean(k0 * step), max: clean(k1 * step) };
 }
 
 export function linear(d0: number, d1: number, r0: number, r1: number): (v: number) => number {

@@ -29,7 +29,7 @@ export default function ParetoCard({
       legend={[{ label: t('Bar: {u}', { u: unit }), color: 'var(--tk-accent)' }, { label: t('Cumulative %'), color: 'var(--tk-text-primary)', symbol: 'line' }, { label: t('80% line'), color: 'var(--tk-text-primary)', symbol: 'dash' }, { label: t('Others (merged)'), color: 'var(--tk-accent)', symbol: 'hatch' }]}
       controls={<>{controls}<Toggle value={top} options={TOPS.map((o) => ({ value: o.value, label: t(o.label) }))} onChange={setTop} label={t('Number of bars')} testid={`${testid}-top`} /></>}
       table={result ? paretoTable(result, unit, fmt) : undefined}
-      footnote={footnote ?? (result ? t('Percentages are against the complete total of {n} {u}. Click a bar to open its events. A very large Others bar is cut off at the top; its value is printed above it.', { n: fmt(result.total), u: unit }) : undefined)}
+      footnote={footnote ?? (result ? t('Percentages are against the complete total of {n} {u}. Click a bar to open its events. Others merges the remaining items; if it is larger than the biggest bar it is drawn no taller than that bar, with a break mark and its real value above it. The dashed step ends at the true cumulative share.', { n: fmt(result.total), u: unit }) : undefined)}
     >
       {(w) => result ? (
         <ParetoChart result={result} width={w} valueLabel={unit} format={fmt} ariaLabel={`${title}. ${summary}`}

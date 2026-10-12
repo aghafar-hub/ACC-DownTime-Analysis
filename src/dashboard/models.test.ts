@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest';
 import type { Startup } from '../api/types';
 import {
   areaPareto, buildFailureEvents, computeKpis, dataRangeOf, equipmentPareto, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
-  durationHistogram, buildIndex, parseSettings, comparisonRange, isBlocked,
+  durationHistogram, buildIndex, addDays, parseSettings, comparisonRange, isBlocked,
 } from '../calc';
 import { buildSyntheticDb } from '../mock/synthetic';
 import { defaultFilters, resolveRange } from './filters';
 import { areaModel, cutPareto, equipmentModel, overviewModel, reasonModel, reliabilityModel, repeatsModel } from './models';
+import { noChangeText } from './format';
 import { buildCtx, rowsInRange, yearsNeeded } from './scope';
 
 const db = buildSyntheticDb();
@@ -114,6 +115,26 @@ describe('page adapters equal the calculation layer on the mock data', () => {
     expect(yearsNeeded({ from: '2025-11-01', to: '2026-02-28' }, f4, settings, [2026, 2025, 2024])).toEqual([2025, 2026]);
     expect(yearsNeeded({ from: '2026-01-10', to: '2026-02-28' }, f4, settings, [2026, 2025])).toEqual([2025, 2026]);
     expect(yearsNeeded({ from: '2026-06-10', to: '2026-07-28' }, { ...f4, compare: 'none' }, settings, [2026, 2025])).toEqual([2026]);
+  });
+});
+
+describe('change line when the other period has no data', () => {
+  const first = { ...defaultFilters(), preset: 'custom' as const, from: coverage.from, to: addDays(coverage.from, 20) };
+  const r1 = resolveRange(first, coverage.to);
+  it('a chosen comparison with no data in the other period is not reported as "no comparison selected"', () => {
+    const prev = overviewModel(buildCtx(rows, startup, { ...first, compare: 'previous_period' }, r1));
+    expect(prev.compare).toBe('previous_period');
+    expect(prev.changes).toBeNull();
+    expect(prev.downtimeChange).toBeNull();
+    expect(noChangeText(prev.compare)).toBe('No data in the previous period');
+    const ly = overviewModel(buildCtx(rows, startup, { ...first, compare: 'same_period_last_year' }, r1));
+    expect(noChangeText(ly.compare)).toBe('No data last year');
+  });
+  it('"No comparison selected" only when the user chose no comparison', () => {
+    const none = overviewModel(buildCtx(rows, startup, { ...first, compare: 'none' }, r1));
+    expect(none.compare).toBe('none');
+    expect(none.changes).toBeNull();
+    expect(noChangeText(none.compare)).toBe('No comparison selected');
   });
 });
 

@@ -1,16 +1,21 @@
 // Heat map as a table: the number is in every cell, the shade (one accent hue, light to strong) only helps the eye.
+import { useState } from 'react';
 import type { Heatmap } from '../calc';
 import { t } from '../i18n/t';
 
 export default function HeatmapTable({
-  map, format, caption, rowHead, shortCol,
+  map: limited, full, format, caption, rowHead, shortCol,
 }: {
-  map: Heatmap; format: (n: number) => string; caption: string; rowHead: string; shortCol?: (label: string) => string;
+  map: Heatmap; /** the same map with every row; enables the Show all rows button */ full?: Heatmap; format: (n: number) => string; caption: string; rowHead: string; shortCol?: (label: string) => string;
 }) {
+  const [all, setAll] = useState(false);
+  const canExpand = !!full && full.rows.length > limited.rows.length;
+  const map = all && canExpand ? full! : limited;
   let max = 0;
   for (const r of map.values) for (const v of r) if (v > max) max = v;
   if (map.rows.length === 0) return <p className="muted" data-testid="heatmap-empty">{t('Nothing to show for these filters.')}</p>;
   return (
+    <div>
     <div className="heat-wrap" tabIndex={0} role="region" aria-label={caption}>
       <table className="heat" data-testid="heatmap">
         <caption className="sr-only">{caption}</caption>
@@ -36,10 +41,16 @@ export default function HeatmapTable({
           ))}
         </tbody>
       </table>
+    </div>
       {(map.omittedRows > 0 || map.omittedCols > 0) && (
         <p className="chart-foot">
           {t('Showing the largest; {r} more rows and {c} more columns are not shown. Total of every cell: {total}.', { r: map.omittedRows, c: map.omittedCols, total: format(map.total) })}
         </p>
+      )}
+      {canExpand && (
+        <button type="button" className="btn btn-sm heat-toggle" style={{ minHeight: 44, minWidth: 44, marginTop: 8 }} aria-expanded={all} onClick={() => setAll((v) => !v)} data-testid="heat-toggle">
+          {all ? t('Show fewer') : t('Show all rows ({n})', { n: full!.rows.length })}
+        </button>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 // Frequency (x) against average duration (y), one point per equipment code. Point size = total hours.
-// Labels are drawn largest first and skipped when they would overlap; tap or hover for the numbers.
+// Only the biggest points are labelled (nudged clear of each other); tap or hover any point for the numbers.
 import { useState, type ReactNode } from 'react';
 import { t } from '../i18n/t';
 import { TipLayer, TipRows, useChartTip } from './ChartKit';
@@ -27,15 +27,30 @@ export default function ScatterChart({
   const maxSize = Math.max(...points.map((p) => p.size), 1e-9);
   const r = (p: ScatterPt): number => 4 + 6 * Math.sqrt(p.size / maxSize);
 
+  // Labels only for the biggest points (the rest answer to tap / hover). Each label tries right, left, above and
+  // below its point and takes the first spot that is inside the plot and clear of the labels already placed.
+  const MAX_LABELS = 8;
   const order = [...points].sort((a, b) => b.size - a.size);
   const boxes: { x0: number; x1: number; y0: number; y1: number }[] = [];
-  const labelled = new Set<string>();
+  const labelAt = new Map<string, { x: number; y: number; anchor: 'start' | 'end' | 'middle' }>();
+  const hits = (b: { x0: number; x1: number; y0: number; y1: number }): boolean =>
+    b.x0 < m.l || b.x1 > m.l + pw + m.r || b.y0 < m.t - 4 || b.y1 > m.t + ph || boxes.some((o) => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0);
   for (const p of order) {
+    if (labelAt.size >= MAX_LABELS) break;
     const w = p.label.length * 6.6;
-    const b = { x0: x(p.x) + r(p) + 2, x1: x(p.x) + r(p) + 2 + w, y0: y(p.y) - 7, y1: y(p.y) + 7 };
-    if (b.x1 > m.l + pw + m.r || boxes.some((o) => b.x0 < o.x1 && b.x1 > o.x0 && b.y0 < o.y1 && b.y1 > o.y0)) continue;
-    boxes.push(b);
-    labelled.add(p.key);
+    const px = x(p.x);
+    const py = y(p.y);
+    const rr = r(p) + 3;
+    const tries = [
+      { x: px + rr, y: py + 4, anchor: 'start' as const, b: { x0: px + rr, x1: px + rr + w, y0: py - 7, y1: py + 7 } },
+      { x: px - rr, y: py + 4, anchor: 'end' as const, b: { x0: px - rr - w, x1: px - rr, y0: py - 7, y1: py + 7 } },
+      { x: px, y: py - rr - 2, anchor: 'middle' as const, b: { x0: px - w / 2, x1: px + w / 2, y0: py - rr - 14, y1: py - rr } },
+      { x: px, y: py + rr + 11, anchor: 'middle' as const, b: { x0: px - w / 2, x1: px + w / 2, y0: py + rr, y1: py + rr + 14 } },
+    ];
+    const ok = tries.find((c) => !hits(c.b));
+    if (!ok) continue;
+    boxes.push(ok.b);
+    labelAt.set(p.key, { x: ok.x, y: ok.y, anchor: ok.anchor });
   }
   const node = (p: ScatterPt): ReactNode => (
     <>
@@ -66,7 +81,7 @@ export default function ScatterChart({
         {points.map((p) => (
           <g key={p.key}>
             <circle cx={x(p.x)} cy={y(p.y)} r={r(p)} fill={ACCENT} fillOpacity={selected === p.key ? 0.95 : 0.5} stroke={ACCENT} strokeWidth={selected === p.key ? 3 : 1.5} />
-            {labelled.has(p.key) && <text x={x(p.x) + r(p) + 2} y={y(p.y) + 4} className="chart-ink">{p.label}</text>}
+            {labelAt.has(p.key) && <text x={labelAt.get(p.key)!.x} y={labelAt.get(p.key)!.y} textAnchor={labelAt.get(p.key)!.anchor} className="chart-ink">{p.label}</text>}
             <circle cx={x(p.x)} cy={y(p.y)} r={Math.max(r(p), 14)} fill="transparent" className="chart-hit" data-testid="scatter-point" data-key={p.key} {...bind(node(p))} />
           </g>
         ))}

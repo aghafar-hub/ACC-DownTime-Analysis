@@ -115,6 +115,8 @@ export default function Repeats() {
 
   const rcats: CartCategory[] = rollPts.map((p) => ({ key: p.date, label: p.date.slice(5), note: dayLabel(p.date) }));
   const heat = heatMeasure === 'hours' ? model?.heatMonthHours : model?.heatMonthCount;
+  const heatFull = heatMeasure === 'hours' ? model?.heatAll.monthHours : model?.heatAll.monthCount;
+  const heat2Full = heat2Measure === 'hours' ? model?.heatAll.reasonHours : model?.heatAll.reasonCount;
   const heat2 = heat2Measure === 'hours' ? model?.heatReasonHours : model?.heatReasonCount;
   const fmtM = (m: 'hours' | 'count') => (m === 'hours' ? fh : fint);
 
@@ -191,7 +193,7 @@ export default function Repeats() {
               controls={<Toggle value={heatMeasure} options={[{ value: 'hours', label: t('Hours') }, { value: 'count', label: t('Count') }]} onChange={setHeatMeasure} label={t('Measure')} testid="heat-month-measure" />}
               legend={[{ label: t('Darker = more'), color: ACCENT }]}
             >
-              {() => heat ? <HeatmapTable map={heat} format={fmtM(heatMeasure)} caption={t('Equipment by month')} rowHead={t('Code')} shortCol={(l) => l.slice(2).replace('-', '/')} /> : null}
+              {() => heat ? <HeatmapTable map={heat} full={heatFull} format={fmtM(heatMeasure)} caption={t('Equipment by month')} rowHead={t('Code')} shortCol={(l) => l.slice(2).replace('-', '/')} /> : null}
             </ChartCard>
             <ChartCard
               title={t('Equipment by reason')} subtitle={t('Top codes against top reasons')} testid="chart-heat-reason"
@@ -199,7 +201,7 @@ export default function Repeats() {
               controls={<Toggle value={heat2Measure} options={[{ value: 'hours', label: t('Hours') }, { value: 'count', label: t('Count') }]} onChange={setHeat2Measure} label={t('Measure')} testid="heat-reason-measure" />}
               legend={[{ label: t('Darker = more'), color: ACCENT }]}
             >
-              {() => heat2 ? <HeatmapTable map={heat2} format={fmtM(heat2Measure)} caption={t('Equipment by reason')} rowHead={t('Code')} /> : null}
+              {() => heat2 ? <HeatmapTable map={heat2} full={heat2Full} format={fmtM(heat2Measure)} caption={t('Equipment by reason')} rowHead={t('Code')} /> : null}
             </ChartCard>
           </div>
 

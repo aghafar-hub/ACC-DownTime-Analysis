@@ -117,6 +117,12 @@ function LoginRoute() {
 
 // Test builds set VITE_ENV_LABEL so a test copy can never be mistaken for the live site.
 function EnvRibbon() {
+  // the class lets the CSS keep room for the ribbon so it never covers page content
+  useEffect(() => {
+    if (!ENV_LABEL) return undefined;
+    document.body.classList.add('has-env-ribbon');
+    return () => document.body.classList.remove('has-env-ribbon');
+  }, []);
   if (!ENV_LABEL) return null;
   return (
     <div className="env-ribbon">

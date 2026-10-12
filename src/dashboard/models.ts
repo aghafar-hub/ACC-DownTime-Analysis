@@ -8,6 +8,7 @@ import {
   type KpiChanges, type KpiOk, type LongEvent, type MonthPoint, type ParetoBar, type ParetoMeasure, type ParetoResult, type RepeatResult,
   type RollingPoint, type TopN, type YoyMonth,
 } from '../calc';
+import type { CompareMode } from './filters';
 import type { DashCtx } from './scope';
 
 // ---------------------------------------------------------------- overview
@@ -17,6 +18,8 @@ export interface OverviewModel {
   kpi: KpiOk | null;
   noDataReason: string | null;
   prev: KpiOk | null;
+  /** the comparison the user chose; with 'none' there is no change line, otherwise a null change means the other period has no data */
+  compare: CompareMode;
   changes: KpiChanges | null;
   downtimeChange: Change | null;
   otherChange: Change | null;
@@ -35,6 +38,7 @@ export function overviewModel(ctx: DashCtx): OverviewModel {
     kpi,
     noDataReason: cur.status === 'no_data' ? cur.reason : null,
     prev,
+    compare: ctx.win.compare,
     changes: cmp?.changes ?? null,
     downtimeChange: both ? compareValues(avail(kpi.total.downtimeHours), avail(prev.total.downtimeHours), 'lower') : null,
     otherChange: both ? compareValues(avail(kpi.total.otherHours), avail(prev.total.otherHours), 'none') : null,
@@ -113,6 +117,8 @@ export interface RepeatsModel {
   heatMonthCount: Heatmap;
   heatReasonHours: Heatmap;
   heatReasonCount: Heatmap;
+  /** the same heat maps with every row, for the 'Show all rows' button */
+  heatAll: { monthHours: Heatmap; monthCount: Heatmap; reasonHours: Heatmap; reasonCount: Heatmap };
   scatter: ScatterPoint[];
   window: DateRange;
 }
@@ -137,6 +143,12 @@ export function repeatsModel(ctx: DashCtx): RepeatsModel | null {
     heatMonthCount: equipmentMonthHeatmap(chains, index, window, { measure: 'count', maxRows: 15 }),
     heatReasonHours: equipmentReasonHeatmap(chains, index, window, { measure: 'hours', maxRows: 12, maxCols: 8 }),
     heatReasonCount: equipmentReasonHeatmap(chains, index, window, { measure: 'count', maxRows: 12, maxCols: 8 }),
+    heatAll: {
+      monthHours: equipmentMonthHeatmap(chains, index, window, { measure: 'hours' }),
+      monthCount: equipmentMonthHeatmap(chains, index, window, { measure: 'count' }),
+      reasonHours: equipmentReasonHeatmap(chains, index, window, { measure: 'hours', maxCols: 8 }),
+      reasonCount: equipmentReasonHeatmap(chains, index, window, { measure: 'count', maxCols: 8 }),
+    },
   };
 }
 

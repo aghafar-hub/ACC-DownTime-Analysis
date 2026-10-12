@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import type { Change, Metric } from '../calc';
 import { t } from '../i18n/t';
 import { nf } from '../util/format';
+import type { CompareMode } from './filters';
 
 const nf1 = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const nf2 = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -44,8 +45,14 @@ export function rangeLabel(r: { from: string; to: string }): string {
 }
 
 /** The change line under a KPI: arrow + sign + words, coloured by good / bad; never colour alone. */
-export function ChangeLine({ change, fmt, unit = '', label, testid }: { change: Change | null; fmt: (n: number) => string; unit?: string; label: string; testid?: string }): ReactNode {
-  if (!change) return <span className="kpi-change kpi-change--none" data-testid={testid}>{t('No comparison selected')}</span>;
+export function noChangeText(compare: CompareMode): string {
+  if (compare === 'none') return t('No comparison selected');
+  return compare === 'same_period_last_year' ? t('No data last year') : t('No data in the previous period');
+}
+
+/** `compare` is the comparison the user chose; a missing change then means the other period has no data. */
+export function ChangeLine({ change, fmt, unit = '', label, testid, compare = 'none' }: { change: Change | null; fmt: (n: number) => string; unit?: string; label: string; testid?: string; compare?: CompareMode }): ReactNode {
+  if (!change) return <span className="kpi-change kpi-change--none" data-testid={testid}>{noChangeText(compare)}</span>;
   if (!change.available) return <span className="kpi-change kpi-change--none" data-testid={testid}>{t('No comparison: {reason}', { reason: change.reason })}</span>;
   const sign = change.abs > 0 ? '+' : change.abs < 0 ? '−' : '';
   const arrow = change.direction === 'up' ? '▲' : change.direction === 'down' ? '▼' : '■';

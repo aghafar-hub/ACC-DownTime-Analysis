@@ -54,7 +54,15 @@ export default function Reliability() {
     return 'medium';
   };
   const BAND_COLOR = { short: seriesColor(dark, 0), medium: seriesColor(dark, 3), long: seriesColor(dark, 7) };
-  const hcats: CartCategory[] = (hist?.bins ?? []).map((b) => ({ key: b.label, label: b.label }));
+  const binText = (m: number): string => (m >= 60 && m % 60 === 0 ? `${m / 60}h` : `${m}m`);
+  // short axis wording ('<10m', '10–30m', '8–24h', '24h+'); the full text stays in the tooltip and the table
+  const binShort = (from: number, to: number | null): string => {
+    if (to === null) return `${binText(from)}+`;
+    if (from === 0) return `<${binText(to)}`;
+    const h = (m: number) => m >= 60 && m % 60 === 0;
+    return h(from) && h(to) ? `${from / 60}–${to / 60}h` : h(to) && !h(from) ? `${from}m–${to / 60}h` : `${from}–${to}m`;
+  };
+  const hcats: CartCategory[] = (hist?.bins ?? []).map((b) => ({ key: b.label, label: binShort(b.fromMin, b.toMin), full: b.label }));
   const hseries: CartSeries[] = hist ? [{
     key: 'n', label: t('Failure events'), color: BAND_COLOR.medium, type: 'bar', values: hist.bins.map((b) => b.count), format: fint,
     pointColors: hist.bins.map((b) => BAND_COLOR[bandOf(b.fromMin, b.toMin)]),
@@ -111,7 +119,7 @@ export default function Reliability() {
               {ctx.base.areaIds.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
-          <div className="chart-grid">
+          <div className="chart-grid chart-grid--even">
             <ChartCard title={t('Monthly MTBF')} subtitle={t('Operating hours per failure, {a}', { a: areaLabel })} testid="chart-mtbf"
               summary={`${t('{n} of {m} months have an MTBF.', { n: months.length - gapCount(mtbf), m: months.length })}`} footnote={gapNote(mtbf)}
               table={seriesTable(cats, [mtbf], t('Month'), (_s, n) => fh(n))}>
@@ -136,7 +144,7 @@ export default function Reliability() {
               ]}
               table={hist ? { head: [t('Duration'), t('Events'), t('Hours'), t('Band')], rows: hist.bins.map((b) => [b.label, fint(b.count), fh(b.hours), bandOf(b.fromMin, b.toMin)]) } : undefined}
               footnote={hist ? hist.bands.map((b) => `${b.band}: ${fint(b.count)} (${b.countPct.toFixed(0)}% of events, ${b.hoursPct.toFixed(0)}% of hours)`).join(' · ') : undefined}>
-              {(w) => <CartesianChart categories={hcats} series={hseries} width={w} ariaLabel={t('Histogram of failure durations')} yFormat={(n) => `${n}`} />}
+              {(w) => <CartesianChart categories={hcats} series={hseries} width={w} ariaLabel={t('Histogram of failure durations')} yFormat={(n) => `${n}`} rotateLabels />}
             </ChartCard>
           </div>
           <ChartCard title={t('Year over year, by month')} subtitle={t('{a} against {b}, {m}', { a: model.yoyYear, b: model.yoyYear - 1, m: yoyLabels[yoyMetric] })} testid="chart-yoy"
