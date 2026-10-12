@@ -211,3 +211,15 @@ export function classificationPareto(chains: ChainedEvent[], o: ClassificationPa
   const src = o.failureOnly ? chains.filter((c) => c.isFailure) : chains;
   return chainPareto(src, o, (c) => c.head.classification, (c) => c.head.classification);
 }
+
+export interface LineParetoOptions extends ChainParetoOptions {
+  /** line of an area in the master data (the area decides the line, never the event's own line_id) */
+  lineOf: (areaId: string) => string;
+  lineLabel?: (lineId: string) => string;
+}
+
+/** Failure Pareto by production line: the line of the stopped area. Totals equal the area Pareto. */
+export function linePareto(chains: ChainedEvent[], o: LineParetoOptions): ParetoResult {
+  const label = o.lineLabel ?? ((l: string) => l);
+  return chainPareto(chains.filter((c) => c.isFailure), o, (c) => o.lineOf(c.area_id) || '(no line)', (c) => label(o.lineOf(c.area_id)) || '(no line)');
+}

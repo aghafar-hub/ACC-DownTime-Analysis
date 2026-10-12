@@ -2,7 +2,10 @@ import { useMemo, useState } from 'react';
 import type { ParetoResult } from '../calc';
 import { Tile } from '../components/Tile';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { areaModel, classModel, equipmentModel, reasonForEquipmentModel, reasonModel } from '../dashboard/models';
+import { areaModel, classModel, equipmentModel, lineModel, reasonForEquipmentModel, reasonModel, reasonMonthModel } from '../dashboard/models';
+import { ChartCard } from '../charts/ChartKit';
+import HeatmapTable from '../charts/HeatmapTable';
+import { ACCENT } from '../charts/palette';
 import { NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import ParetoCard from '../dashboard/ParetoCard';
 import DashTop from '../dashboard/DashTop';
@@ -58,6 +61,11 @@ export default function Pareto() {
   const areaH = useMemo(() => (ctx && sub === 'area' ? areaModel(ctx, 'hours') : null), [ctx, sub]);
   const areaC = useMemo(() => (ctx && sub === 'area' ? areaModel(ctx, 'count') : null), [ctx, sub]);
   const cls = useMemo(() => (ctx && sub === 'area' ? classModel(ctx, 'hours', !classAll) : null), [ctx, sub, classAll]);
+  const clsCount = useMemo(() => (ctx && sub === 'area' ? classModel(ctx, 'count', !classAll) : null), [ctx, sub, classAll]);
+  const lineH = useMemo(() => (ctx && sub === 'area' ? lineModel(ctx, 'hours') : null), [ctx, sub]);
+  const lineC = useMemo(() => (ctx && sub === 'area' ? lineModel(ctx, 'count') : null), [ctx, sub]);
+  const reasonMonth = useMemo(() => (ctx && sub === 'reason' ? reasonMonthModel(ctx) : null), [ctx, sub]);
+  const [rmMeasure, setRmMeasure] = useState<'hours' | 'count'>('hours');
   const rows = useMemo(() => (ctx ? rowsInRange(ctx.scope, ctx.win.range) : null), [ctx]);
 
   const open = (prefix: string) => (label: string, ids: string[]) => drill(`${prefix} ${label}`, { eventIds: ids });
@@ -71,7 +79,7 @@ export default function Pareto() {
     : paretoTakeaway(null);
 
   const bucketTotal = (r: ParetoResult) => r.total;
-  const tabs: { id: Sub; label: string }[] = [{ id: 'equipment', label: t('Equipment') }, { id: 'reason', label: t('Reasons') }, { id: 'area', label: t('Areas and classes') }];
+  const tabs: { id: Sub; label: string }[] = [{ id: 'equipment', label: t('Equipment') }, { id: 'reason', label: t('Reasons') }, { id: 'area', label: t('Lines, areas and classes') }];
 
   return (
     <div className="page dash-page" data-testid="page-pareto">
@@ -132,16 +140,41 @@ export default function Pareto() {
                   </>
                 )}
               />
+              {reasonMonth && (() => {
+                const heat = rmMeasure === 'hours' ? reasonMonth.hours : reasonMonth.count;
+                const heatAll = rmMeasure === 'hours' ? reasonMonth.hoursAll : reasonMonth.countAll;
+                const f = rmMeasure === 'hours' ? fh : fint;
+                const u = rmMeasure === 'hours' ? 'h' : t('events');
+                return (
+                  <ChartCard
+                    title={t('Reasons by month')} subtitle={t('Failure events by the reason of the event; the largest 12 reasons against the months of the range')} testid="chart-heat-reason-month"
+                    summary={heat.rows.length ? t('{n} of {m} reasons shown, {t} {u} in total across {c} months.', { n: heat.rows.length, m: heatAll.rows.length, t: f(heat.total), u, c: heat.cols.length }) : t('No failure events in this range.')}
+                    controls={<Toggle value={rmMeasure} options={[{ value: 'hours', label: t('Hours') }, { value: 'count', label: t('Count') }]} onChange={setRmMeasure} label={t('Measure')} testid="heat-reason-month-measure" />}
+                    legend={[{ label: t('Darker = more'), color: ACCENT }]}
+                    table={{ head: [t('Reason'), ...heatAll.cols.map((c) => c.label), t('Total')], rows: heatAll.rows.map((r, i) => [r.label, ...heatAll.values[i]!.map((v) => (v > 0 ? f(v) : '-')), f(r.total)]) }}
+                    footnote={rmMeasure === 'hours' ? t('Hours of an event that crosses a month end are split between the two months; the same reason text under different classifications is merged.') : t('An event is counted in the month it started.')}
+                  >
+                    {() => <HeatmapTable map={heat} full={heatAll} format={f} caption={t('Reasons by month')} rowHead={t('Reason')} shortCol={(l) => l.slice(2).replace('-', '/')} />}
+                  </ChartCard>
+                );
+              })()}
             </>
           )}
           {sub === 'area' && (
             <div className="chart-grid">
+              <ParetoCard title={t('Lines by failure hours')} subtitle={t('Failure events by the line of the stopped area (area-hours)')} all={lineH} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-line-hours" onOpen={open(t('the Pareto bar'))} />
+              <ParetoCard title={t('Lines by failure frequency')} all={lineC} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-line-count" onOpen={open(t('the Pareto bar'))} />
               <ParetoCard title={t('Areas by failure hours')} subtitle={t('Failure events by stopped area (area-hours)')} all={areaH} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-area-hours" onOpen={open(t('the Pareto bar'))} />
               <ParetoCard title={t('Areas by failure frequency')} all={areaC} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-area-count" onOpen={open(t('the Pareto bar'))} />
               <ParetoCard
                 title={t('Classifications by hours')} subtitle={classAll ? t('All events, including planned (PL) and other (CIR)') : t('Failure events only')} all={cls} what={t('hours')} unit="h" fmt={fh}
                 testid="pareto-class" onOpen={open(t('the Pareto bar'))}
                 controls={<Toggle value={classAll ? 'all' : 'fail'} options={[{ value: 'all', label: t('All events') }, { value: 'fail', label: t('Failures only') }]} onChange={(v) => setClassAll(v === 'all')} label={t('Classification scope')} testid="class-scope" />}
+              />
+              <ParetoCard
+                title={t('Classifications by frequency')} subtitle={classAll ? t('All events, including planned (PL) and other (CIR)') : t('Failure events only')} all={clsCount} what={t('events')} unit={t('events')} fmt={fint}
+                testid="pareto-class-count" onOpen={open(t('the Pareto bar'))}
+                controls={<Toggle value={classAll ? 'all' : 'fail'} options={[{ value: 'all', label: t('All events') }, { value: 'fail', label: t('Failures only') }]} onChange={(v) => setClassAll(v === 'all')} label={t('Classification scope')} testid="class-count-scope" />}
               />
             </div>
           )}

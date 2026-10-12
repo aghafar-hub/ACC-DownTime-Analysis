@@ -9,7 +9,9 @@ import AreasBlock from '../dashboard/AreasBlock';
 import DashTop from '../dashboard/DashTop';
 import { dayLabel, fh, fh2, fint, monthLabel } from '../dashboard/format';
 import { reliabilityTakeaway } from '../dashboard/takeaways';
-import { reliabilityModel } from '../dashboard/models';
+import { reliabilityModel, whenFailuresStart } from '../dashboard/models';
+import HeatmapTable from '../charts/HeatmapTable';
+import { ACCENT } from '../charts/palette';
 import { NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
@@ -31,6 +33,7 @@ export default function Reliability() {
   const drill = useDrill(dash, 'Reliability');
   const [area, setArea] = useState('');
   const [yoyMetric, setYoyMetric] = useState<YoyMetric>('failureHours');
+  const [startMeasure, setStartMeasure] = useState<'count' | 'hours'>('count');
   const areaId = area && ctx?.base.areaIds.includes(area) ? area : '';
   const model = useMemo(() => (ctx ? reliabilityModel(ctx, areaId || undefined) : null), [ctx, areaId]);
   const rows = useMemo(() => (ctx ? rowsInRange(ctx.scope, ctx.win.range) : null), [ctx]);
@@ -89,6 +92,20 @@ export default function Reliability() {
   ] : [];
   const yoyLabels: Record<YoyMetric, string> = { failureHours: t('Failure hours'), failureCount: t('Failure count'), mtbf: t('MTBF (h)'), rate: t('Failures per 1,000 h') };
 
+  const startHeat = useMemo(() => (ctx ? whenFailuresStart(ctx, startMeasure) : null), [ctx, startMeasure]);
+  const startFmt = startMeasure === 'count' ? fint : fh;
+  const startSummary = (() => {
+    if (!startHeat || startHeat.total <= 0) return t('No failure events started in this range.');
+    let best = { r: 0, c: 0, v: -1 };
+    startHeat.values.forEach((row, r) => row.forEach((v, c) => { if (v > best.v) best = { r, c, v }; }));
+    const peakHour = startHeat.rows.reduce((b, r) => (r.total > b.total ? r : b), startHeat.rows[0]!);
+    const peakDay = startHeat.cols.reduce((b, c) => (c.total > b.total ? c : b), startHeat.cols[0]!);
+    const u = startMeasure === 'count' ? t('failure events') : 'h';
+    return t('{t} {u} started in the range. Busiest hour {h} ({hv}), busiest day {d} ({dv}); the single busiest slot is {d2} at {h2} ({v}).', {
+      t: startFmt(startHeat.total), u, h: peakHour.label, hv: startFmt(peakHour.total), d: t(peakDay.label), dv: startFmt(peakDay.total),
+      d2: t(startHeat.cols[best.c]!.label), h2: startHeat.rows[best.r]!.label, v: startFmt(best.v),
+    });
+  })();
   const longest = model?.longest ?? [];
   const total = ctx && model && ctx.kpis.current.status === 'ok' ? ctx.kpis.current.total : null;
   const areaKpi = areaId && ctx && ctx.kpis.current.status === 'ok' ? ctx.kpis.current.areas.find((a) => a.area_id === areaId) ?? null : null;
@@ -116,7 +133,20 @@ export default function Reliability() {
       {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}
       {model && ctx && (
         <>
-          <AreasBlock ctx={ctx} />
+          <AreasBlock ctx={ctx} onOpen={(label, ids) => drill(label, { eventIds: ids })} />
+          <section aria-labelledby="when-heading" data-testid="when-block">
+            <h2 className="dash-section-title" id="when-heading">{t('When failures start')}</h2>
+            <ChartCard
+              title={t('Failure starts by hour and weekday')} subtitle={t('Failure events chained as failures, by the plant-local time the stop began. Each cell is one hour of one weekday over the whole range.')} testid="chart-when-heat"
+              summary={startSummary}
+              controls={<Toggle value={startMeasure} options={[{ value: 'count', label: t('Count') }, { value: 'hours', label: t('Hours') }]} onChange={setStartMeasure} label={t('Measure')} testid="when-measure" />}
+              legend={[{ label: t('Darker = more'), color: ACCENT }]}
+              table={startHeat ? { head: [t('Hour'), ...startHeat.cols.map((c) => t(c.label)), t('Total')], rows: [...startHeat.rows.map((r, i) => [r.label, ...startHeat.values[i]!.map((v) => (v > 0 ? startFmt(v) : '-')), startFmt(r.total)]), [t('Total'), ...startHeat.cols.map((c) => startFmt(c.total)), startFmt(startHeat.total)]] } : undefined}
+              footnote={startMeasure === 'count' ? t('Times are plant-local as recorded; no time zone conversion. An event is counted once, at the hour and weekday its first row stopped.') : t('Times are plant-local as recorded; no time zone conversion. Hours are the whole duration of each event, placed at the hour and weekday it started.')}
+            >
+              {() => startHeat ? <HeatmapTable map={startHeat} format={startFmt} caption={t('Failure starts by hour and weekday')} rowHead={t('Hour')} shortCol={(l) => t(l)} colTotals /> : null}
+            </ChartCard>
+          </section>
           <h2 className="dash-section-title">{t('Monthly trends')}</h2>
           <div className="field" style={{ maxWidth: 280, marginBottom: 12 }}>
             <label htmlFor="rel-area">{t('Area for the monthly charts')}</label>

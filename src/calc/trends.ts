@@ -369,7 +369,7 @@ export interface Heatmap {
 export interface HeatCell { row: string; rowLabel: string; col: string; colLabel: string; value: number }
 
 /** Rows (and optionally columns) are ordered by total, descending; limits keep the largest. Ties by label. */
-export function buildHeatmap(cells: HeatCell[], opts: { maxRows?: number; maxCols?: number; fixedCols?: HeatmapAxis[] } = {}): Heatmap {
+export function buildHeatmap(cells: HeatCell[], opts: { maxRows?: number; maxCols?: number; fixedCols?: HeatmapAxis[]; fixedRows?: HeatmapAxis[] } = {}): Heatmap {
   const rowT = new Map<string, HeatmapAxis>();
   const colT = new Map<string, HeatmapAxis>();
   let total = 0;
@@ -385,7 +385,9 @@ export function buildHeatmap(cells: HeatCell[], opts: { maxRows?: number; maxCol
   }
   const order = (a: HeatmapAxis, b: HeatmapAxis): number => b.total - a.total || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0);
   const allRows = [...rowT.values()].sort(order);
-  const rows = opts.maxRows === undefined ? allRows : allRows.slice(0, opts.maxRows);
+  const rows = opts.fixedRows
+    ? opts.fixedRows.map((r) => ({ ...r, total: rowT.get(r.key)?.total ?? 0 }))
+    : opts.maxRows === undefined ? allRows : allRows.slice(0, opts.maxRows);
   let cols: HeatmapAxis[];
   let allColCount: number;
   if (opts.fixedCols) {
@@ -404,7 +406,7 @@ export function buildHeatmap(cells: HeatCell[], opts: { maxRows?: number; maxCol
     const k = ci.get(c.col);
     if (r !== undefined && k !== undefined && c.value > 0) values[r]![k]! += c.value;
   }
-  return { rows, cols, values, total, omittedRows: allRows.length - rows.length, omittedCols: allColCount - cols.length };
+  return { rows, cols, values, total, omittedRows: opts.fixedRows ? 0 : allRows.length - rows.length, omittedCols: allColCount - cols.length };
 }
 
 export interface HeatmapOptions { measure: ParetoMeasure; maxRows?: number; maxCols?: number }
@@ -414,24 +416,68 @@ export interface HeatmapOptions { measure: ParetoMeasure; maxRows?: number; maxC
  * both); counts go to the month where the event starts. Cause = head row's code; failure events only.
  */
 export function equipmentMonthHeatmap(failureEvents: ChainedEvent[], index: MasterIndex | undefined, range: DateRange, o: HeatmapOptions): Heatmap {
+  return causeMonthHeatmap(failureEvents, range, o, (c) => {
+    const code = resolvedKey(rowCode(c.head, index));
+    return { key: code, label: code };
+  });
+}
+
+/** Month cells of one event: hours split at month boundaries (clipped to the window), a count in the month the event starts. */
+function monthCells(c: ChainedEvent, row: { key: string; label: string }, w: Interval, measure: ParetoMeasure): HeatCell[] {
+  if (measure === 'count') {
+    return c.startMs >= w.fromMs && c.startMs < w.toMs ? [{ row: row.key, rowLabel: row.label, col: monthKey(c.startDate), colLabel: monthKey(c.startDate), value: 1 }] : [];
+  }
+  const cells: HeatCell[] = [];
+  for (const r of c.rows) {
+    const span = rowSpan(r);
+    const clipped = span && { fromMs: Math.max(span.fromMs, w.fromMs), toMs: Math.min(span.toMs, w.toMs) };
+    if (!clipped || clipped.toMs <= clipped.fromMs) continue;
+    for (const p of splitByMonth(clipped)) cells.push({ row: row.key, rowLabel: row.label, col: p.month, colLabel: p.month, value: (p.toMs - p.fromMs) / 3_600_000 });
+  }
+  return cells;
+}
+
+function causeMonthHeatmap(failureEvents: ChainedEvent[], range: DateRange, o: HeatmapOptions, rowOf: (c: ChainedEvent) => { key: string; label: string }): Heatmap {
   const w = rangeToInterval(range);
   const months = monthsOfRange(range);
   const cells: HeatCell[] = [];
-  for (const c of analysableChains(failureEvents)) {
-    if (!c.isFailure) continue;
-    const code = resolvedKey(rowCode(c.head, index));
-    if (o.measure === 'count') {
-      if (c.startMs >= w.fromMs && c.startMs < w.toMs) cells.push({ row: code, rowLabel: code, col: monthKey(c.startDate), colLabel: monthKey(c.startDate), value: 1 });
-      continue;
-    }
-    for (const r of c.rows) {
-      const span = rowSpan(r);
-      const clipped = span && { fromMs: Math.max(span.fromMs, w.fromMs), toMs: Math.min(span.toMs, w.toMs) };
-      if (!clipped || clipped.toMs <= clipped.fromMs) continue;
-      for (const p of splitByMonth(clipped)) cells.push({ row: code, rowLabel: code, col: p.month, colLabel: p.month, value: (p.toMs - p.fromMs) / 3_600_000 });
-    }
-  }
+  for (const c of analysableChains(failureEvents)) if (c.isFailure) cells.push(...monthCells(c, rowOf(c), w, o.measure));
   return buildHeatmap(cells, { maxRows: o.maxRows, fixedCols: months.map((m) => ({ key: m, label: m, total: 0 })) });
+}
+
+/** Reason x month (reason by match key of the head row; blank reasons are one row). Same rules as equipmentMonthHeatmap. */
+export function reasonMonthHeatmap(failureEvents: ChainedEvent[], range: DateRange, o: HeatmapOptions): Heatmap {
+  return causeMonthHeatmap(failureEvents, range, o, (c) => ({
+    key: matchKey(c.head.reason_raw), label: (c.head.reason_raw ?? '').trim().replace(/\s+/g, ' ') || '(blank)',
+  }));
+}
+
+// ---- when failures start ----
+
+export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+/**
+ * Hour of day (rows 00:00 to 23:00, all 24 always present) x weekday (columns Monday to Sunday) of the START of
+ * failure events chained as failures and started inside the window. Plant-local time, read as written (no time
+ * zone conversion). Count: 1 per event. Hours: the whole event's duration, counted where it starts.
+ */
+export function failureStartHeatmap(failureEvents: ChainedEvent[], window: DateRange, o: { measure: ParetoMeasure }): Heatmap {
+  const w = rangeToInterval(window);
+  const cells: HeatCell[] = [];
+  for (const c of analysableChains(failureEvents)) {
+    if (!c.isFailure || c.startMs < w.fromMs || c.startMs >= w.toMs) continue;
+    const d = new Date(c.startMs);
+    const hour = d.getUTCHours();
+    const wd = (d.getUTCDay() + 6) % 7;
+    cells.push({
+      row: String(hour).padStart(2, '0'), rowLabel: `${String(hour).padStart(2, '0')}:00`, col: String(wd), colLabel: WEEKDAYS[wd]!,
+      value: o.measure === 'count' ? 1 : c.durationS / 3600,
+    });
+  }
+  return buildHeatmap(cells, {
+    fixedRows: Array.from({ length: 24 }, (_, h) => ({ key: String(h).padStart(2, '0'), label: `${String(h).padStart(2, '0')}:00`, total: 0 })),
+    fixedCols: WEEKDAYS.map((l, i) => ({ key: String(i), label: l, total: 0 })),
+  });
 }
 
 /** Equipment x reason (reason by match key). */

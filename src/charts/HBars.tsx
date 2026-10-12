@@ -6,7 +6,11 @@ import { AXIS } from './palette';
 import { linear, niceTicks, axisNum } from './scale';
 
 export interface HSeg { key: string; label: string; color: string; value: number }
-export interface HRow { key: string; label: string; segments: HSeg[]; note?: string }
+export interface HRow {
+  key: string; label: string; segments: HSeg[]; note?: string;
+  /** no figure can be given (for example no failures): the row shows this text instead of a bar and a number */
+  unavailable?: string;
+}
 
 export interface HRef { value: number; label: string }
 
@@ -29,7 +33,8 @@ export default function HBars({
   const { tip, bind, hide } = useChartTip({ current: box } as React.RefObject<HTMLDivElement | null>);
   const labelW = Math.min(96, Math.max(52, Math.max(0, ...rows.map((r) => r.label.length)) * 7 + 8));
   const totals = rows.map((r) => r.segments.reduce((s, x) => s + Math.max(0, x.value), 0));
-  const valueW = Math.max(...rows.map((r, i) => (totalLabel ? totalLabel(r, totals[i]!) : format(totals[i]!)).length * 7 + 10), 40);
+  const valueText = (r: HRow, i: number): string => r.unavailable ?? (totalLabel ? totalLabel(r, totals[i]!) : format(totals[i]!));
+  const valueW = Math.max(...rows.map((r, i) => valueText(r, i).length * 7 + 10), 40);
   const m = { l: labelW, r: valueW, t: refLine ? 24 : 6, b: axisNote ? 40 : 24 };
   const rowH = 28;
   const height = m.t + rows.length * rowH + m.b;
@@ -40,15 +45,16 @@ export default function HBars({
 
   const node = (r: HRow, total: number): ReactNode => (
     <>
-      <TipRows
+      {r.unavailable ? <b className="chart-tip-title">{r.label}</b> : null}
+      {r.unavailable ? <div>{r.unavailable}</div> : <TipRows
         title={r.label}
         rows={[
           ...r.segments.map((s) => ({ swatch: <Swatch color={s.color} />, label: s.label, value: format(s.value) })),
           { label: 'Total', value: format(total) },
         ]}
-      />
+      />}
       {r.note && <div className="chart-tip-note">{r.note}</div>}
-      {onRow && <button type="button" className="btn btn-sm" onClick={(e) => { e.stopPropagation(); hide(); onRow(r); }}>{openLabel}</button>}
+      {onRow && !r.unavailable && <button type="button" className="btn btn-sm" onClick={(e) => { e.stopPropagation(); hide(); onRow(r); }}>{openLabel}</button>}
     </>
   );
 
@@ -75,8 +81,8 @@ export default function HBars({
                 acc += s.value;
                 return <rect key={s.key} x={x0} y={top + 4} width={Math.max(1, x(Math.max(acc, scale.min)) - x0)} height={rowH - 8} fill={s.color} stroke="var(--tk-card-bg)" strokeWidth="0.75" />;
               })}
-              <text x={(xMax !== undefined ? m.l + pw : x(totals[i]!)) + 6} y={top + rowH / 2 + 4} className="chart-ink">{totalLabel ? totalLabel(r, totals[i]!) : format(totals[i]!)}</text>
-              <rect className="chart-hit" x={0} y={top} width={width} height={rowH} {...bind(node(r, totals[i]!), onRow ? () => onRow(r) : undefined)} />
+              <text x={(xMax !== undefined ? m.l + pw : x(totals[i]!)) + 6} y={top + rowH / 2 + 4} className="chart-ink">{valueText(r, i)}</text>
+              <rect className="chart-hit" x={0} y={top} width={width} height={rowH} {...bind(node(r, totals[i]!), onRow && !r.unavailable ? () => onRow(r) : undefined)} />
             </g>
           );
         })}

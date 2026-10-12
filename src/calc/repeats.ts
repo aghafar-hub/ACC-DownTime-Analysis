@@ -32,6 +32,8 @@ export interface RepeatGroup {
   lastFailureDate: string;
   /** days between successive occurrences (start to start) */
   daysBetween: number[];
+  /** YYYY-MM-DD of every occurrence in the window, oldest first (the mini timeline of the investigation table) */
+  occurrenceDates: string[];
   /** recurrences = occurrences after the first of each cluster */
   recurrenceCount: number;
   previousPeriodOccurrences: number;
@@ -132,7 +134,7 @@ export function findRepeatedFailures(chains: ChainedEvent[], o: RepeatOptions): 
       areaIds: [...new Set(occ.map((i) => list[i]!.chain.area_id))].sort(),
       occurrences: occ.length, totalHours: total, avgHours: total / occ.length, maxHours: Math.max(...hours),
       lastFailureDate: formatDate(list[occ[occ.length - 1]!]!.chain.startMs),
-      daysBetween: gaps, recurrenceCount: rec.length,
+      daysBetween: gaps, occurrenceDates: occ.map((i) => list[i]!.chain.startDate), recurrenceCount: rec.length,
       previousPeriodOccurrences: prev ? list.filter((k) => k.chain.startMs >= prev.fromMs && k.chain.startMs < prev.toMs).length : 0,
       eventIds: occ.map((i) => list[i]!.chain.id),
     });

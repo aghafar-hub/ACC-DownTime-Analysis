@@ -4,9 +4,9 @@ import type { Heatmap } from '../calc';
 import { t } from '../i18n/t';
 
 export default function HeatmapTable({
-  map: limited, full, format, caption, rowHead, shortCol,
+  map: limited, full, format, caption, rowHead, shortCol, colTotals,
 }: {
-  map: Heatmap; /** the same map with every row; enables the Show all rows button */ full?: Heatmap; format: (n: number) => string; caption: string; rowHead: string; shortCol?: (label: string) => string;
+  map: Heatmap; /** the same map with every row; enables the Show all rows button */ full?: Heatmap; format: (n: number) => string; caption: string; rowHead: string; shortCol?: (label: string) => string; /** add a bottom row with the total of every column */ colTotals?: boolean;
 }) {
   const [all, setAll] = useState(false);
   const canExpand = !!full && full.rows.length > limited.rows.length;
@@ -40,6 +40,15 @@ export default function HeatmapTable({
             </tr>
           ))}
         </tbody>
+        {colTotals && (
+          <tfoot>
+            <tr>
+              <th scope="row" className="heat-row heat-total">{t('Total')}</th>
+              {map.cols.map((c) => <td key={c.key} className="heat-cell heat-total" data-testid="heat-col-total">{format(c.total)}</td>)}
+              <td className="heat-cell heat-total" data-testid="heat-grand-total">{format(map.total)}</td>
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
       {(map.omittedRows > 0 || map.omittedCols > 0) && (

@@ -1,0 +1,174 @@
+// Reliability by area: ranked MTBF and MTTR bars, the MTBF-against-MTTR quadrant, availability by area and month,
+// and the failure rate per 1,000 operating hours. Shown in the Areas block under the "By area" table.
+// Every figure comes from the same per-area KPIs as that table; nothing is averaged across areas.
+import { useMemo } from 'react';
+import type { AreaRank, Metric, Quadrant } from '../calc';
+import { ChartCard } from '../charts/ChartKit';
+import HBars, { type HRow } from '../charts/HBars';
+import QuadrantChart from '../charts/QuadrantChart';
+import ScaleHeatmap, { type ScaleRow } from '../charts/ScaleHeatmap';
+import { t } from '../i18n/t';
+import { dayLabel, fh, fh2, fint, fpct, monthLabel } from './format';
+import { areaReliabilityModel } from './models';
+import type { DashCtx } from './scope';
+
+const BAR = 'var(--tk-accent)';
+const AVAIL_MIN = 90;
+const AVAIL_MAX = 100;
+
+const quadrantWords = (q: Quadrant): string => {
+  switch (q) {
+    case 'worst': return t('Low MTBF, high MTTR (worst)');
+    case 'frequent_quick': return t('Low MTBF, low MTTR');
+    case 'rare_long': return t('High MTBF, high MTTR');
+    case 'best': return t('High MTBF, low MTTR (best)');
+    case 'on_median': return t('On a median line');
+  }
+};
+
+export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (label: string, eventIds: string[]) => void }) {
+  const m = useMemo(() => areaReliabilityModel(ctx), [ctx]);
+  if (!m) return null;
+  const basis = m.basis;
+  const none = (r: AreaRank): string | undefined => (r.value !== null ? undefined : r.code === 'no_failures' ? t('no failures') : t('unavailable'));
+  const open = (r: { key: string; label: string }) => onOpen?.(`${t('the bar of area')} ${r.label}`, m.failureIds.get(r.key) ?? []);
+  const rowsOf = (ranks: AreaRank[], label: string): HRow[] => ranks.map((r) => ({
+    key: r.area_id, label: r.area_id, unavailable: none(r), note: r.reason ?? undefined,
+    segments: r.value === null ? [] : [{ key: 'v', label, color: BAR, value: r.value }],
+  }));
+  const tableOf = (ranks: AreaRank[], f: (n: number) => string) => ranks.map((r) => [r.area_id, r.value === null ? none(r)! : f(r.value)]);
+  const ranked = (ranks: AreaRank[]) => ranks.filter((r) => r.value !== null);
+  const noFail = (ranks: AreaRank[]) => ranks.length - ranked(ranks).length;
+
+  // (d) MTBF and MTTR
+  const mtbfRows = rowsOf(m.mtbf, t('MTBF'));
+  const mttrRows = rowsOf(m.mttr, t('MTTR'));
+  const barSummary = (ranks: AreaRank[], what: string): string => {
+    const r = ranked(ranks);
+    return r.length
+      ? `${t('{a} has the {w}: {v} h.', { a: r[0]!.area_id, w: what, v: fh2(r[0]!.value!) })} ${t('{n} of {m} areas have failures.', { n: r.length, m: ranks.length })}${noFail(ranks) ? ` ${t('{k} areas with no failures are listed last.', { k: noFail(ranks) })}` : ''}`
+      : t('No area has failures in this range, so there is nothing to rank.');
+  };
+
+  // (e) quadrant
+  const q = m.quadrant;
+  const worstLabel = t('Worst: low MTBF, high MTTR');
+  const quadSummary = q.points.length === 0
+    ? t('No area has both an MTBF and an MTTR in this range.')
+    : `${t('{n} areas plotted.', { n: q.points.length })} ${q.medianMtbf !== null && q.medianMttr !== null
+      ? t('Median MTBF {a} h, median MTTR {b} h.', { a: fh(q.medianMtbf), b: fh2(q.medianMttr) })
+      : t('At least two areas are needed for the median lines.')} ${q.medianMtbf !== null ? (q.worst.length ? t('Worst quadrant (low MTBF, high MTTR): {a}.', { a: q.worst.join(', ') }) : t('No area is in the worst quadrant (low MTBF, high MTTR).')) : ''}`;
+
+  // (f) availability by area and month
+  const av = m.monthAvailability;
+  const fmtAv = (x: Metric) => (x.available ? fpct(x.value) : '-');
+  const partialAny = av.months.some((x) => x.partial);
+  const colLabel = (i: number): string => `${monthLabel(av.months[i]!.month)}${av.months[i]!.partial ? '*' : ''}`;
+  const avRows: ScaleRow[] = av.areas.map((a) => ({
+    key: a.area_id, label: a.area_id,
+    cells: a.values.map((v, i) => (v.available
+      ? { text: fpct(v.value), value: v.value * 100, title: `${a.area_id}, ${monthLabel(av.months[i]!.month)}: ${fpct(v.value)}${av.months[i]!.partial ? ` (${t('partial month')})` : ''}` }
+      : { text: '–', value: null, title: `${a.area_id}, ${monthLabel(av.months[i]!.month)}: ${t('no data')}` })),
+    summary: (() => {
+      const o = m.overallAvailability.get(a.area_id);
+      return o && o.available ? { text: fpct(o.value), value: o.value * 100, title: `${a.area_id}: ${fpct(o.value)}` } : { text: '–', value: null, title: `${a.area_id}: ${t('unavailable')}` };
+    })(),
+  }));
+  let lowest: { area: string; month: string; v: number } | null = null;
+  let below = 0;
+  let gaps = 0;
+  for (const a of av.areas) {
+    a.values.forEach((v, i) => {
+      if (!v.available) { gaps++; return; }
+      if (v.value * 100 < AVAIL_MIN) below++;
+      if (!lowest || v.value < lowest.v) lowest = { area: a.area_id, month: av.months[i]!.month, v: v.value };
+    });
+  }
+  const lo = lowest as { area: string; month: string; v: number } | null;
+  const avSummary = lo
+    ? `${t('Lowest: {a} in {m}, {v}.', { a: lo.area, m: monthLabel(lo.month), v: fpct(lo.v) })} ${t('{n} area-months are below {x}%.', { n: below, x: AVAIL_MIN })}${gaps ? ` ${t('{n} area-months have no data (gaps).', { n: gaps })}` : ''}`
+    : t('No availability can be calculated for these areas.');
+
+  // (g) failure rate
+  const rateRows = rowsOf(m.rate.rows, t('Failures per 1,000 h'));
+  const overall = m.rate.overall.available ? m.rate.overall.value : null;
+  const rateMax = Math.max(0, ...ranked(m.rate.rows).map((r) => r.value!), overall ?? 0);
+  const topRate = ranked(m.rate.rows)[0];
+  const rateSummary = topRate
+    ? `${t('{a} has the highest rate: {v} failures per 1,000 operating hours.', { a: topRate.area_id, v: fh2(topRate.value!) })}${overall !== null ? ` ${t('All areas together: {v}.', { v: fh2(overall) })}` : ''}`
+    : t('No failure rate can be calculated for these areas.');
+
+  return (
+    <>
+      <div className="chart-grid chart-grid--even" data-testid="area-rank-grid">
+        <ChartCard
+          title={t('MTBF by area')} subtitle={t('Operating hours per failure. Lowest first: the area that fails most often relative to its running time is on top.')} testid="chart-area-mtbf"
+          summary={barSummary(m.mtbf, t('lowest MTBF'))} legend={[{ label: t('MTBF (h)'), color: BAR }]}
+          table={{ head: [t('Area'), t('MTBF h')], rows: tableOf(m.mtbf, fh) }}
+        >
+          {(w) => <HBars rows={mtbfRows} width={w} format={(n) => `${fh(n)} h`} ariaLabel={t('Bars of MTBF by area, lowest first. {s}', { s: barSummary(m.mtbf, t('lowest MTBF')) })} openLabel={t('Open events')} onRow={open} />}
+        </ChartCard>
+        <ChartCard
+          title={t('MTTR by area')} subtitle={t('Mean restoration time of failure events. Highest first: the slowest area to recover is on top.')} testid="chart-area-mttr"
+          summary={barSummary(m.mttr, t('highest MTTR'))} legend={[{ label: t('MTTR (h)'), color: BAR }]}
+          table={{ head: [t('Area'), t('MTTR h')], rows: tableOf(m.mttr, fh2) }}
+        >
+          {(w) => <HBars rows={mttrRows} width={w} format={(n) => `${fh2(n)} h`} ariaLabel={t('Bars of MTTR by area, highest first. {s}', { s: barSummary(m.mttr, t('highest MTTR')) })} openLabel={t('Open events')} onRow={open} />}
+        </ChartCard>
+      </div>
+
+      <ChartCard
+        title={t('MTBF against MTTR by area')} subtitle={t('One point per area. The dashed lines are the medians of the areas shown and split the plot into four quadrants.')} testid="chart-area-quadrant"
+        summary={quadSummary}
+        legend={[{ label: t('Area'), color: BAR, symbol: 'circle' }, { label: t('Worst quadrant (low MTBF, high MTTR)'), color: 'var(--tk-danger)', symbol: 'diamond' }, { label: t('Median'), color: 'var(--tk-text-primary)', symbol: 'dash' }]}
+        table={{ head: [t('Area'), t('MTBF h'), t('MTTR h'), t('Quadrant')], rows: q.points.map((p) => [p.area_id, fh(p.mtbf), fh2(p.mttr), quadrantWords(p.quadrant)]) }}
+        footnote={q.excluded.length ? t('Not plotted (no failures, so MTBF and MTTR are not defined): {a}.', { a: q.excluded.map((x) => x.area_id).join(', ') }) : undefined}
+      >
+        {(w) => (
+          <QuadrantChart
+            width={w} height={w < 480 ? 340 : 380} xTitle={t('MTBF (hours)')} yTitle={t('MTTR (hours)')}
+            medianX={q.medianMtbf} medianY={q.medianMttr}
+            medianXLabel={q.medianMtbf !== null ? t('median {v} h', { v: fh(q.medianMtbf) }) : undefined} medianYLabel={q.medianMttr !== null ? t('median {v} h', { v: fh2(q.medianMttr) }) : undefined}
+            worstLabel={worstLabel} ariaLabel={`${t('Scatter chart of MTBF against MTTR per area with median lines.')} ${quadSummary}`}
+            points={q.points.map((p) => ({
+              key: p.area_id, label: p.area_id, x: p.mtbf, y: p.mttr, worst: p.quadrant === 'worst',
+              details: [{ label: t('MTBF'), value: `${fh(p.mtbf)} h` }, { label: t('MTTR'), value: `${fh2(p.mttr)} h` }, { label: t('Failure events'), value: fint(p.failureEvents) }, { label: t('Quadrant'), value: quadrantWords(p.quadrant) }],
+            }))}
+            openLabel={t('Open events')} onPoint={onOpen ? (p) => onOpen(`${t('the point of area')} ${p.label}`, m.failureIds.get(p.key) ?? []) : undefined}
+          />
+        )}
+      </ChartCard>
+
+      <ChartCard
+        title={t('Availability by area and month (basis {b})', { b: basis })} subtitle={t('Each cell is the availability of one area in one month. Fixed scale {a} to {b} %; the last column is the whole range.', { a: AVAIL_MIN, b: AVAIL_MAX })} testid="chart-area-month-heat"
+        summary={avSummary}
+        table={{ head: [t('Area'), ...av.months.map((_x, i) => colLabel(i)), t('Range')], rows: av.areas.map((a) => [a.area_id, ...a.values.map(fmtAv), fmtAv(m.overallAvailability.get(a.area_id) ?? { available: false, code: 'no_data', reason: '' })]) }}
+        footnote={partialAny ? t('* Partial month: data only up to {d}.', { d: dayLabel(av.months.find((x) => x.partial)?.window?.to ?? '') }) : undefined}
+      >
+        {() => (
+          <ScaleHeatmap
+            cols={av.months.map((x, i) => ({ key: x.month, label: colLabel(i), title: x.partial ? `${monthLabel(x.month)} (${t('partial month')})` : monthLabel(x.month) }))}
+            rows={avRows} min={AVAIL_MIN} max={AVAIL_MAX} caption={t('Availability by area and month')} rowHead={t('Area')} summaryHead={t('Range')}
+            legendFormat={(n) => `${n}%`} below={t('under {x}% (strongest shade)', { x: AVAIL_MIN })}
+          />
+        )}
+      </ChartCard>
+
+      <ChartCard
+        title={t('Failures per 1,000 operating hours by area')} subtitle={t('Failure rate adjusted for running time, highest first. The dashed line is all areas together (total failures over total operating hours, not an average of the bars).')} testid="chart-area-rate"
+        summary={rateSummary}
+        legend={[{ label: t('Area'), color: BAR }, ...(overall !== null ? [{ label: t('All areas together'), color: 'var(--tk-text-primary)', symbol: 'dash' as const }] : [])]}
+        table={{ head: [t('Area'), t('Failures per 1,000 h')], rows: [...tableOf(m.rate.rows, fh2), ...(overall !== null ? [[t('All areas together'), fh2(overall)]] : [])] }}
+      >
+        {(w) => (
+          rateMax > 0 ? (
+            <HBars
+              rows={rateRows} width={w} format={(n) => fh2(n)} xMax={rateMax * 1.1} ariaLabel={t('Bars of failures per 1,000 operating hours by area. {s}', { s: rateSummary })}
+              refLine={overall !== null ? { value: overall, label: `${t('All areas')} ${fh2(overall)}` } : undefined} openLabel={t('Open events')} onRow={open}
+            />
+          ) : <p className="muted">{t('No failure rate can be calculated for these areas.')}</p>
+        )}
+      </ChartCard>
+    </>
+  );
+}

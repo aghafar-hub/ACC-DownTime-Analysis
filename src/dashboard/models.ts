@@ -1,10 +1,10 @@
 // Page adapters: pick the calc function for each dashboard element and hand it the scope. No arithmetic of
 // their own beyond joining calc outputs (tests compare every headline number with a direct calc call).
 import {
-  areaPareto, availabilityByArea, buildPareto, classificationPareto, dailySeries, daysInRange, monthlyHoursByClassification, compareValues, avail, durationHistogram, equipmentMonthHeatmap,
+  areaMonthAvailability, areaPareto, availabilityByArea, failureStartHeatmap, linePareto, mtbfMttrQuadrants, rankAreas, reasonMonthHeatmap, buildPareto, classificationPareto, dailySeries, daysInRange, monthlyHoursByClassification, compareValues, avail, durationHistogram, equipmentMonthHeatmap,
   equipmentPareto, equipmentReasonHeatmap, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
   reasonParetoForEquipment, resolvedKey, rollingFailureCounts, rowCode, yearOverYear,
-  type AreaAvailability, type AreaKpis, type ClassMonthPoint, type DayPoint, type Metric, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
+  type AreaAvailability, type AreaKpis, type AreaMonthAvailability, type AreaRank, type QuadrantResult, type ClassMonthPoint, type DayPoint, type Metric, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
   type KpiChanges, type KpiOk, type LongEvent, type MonthPoint, type ParetoBar, type ParetoMeasure, type ParetoResult, type RepeatResult,
   type RollingPoint, type TopN, type YoyMonth,
 } from '../calc';
@@ -216,6 +216,36 @@ export function classModel(ctx: DashCtx, measure: ParetoMeasure, failureOnly: bo
   return window ? classificationPareto(ctx.scope.chains, { window, measure, failureOnly }) : null;
 }
 
+/** Failure Pareto by production line (the line of the stopped area in the master data). */
+export function lineModel(ctx: DashCtx, measure: ParetoMeasure): ParetoResult | null {
+  const window = ctx.win.effective;
+  if (!window) return null;
+  const index = ctx.master.index;
+  return linePareto(ctx.scope.failureChains, {
+    window, measure, lineOf: (a) => index.areaById.get(a)?.line_id ?? '', lineLabel: (l) => ctx.master.lineNames.get(l) ?? l,
+  });
+}
+
+export interface ReasonMonthModel {
+  /** the largest 12 reasons */
+  hours: Heatmap; count: Heatmap;
+  /** every reason, for the Show all rows button */
+  hoursAll: Heatmap; countAll: Heatmap;
+}
+
+/** Reasons x months of the effective window; same event rules as the equipment-by-month heat map. */
+export function reasonMonthModel(ctx: DashCtx): ReasonMonthModel | null {
+  const window = ctx.win.effective;
+  if (!window) return null;
+  const chains = ctx.scope.failureChains;
+  return {
+    hours: reasonMonthHeatmap(chains, window, { measure: 'hours', maxRows: 12 }),
+    count: reasonMonthHeatmap(chains, window, { measure: 'count', maxRows: 12 }),
+    hoursAll: reasonMonthHeatmap(chains, window, { measure: 'hours' }),
+    countAll: reasonMonthHeatmap(chains, window, { measure: 'count' }),
+  };
+}
+
 // ---------------------------------------------------------------- repeats
 
 export interface ScatterPoint { code: string; count: number; avgHours: number; totalHours: number; eventIds: string[] }
@@ -300,6 +330,53 @@ export function reliabilityModel(ctx: DashCtx, areaId?: string): ReliabilityMode
     yoyYear,
     longest: longestEvents(ctx.scope.chains, 10, { failureOnly: true, window }),
   };
+}
+
+// ---------------------------------------------------------------- reliability by area
+
+export interface AreaReliabilityModel {
+  basis: 'A' | 'B' | 'C';
+  /** MTBF, lowest (worst) first; areas without failures last */
+  mtbf: AreaRank[];
+  /** MTTR, highest (worst) first; areas without failures last */
+  mttr: AreaRank[];
+  quadrant: QuadrantResult;
+  /** failures per 1,000 operating hours, highest first, and the all-area figure (area-hours aggregate) */
+  rate: { rows: AreaRank[]; overall: Metric };
+  monthAvailability: AreaMonthAvailability;
+  /** whole-range availability per area (the By area table value) */
+  overallAvailability: Map<string, Metric>;
+  /** failure events that started in the window, per area (click-through) */
+  failureIds: Map<string, string[]>;
+}
+
+/** Everything the Areas block adds below the By area table; all figures come from the same AreaKpis as that table. */
+export function areaReliabilityModel(ctx: DashCtx): AreaReliabilityModel | null {
+  const k = ctx.kpis.current;
+  const window = ctx.win.effective;
+  if (k.status !== 'ok' || !window) return null;
+  const failureIds = new Map<string, string[]>(k.areas.map((a) => [a.area_id, []]));
+  const w0 = window.from;
+  const w1 = window.to;
+  for (const c of ctx.scope.failureChains) if (c.startDate >= w0 && c.startDate <= w1) failureIds.get(c.area_id)?.push(c.id);
+  return {
+    basis: ctx.master.settings.availabilityBasis,
+    mtbf: rankAreas(k.areas, (a) => a.mtbfHours, 'asc'),
+    mttr: rankAreas(k.areas, (a) => a.mttrHours, 'desc'),
+    quadrant: mtbfMttrQuadrants(k.areas),
+    rate: { rows: rankAreas(k.areas, (a) => a.failureRatePer1000h, 'desc'), overall: k.total.failureRatePer1000h },
+    monthAvailability: areaMonthAvailability({
+      rows: ctx.scope.kpiRows, chains: ctx.scope.chains, range: ctx.win.range, dataRange: ctx.coverage, areaIds: ctx.base.areaIds, settings: ctx.master.settings,
+    }),
+    overallAvailability: new Map(k.areas.map((a) => [a.area_id, a.availabilityHeadline])),
+    failureIds,
+  };
+}
+
+/** Hour of day x weekday of failure-event starts (count or hours of the whole event), for the effective window. */
+export function whenFailuresStart(ctx: DashCtx, measure: ParetoMeasure): Heatmap | null {
+  const window = ctx.win.effective;
+  return window ? failureStartHeatmap(ctx.scope.failureChains, window, { measure }) : null;
 }
 
 export type { ParetoBar };

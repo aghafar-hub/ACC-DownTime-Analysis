@@ -9,9 +9,10 @@ import { useTheme } from '../theme/ThemeContext';
 import { MultiPick } from './FilterBar';
 import { dayLabel, fh, fh2, fint, fpct, metricText, monthLabel } from './format';
 import { monthly } from './models';
+import AreaReliabilityCharts from './AreaReliabilityCharts';
 import type { DashCtx } from './scope';
 
-export default function AreasBlock({ ctx }: { ctx: DashCtx }) {
+export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (label: string, eventIds: string[]) => void }) {
   const { dark } = useTheme();
   const kpi = ctx.kpis.current.status === 'ok' ? ctx.kpis.current : null;
   const perArea: AreaKpis[] = kpi?.areas ?? [];
@@ -86,6 +87,7 @@ export default function AreasBlock({ ctx }: { ctx: DashCtx }) {
           </div>
         </section>
       )}
+      {kpi && <AreaReliabilityCharts ctx={ctx} onOpen={onOpen} />}
     </section>
   );
 }

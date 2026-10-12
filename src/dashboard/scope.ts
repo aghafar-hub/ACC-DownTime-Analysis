@@ -11,11 +11,13 @@ import { areasInScope, compareKind, eventLevelFilter, hasEventLevelFilter, type 
 
 export interface Master {
   index: MasterIndex;
+  /** display name of each line (line_id -> name) */
+  lineNames: Map<string, string>;
   settings: CalcSettings;
 }
 
 export function buildMaster(startup: Startup): Master {
-  return { index: buildIndex(startup), settings: parseSettings(startup.settings) };
+  return { index: buildIndex(startup), lineNames: new Map(startup.lines.map((l) => [l.line_id, l.name])), settings: parseSettings(startup.settings) };
 }
 
 /** Stage 1: rows and chains of the chosen lines / areas, whole (continuation rows kept). */
