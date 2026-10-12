@@ -148,13 +148,14 @@ export default function Repeats() {
             {groups.length === 0 ? <p className="muted" data-testid="repeat-none">{t('No repeated failures in this range.')}</p> : !mobile ? (
               <div className="table-wrap">
                 <table className="data-table" data-testid="repeat-table">
-                  <thead><tr>{COLS.map(th)}<th scope="col">{t('Days between')}</th><th scope="col">{t('Timeline')}</th></tr></thead>
+                  <thead><tr>{COLS.slice(0, 3).map(th)}<th scope="col">{t('Timeline')}</th>{COLS.slice(3).map(th)}<th scope="col">{t('Days between')}</th></tr></thead>
                   <tbody>
                     {visible.map((g) => (
                       <tr key={g.key} className={g.equipmentId === selCode ? 'tr-selected' : undefined} data-testid="repeat-row" data-equipment={g.equipmentId}>
                         <td className="nowrap"><button type="button" className="row-btn mono" onClick={() => select(g.equipmentId)} aria-label={t('Show timeline of {c}', { c: g.equipmentId })} data-testid="repeat-open">{g.equipmentId}</button></td>
                         <td>{g.areaIds.join(', ')}</td>
                         <td>{g.reasonLabel}</td>
+                        <td className="occ-cell">{win && <OccurrenceStrip dates={g.occurrenceDates} from={win.from} to={win.to} label={`${g.equipmentId}, ${g.reasonLabel}`} />}</td>
                         <td className="num">{fint(g.occurrences)}</td>
                         <td className="num">{fh(g.totalHours)}</td>
                         <td className="num">{fh2(g.avgHours)}</td>
@@ -162,7 +163,6 @@ export default function Repeats() {
                         <td className="nowrap mono">{g.lastFailureDate}</td>
                         <td className="num">{fint(g.previousPeriodOccurrences)}</td>
                         <td className="mono nowrap">{gaps(g)}</td>
-                        <td className="occ-cell">{win && <OccurrenceStrip dates={g.occurrenceDates} from={win.from} to={win.to} label={`${g.equipmentId}, ${g.reasonLabel}`} />}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -550,3 +550,9 @@
   align-items: center;
   gap: 8px;
 }
+@media (max-width: 860px) {
+  .row-btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

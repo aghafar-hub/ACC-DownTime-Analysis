@@ -122,7 +122,7 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
         summary={quadSummary}
         legend={[{ label: t('Area'), color: BAR, symbol: 'circle' }, { label: t('Worst quadrant (low MTBF, high MTTR)'), color: 'var(--tk-danger)', symbol: 'diamond' }, { label: t('Median'), color: 'var(--tk-text-primary)', symbol: 'dash' }]}
         table={{ head: [t('Area'), t('MTBF h'), t('MTTR h'), t('Quadrant')], rows: q.points.map((p) => [p.area_id, fh(p.mtbf), fh2(p.mttr), quadrantWords(p.quadrant)]) }}
-        footnote={q.excluded.length ? t('Not plotted (no failures, so MTBF and MTTR are not defined): {a}.', { a: q.excluded.map((x) => x.area_id).join(', ') }) : undefined}
+        footnote={`${t('The axes start near the smallest value, not at zero.')}${q.excluded.length ? ` ${t('Not plotted (no failures, so MTBF and MTTR are not defined): {a}.', { a: q.excluded.map((x) => x.area_id).join(', ') })}` : ''}`}
       >
         {(w) => (
           <QuadrantChart

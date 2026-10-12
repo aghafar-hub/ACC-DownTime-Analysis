@@ -26,8 +26,17 @@ export default function QuadrantChart({
   const m = { l: 48, r: 14, t: 12, b: 44 };
   const pw = Math.max(60, width - m.l - m.r);
   const ph = height - m.t - m.b;
-  const xs = niceTicks(0, Math.max(...points.map((p) => p.x), medianX ?? 0) * 1.05, 5);
-  const ys = niceTicks(0, Math.max(...points.map((p) => p.y), medianY ?? 0) * 1.05, 5);
+  // the axes start just below the smallest value (a scatter needs no zero baseline) so a cluster is not squeezed
+  const span = (vals: number[]): [number, number] => {
+    const lo = Math.min(...vals);
+    const hi = Math.max(...vals);
+    const pad = (hi - lo) * 0.08 || hi * 0.1 || 1;
+    return [Math.max(0, lo - pad), hi + pad];
+  };
+  const [x0, x1] = span([...points.map((p) => p.x), ...(medianX !== null ? [medianX] : [])]);
+  const [y0, y1] = span([...points.map((p) => p.y), ...(medianY !== null ? [medianY] : [])]);
+  const xs = niceTicks(x0, x1, 5);
+  const ys = niceTicks(y0, y1, 5);
   const x = linear(xs.min, xs.max, m.l, m.l + pw);
   const y = linear(ys.min, ys.max, m.t + ph, m.t);
   const R = 6;

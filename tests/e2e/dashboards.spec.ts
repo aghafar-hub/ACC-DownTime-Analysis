@@ -572,11 +572,11 @@ test.describe('Phase 4: more charts (desktop)', () => {
     for (let i = 0; i < Math.min(n, 5); i++) {
       const row = rows.nth(i);
       const strip = row.getByTestId('occ-strip');
-      const occurrences = num(await row.locator('td').nth(3).textContent());
+      const occurrences = num(await row.locator('td').nth(4).textContent());
       await expect(strip).toHaveAttribute('aria-label', /\d+ occurrences, first \d{4}-\d{2}-\d{2}, last \d{4}-\d{2}-\d{2}/);
       expect(Number(await strip.getAttribute('data-count'))).toBe(occurrences);
       expect(await strip.locator('circle').count()).toBe(occurrences);
-      const last = await row.locator('td').nth(7).textContent();
+      const last = await row.locator('td').nth(8).textContent();
       expect(await strip.getAttribute('aria-label')).toContain(`last ${last}`);
     }
     // sorting keeps the strips with their rows
