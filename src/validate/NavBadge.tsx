@@ -20,3 +20,17 @@ export default function ValidateBadge({ testid = 'validate-badge' }: { testid?: 
     </span>
   );
 }
+
+/** The Validate count as a small danger-coloured dot with the number, for the bottom bar's More slot. Nothing when there is nothing to check. */
+export function MoreCountBadge({ testid = 'more-badge' }: { testid?: string }) {
+  const v = useValidationOptional();
+  if (!v || !v.ready) return null;
+  const { total } = v.list.summary;
+  if (total === 0) return null;
+  const label = tn(total, '{n} record to review', '{n} records to review');
+  return (
+    <span className="bottom-nav-badge" role="img" aria-label={label} data-testid={testid}>
+      {total > 99 ? '99+' : num(total)}
+    </span>
+  );
+}

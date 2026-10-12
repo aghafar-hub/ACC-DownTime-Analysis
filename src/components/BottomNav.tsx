@@ -3,15 +3,18 @@ import { tapHaptic } from '../haptics';
 import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
-import { BOTTOM_BAR_ORDER, isSettingsPath, pageShort } from '../navigation';
+import { bottomBarPages, isSettingsPath, pageShort } from '../navigation';
+import { MoreCountBadge } from '../validate/NavBadge';
 import './BottomNav.css';
 
-// The phone's bottom bar (only drawn at 860 px and below): up to three of
-// Overview, Events, Upload (or Pareto), then More, which opens the full menu.
+// The phone's bottom bar (only drawn at 860 px and below): three pages (Overview, Pareto, Events;
+// the next visible ones stand in for any the person cannot see), then More, which opens the full menu.
 export default function BottomNav({ onOpenMore, moreOpen }: { onOpenMore: () => void; moreOpen: boolean }) {
   const pages = useVisiblePages();
   const location = useLocation();
-  const slots = BOTTOM_BAR_ORDER.map((id) => pages.find((p) => p.id === id)).filter((p): p is NonNullable<typeof p> => !!p).slice(0, 3);
+  const slots = bottomBarPages(pages);
+  // Validate lives in More unless it has a slot of its own: its count shows on More then
+  const validateInMore = pages.some((p) => p.id === 'validate') && !slots.some((p) => p.id === 'validate');
   // the gear in the header owns /settings, so no bottom-bar item is lit there
   const onSlot = slots.some((p) => location.pathname.startsWith(p.path)) || isSettingsPath(location.pathname);
   return (
@@ -35,7 +38,7 @@ export default function BottomNav({ onOpenMore, moreOpen }: { onOpenMore: () => 
         onClick={() => { tapHaptic(); onOpenMore(); }}
         data-testid="bottom-more"
       >
-        <span className="bottom-nav-icon"><Icon name="menu" size={22} /></span>
+        <span className="bottom-nav-icon"><Icon name="menu" size={22} />{validateInMore && <MoreCountBadge />}</span>
         <span>{t('More')}</span>
       </button>
     </nav>

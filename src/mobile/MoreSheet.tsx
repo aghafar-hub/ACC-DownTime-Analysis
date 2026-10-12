@@ -5,7 +5,7 @@ import { tapHaptic } from '../haptics';
 import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
-import { pageLabel, ROLE_LABELS } from '../navigation';
+import { pageLabel, pagesInSection, ROLE_LABELS, SECTIONS, sectionLabel } from '../navigation';
 import ValidateBadge from '../validate/NavBadge';
 import { useBackClose } from './useBackClose';
 import './mobile.css';
@@ -43,8 +43,7 @@ export default function MoreSheet({ open, onClose }: { open: boolean; onClose: (
       <small>{levelOf(p.access) === 'Edit' ? t('Can edit') : t('View only')}</small>
     </button>
   );
-  const dash = hits.filter((p) => p.group === 'dashboard');
-  const admin = hits.filter((p) => p.group === 'admin');
+  const sections = SECTIONS.map((sec) => ({ sec, items: pagesInSection(hits, sec.id) })).filter((g) => g.items.length > 0);
 
   return (
     <>
@@ -56,18 +55,12 @@ export default function MoreSheet({ open, onClose }: { open: boolean; onClose: (
             <Icon name="search" size={16} />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('Search pages')} aria-label={t('Search pages')} data-testid="more-search" />
           </label>
-          {dash.length > 0 && (
-            <section className="more-group">
-              <p className="more-group-title">{t('Dashboards')}</p>
-              <div className="more-tiles">{dash.map(tile)}</div>
+          {sections.map(({ sec, items }) => (
+            <section key={sec.id} className="more-group" aria-labelledby={`more-sec-${sec.id}`} data-section={sec.id}>
+              <h2 className="more-group-title" id={`more-sec-${sec.id}`} data-testid={`more-section-${sec.id}`}>{sectionLabel(sec.id)}</h2>
+              <div className="more-tiles">{items.map(tile)}</div>
             </section>
-          )}
-          {admin.length > 0 && (
-            <section className="more-group">
-              <p className="more-group-title">{t('Data and administration')}</p>
-              <div className="more-tiles">{admin.map(tile)}</div>
-            </section>
-          )}
+          ))}
           {hits.length === 0 && <p className="more-muted more-empty">{t('Nothing found.')}</p>}
 
           <div className="more-account">

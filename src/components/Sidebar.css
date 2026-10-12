@@ -371,11 +371,53 @@
   }
 }
 
-/* A thin rule between the dashboard pages and the admin pages. */
-.sidebar-group-start {
+/* Sections (Analyze, Data, Setup): a heading while the rail is open, a thin rule while it is narrow. */
+.sidebar-section-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.sidebar-section + .sidebar-section {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, var(--shell-sidebar-text-secondary) 28%, transparent);
+}
+.sidebar-section-title {
+  margin: 0;
+  padding: 0 1.25rem;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  white-space: nowrap;
+  font: 700 12px/1 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--shell-sidebar-text-secondary);
+  transition: opacity 0.1s ease, max-height 0.16s ease, padding 0.16s ease;
+}
+.sidebar-rail:hover .sidebar-section-title,
+.sidebar-rail:focus-within .sidebar-section-title {
+  max-height: 32px;
+  padding: 6px 1.25rem 6px;
+  opacity: 1;
+}
+.sidebar-rail:hover .sidebar-section + .sidebar-section,
+.sidebar-rail:focus-within .sidebar-section + .sidebar-section {
+  border-top-color: transparent;
+  margin-top: 4px;
+  padding-top: 0;
+}
+@media (hover: none) and (min-width: 861px) {
+  .sidebar-section-title {
+    max-height: 32px;
+    padding: 6px 1.25rem 6px;
+    opacity: 1;
+  }
+  .sidebar-section + .sidebar-section {
+    border-top-color: transparent;
+    margin-top: 4px;
+    padding-top: 0;
+  }
 }
 
 /* Validate: the count sits on the icon while the rail is narrow, and at the end of the row when it is open */

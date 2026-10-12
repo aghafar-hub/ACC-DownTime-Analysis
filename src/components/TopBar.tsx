@@ -4,11 +4,11 @@ import { useAuth } from '../auth/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
-import { isSettingsPath, pageForPath, pageLabel, ROLE_LABELS, settingsSubFromPath, settingsSubLabel } from '../navigation';
+import { isSettingsPath, pageForPath, pageLabel, ROLE_LABELS, sectionLabel, settingsSubFromPath, settingsSubLabel } from '../navigation';
 import { useOnlineStatus } from '../useOnlineStatus';
 import './TopBar.css';
 
-// Top bar (56 px): breadcrumb "ACC Downtime > Page", online dot, a search
+// Top bar (56 px): breadcrumb "ACC Downtime > Section > Page", online dot, a search
 // shortcut to the Event Explorer, the Settings button (gear, every page, every
 // role) and the avatar menu.
 export default function TopBar() {
@@ -52,6 +52,12 @@ export default function TopBar() {
         ) : (
           <>
             <span className="shell-topbar-module">{t('ACC Downtime')}</span>
+            {page && !onSettings && (
+              <>
+                <span className="shell-topbar-sep" aria-hidden="true">›</span>
+                <span className="shell-topbar-page" data-testid="breadcrumb-section">{sectionLabel(page.group)}</span>
+              </>
+            )}
             {pageName && (
               <>
                 <span className="shell-topbar-sep" aria-hidden="true">›</span>

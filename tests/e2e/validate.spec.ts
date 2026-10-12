@@ -32,10 +32,13 @@ test.describe('validate (desktop)', () => {
   for (const [role, fixes] of [['viewer', false], ['manager', false], ['engineer', true], ['admin', true]] as [Role, boolean][]) {
     test(`${role}: sees the Validate tab and ${fixes ? 'can fix records' : 'reads only'}`, async ({ page }) => {
       await signInAndWait(page, role);
+      // Validate lives in the Data section: the rail lists it, the page tabs appear once Data is open
+      const railLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Validate/ });
+      await expect(railLink).toBeVisible();
+      await expect(page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Validate/ })).toHaveCount(0);
+      await railLink.click();
       const tab = page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Validate/ });
       await expect(tab).toBeVisible();
-      await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Validate/ })).toBeVisible();
-      await tab.click();
       await expect(page.getByTestId('page-validate')).toBeVisible();
       await expect(rows(page).first()).toBeVisible();
       // the page tab sits right after Event Explorer and carries the count
@@ -384,10 +387,16 @@ for (const width of [360, 390]) {
       expect((await noSidewaysScroll(page)).ok).toBe(true);
       expect(await smallTargets(page)).toEqual([]);
       expect(await smallText(page)).toEqual([]);
+      // Validate is not on the bar, so More carries its count (danger colour, number as text)
+      const moreBadge = page.getByTestId('bottom-more').getByTestId('more-badge');
+      await expect(moreBadge).toBeVisible();
+      expect(await moreBadge.textContent()).toMatch(/^\d+\+?$/);
+      await expect(moreBadge).toHaveAttribute('aria-label', /records? to review/);
       // the More sheet lists Validate with its count
       await page.getByTestId('bottom-more').click();
       await expect(page.getByTestId('more-tile-validate')).toContainText('Validate');
       await expect(page.getByTestId('validate-badge-more')).toBeVisible();
+      await expect(page.getByTestId('more-section-data')).toHaveText('Data');
       await page.keyboard.press('Escape');
       await page.goBack().catch(() => undefined);
       await page.goto('/#/validate');

@@ -3,12 +3,14 @@ import { noSidewaysScroll, PASSWORD, signIn, signInAndWait, smallTargets, stubFo
 
 // Runs against `vite preview` of a production build in mock mode (made-up data).
 
-const DASH = ['Overview', 'Pareto', 'Repeated Failures', 'Reliability', 'Event Explorer', 'Validate'];
-const TABS: Record<Role, string[]> = {
-  admin: [...DASH, 'Upload', 'Master Data'],
-  manager: [...DASH, 'Master Data'],
-  engineer: [...DASH, 'Upload', 'Master Data'],
-  viewer: DASH,
+const ANALYZE = ['Overview', 'Pareto', 'Repeated Failures', 'Reliability'];
+const DATA_VIEW = ['Event Explorer', 'Validate'];
+// the left rail: every page the role may open, grouped under Analyze / Data / Setup
+const RAIL: Record<Role, Record<string, string[]>> = {
+  admin: { Analyze: ANALYZE, Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
+  manager: { Analyze: ANALYZE, Data: DATA_VIEW, Setup: ['Master Data'] },
+  engineer: { Analyze: ANALYZE, Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
+  viewer: { Analyze: ANALYZE, Data: DATA_VIEW },
 };
 
 test.describe('desktop', () => {
@@ -38,21 +40,57 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('page-title')).toHaveText('Overview');
   });
 
-  for (const role of Object.keys(TABS) as Role[]) {
-    test(`${role}: sees exactly the tabs the role allows`, async ({ page }) => {
+  for (const role of Object.keys(RAIL) as Role[]) {
+    test(`${role}: sees exactly the pages the role allows, under the right sections`, async ({ page }) => {
       await signInAndWait(page, role);
-      // the Validate tab carries a count badge: compare the names without it
-      const tabs = await page.getByRole('navigation', { name: 'Pages' }).getByRole('link').evaluateAll((els) => els.map((el) => (el.firstChild?.textContent ?? '').trim()));
-      expect(tabs).toEqual(TABS[role]);
       await expect(page.getByTestId('user-name')).toContainText(`Demo ${role[0].toUpperCase()}${role.slice(1)}`);
-      await expect(page.getByTestId('breadcrumb')).toContainText('ACC Downtime');
-      await expect(page.getByTestId('breadcrumb')).toContainText('Overview');
+      await expect(page.getByTestId('breadcrumb')).toHaveText('ACC Downtime›Analyze›Overview');
       await expect(page.getByTestId('online-dot')).toBeVisible();
-      // the left rail lists the same pages
-      const rail = await page.getByRole('navigation', { name: 'Primary' }).getByRole('link').count();
-      expect(rail).toBe(TABS[role].length);
+      // the left rail: section headings in order, each with its pages; empty sections are gone
+      const rail = page.getByRole('navigation', { name: 'Primary' });
+      const want = RAIL[role];
+      const headings = await rail.locator('.sidebar-section-title').evaluateAll((els) => els.map((el) => (el.textContent ?? '').trim()));
+      expect(headings).toEqual(Object.keys(want));
+      for (const [section, labels] of Object.entries(want)) {
+        const names = await rail.locator(`[data-section="${section.toLowerCase()}"] a`).evaluateAll((els) => els.map((el) => (el.querySelector('.sidebar-link-label')?.textContent ?? '').trim()));
+        expect(names, section).toEqual(labels);
+      }
+      if (!want.Setup) await expect(rail.locator('[data-section="setup"]')).toHaveCount(0);
+      expect(await rail.getByRole('link').count()).toBe(Object.values(want).flat().length);
     });
   }
+
+  test('page tabs show only the siblings of the open page, and none for Setup', async ({ page }) => {
+    await signInAndWait(page, 'admin');
+    const tabNames = () => page.getByRole('navigation', { name: 'Pages' }).getByRole('link').evaluateAll((els) => els.map((el) => (el.firstChild?.textContent ?? '').trim()));
+    expect(await tabNames()).toEqual(ANALYZE);
+    await page.goto('/#/events');
+    await expect(page.getByTestId('page-events')).toBeVisible();
+    expect(await tabNames()).toEqual(['Event Explorer', 'Validate', 'Upload']);
+    await expect(page.getByTestId('breadcrumb')).toHaveText('ACC Downtime›Data›Event Explorer');
+    await page.goto('/#/master');
+    await expect(page.getByTestId('page-master')).toBeVisible();
+    await expect(page.getByTestId('page-tabs')).toHaveCount(0);
+    await expect(page.getByRole('navigation', { name: 'Pages' })).toHaveCount(0);
+    await expect(page.getByTestId('breadcrumb')).toHaveText('ACC Downtime›Setup›Master Data');
+    // Settings sits behind the gear: no section, no tabs
+    await page.getByTestId('settings-btn').click();
+    await expect(page.getByTestId('page-tabs')).toHaveCount(0);
+  });
+
+  test('the rail shows section headings when open and a thin divider when narrow', async ({ page }) => {
+    await signInAndWait(page, 'admin');
+    const rail = page.locator('.sidebar-rail');
+    const title = page.getByTestId('rail-section-data');
+    await expect(title).toBeHidden();
+    const border = await page.locator('[data-section="data"]').evaluate((el) => getComputedStyle(el).borderTopWidth);
+    expect(border).toBe('1px');
+    await rail.hover();
+    await expect(title).toBeVisible();
+    await expect(page.getByTestId('rail-section-analyze')).toHaveText('Analyze');
+    await expect(title).toHaveText('Data');
+    await expect(page.getByTestId('rail-section-setup')).toHaveText('Setup');
+  });
 
   test('a deep link to a hidden tab shows a plain "You do not have access" page', async ({ page }) => {
     await signInAndWait(page, 'viewer');
@@ -66,12 +104,14 @@ test.describe('desktop', () => {
 
   test('every page opens for the admin (no placeholders left)', async ({ page }) => {
     await signInAndWait(page, 'admin');
-    const nav = page.getByRole('navigation', { name: 'Pages' });
+    const nav = page.getByRole('navigation', { name: 'Primary' });
     const pages: [string, string][] = [
       ['Overview', 'page-overview'],
       ['Pareto', 'page-pareto'],
       ['Repeated Failures', 'page-repeats'],
       ['Reliability', 'page-reliability'],
+      ['Event Explorer', 'page-events'],
+      ['Validate', 'page-validate'],
       ['Upload', 'page-upload'],
       ['Master Data', 'page-master'],
     ];
@@ -94,7 +134,7 @@ test.describe('desktop', () => {
 
   test('Event Explorer: list, paging, filters, year switch', async ({ page }) => {
     await signInAndWait(page, 'viewer');
-    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Event Explorer' }).click();
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Event Explorer' }).click();
     await expect(page.getByTestId('event-row')).toHaveCount(50);
     await page.getByTestId('show-more').click();
     await expect(page.getByTestId('event-row')).toHaveCount(100);
@@ -290,11 +330,24 @@ test.describe('phone', () => {
   test('bottom bar, page chips and the More sheet follow the role', async ({ page }) => {
     await signInAndWait(page, 'viewer');
     await expect(page.getByTestId('bottom-nav')).toBeVisible();
-    await expect(page.getByTestId('bottom-overview')).toBeVisible();
+    // exactly four slots: Overview, Causes (Pareto), Events, More
+    const bar = page.getByTestId('bottom-nav');
+    await expect(bar.locator('a, button')).toHaveCount(4);
+    await expect(bar.locator('a, button')).toHaveText(['Overview', 'Causes', 'Events', 'More']);
+    await expect(page.getByTestId('bottom-pareto')).toHaveAttribute('href', /#\/pareto$/);
     await expect(page.getByTestId('bottom-upload')).toHaveCount(0);
+    // the Validate count rides on More (Validate is not on the bar)
+    const moreBadge = page.getByTestId('bottom-more').getByTestId('more-badge');
+    await expect(moreBadge).toBeVisible();
+    await expect(moreBadge).toHaveAttribute('aria-label', /record/);
+    expect(Number((await moreBadge.textContent())!.replace(/\D/g, ''))).toBeGreaterThan(0);
     await page.getByTestId('bottom-more').click();
     const sheet = page.getByTestId('more-sheet');
     await expect(sheet).toBeVisible();
+    // pages grouped under Analyze / Data (no Setup for a viewer)
+    await expect(sheet.locator('.more-group-title')).toHaveText(['Analyze', 'Data']);
+    await expect(sheet.locator('[data-section="analyze"] .more-tile')).toHaveCount(4);
+    await expect(sheet.locator('[data-section="data"] .more-tile')).toHaveCount(2);
     for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'validate']) await expect(sheet.getByTestId(`more-tile-${id}`)).toBeVisible();
     for (const id of ['upload', 'master', 'settings', 'users']) await expect(sheet.getByTestId(`more-tile-${id}`)).toHaveCount(0);
     await expect(sheet.getByTestId('more-appearance')).toHaveCount(0);
@@ -311,10 +364,10 @@ test.describe('phone', () => {
     await expect(page.getByTestId('login-form')).toBeVisible();
   });
 
-  test('engineer has Upload on the bar; admin sees every page in More', async ({ page }) => {
+  test('the bar always has Overview, Causes, Events and More, whatever the role; admin sees every page in More', async ({ page }) => {
     await signInAndWait(page, 'engineer');
-    await expect(page.getByTestId('bottom-upload')).toBeVisible();
-    await expect(page.getByTestId('bottom-pareto')).toHaveCount(0);
+    await expect(page.getByTestId('bottom-nav').locator('a, button')).toHaveText(['Overview', 'Causes', 'Events', 'More']);
+    await expect(page.getByTestId('bottom-upload')).toHaveCount(0);
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await page.goto('/');
     await page.reload();
@@ -324,7 +377,23 @@ test.describe('phone', () => {
       await expect(page.getByTestId(`more-tile-${id}`)).toBeVisible();
     }
     for (const id of ['settings', 'users']) await expect(page.getByTestId(`more-tile-${id}`)).toHaveCount(0);
+    await expect(page.locator('.more-group-title')).toHaveText(['Analyze', 'Data', 'Setup']);
+    await expect(page.locator('[data-section="data"] .more-tile')).toHaveCount(3);
+    await expect(page.locator('[data-section="setup"] .more-tile')).toHaveCount(1);
     await expect(page.getByTestId('more-tile-master')).toContainText('Can edit');
+  });
+
+  test('the phone chip strip shows the siblings of the open section only', async ({ page }) => {
+    await signInAndWait(page, 'admin');
+    const chips = () => page.getByTestId('page-strip').locator('a').allTextContents();
+    expect((await chips()).map((c) => c.trim())).toEqual(['Overview', 'Causes', 'Repeats', 'Reliability']);
+    await page.goto('/#/events');
+    await expect(page.getByTestId('page-events')).toBeVisible();
+    expect((await chips()).map((c) => c.replace(/[^A-Za-z ]/g, '').trim())).toEqual(['Events', 'Validate', 'Upload']);
+    await page.goto('/#/master');
+    await expect(page.getByTestId('page-master')).toBeVisible();
+    await expect(page.getByTestId('page-strip')).toHaveCount(0);
+    expect((await noSidewaysScroll(page)).ok).toBe(true);
   });
 
   test('Event Explorer on a phone: cards, 50 at a time, filters in a sheet, detail opens', async ({ page }) => {

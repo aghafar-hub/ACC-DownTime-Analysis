@@ -7,6 +7,15 @@ import { t } from './i18n/t';
 /** A page of the app. Every id is a tab id, except Validate: it is part of the events tab (View to see, Edit to fix). */
 export type PageId = TabId | 'validate';
 
+/** The three navigation sections: the left rail headings, the page tabs' scope, the More sheet groups. */
+export type SectionId = 'analyze' | 'data' | 'setup';
+export const SECTIONS: { id: SectionId; label: string }[] = [
+  { id: 'analyze', label: 'Analyze' },
+  { id: 'data', label: 'Data' },
+  { id: 'setup', label: 'Setup' },
+];
+export const sectionLabel = (id: SectionId): string => t(SECTIONS.find((s) => s.id === id)!.label);
+
 export interface PageDef {
   id: PageId;
   /** The tab whose View or Edit level decides who sees the page and who may change things on it. */
@@ -19,25 +28,25 @@ export interface PageDef {
   /** Short name for the phone chips and bottom bar. */
   short: string;
   icon: string;
-  group: 'dashboard' | 'admin';
+  group: SectionId;
 }
 
 export const PAGES: PageDef[] = [
-  { id: 'overview', access: 'overview', path: '/overview', label: 'Overview', tab: 'Overview', short: 'Overview', icon: 'dashboard', group: 'dashboard' },
-  { id: 'pareto', access: 'pareto', path: '/pareto', label: 'Pareto & Contributors', tab: 'Pareto', short: 'Pareto', icon: 'limits', group: 'dashboard' },
-  { id: 'repeats', access: 'repeats', path: '/repeats', label: 'Repeated Failures', tab: 'Repeated Failures', short: 'Repeats', icon: 'repeat', group: 'dashboard' },
-  { id: 'reliability', access: 'reliability', path: '/reliability', label: 'Reliability Trends', tab: 'Reliability', short: 'Reliability', icon: 'trend', group: 'dashboard' },
-  { id: 'events', access: 'events', path: '/events', label: 'Event Explorer', tab: 'Event Explorer', short: 'Events', icon: 'list', group: 'dashboard' },
-  { id: 'validate', access: 'events', path: '/validate', label: 'Validate', tab: 'Validate', short: 'Validate', icon: 'compliance', group: 'dashboard' },
-  { id: 'upload', access: 'upload', path: '/upload', label: 'Upload', tab: 'Upload', short: 'Upload', icon: 'upload', group: 'admin' },
-  { id: 'master', access: 'master', path: '/master', label: 'Master Data', tab: 'Master Data', short: 'Master data', icon: 'database', group: 'admin' },
+  { id: 'overview', access: 'overview', path: '/overview', label: 'Overview', tab: 'Overview', short: 'Overview', icon: 'dashboard', group: 'analyze' },
+  { id: 'pareto', access: 'pareto', path: '/pareto', label: 'Pareto & Contributors', tab: 'Pareto', short: 'Causes', icon: 'limits', group: 'analyze' },
+  { id: 'repeats', access: 'repeats', path: '/repeats', label: 'Repeated Failures', tab: 'Repeated Failures', short: 'Repeats', icon: 'repeat', group: 'analyze' },
+  { id: 'reliability', access: 'reliability', path: '/reliability', label: 'Reliability Trends', tab: 'Reliability', short: 'Reliability', icon: 'trend', group: 'analyze' },
+  { id: 'events', access: 'events', path: '/events', label: 'Event Explorer', tab: 'Event Explorer', short: 'Events', icon: 'list', group: 'data' },
+  { id: 'validate', access: 'events', path: '/validate', label: 'Validate', tab: 'Validate', short: 'Validate', icon: 'compliance', group: 'data' },
+  { id: 'upload', access: 'upload', path: '/upload', label: 'Upload', tab: 'Upload', short: 'Upload', icon: 'upload', group: 'data' },
+  { id: 'master', access: 'master', path: '/master', label: 'Master Data', tab: 'Master Data', short: 'Master data', icon: 'database', group: 'setup' },
 ];
 
 // Settings and Users are not in the main navigation: they are reached from the
 // gear in the top bar. Their tab ids still control who sees which Settings subtab.
 const GEAR_TABS: PageDef[] = [
-  { id: 'settings', access: 'settings', path: '/settings', label: 'Settings', tab: 'Settings', short: 'Settings', icon: 'settings', group: 'admin' },
-  { id: 'users', access: 'users', path: '/settings/users', label: 'Users', tab: 'Users', short: 'Users', icon: 'users', group: 'admin' },
+  { id: 'settings', access: 'settings', path: '/settings', label: 'Settings', tab: 'Settings', short: 'Settings', icon: 'settings', group: 'setup' },
+  { id: 'users', access: 'users', path: '/settings/users', label: 'Users', tab: 'Users', short: 'Users', icon: 'users', group: 'setup' },
 ];
 
 export const pageById = (id: PageId): PageDef => PAGES.find((p) => p.id === id) ?? GEAR_TABS.find((p) => p.id === id)!;
@@ -46,8 +55,14 @@ export const pageLabel = (p: PageDef): string => t(p.label);
 export const pageTab = (p: PageDef): string => t(p.tab);
 export const pageShort = (p: PageDef): string => t(p.short);
 
-/** The first three of these that the person may see go on the phone bottom bar (Upload before Pareto for those who upload). */
-export const BOTTOM_BAR_ORDER: PageId[] = ['overview', 'events', 'upload', 'pareto', 'repeats'];
+/** The first three of these that the person may see go on the phone bottom bar, left to right; More is the fourth slot. */
+export const BOTTOM_BAR_ORDER: PageId[] = ['overview', 'pareto', 'events', 'reliability', 'repeats', 'validate', 'upload'];
+export const BOTTOM_BAR_SLOTS = 3;
+/** The pages on the phone bottom bar (before More), given the pages the person may see. */
+export const bottomBarPages = (visible: PageDef[]): PageDef[] =>
+  BOTTOM_BAR_ORDER.map((id) => visible.find((p) => p.id === id)).filter((p): p is PageDef => !!p).slice(0, BOTTOM_BAR_SLOTS);
+/** The visible pages of one section, in navigation order. */
+export const pagesInSection = (visible: PageDef[], section: SectionId): PageDef[] => visible.filter((p) => p.group === section);
 
 export const ROLE_LABELS: Record<string, string> = {
   'ROLE-ADMIN': 'Admin',

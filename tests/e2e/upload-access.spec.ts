@@ -24,7 +24,7 @@ test('View access sees the history but cannot upload; Edit can', async ({ page }
   await page.getByTestId('login-password').fill(PASSWORD);
   await page.getByTestId('login-submit').click();
   await expect(page.getByTestId('page-title')).toBeVisible();
-  await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Upload' }).click();
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Upload' }).click();
   await expect(page.getByTestId('page-upload')).toBeVisible();
   await expect(page.getByTestId('access-level')).toContainText('view only');
   await expect(page.getByTestId('view-only-note')).toBeVisible();

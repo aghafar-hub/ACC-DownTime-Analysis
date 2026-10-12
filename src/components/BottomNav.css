@@ -78,3 +78,25 @@
   position: relative;
   display: inline-flex;
 }
+
+/* Validate count on the More slot (danger colour; the text is the number) */
+.bottom-nav-badge {
+  position: absolute;
+  top: -5px;
+  inset-inline-start: 55%;
+  min-width: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--tk-danger, #c42b2b);
+  color: var(--tk-card-bg, #fff);
+  border: 1.5px solid var(--shell-card-bg, #fff);
+  font: 700 12px/16px var(--sans);
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.bottom-nav-item span.bottom-nav-badge {
+  overflow: visible;
+  max-width: none;
+}

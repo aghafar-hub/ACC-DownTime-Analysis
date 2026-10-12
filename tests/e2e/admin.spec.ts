@@ -214,7 +214,7 @@ test.describe('settings', () => {
     await expect(page.getByTestId('settings-save')).toBeDisabled();
 
     // the dashboards use the new values straight away
-    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: 'Event Explorer' }).click();
+    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Event Explorer' }).click();
     await page.getByTestId('settings-btn').click(); // opens the subtab used last
     await expect(page.getByTestId('settings-calculations')).toBeVisible();
     await expect(page.getByTestId('availability_basis-C')).toHaveAttribute('aria-pressed', 'true');
