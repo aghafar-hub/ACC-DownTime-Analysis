@@ -1,7 +1,7 @@
 // Month vs month: two calendar months side by side. Pure: no React.
 // It respects the OTHER dashboard filters (line, area, equipment, reason, classification, criticality, failures) and
 // ignores the date range and the comparison filter. Every figure is the dashboard's own KPI for the single-month
-// range, so the numbers equal what the Overview shows when its range is that month.
+// range, so the numbers equal what the Dashboard shows when its range is that month.
 import type { EventRow, Startup } from '../api/types';
 import { compareValues, avail, daysInRange, isBlocked, monthRange, unavail, type AreaKpis, type Change, type DateRange, type KpiResult, type Metric } from '../calc';
 import type { DashFilters } from './filters';

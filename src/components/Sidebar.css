@@ -1,189 +1,205 @@
-﻿/* Pushes the main content over as it expands (rather than overlaying on
-   top of it) — real content must never end up hidden behind the sidebar,
-   even during the hover-expand transition. Colors read from --shell-*
-   custom properties (set in App.tsx from the chosen theme — see
-   shellTheme.tsx), falling back to the original dark-navy values so the
-   sidebar still renders correctly if those vars are ever unset. */
+/* Left rail (desktop and tablet; phones use the bottom bar). Always the navy side-bar colour (--shell-sidebar-*), in
+   every theme. Two modes (see useRail.ts):
+   - pinned (>= 1280 px, not collapsed): 232 px, labels, section headings, in the page flow;
+   - icons (861-1279 px, or collapsed): a 68 px column in the flow; hover or keyboard focus widens the PANEL to 232 px
+     over the page (position: fixed, so the page never moves or reflows). */
 .sidebar-rail {
-  width: 68px;
+  --rail-w: 68px;
+  --rail-open-w: 232px;
+  --rail-ink: var(--shell-sidebar-text, #e8f0f8);
+  --rail-ink-2: var(--shell-sidebar-text-secondary, #a9b8cc);
+  width: var(--rail-w);
   flex-shrink: 0;
+  position: relative;
+  z-index: 100;
+  /* the column keeps its width; the fixed panel inside draws the rail */
+  box-sizing: content-box;
+  padding-left: env(safe-area-inset-left, 0px);
+  background: var(--shell-sidebar-bg, #0b1b2e);
+}
+.sidebar-rail--pinned {
+  --rail-w: 232px;
+}
+
+.sidebar-panel {
+  position: fixed;
+  top: 0;
+  bottom: var(--env-ribbon-h, 0px);
+  left: env(safe-area-inset-left, 0px);
+  width: var(--rail-w);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   white-space: nowrap;
-  background: var(--shell-sidebar-bg, #0f172a);
-  color: var(--shell-sidebar-text, #e2e8f0);
+  background: var(--shell-sidebar-bg, #0b1b2e);
+  color: var(--rail-ink);
   font-family: var(--sans);
-  display: flex;
-  flex-direction: column;
-  transition: width 0.16s ease, background 0.15s ease, color 0.15s ease;
+  transition: width 0.16s ease, box-shadow 0.16s ease;
   z-index: 100;
 }
-
-/* :focus-within expands the rail the same way :hover does, so a keyboard
-   user tabbing onto a nav link can actually see its label (and reach its
-   sub-tabs, see .sidebar-subnav below) instead of landing on an invisible
-   icon-only target. */
-.sidebar-rail:hover,
-.sidebar-rail:focus-within {
-  width: 248px;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.35);
+/* icon rail: hover or focus opens the labels over the page */
+.sidebar-rail--icons .sidebar-panel:hover,
+.sidebar-rail--icons .sidebar-panel:focus-within {
+  width: var(--rail-open-w);
+  box-shadow: 6px 0 28px rgba(0, 0, 0, 0.35);
 }
-
-/* Touch devices have no :hover state at all, so the hover-expand trigger
-   above never fires there — leaving every label and every sub-tab
-   permanently unreachable. Below 861px (phones, and portrait tablets —
-   see the overlay breakpoint further down) that's handled by a proper
-   slide-in overlay instead, toggled from TopBar's hamburger button,
-   because forcing 248px permanently open there ate ~65% of a real phone's
-   screen width with no way to dismiss it. Above that width (e.g. a
-   touchscreen laptop or a landscape tablet, where 248px is a reasonable
-   fraction of the screen) keep the simpler "permanently expanded" fallback,
-   since there's no hamburger button rendered up there to open an overlay
-   with (see TopBar.css's own breakpoint). */
-@media (hover: none) and (min-width: 861px) {
-  .sidebar-rail {
-    width: 248px;
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-panel {
+    transition: none;
   }
 }
 
-.sidebar-nav-root {
+/* ---- logo: the transparent PNG straight on the navy (never on a plate), cropped to its artwork */
+.sidebar-logo {
+  flex-shrink: 0;
+  position: relative;
+  height: 112px;
+  padding: 18px 16px 10px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  height: 100%;
-  width: 248px; /* content sizes for the expanded width; the collapsed rail clips it via overflow:hidden above */
+  justify-content: flex-start;
 }
-
-.sidebar-logo {
-  height: 100px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  padding: 0 14px;
-  border-bottom: 1px solid var(--shell-border, #1e293b);
-  position: relative;
-}
-
-/* No background behind either mark — both images are transparent PNGs
-   (the full lockup also carries its own dark backing box behind its own
-   text, so it stays legible against any sidebar color). */
 .sidebar-logo-mark {
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  object-fit: contain;
   display: block;
+  width: 22px;
+  height: 46px;
+  object-fit: cover;
+  object-position: 50% 50%;
+  margin: 12px 0 0 7px;
 }
-
+.sidebar-logo-crop {
+  display: none;
+  position: relative;
+  width: 176px;
+  height: 66px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+/* the PNG is 602 x 316 with the artwork at (72, 75)-(544, 252): scale it so the artwork is 176 px wide, then shift */
 .sidebar-logo-full {
-  height: 84px;
-  width: auto;
-  max-width: 216px;
-  object-fit: contain;
-  display: none;
   position: absolute;
-  left: 14px;
+  width: 224.5px;
+  height: 117.8px;
+  left: -26.8px;
+  top: -28px;
+  max-width: none;
 }
-
-.sidebar-rail:hover .sidebar-logo-mark,
-.sidebar-rail:focus-within .sidebar-logo-mark {
+.sidebar-logo-sub {
+  display: none;
+  margin-top: 8px;
+  font: 600 13px/1.2 var(--sans);
+  color: var(--rail-ink-2);
+  letter-spacing: 0.01em;
+}
+.sidebar-rail--pinned .sidebar-logo-mark,
+.sidebar-rail--icons .sidebar-panel:hover .sidebar-logo-mark,
+.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-logo-mark {
   display: none;
 }
-
-.sidebar-rail:hover .sidebar-logo-full,
-.sidebar-rail:focus-within .sidebar-logo-full {
+.sidebar-rail--pinned .sidebar-logo-crop,
+.sidebar-rail--pinned .sidebar-logo-sub,
+.sidebar-rail--icons .sidebar-panel:hover :is(.sidebar-logo-crop, .sidebar-logo-sub),
+.sidebar-rail--icons .sidebar-panel:focus-within :is(.sidebar-logo-crop, .sidebar-logo-sub) {
   display: block;
 }
 
-@media (hover: none) and (min-width: 861px) {
-  .sidebar-logo-mark {
-    display: none;
-  }
-  .sidebar-logo-full {
-    display: block;
-  }
-}
-
+/* ---- the list */
 .sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0 8px;
+  scrollbar-width: thin;
+}
+.sidebar-section-list {
   list-style: none;
   margin: 0;
-  padding: 8px 0;
-  overflow-y: auto;
-  /* Explicit (not left to compute from overflow-y:auto) — otherwise the
-     browser treats overflow-x:visible as auto too whenever overflow-y is
-     scrolling, which showed up as a stray horizontal scrollbar whenever
-     this list's content came out even a pixel wider than the rail. */
-  overflow-x: hidden;
-  flex: 1;
+  padding: 0;
+}
+.sidebar-section {
+  margin-top: 6px;
+}
+.sidebar-section + .sidebar-section {
+  margin-top: 10px;
+}
+/* headings while labels show; a thin rule on the narrow rail */
+.sidebar-section-title {
+  margin: 0;
+  padding: 8px 22px 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  font: 700 12px/1 var(--sans);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--rail-ink-2);
+}
+.sidebar-rail--icons .sidebar-section-title {
+  display: none;
+}
+.sidebar-rail--icons .sidebar-section + .sidebar-section {
+  border-top: 1px solid color-mix(in srgb, var(--rail-ink-2) 28%, transparent);
+  padding-top: 8px;
+}
+.sidebar-rail--icons .sidebar-panel:hover .sidebar-section-title,
+.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-section-title {
+  display: block;
+}
+.sidebar-rail--icons .sidebar-panel:hover .sidebar-section + .sidebar-section,
+.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-section + .sidebar-section {
+  border-top-color: transparent;
+  padding-top: 0;
 }
 
 .sidebar-link {
-  position: relative; /* anchors .sidebar-link-loading to the icon, visible even when the rail is collapsed */
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 0;
-  width: 100%;
-  min-height: 44px; /* touch target minimum — the 18px icon + old padding fell short of this */
-  padding: 0.65rem 1.25rem;
+  gap: 12px;
+  width: calc(100% - 16px);
+  margin: 1px 8px;
+  min-height: 44px;
+  padding: 0 14px 0 16px;
   box-sizing: border-box;
-  color: var(--shell-sidebar-text, #cbd5e1);
+  border-radius: 8px;
+  color: var(--rail-ink);
   text-decoration: none;
-  font-size: 0.87rem;
+  font: 500 14.5px/1.2 var(--sans);
   background: transparent;
-  border: none;
-  font-family: inherit;
+  border: 0;
   text-align: left;
   cursor: pointer;
-  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
+  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease);
 }
-
-.sidebar-link:active {
-  transform: scale(0.98);
+.sidebar-rail--icons .sidebar-link {
+  padding: 0 0 0 17px;
 }
-
-/* Tiny "still warming up in the background" signal for a module whose
-   embed bundle is preloading after login (see embeddedNav.tsx's
-   loadStateFor) — a small pulsing dot at the icon's corner, positioned so
-   it's visible whether the rail is collapsed (icon only) or expanded
-   (icon + label), and gone entirely once the module finishes loading. */
-.sidebar-link-loading {
-  position: absolute;
-  left: 27px;
-  top: 9px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #38bdf8;
-  box-shadow: 0 0 0 2px var(--shell-sidebar-bg, #0f1420);
-  animation: sidebar-loading-pulse 1.2s ease-in-out infinite;
-  pointer-events: none;
-}
-
-@keyframes sidebar-loading-pulse {
-  0%, 100% { opacity: 0.4; transform: scale(0.8); }
-  50% { opacity: 1; transform: scale(1.2); }
-}
-
-.sidebar-rail:hover .sidebar-link,
-.sidebar-rail:focus-within .sidebar-link {
-  gap: 12px;
-}
-
-@media (hover: none) and (min-width: 861px) {
-  .sidebar-link {
-    gap: 12px;
-  }
-}
-
+/* hover / focus: a lighter navy, the text stays the light rail ink (readable in every theme) */
 .sidebar-link:hover {
-  background: var(--shell-border, #1e293b);
-  color: var(--shell-sidebar-text, #fff);
+  background: color-mix(in srgb, var(--rail-ink) 12%, transparent);
+  color: var(--rail-ink);
 }
-
-.sidebar-link--active {
-  background: var(--shell-accent, #1d4ed8);
-  color: var(--shell-accent-text, #fff);
+.sidebar-link:focus-visible {
+  outline: 2px solid var(--shell-brand-on-dark, #f6a25a);
+  outline-offset: -2px;
 }
-
+.sidebar-link--active,
+.sidebar-link--active:hover {
+  background: color-mix(in srgb, var(--rail-ink) 16%, transparent);
+  color: #fff;
+  font-weight: 650;
+}
+/* the open page: an ACC orange mark on the rail's edge */
+.sidebar-link--active::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  border-radius: 0 3px 3px 0;
+  background: var(--shell-brand-on-dark, #f6a25a);
+}
 .sidebar-link-icon {
   display: flex;
   align-items: center;
@@ -191,264 +207,54 @@
   flex-shrink: 0;
   width: 18px;
 }
-
-/* Collapses to zero width (not just opacity) when the rail isn't hovered,
-   so a bordered element around icon+label (like .sidebar-logout) doesn't
-   keep the label's full-width invisible box in its layout — that was
-   clipping the Sign out pill asymmetrically against the collapsed rail. */
 .sidebar-link-label {
-  opacity: 0;
-  max-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  transition: opacity 0.1s ease, max-width 0.16s ease;
+  min-width: 0;
 }
-
-.sidebar-rail:hover .sidebar-link-label,
-.sidebar-rail:focus-within .sidebar-link-label {
-  opacity: 1;
-  max-width: 200px;
-}
-
-@media (hover: none) and (min-width: 861px) {
-  .sidebar-link-label {
-    opacity: 1;
-    max-width: 200px;
-  }
-}
-
-.sidebar-subnav {
-  list-style: none;
-  margin: 0;
-  padding: 2px 0 6px;
-  display: none;
-}
-
-.sidebar-rail:hover .sidebar-subnav,
-.sidebar-rail:focus-within .sidebar-subnav {
-  display: block;
-}
-
-@media (hover: none) and (min-width: 861px) {
-  .sidebar-subnav {
-    display: block;
-  }
-}
-
-/* Shared by both kinds of sub-tab (see Sidebar.tsx's SubTabItem) — a
-   "native" one renders as a <button>, a "routed" one as a NavLink <a>, so
-   this resets anchor-specific defaults (text-decoration) alongside the
-   button ones (background/border/font) that were already here. */
-.sidebar-sublink {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 44px; /* touch target minimum, see .sidebar-link above */
-  padding: 0.4rem 1.25rem 0.4rem 2.5rem;
-  box-sizing: border-box;
-  color: var(--shell-sidebar-text-secondary, #94a3b8);
-  background: transparent;
-  border: none;
-  text-align: left;
-  text-decoration: none;
-  font-size: 0.78rem;
-  cursor: pointer;
-  font-family: inherit;
-  transition: background var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease),
-    transform var(--motion-fast) var(--motion-ease);
-}
-
-.sidebar-sublink:hover {
-  background: var(--shell-border, #1e293b);
-  color: var(--shell-sidebar-text, #fff);
-}
-
-.sidebar-sublink:active {
-  transform: scale(0.98);
-}
-
-.sidebar-sublink--active {
-  color: var(--shell-accent, #60a5fa);
-  font-weight: 600;
-}
-
-/* Patch 28: the old bottom account block (General Settings link, email,
-   Sign out button — .sidebar-footer/.sidebar-settings-link/.sidebar-user/
-   .sidebar-logout) was removed from Sidebar.tsx; that functionality now
-   lives in the shell-level TopBar's settings icon + user-profile dropdown
-   (see TopBar.tsx) — "replace sidebar, no duplicate," confirmed directly
-   by the user. */
-
-/* Hidden everywhere except the <=860px overlay mode below (and only then
-   while mobileOpen — see Sidebar.tsx). A plain `display: none` default
-   keeps it inert (and non-interactive/non-tabbable) at every wider width. */
-.sidebar-mobile-backdrop {
-  display: none;
-}
-
-/* Below 861px: the rail becomes a fixed slide-in overlay panel instead of
-   pushing page content over, triggered by TopBar's hamburger button
-   (TopBar.tsx's onOpenMenu / TopBar.css's own <=860px breakpoint) rather
-   than hover/focus — "sidebar disappear[ed]/unusable on mobile view":
-   the old `@media (hover: none)` fallback above forced the rail permanently
-   open at 248px with no way to dismiss it, which on a real ~390px-wide
-   phone ate roughly two-thirds of the screen and left real page content
-   squeezed into a sliver (confirmed in testing: KPI cards and the TopBar's
-   own title were visibly cut off). This is the same slide-in-panel +
-   backdrop pattern already used (but only reachable in the retired
-   standalone deployment, not production) by apps/oil-analysis's and
-   apps/vibration-analysis's own internal sidebars — see each app's App.jsx
-   for the equivalent `.app-sidebar`/`.sidebar-backdrop`/860px convention
-   this mirrors. */
-@media (max-width: 860px) {
-  .sidebar-rail {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 248px;
-    height: 100svh;
-    transform: translateX(-100%);
-    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: none;
-    z-index: 500;
-    /* Glass panel over the real content it's covering — reinforces that
-       this is a temporary overlay, not a new page. */
-    background: color-mix(in srgb, var(--shell-sidebar-bg, #0f172a) 92%, transparent);
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    backdrop-filter: blur(var(--glass-blur));
-  }
-
-  .sidebar-rail--mobile-open {
-    transform: translateX(0);
-    box-shadow: var(--elevation-3);
-  }
-
-  /* Always shown in the fully-expanded state once open — there's no
-     collapsed/hover-intermediate state in overlay mode, so these skip
-     straight to the same values the desktop :hover/:focus-within rules
-     above apply, and the un-opened state is covered by the rail being
-     off-screen entirely (transform above), not by hiding these. */
-  .sidebar-logo-mark {
-    display: none;
-  }
-  .sidebar-logo-full {
-    display: block;
-  }
-  .sidebar-link {
-    gap: 12px;
-  }
-  .sidebar-link-label {
-    opacity: 1;
-    max-width: 200px;
-  }
-  .sidebar-subnav {
-    display: block;
-  }
-
-  .sidebar-mobile-backdrop--open {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.55);
-    z-index: 499;
-    animation: sidebar-backdrop-in var(--motion-base) var(--motion-ease);
-  }
-
-  @keyframes sidebar-backdrop-in {
-    from {
-      opacity: 0;
-    }
-  }
-}
-/* PWA item 22 — landscape iPhone: keep the rail's icons clear of the
-   Dynamic Island / rounded corner (content-box, so the rail just grows). */
-.sidebar-rail {
-  padding-left: env(safe-area-inset-left, 0px);
-}
-@media (max-width: 860px) {
-  .sidebar-rail {
-    padding-top: env(safe-area-inset-top, 0px);
-  }
-}
-
-/* Sections (Analyze, Data, Setup): a heading while the rail is open, a thin rule while it is narrow. */
-.sidebar-section-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.sidebar-section + .sidebar-section {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, var(--shell-sidebar-text-secondary) 28%, transparent);
-}
-.sidebar-section-title {
-  margin: 0;
-  padding: 0 1.25rem;
-  max-height: 0;
-  overflow: hidden;
+.sidebar-rail--icons .sidebar-link-label {
   opacity: 0;
-  white-space: nowrap;
-  font: 700 12px/1 var(--sans);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--shell-sidebar-text-secondary);
-  transition: opacity 0.1s ease, max-height 0.16s ease, padding 0.16s ease;
 }
-.sidebar-rail:hover .sidebar-section-title,
-.sidebar-rail:focus-within .sidebar-section-title {
-  max-height: 32px;
-  padding: 6px 1.25rem 6px;
+.sidebar-rail--icons .sidebar-panel:hover .sidebar-link-label,
+.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-link-label {
   opacity: 1;
 }
-.sidebar-rail:hover .sidebar-section + .sidebar-section,
-.sidebar-rail:focus-within .sidebar-section + .sidebar-section {
-  border-top-color: transparent;
-  margin-top: 4px;
-  padding-top: 0;
-}
-@media (hover: none) and (min-width: 861px) {
-  .sidebar-section-title {
-    max-height: 32px;
-    padding: 6px 1.25rem 6px;
-    opacity: 1;
-  }
-  .sidebar-section + .sidebar-section {
-    border-top-color: transparent;
-    margin-top: 4px;
-    padding-top: 0;
-  }
-}
 
-/* Validate: the count sits on the icon while the rail is narrow, and at the end of the row when it is open */
+/* Validate: the count sits on the icon while the rail is narrow, at the end of the row when labels show */
 .sidebar-link .vbadge {
+  margin-inline-start: auto;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+.sidebar-rail--icons .sidebar-link .vbadge {
   position: absolute;
   top: 2px;
-  left: 31px;
+  left: 30px;
   margin: 0;
   padding: 0 5px;
 }
-.sidebar-link .vbadge .vbadge-sym {
+.sidebar-rail--icons .sidebar-link .vbadge .vbadge-sym {
   display: none;
 }
-.sidebar-rail:hover .sidebar-link .vbadge,
-.sidebar-rail:focus-within .sidebar-link .vbadge {
+.sidebar-rail--icons .sidebar-panel:hover .sidebar-link .vbadge,
+.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-link .vbadge {
   position: static;
   margin-inline-start: auto;
-  padding: 1px 7px;
+  padding: 1px 8px;
 }
-.sidebar-rail:hover .sidebar-link .vbadge .vbadge-sym,
-.sidebar-rail:focus-within .sidebar-link .vbadge .vbadge-sym {
+.sidebar-rail--icons .sidebar-panel:hover .sidebar-link .vbadge .vbadge-sym,
+.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-link .vbadge .vbadge-sym {
   display: inline;
 }
-@media (hover: none) and (min-width: 861px) {
-  .sidebar-link .vbadge {
-    position: static;
-    margin-inline-start: auto;
-    padding: 1px 7px;
-  }
-  .sidebar-link .vbadge .vbadge-sym {
-    display: inline;
-  }
+
+/* ---- Collapse menu */
+.sidebar-foot {
+  flex-shrink: 0;
+  border-top: 1px solid color-mix(in srgb, var(--rail-ink-2) 24%, transparent);
+  padding: 8px 0 10px;
+}
+.sidebar-toggle {
+  color: var(--rail-ink-2);
+  font-weight: 500;
 }

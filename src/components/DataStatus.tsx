@@ -1,12 +1,9 @@
 import type { ResState } from '../data/stores';
+import { whenShort } from '../util/dates';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
 
-function fmt(iso: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
-}
+const fmt = (iso: string | null): string => whenShort(iso);
 
 /** Loading, error and "saved on this device" notes for a data hook. Renders nothing when all is well. */
 export default function DataStatus({ state, onRetry, what }: { state: Pick<ResState<unknown>, 'loading' | 'refreshing' | 'error' | 'fromCache' | 'savedAt' | 'data' | 'accessDenied'>; onRetry: () => void; what: string }) {

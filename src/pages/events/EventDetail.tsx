@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { dateText, tsText } from '../../util/dates';
 import { api, describeError } from '../../api';
 import type { ClassificationCode, EventChanges, EventEdit, EventRow, Startup } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
@@ -291,7 +292,7 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
     <ShellModal
       icon="list"
       title={`${row.area_id} · ${row.code_raw || 'N/A'}`}
-      subtitle={<span><span className="mono">{row.event_id}</span> · {row.event_date}</span>}
+      subtitle={<span><span className="mono">{row.event_id}</span> · {dateText(row.event_date)}</span>}
       badge={<span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}><EventBadges row={row} maxFlags={0} owners={ownerLookup} /></span>}
       onClose={onClose}
       footer={footer}
@@ -313,7 +314,7 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
         <>
           <FormSection icon="clock" title={t('When')}>
             <dl className="kv">
-              <dt>{t('Date')}</dt><dd className="mono">{row.event_date}</dd>
+              <dt>{t('Date')}</dt><dd>{dateText(row.event_date)}</dd>
               <dt>{t('Stopped at')}</dt><dd className="mono">{row.stop_ts}</dd>
               <dt>{t('Restarted at')}</dt><dd className="mono">{row.start_ts}</dd>
               <dt>{t('Duration')}</dt><dd className="mono" data-testid="detail-duration">{duration(row.duration_s)} <span className="muted">({row.duration_s} s)</span></dd>
@@ -421,7 +422,7 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
               <ul className="history" data-testid="history-list">
                 {history.map((h) => (
                   <li key={h.edit_id} data-testid="history-item">
-                    <div className="history-when">{h.edited_at.slice(0, 16)} · {h.edited_by === user?.user_id ? t('You') : h.edited_by}</div>
+                    <div className="history-when">{tsText(h.edited_at)} · {h.edited_by === user?.user_id ? t('You') : h.edited_by}</div>
                     <div><b>{fieldLabel(h.field)}:</b> {historyValue(h.field, h.old_value)} → {historyValue(h.field, h.new_value)}</div>
                     {h.note && <div className="muted">{t('Note: {note}', { note: h.note })}</div>}
                   </li>

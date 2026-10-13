@@ -518,3 +518,53 @@
     display: none;
   }
 }
+
+/* R1: the page title under its breadcrumb ("Analyze › Dashboard" / "Dashboard"); 60 px on a desktop. */
+@media (min-width: 861px) {
+  :root {
+    --desk-topbar-h: 60px;
+  }
+  .shell-topbar {
+    height: var(--desk-topbar-h);
+    box-sizing: border-box;
+  }
+}
+.shell-topbar-titles {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.shell-topbar-titles .shell-topbar-crumb {
+  font-size: 12.5px;
+  gap: 6px;
+  line-height: 1.2;
+}
+.shell-topbar-title {
+  font: 700 18px/1.2 var(--font-display, var(--sans));
+  color: var(--shell-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: -0.01em;
+}
+.shell-topbar-kbd {
+  margin-inline-start: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--shell-border);
+  border-radius: 5px;
+  font: 600 12px var(--sans);
+  color: var(--shell-text-secondary);
+  background: transparent;
+  flex-shrink: 0;
+}
+/* phone: the app icon before the page name */
+.shell-topbar-appicon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  display: block;
+}

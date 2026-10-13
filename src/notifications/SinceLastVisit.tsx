@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react';
+import { tsText } from '../util/dates';
 import { buildCodeLookup, parseSettings } from '../calc';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t, tn } from '../i18n/t';
@@ -9,7 +10,7 @@ import { useNotificationsOptional } from './NotificationsContext';
 import { computeSince, countNewAlerts, EMPTY_SINCE } from './since';
 import './notifications.css';
 
-// "Since your last visit": a collapsible card under the Overview takeaway. Worked out from the loaded events and the person's
+// "Since your last visit": a collapsible card under the Dashboard takeaway. Worked out from the loaded events and the person's
 // last-seen time; nothing is drawn when nothing is new. Dismiss moves last-seen to now.
 export default function SinceLastVisit() {
   const n = useNotificationsOptional();
@@ -73,7 +74,7 @@ export default function SinceLastVisit() {
             {stat('alerts', num(since.newAlerts), since.newAlerts === 1 ? t('new alert') : t('new alerts'))}
           </ul>
           <div className="slv-foot">
-            <small>{t('Since {when}', { when: lastSeenAt.slice(0, 16) })}</small>
+            <small>{t('Since {when}', { when: tsText(lastSeenAt) })}</small>
             <button type="button" className="btn" onClick={() => void dismiss()} disabled={busy} data-testid="since-dismiss">{t('Dismiss')}</button>
           </div>
         </div>

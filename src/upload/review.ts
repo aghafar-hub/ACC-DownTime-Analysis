@@ -1,6 +1,7 @@
 // The logic behind the review screen: late decisions (per month or per row), what will be sent, the records
 // that will need checking, the warnings recorded with the upload, and the downloadable list.
 // Nothing is dropped: every row of the workbook is stored. Pure functions, no screens, no network.
+import { monthText } from '../util/dates';
 import type { EventRow, Startup, UploadRow, UploadWarning, WarningResolution, WarningType } from '../api/types';
 import {
   BLOCKING_FLAGS, buildIndex, compareUpload, eventIdFromFingerprint, FLAG_INFO, isBlockingFlag, isInfoFlag, WARNING_FLAGS,
@@ -15,11 +16,9 @@ export type Decision = 'add' | 'skip';
 export type Decisions = Record<string, Decision>;
 export const monthKey = (month: string): string => `month:${month}`;
 
-const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-/** '2026-06' -> 'June 2026' */
+/** '2026-06' -> 'Jun 2026' (the app's one month format) */
 export function monthLabel(month: string): string {
-  const m = Number(month.slice(5, 7));
-  return MONTH_NAMES[m - 1] ? `${t(MONTH_NAMES[m - 1] as string)} ${month.slice(0, 4)}` : month;
+  return /^\d{4}-\d{2}/.test(month) ? monthText(month) : month;
 }
 
 export interface LateRow { fingerprint: string; row: DiffUploadRow; warnings: DiffWarning[] }

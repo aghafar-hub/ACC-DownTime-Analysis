@@ -3,7 +3,9 @@ import type { CSSProperties } from "react";
 export type Tokens = {
   appBg: string; sidebarBg: string; cardBg: string; topbarBg: string; border: string; border2: string; inputBg: string; metricBg: string;
   textPrimary: string; textSecondary: string; sidebarText: string; sidebarTextSecondary: string; textMuted: string; textHighlight: string;
-  textSubtle: string; accent: string; accentText: string; tableHead: string; tableRow: string; tableRowAlt: string; scrollThumb: string;
+  textSubtle: string; accent: string; accentText: string;
+  /** ACC orange, the secondary accent: primary calls to action and the active filter pill (fill, text on it, soft tint, orange as text) */
+  brand: string; brandText: string; brandSoft: string; brandInk: string; tableHead: string; tableRow: string; tableRowAlt: string; scrollThumb: string;
   cardSubBg: string; infoBarBg: string; codeBg: string; codeText: string; danger: string; warning: string; alert: string; alertBg: string;
   success: string; info: string; dangerBg: string; warningBg: string; successBg: string; navActive: string; tableHover: string;
   pillDanger: string; pillWarning: string; pillSuccess: string; pillInfo: string; purple: string; purpleBg: string; pillPurple: string;
@@ -36,6 +38,10 @@ export const THEMES: Record<string, Tokens> = {
     textSubtle: "#3D4B60",
     accent: "#1E5BB8",
     accentText: "#FFFFFF",
+    brand: "#B45309",
+    brandText: "#FFFFFF",
+    brandSoft: "#FDF0E3",
+    brandInk: "#9A4507",
     tableHead: "#F5F7FA",
     tableRow: "#FFFFFF",
     tableRowAlt: "#FAFBFC",
@@ -93,6 +99,10 @@ export const THEMES: Record<string, Tokens> = {
     textSubtle: "#4F4535",
     accent: "#1F58A8",
     accentText: "#FFFFFF",
+    brand: "#B45309",
+    brandText: "#FFFFFF",
+    brandSoft: "#FBEBD8",
+    brandInk: "#94420A",
     tableHead: "#F7F2E7",
     tableRow: "#FFFDF7",
     tableRowAlt: "#FBF7EE",
@@ -150,6 +160,10 @@ export const THEMES: Record<string, Tokens> = {
     textSubtle: "#1A1A1A",
     accent: "#0A3A8C",
     accentText: "#FFFFFF",
+    brand: "#8A3A06",
+    brandText: "#FFFFFF",
+    brandSoft: "#FFF0E0",
+    brandInk: "#7A3305",
     tableHead: "#EDEDED",
     tableRow: "#FFFFFF",
     tableRowAlt: "#F5F5F5",
@@ -207,6 +221,10 @@ export const THEMES: Record<string, Tokens> = {
     textSubtle: "#C8D6E6",
     accent: "#4C9BFF",
     accentText: "#06142A",
+    brand: "#F39A4C",
+    brandText: "#1A0D02",
+    brandSoft: "rgba(243,154,76,0.16)",
+    brandInk: "#F6A25A",
     tableHead: "#0B1A2E",
     tableRow: "#0F2138",
     tableRowAlt: "#0C1C31",
@@ -264,6 +282,10 @@ export const THEMES: Record<string, Tokens> = {
     textSubtle: "#D0D3D7",
     accent: "#5B9BFF",
     accentText: "#0B1424",
+    brand: "#F39A4C",
+    brandText: "#1A0D02",
+    brandSoft: "rgba(243,154,76,0.16)",
+    brandInk: "#F6A25A",
     tableHead: "#121417",
     tableRow: "#17191C",
     tableRowAlt: "#141619",

@@ -8,7 +8,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import AreasBlock from '../dashboard/AreasBlock';
 import MonthCompare from '../dashboard/MonthCompare';
 import DashTop from '../dashboard/DashTop';
-import { fh, fh2, fint, monthLabel, monthMissing, MTBF_ALL_LABEL, MTBF_ALL_SUB, partialNote } from '../dashboard/format';
+import { fh, fh2, fint, monthAxisLabels, monthLabel, monthMissing, MTBF_ALL_LABEL, MTBF_ALL_SUB, partialNote } from '../dashboard/format';
 import { reliabilityTakeaway } from '../dashboard/takeaways';
 import { reliabilityModel, whenFailuresStart } from '../dashboard/models';
 import HeatmapTable from '../charts/HeatmapTable';
@@ -41,7 +41,7 @@ export default function Reliability() {
   const win = ctx?.win.effective ?? null;
 
   const months = model?.monthly ?? [];
-  const cats: CartCategory[] = months.map((m) => ({ key: m.month, label: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
+  const cats: CartCategory[] = months.map((m, i, all) => ({ key: m.month, label: monthAxisLabels(all.map((x) => x.month))[i]!, full: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
   const line = (key: string, label: string, pick: (m: (typeof months)[number]) => Metric, fmt: (n: number) => string, slot: number): CartSeries => ({
     key, label, color: seriesColor(dark, slot), type: 'line', values: months.map((m) => num(pick(m))), missing: months.map((m) => why(pick(m))), format: fmt,
   });

@@ -1,4 +1,5 @@
 import { useCallback, useState, type ReactNode } from 'react';
+import { monthText } from '../util/dates';
 import { useNavigate } from 'react-router-dom';
 import DataStatus from '../components/DataStatus';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -20,8 +21,6 @@ export function DashStatus({ dash }: { dash: Dash }) {
   );
 }
 
-const MONTH3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const monthText = (m: string): string => `${MONTH3[Number(m.slice(5, 7)) - 1] ?? m.slice(5, 7)} ${m.slice(0, 4)}`;
 
 /** P6: the data status line names the months inside the data that have no record at all (information, never 0 h or 100 %). */
 export function NotUploadedLine({ dash }: { dash: Dash }) {

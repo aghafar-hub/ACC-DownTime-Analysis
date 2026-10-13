@@ -1,5 +1,6 @@
 // Failure timeline of one equipment code: each event is a mark at its start, tall for long stops, with the
 // gap in days between successive failures drawn underneath.
+import { tsText } from '../util/dates';
 import { useState, type ReactNode } from 'react';
 import { monthsOfRange, parseDate, rangeToInterval, type DateRange } from '../calc';
 import { t } from '../i18n/t';
@@ -44,7 +45,7 @@ export default function TimelineChart({
 
   const node = (e: TimelineEvent, gapDays: number | null): ReactNode => (
     <>
-      <TipRows title={`${new Date(e.startMs).toISOString().slice(0, 16).replace('T', ' ')} · ${e.area}`} rows={[
+      <TipRows title={`${tsText(new Date(e.startMs).toISOString().slice(0, 16).replace('T', ' '))} · ${e.area}`} rows={[
         { label: t('Duration'), value: `${e.hours.toFixed(2)} h` },
         { label: t('Reason'), value: e.reason || t('(blank)') },
         ...(gapDays !== null ? [{ label: t('Days since previous'), value: gapDays.toFixed(1) }] : []),

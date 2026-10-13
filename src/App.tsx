@@ -21,7 +21,7 @@ import ChangePassword from './pages/ChangePassword';
 import EventExplorer from './pages/EventExplorer';
 import Login from './pages/Login';
 import Master from './pages/Master';
-import Overview from './pages/Overview';
+import Dashboard from './pages/Dashboard';
 import Pareto from './pages/Pareto';
 import Reliability from './pages/Reliability';
 import Reports from './pages/Reports';
@@ -87,6 +87,12 @@ function ShellLayout() {
   );
 }
 
+// The Overview is now the Dashboard: old links and bookmarks (/overview?line=L.1) land there with their query.
+function OldOverview() {
+  const location = useLocation();
+  return <Navigate to={{ pathname: '/dashboard', search: location.search }} replace state={location.state} />;
+}
+
 // "/" goes to the first page this person may open.
 function Home() {
   const pages = useVisiblePages();
@@ -148,7 +154,8 @@ export default function App() {
               <Route path="/change-password" element={<ChangePassword />} />
               <Route element={<ShellLayout />}>
                 <Route path="/" element={<Home />} />
-                <Route path="/overview" element={<RequireTab tab="overview"><Overview /></RequireTab>} />
+                <Route path="/dashboard" element={<RequireTab tab="overview"><Dashboard /></RequireTab>} />
+                <Route path="/overview" element={<OldOverview />} />
                 <Route path="/pareto" element={<RequireTab tab="pareto"><Pareto /></RequireTab>} />
                 <Route path="/repeats" element={<RequireTab tab="repeats"><Repeats /></RequireTab>} />
                 <Route path="/reliability" element={<RequireTab tab="reliability"><Reliability /></RequireTab>} />

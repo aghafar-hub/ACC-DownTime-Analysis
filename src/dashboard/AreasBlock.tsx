@@ -7,7 +7,7 @@ import { MARKERS, seriesColor } from '../charts/palette';
 import { t } from '../i18n/t';
 import { useTheme } from '../theme/ThemeContext';
 import { MultiPick } from './FilterBar';
-import { fh, fh2, fint, fpct, metricText, monthLabel, partialNote } from './format';
+import { fh, fh2, fint, fpct, metricText, monthAxisLabels, monthLabel, partialNote } from './format';
 import { monthly } from './models';
 import AreaReliabilityCharts from './AreaReliabilityCharts';
 import { TargetCell } from './TargetStatus';
@@ -26,7 +26,7 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
   const statuses = useMemo(() => areaTargetStatuses(perArea, targets), [perArea, targets.availabilityPct, targets.mtbfH, targets.mttrH]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const months = useMemo(() => monthly(ctx), [ctx]);
-  const cats: CartCategory[] = months.map((m) => ({ key: m.month, label: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
+  const cats: CartCategory[] = months.map((m, i, all) => ({ key: m.month, label: monthAxisLabels(all.map((x) => x.month))[i]!, full: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
 
   const lowest = useMemo(
     () => [...perArea].filter((a) => a.availabilityHeadline.available).sort((a, b) => (a.availabilityHeadline as { value: number }).value - (b.availabilityHeadline as { value: number }).value).slice(0, 5).map((a) => a.area_id),

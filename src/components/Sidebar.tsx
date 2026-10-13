@@ -1,23 +1,29 @@
 import { NavLink } from 'react-router-dom';
 import { Icon } from '../icons';
+import { useRail } from '../hooks/useRail';
 import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
 import { pageLabel, pagesInSection, SECTIONS, sectionLabel } from '../navigation';
 import ValidateBadge from '../validate/NavBadge';
 import './Sidebar.css';
 
-// Left rail (desktop and tablet): 68 px with the leaf mark, 248 px with the
-// full logo and labels on hover or focus. Always the dark sidebar colour,
-// in every theme. The app icon is the collapsed mark; the company logo shows when the rail opens and on the login screen.
+// Left rail (desktop and tablet), always on the navy side-bar colour with the transparent ACC logo straight on it.
+// At 1280 px and wider it is pinned open with labels (232 px) unless the person collapses it; otherwise it is the
+// 68 px icon rail, and hover or keyboard focus opens the labels OVER the page (the page does not move).
 export default function Sidebar() {
   const pages = useVisiblePages();
+  const { wide, pinned, toggle } = useRail();
   const base = import.meta.env.BASE_URL;
+  const mode = pinned ? 'pinned' : 'icons';
   return (
-    <div className="sidebar-rail">
-      <nav className="sidebar-nav-root" aria-label={t('Primary')}>
+    <div className={`sidebar-rail sidebar-rail--${mode}`} data-testid="rail" data-mode={mode}>
+      <nav className="sidebar-panel" aria-label={t('Primary')} data-testid="rail-panel">
         <div className="sidebar-logo">
-          <img src={`${base}icons/pwa-192.png`} alt="" className="sidebar-logo-mark" />
-          <img src={`${base}brand/acc-logo-full.png`} alt={t('ACC Downtime Analysis')} className="sidebar-logo-full" />
+          <img src={`${base}brand/acc-leaf-mark.png`} alt="" className="sidebar-logo-mark" />
+          <span className="sidebar-logo-crop">
+            <img src={`${base}brand/acc-logo-full.png`} alt={t('Arabian Cement Company')} className="sidebar-logo-full" />
+          </span>
+          <span className="sidebar-logo-sub">{t('Downtime Analysis')}</span>
         </div>
         <div className="sidebar-nav">
           {SECTIONS.map((sec) => {
@@ -29,7 +35,7 @@ export default function Sidebar() {
                 <ul className="sidebar-section-list">
                   {items.map((p) => (
                     <li key={p.id}>
-                      <NavLink to={p.path} className={({ isActive }) => (isActive ? 'sidebar-link sidebar-link--active' : 'sidebar-link')} title={pageLabel(p)}>
+                      <NavLink to={p.path} className={({ isActive }) => (isActive ? 'sidebar-link sidebar-link--active' : 'sidebar-link')} title={pinned ? undefined : pageLabel(p)} data-testid={`rail-link-${p.id}`}>
                         <span className="sidebar-link-icon"><Icon name={p.icon} size={18} /></span>
                         <span className="sidebar-link-label">{pageLabel(p)}</span>
                         {p.id === 'validate' && <ValidateBadge testid="validate-badge-rail" />}
@@ -41,6 +47,17 @@ export default function Sidebar() {
             );
           })}
         </div>
+        {wide && (
+          <div className="sidebar-foot">
+            <button
+              type="button" className="sidebar-link sidebar-toggle" onClick={toggle} aria-pressed={!pinned}
+              title={pinned ? t('Collapse menu') : t('Expand menu')} data-testid="rail-toggle"
+            >
+              <span className="sidebar-link-icon"><Icon name={pinned ? 'chevronsLeft' : 'chevronsRight'} size={18} /></span>
+              <span className="sidebar-link-label">{pinned ? t('Collapse menu') : t('Keep menu open')}</span>
+            </button>
+          </div>
+        )}
       </nav>
     </div>
   );

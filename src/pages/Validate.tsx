@@ -1,4 +1,5 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { monthText, tsText } from '../util/dates';
 import { useLocation } from 'react-router-dom';
 import { api, describeError } from '../api';
 import type { EventRow } from '../api/types';
@@ -30,11 +31,7 @@ import '../components/ui.css';
 import '../validate/validate.css';
 import StickyTableWrap from '../components/StickyTableWrap';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const monthName = (key: string): string => {
-  const [y, m] = key.split('-');
-  return `${MONTHS[Number(m) - 1] ?? m} ${y}`;
-};
+const monthName = (key: string): string => monthText(key);
 
 type OpenState = { id: string; mode: 'view' | 'edit' | 'void' } | null;
 type View = 'open' | 'kept' | 'overlaps';
@@ -79,7 +76,7 @@ function KeptInfo({ k, userName, note }: { k: KeptRecord; userName: (id: string 
         ))}
       </div>
       <p className="v-kept-note" data-testid="v-kept-by">
-        {t('Kept as entered by {name} on {date}', { name: userName(e.accepted_by), date: (e.accepted_at ?? '').slice(0, 16) })}
+        {t('Kept as entered by {name} on {date}', { name: userName(e.accepted_by), date: tsText(e.accepted_at ?? '') })}
         {note ? <>{': '}<span data-testid="v-kept-note">{note}</span></> : null}
       </p>
       {k.leftOut && <p className="v-kept-also" data-testid="v-kept-leftout">{t('Still left out of the numbers: it cannot be calculated.')}</p>}

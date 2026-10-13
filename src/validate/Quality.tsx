@@ -1,4 +1,5 @@
-// Data quality: the month-by-month scorecard (Validate page) and the compact card on the Overview.
+// Data quality: the month-by-month scorecard (Validate page) and the compact card on the Dashboard.
+import { monthText } from '../util/dates';
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -10,8 +11,7 @@ import { useValidationOptional } from './ValidationContext';
 import { buildScorecard, showQualityCard, type MonthQuality } from './scorecard';
 import './validate.css';
 
-const NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-export const qualityMonth = (key: string): string => `${NAMES[Number(key.slice(5, 7)) - 1] ?? key.slice(5, 7)} ${key.slice(0, 4)}`;
+export const qualityMonth = (key: string): string => monthText(key);
 const pct1 = (n: number): string => `${(Math.round(n * 10) / 10).toFixed(1)}%`;
 
 /** Share of clean records as a bar and as text (the text carries the value; the bar only helps the eye). */
@@ -115,7 +115,7 @@ export function QualityTable({ onPickMonth }: { onPickMonth?: (month: string) =>
   );
 }
 
-/** Overview: "Data quality: 97.3% clean, 114 to check" with a link to Validate. Only for a person who can open Validate, and only while something is open. */
+/** Dashboard: "Data quality: 97.3% clean, 114 to check" with a link to Validate. Only for a person who can open Validate, and only while something is open. */
 export function QualityCard() {
   const v = useValidationOptional();
   const { canView } = useAuth();

@@ -40,6 +40,12 @@ export function themeVars(T: Tokens, dark: boolean): Record<string, string> {
     '--shell-sidebar-text-secondary': T.sidebarTextSecondary,
     '--shell-accent': T.accent,
     '--shell-accent-text': T.accentText,
+    '--shell-brand': T.brand,
+    '--shell-brand-text': T.brandText,
+    '--shell-brand-soft': T.brandSoft,
+    '--shell-brand-ink': T.brandInk,
+    // orange on the navy rail (the rail is dark in every theme)
+    '--shell-brand-on-dark': '#F6A25A',
     '--shell-text-muted': T.textMuted,
     '--shell-danger': T.danger,
     '--shell-warning': T.warning,

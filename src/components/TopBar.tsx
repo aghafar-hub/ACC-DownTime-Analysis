@@ -9,7 +9,7 @@ import { isSettingsPath, pageForPath, pageLabel, ROLE_LABELS, sectionLabel, sett
 import { useOnlineStatus } from '../useOnlineStatus';
 import './TopBar.css';
 
-// Top bar (56 px): breadcrumb "ACC Downtime > Section > Page", online dot, a search
+// Top bar (60 px): the breadcrumb "Section > Page" over the page title (phone: app icon and page name), online dot, a search
 // shortcut to the Event Explorer, the Settings button (gear, every page, every
 // role), the notification bell and the avatar menu.
 export default function TopBar() {
@@ -45,40 +45,53 @@ export default function TopBar() {
   const role = user ? t(ROLE_LABELS[user.role_id] || user.role_id) : '';
   const canSearch = canView('events');
   const goSearch = () => navigate('/events', { state: { focusSearch: Date.now() } });
+  // Ctrl K (Cmd K on a Mac) opens the search, like the hint in the box says
+  const searchRef = useRef(goSearch);
+  searchRef.current = goSearch;
+  useEffect(() => {
+    if (!canSearch) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchRef.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [canSearch]);
   return (
     <header className="shell-topbar">
-      <div className="shell-topbar-crumb" data-testid="breadcrumb">
-        {mobile ? (
-          <span className="shell-topbar-module">{pageName || t('ACC Downtime')}</span>
-        ) : (
-          <>
-            <span className="shell-topbar-module">{t('ACC Downtime')}</span>
+      {mobile ? (
+        <div className="shell-topbar-crumb" data-testid="breadcrumb">
+          <img src={`${import.meta.env.BASE_URL}icons/pwa-192.png`} alt="" className="shell-topbar-appicon" />
+          <span className="shell-topbar-module" data-testid="topbar-title">{pageName || t('ACC Downtime')}</span>
+        </div>
+      ) : (
+        <div className="shell-topbar-titles">
+          <div className="shell-topbar-crumb" data-testid="breadcrumb">
             {page && !onSettings && (
               <>
-                <span className="shell-topbar-sep" aria-hidden="true">›</span>
                 <span className="shell-topbar-page" data-testid="breadcrumb-section">{sectionLabel(page.group)}</span>
-              </>
-            )}
-            {pageName && (
-              <>
                 <span className="shell-topbar-sep" aria-hidden="true">›</span>
-                <span className="shell-topbar-page">{pageName}</span>
               </>
             )}
+            {pageName ? <span className="shell-topbar-page">{pageName}</span> : <span className="shell-topbar-page">{t('ACC Downtime')}</span>}
             {subName && (
               <>
                 <span className="shell-topbar-sep" aria-hidden="true">›</span>
                 <span className="shell-topbar-page" data-testid="breadcrumb-sub">{subName}</span>
               </>
             )}
-          </>
-        )}
-      </div>
+          </div>
+          <div className="shell-topbar-title" data-testid="topbar-title">{subName || pageName || t('ACC Downtime')}</div>
+        </div>
+      )}
 
       {canSearch && !mobile && (
         <button type="button" className="shell-topbar-search" onClick={goSearch} data-testid="global-search">
           <Icon name="search" size={15} />
           <span>{t('Search events, codes, reasons')}</span>
+          <kbd className="shell-topbar-kbd" aria-hidden="true">Ctrl K</kbd>
         </button>
       )}
 

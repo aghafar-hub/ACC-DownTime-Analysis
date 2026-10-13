@@ -8,7 +8,7 @@ import { Tile } from '../components/Tile';
 import { useIsMobile } from '../hooks/useIsMobile';
 import DashTop from '../dashboard/DashTop';
 import {
-  ChangeLine, dayLabel, dayMissing, dayShort, fh, fh2, fint, fpct, fpct0, metricText, monthLabel, monthMissing, MTBF_ALL_LABEL, MTBF_ALL_SUB, NOT_UPLOADED, NOT_UPLOADED_FOOT,
+  ChangeLine, dayLabel, dayMissing, dayShort, fh, fh2, fint, fpct, fpct0, metricText, monthAxisLabels, monthLabel, monthMissing, MTBF_ALL_LABEL, MTBF_ALL_SUB, NOT_UPLOADED, NOT_UPLOADED_FOOT,
   PARTIAL_FOOT, partialNote,
 } from '../dashboard/format';
 import { HeroKpi, InfoButton } from '../dashboard/HeroKpi';
@@ -65,12 +65,12 @@ function MoreFigures({ children, count }: { children: ReactNode; count: number }
   );
 }
 
-export default function Overview() {
+export default function Dashboard() {
   const dash = useDash();
   const { ctx } = dash;
   const { T, dark } = useTheme();
   const mobile = useIsMobile();
-  const drill = useDrill(dash, 'Overview');
+  const drill = useDrill(dash, 'Dashboard');
   const model = useMemo(() => (ctx ? overviewModel(ctx) : null), [ctx]);
   const rows = useMemo(() => (ctx ? rowsInRange(ctx.scope, ctx.win.range) : null), [ctx]);
   const kpi = model?.kpi ?? null;
@@ -90,7 +90,7 @@ export default function Overview() {
 
   // ---- chart data
   const months = model?.monthly ?? [];
-  const cats: CartCategory[] = months.map((m) => ({ key: m.month, label: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
+  const cats: CartCategory[] = months.map((m, i, all) => ({ key: m.month, label: monthAxisLabels(all.map((x) => x.month))[i]!, full: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
   const missing = months.map(monthMissing);
   const hfmt = (n: number) => `${fh(n)} h`;
   const stackSeries: CartSeries[] = [
@@ -133,7 +133,7 @@ export default function Overview() {
 
   // (3) monthly hours by classification
   const byClass = model?.byClass ?? [];
-  const ccats: CartCategory[] = byClass.map((m) => ({ key: m.month, label: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
+  const ccats: CartCategory[] = byClass.map((m, i, all) => ({ key: m.month, label: monthAxisLabels(all.map((x) => x.month))[i]!, full: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
   const cmissing = byClass.map(monthMissing);
   const classSeries: CartSeries[] = CLASS_ORDER.map((code) => ({
     key: code, label: code, color: classColor(dark, code), type: 'bar', stack: 'c', values: byClass.map((m) => (m.hasData ? m.hours[code] : null)), format: hfmt, missing: cmissing,
@@ -199,7 +199,7 @@ export default function Overview() {
     : t('No availability can be calculated for these areas.');
 
   const eventCount = rows ? rows.length : null;
-  const openEvents = () => rows && drill(t('the Overview filters'), { rowIds: rows.map((r) => r.event_id) });
+  const openEvents = () => rows && drill(t('the Dashboard filters'), { rowIds: rows.map((r) => r.event_id) });
 
   // ---- KPIs
   const ch = model?.changes ?? null;
@@ -261,7 +261,7 @@ export default function Overview() {
   return (
     <div className="page dash-page" data-testid="page-overview">
       <DashTop
-        title={t('Overview')} takeaway={takeaway} dash={dash} eventCount={eventCount} belowTakeaway={<SinceLastVisit />}
+        title={t('Dashboard')} takeaway={takeaway} dash={dash} eventCount={eventCount} belowTakeaway={<SinceLastVisit />}
         right={(
           <>
             {rows && rows.length > 0 && <button type="button" className="btn btn-sm" onClick={openEvents} data-testid="open-events"><Icon name="list" size={14} /> {t('Open {n} events', { n: fint(rows.length) })}</button>}

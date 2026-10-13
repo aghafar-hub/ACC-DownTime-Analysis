@@ -7,7 +7,7 @@ import { bottomBarPages, isSettingsPath, pageShort } from '../navigation';
 import { MoreCountBadge } from '../validate/NavBadge';
 import './BottomNav.css';
 
-// The phone's bottom bar (only drawn at 860 px and below): three pages (Overview, Pareto, Events;
+// The phone's bottom bar (only drawn at 860 px and below): three pages (Dashboard, Pareto, Events;
 // the next visible ones stand in for any the person cannot see), then More, which opens the full menu.
 export default function BottomNav({ onOpenMore, moreOpen }: { onOpenMore: () => void; moreOpen: boolean }) {
   const pages = useVisiblePages();

@@ -2,6 +2,7 @@
 // the browser (every block is rendered once off screen, its height read) and decided by the pure paginate() function,
 // so what is on screen is exactly what is printed: the same fixed-size pages, header, footer and page numbers. On a
 // narrow screen the pages are scaled down to the width (CSS transform on screen only).
+import { tsText } from '../util/dates';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMeasure } from '../charts/ChartKit';
 import { dayLabel } from '../dashboard/format';
@@ -16,11 +17,9 @@ import { SECTION_BY_ID, SECTION_GROUPS } from './sections';
 export const PAGE_W = 794;
 export const PAGE_H = 1123;
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** '2026-10-13 11:00' -> '13 Oct 2026, 11:00' */
+/** '2026-10-13 11:00' -> '13 Oct 2026 11:00' */
 export function generatedText(ts: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}:\d{2})/.exec(ts);
-  return m ? `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}, ${m[4]}` : ts;
+  return /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(ts) ? tsText(ts.replace('T', ' ')) : ts;
 }
 
 // ---------------------------------------------------------------- cover and contents

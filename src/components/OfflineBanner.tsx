@@ -1,4 +1,5 @@
 import { useStartup } from '../data/useStartup';
+import { whenShort, whenText } from '../util/dates';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { useOnlineStatus } from '../useOnlineStatus';
@@ -8,8 +9,7 @@ function fmtTime(iso: string | null): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  return new Date().toDateString() === d.toDateString() ? time : `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${time}`;
+  return new Date().toDateString() === d.toDateString() ? whenText(d).slice(-5) : whenShort(d);
 }
 
 // When the connection drops, say so plainly under the tabs: how old the data on

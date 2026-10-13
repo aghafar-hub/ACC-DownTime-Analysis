@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import type { Change, Metric } from '../calc';
 import { t } from '../i18n/t';
 import { nf } from '../util/format';
+import { dateText, dayText, monthShort, monthText, rangeText } from '../util/dates';
 import type { CompareMode } from './filters';
 
 const nf1 = new Intl.NumberFormat('en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -26,25 +27,22 @@ export function metricText(m: Metric, fmt: (n: number) => string, unit = ''): Me
   return { text: t('Unavailable'), reason: m.reason, unavailable: true };
 }
 
-/** "2026-03" -> "Mar 26" */
-export function monthLabel(key: string): string {
-  const [y, m] = key.split('-');
-  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${names[Number(m) - 1] ?? m} ${String(y).slice(2)}`;
-}
+/** "2026-03" -> "Mar 2026" (the app's one month format, see src/util/dates.ts) */
+export const monthLabel = (key: string): string => monthText(key);
 
 /** "2026-03-05" -> "5 Mar 2026" */
-export function dayLabel(d: string): string {
-  const [y, m, day] = d.split('-');
-  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${Number(day)} ${names[Number(m) - 1] ?? m} ${y}`;
-}
+export const dayLabel = (d: string): string => dateText(d);
 
 /** "2026-03-05" -> "5 Mar" */
-export function dayShort(d: string): string {
-  const [, m, day] = d.split('-');
-  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${Number(day)} ${names[Number(m) - 1] ?? m}`;
+export const dayShort = (d: string): string => dayText(d);
+
+/**
+ * Axis labels of a run of months: 'Jan', 'Feb' ... when they all sit in one year (the year is in the card's scope
+ * line), otherwise 'Jan 2026'. Tooltips and tables keep the full 'Jan 2026'.
+ */
+export function monthAxisLabels(keys: readonly string[]): string[] {
+  const years = new Set(keys.map((k) => k.slice(0, 4)));
+  return keys.map((k) => (years.size <= 1 ? monthShort(k) : monthText(k)));
 }
 
 /** P6: a month (or day) inside the coverage with no record at all in the data: never 0 h or 100 %. */
@@ -76,8 +74,9 @@ export function partialNote(m: { month: string; partial: boolean; window: { from
 /** Footnote under a monthly chart that has partial months. */
 export const PARTIAL_FOOT = 'Months with * show only part of the month (the range or the data starts or ends inside it); they are outlined with a dashed line.';
 
+/** "1 Jan – 31 Aug 2026" (see rangeText) */
 export function rangeLabel(r: { from: string; to: string }): string {
-  return r.from === r.to ? dayLabel(r.from) : `${dayLabel(r.from)} – ${dayLabel(r.to)}`;
+  return rangeText(r);
 }
 
 /** P4: the one label of the all-area MTBF (operating area-hours of every area in scope / failure events), on every screen. */

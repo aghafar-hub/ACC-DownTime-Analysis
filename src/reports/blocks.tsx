@@ -10,7 +10,7 @@ import OccurrenceStrip from '../charts/OccurrenceStrip';
 import ParetoChart from '../charts/ParetoChart';
 import { CLASS_ORDER, STACK_COLORS, classColor } from '../charts/palette';
 import QuadrantChart from '../charts/QuadrantChart';
-import { dayLabel, dayShort, fh, fh2, fint, fpct, fpct0, monthLabel, monthMissing, NOT_UPLOADED_FOOT, PARTIAL_FOOT } from '../dashboard/format';
+import { dayLabel, dayShort, fh, fh2, fint, fpct, fpct0, monthAxisLabels, monthLabel, monthMissing, NOT_UPLOADED_FOOT, PARTIAL_FOOT } from '../dashboard/format';
 import { statusSymbol } from '../dashboard/TargetStatus';
 import { statusLine, targetNumber, type TargetStatus } from '../dashboard/targets';
 import { t } from '../i18n/t';
@@ -181,7 +181,7 @@ function monthlyBlocks(s: MonthlySection): Block[] {
   const out = opening(s);
   if (s.empty) return out;
   const months = s.data.months;
-  const cats: CartCategory[] = months.map((m) => ({ key: m.month, label: m.notUploaded ? `${monthLabel(m.month)} n/u` : monthLabel(m.month), partial: m.partial }));
+  const cats: CartCategory[] = months.map((m, i, all) => { const ax = monthAxisLabels(all.map((x) => x.month))[i]!; return { key: m.month, label: m.notUploaded ? `${ax} n/u` : ax, full: monthLabel(m.month), partial: m.partial }; });
   const miss = months.map(monthMissing);
   const series: CartSeries[] = [
     { key: 'failure', label: t('Failure (INC)'), color: STACK_COLORS.failure, type: 'bar', stack: 's', values: months.map((m) => (m.hasData ? m.failureHours : null)), missing: miss },
@@ -203,7 +203,7 @@ function classesBlocks(s: ClassesSection): Block[] {
   const out = opening(s);
   if (s.empty) return out;
   const months = s.data.months;
-  const cats: CartCategory[] = months.map((m) => ({ key: m.month, label: m.notUploaded ? `${monthLabel(m.month)} n/u` : monthLabel(m.month), partial: m.partial }));
+  const cats: CartCategory[] = months.map((m, i, all) => { const ax = monthAxisLabels(all.map((x) => x.month))[i]!; return { key: m.month, label: m.notUploaded ? `${ax} n/u` : ax, full: monthLabel(m.month), partial: m.partial }; });
   const series: CartSeries[] = CLASS_ORDER.map((code) => ({
     key: code, label: code, color: classColor(LIGHT, code), type: 'bar', stack: 'c', values: months.map((m) => (m.hasData ? m.hours[code] : null)),
   }));

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { tsText } from '../../util/dates';
 import { api } from '../../api';
 import type { AccessLevel, AdminUser, TabId } from '../../api/types';
 import { TAB_IDS } from '../../api/types';
@@ -112,7 +113,7 @@ export default function UserModal({ user, self, activeAdmins, canEdit, onClose, 
       <FormSection icon="shield" title={t('Password')}>
         <p className="adm-note">
           {user.must_change ? <><span aria-hidden="true">▲ </span>{t('This person is using a temporary password and must choose their own at the next sign-in.')}</> : t('Passwords are never shown. A reset gives a new one-time temporary password.')}
-          {' '}{user.last_login_at ? t('Last sign-in: {when}.', { when: user.last_login_at.slice(0, 16) }) : t('Has not signed in yet.')}
+          {' '}{user.last_login_at ? t('Last sign-in: {when}.', { when: tsText(user.last_login_at) }) : t('Has not signed in yet.')}
         </p>
         {reset.error && <div className="callout callout--danger" role="alert"><Icon name="alert" size={16} /><span>{reset.error}</span></div>}
         {canEdit && <button type="button" className="btn" onClick={() => setConfirm('reset')} disabled={reset.busy} data-testid="reset-password"><Icon name="sync" size={15} /> {t('Reset password')}</button>}

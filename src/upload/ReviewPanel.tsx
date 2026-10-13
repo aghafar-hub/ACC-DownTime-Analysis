@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { tsText } from '../util/dates';
 import { Link } from 'react-router-dom';
 import type { DiffUploadRow } from '../calc';
 import { PAGE_SIZE, ShowMore } from '../components/PhoneParts';
@@ -11,7 +12,7 @@ import {
 import { fieldName, INFO_CHECK_TYPES, OTHER_CHECK_TYPES, warningHelp, warningLabel, warningSymbol, warningTone } from './warningText';
 import './upload.css';
 
-const shortTime = (ts: string): string => ts.slice(0, 16);
+const shortTime = (ts: string): string => tsText(ts);
 
 function Count({ n, label, hint, tone, testid }: { n: number; label: string; hint?: string; tone?: 'warning' | 'info' | 'danger' | 'success'; testid: string }) {
   const symbol = tone === 'warning' ? '▲' : tone === 'danger' ? '◆' : tone === 'success' ? '●' : tone === 'info' ? '●' : '';

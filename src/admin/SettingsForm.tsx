@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { tsText } from '../util/dates';
 import { api } from '../api';
 import type { Setting } from '../api/types';
 import { ChipRow, CountChip } from '../components/PhoneParts';
@@ -58,7 +59,7 @@ export default function SettingsForm({ settings, canEdit, onSaved, groupIds }: {
           <input id={`set-${f.key}`} className="input mono" type="url" inputMode="url" autoComplete="off" placeholder={f.placeholder} maxLength={f.maxLength + 20} value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} data-testid={`set-${f.key}`} aria-describedby={`help-${f.key}`} />
           <span className="field-hint" id={`help-${f.key}`}>{f.help}</span>
           {bad && <span className="field-error" role="alert" data-testid={`error-${f.key}`}>{problems[f.key]}</span>}
-          {m?.updated_at && <span className="field-hint">{t('Changed {when}{who}', { when: m.updated_at.slice(0, 16), who: m.updated_by ? ` · ${who(m.updated_by)}` : '' })}</span>}
+          {m?.updated_at && <span className="field-hint">{t('Changed {when}{who}', { when: tsText(m.updated_at), who: m.updated_by ? ` · ${who(m.updated_by)}` : '' })}</span>}
         </div>
       );
     }
@@ -68,7 +69,7 @@ export default function SettingsForm({ settings, canEdit, onSaved, groupIds }: {
         <input id={`set-${f.key}`} className="input mono" inputMode="decimal" value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} data-testid={`set-${f.key}`} aria-describedby={`help-${f.key}`} />
         <span className="field-hint" id={`help-${f.key}`}>{f.help}</span>
         {bad && <span className="field-error" role="alert" data-testid={`error-${f.key}`}>{problems[f.key]}</span>}
-        {m?.updated_at && <span className="field-hint">{t('Changed {when}{who}', { when: m.updated_at.slice(0, 16), who: m.updated_by ? ` · ${who(m.updated_by)}` : '' })}</span>}
+        {m?.updated_at && <span className="field-hint">{t('Changed {when}{who}', { when: tsText(m.updated_at), who: m.updated_by ? ` · ${who(m.updated_by)}` : '' })}</span>}
       </div>
     );
   };
@@ -78,7 +79,7 @@ export default function SettingsForm({ settings, canEdit, onSaved, groupIds }: {
       <section className="card" aria-label={t('Last change')}>
         <p style={{ margin: 0 }} data-testid="last-changed">
           <Icon name="clock" size={15} style={{ verticalAlign: '-2px', marginInlineEnd: 6 }} />
-          {last ? t('Last changed {when} by {who}.', { when: String(last.updated_at).slice(0, 16), who: who(last.updated_by) }) : t('No setting has been changed yet. These are the starting values.')}
+          {last ? t('Last changed {when} by {who}.', { when: tsText(String(last.updated_at)), who: who(last.updated_by) }) : t('No setting has been changed yet. These are the starting values.')}
         </p>
       </section>
       {error && <div className="callout callout--danger" role="alert" data-testid="server-error"><Icon name="alert" size={16} /><span>{error}</span></div>}

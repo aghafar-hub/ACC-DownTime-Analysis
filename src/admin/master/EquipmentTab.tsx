@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { tsText } from '../../util/dates';
 import { api } from '../../api';
 import type { Equipment } from '../../api/types';
 import { codeKey } from '../../calc';
@@ -148,7 +149,7 @@ function EquipmentModal({ row, startup, canEdit, onClose, onSaved }: {
             {ref(t('Sub area'), row.platform_sub_area)}
             {ref(t('Origin'), row.origin)}
             {ref(t('Review note'), row.review_note)}
-            {ref(t('Last changed'), row.updated_at ? `${row.updated_at.slice(0, 16)}${row.updated_by ? ` · ${row.updated_by}` : ''}` : '')}
+            {ref(t('Last changed'), row.updated_at ? `${tsText(row.updated_at)}${row.updated_by ? ` · ${row.updated_by}` : ''}` : '')}
           </dl>
           <p className="adm-muted-sm" style={{ margin: '8px 0 0' }}>{t('"Needs review" is worked out by the system: a code needs review while it has no description, no criticality or no area.')}</p>
         </FormSection>

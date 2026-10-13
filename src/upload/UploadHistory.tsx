@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { tsText } from '../util/dates';
 import type { UploadBatch } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -13,7 +14,7 @@ function StatusBadge({ s }: { s: UploadBatch['status'] }) {
   return <span className="badge badge--warning"><span aria-hidden="true">▲</span> {t('Not finished')}</span>;
 }
 
-const when = (ts: string): string => ts.slice(0, 16);
+const when = (ts: string): string => tsText(ts);
 
 /** Earlier uploads. Opening one shows the warnings recorded with it. */
 export default function UploadHistory({ batches, error, onRetry }: { batches: UploadBatch[] | null; error: string | null; onRetry: () => void }) {

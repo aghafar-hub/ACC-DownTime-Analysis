@@ -33,7 +33,8 @@ export interface PageDef {
 }
 
 export const PAGES: PageDef[] = [
-  { id: 'overview', access: 'overview', path: '/overview', label: 'Overview', tab: 'Overview', short: 'Overview', icon: 'dashboard', group: 'analyze' },
+  // The Dashboard keeps the id (and access tab) `overview`; its address is /dashboard (/overview redirects there).
+  { id: 'overview', access: 'overview', path: '/dashboard', label: 'Dashboard', tab: 'Dashboard', short: 'Dashboard', icon: 'dashboard', group: 'analyze' },
   { id: 'pareto', access: 'pareto', path: '/pareto', label: 'Pareto & Contributors', tab: 'Pareto', short: 'Causes', icon: 'limits', group: 'analyze' },
   { id: 'repeats', access: 'repeats', path: '/repeats', label: 'Repeated Failures', tab: 'Repeated Failures', short: 'Repeats', icon: 'repeat', group: 'analyze' },
   { id: 'reliability', access: 'reliability', path: '/reliability', label: 'Reliability Trends', tab: 'Reliability', short: 'Reliability', icon: 'trend', group: 'analyze' },
@@ -52,7 +53,10 @@ const GEAR_TABS: PageDef[] = [
 ];
 
 export const pageById = (id: PageId): PageDef => PAGES.find((p) => p.id === id) ?? GEAR_TABS.find((p) => p.id === id)!;
-export const pageForPath = (pathname: string): PageDef | undefined => PAGES.find((p) => pathname === p.path || pathname.startsWith(`${p.path}/`));
+export const pageForPath = (pathname: string): PageDef | undefined => {
+  const path = pathname === '/overview' || pathname.startsWith('/overview/') ? pathname.replace(/^\/overview/, '/dashboard') : pathname;
+  return PAGES.find((p) => path === p.path || path.startsWith(`${p.path}/`));
+};
 export const pageLabel = (p: PageDef): string => t(p.label);
 export const pageTab = (p: PageDef): string => t(p.tab);
 export const pageShort = (p: PageDef): string => t(p.short);

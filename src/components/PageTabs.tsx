@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { tapHaptic } from '../haptics';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useRail } from '../hooks/useRail';
 import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
 import { pageForPath, pagesInSection, pageShort, pageTab, sectionLabel } from '../navigation';
@@ -10,14 +11,17 @@ import './PageTabs.css';
 // Contextual sub-navigation: only the visible sibling pages of the open page's
 // section (Analyze, Data or Setup), so it never repeats the left rail. A section
 // with one visible page (Setup) gets no row at all, and neither does Settings.
-// Desktop: one row of tabs, 3 px accent underline on the open page.
+// Desktop (icon rail only; the pinned labelled rail lists the pages itself): one row of tabs, 3 px accent underline on the open page.
 // Phone: the same siblings as chips (at most four, so they always fit).
 export default function PageTabs() {
   const pages = useVisiblePages();
   const mobile = useIsMobile();
+  const { pinned } = useRail();
   const location = useLocation();
   const active = pageForPath(location.pathname);
   if (!active) return null;
+  // the pinned, labelled rail already lists every page: no second row of tabs (the icon rail keeps them)
+  if (!mobile && pinned) return null;
   const siblings = pagesInSection(pages, active.group);
   if (siblings.length < 2 || !siblings.some((p) => p.id === active.id)) return null;
   const label = t('{section} pages', { section: sectionLabel(active.group) });

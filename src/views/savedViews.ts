@@ -1,4 +1,4 @@
-// Saved views: a person's named filter sets for Overview, Pareto, Repeats, Reliability and Event Explorer, kept in the
+// Saved views: a person's named filter sets for the Dashboard (page id 'overview'), Pareto, Repeats, Reliability and Event Explorer, kept in the
 // preference `saved_views` (JSON text: a list of {id, name, page, query}; at most 20 in all, a query of at most 1500
 // characters, a name of 1 to 60). Pure list logic: parsing what is stored, checking names and limits, and the changes
 // (save, rename, delete) as new lists. The same rules are checked again by the server (cleanSavedViews_).
@@ -40,14 +40,15 @@ export const serializeSavedViews = (list: readonly SavedView[]): string => (list
 
 export const viewsForPage = (list: readonly SavedView[], page: ViewPage): SavedView[] => list.filter((v) => v.page === page);
 
-/** The page id a path belongs to ('/overview' -> 'overview'), or null for a page without saved views. */
+/** The page id a path belongs to ('/dashboard' and the old '/overview' -> 'overview'), or null for a page without saved views. */
 export function viewPageOfPath(pathname: string): ViewPage | null {
   const seg = pathname.replace(/^\/+/, '').split('/')[0] ?? '';
+  if (seg === 'dashboard') return 'overview';
   return isPage(seg) ? seg : null;
 }
 
 export const VIEW_PAGE_PATH: Record<ViewPage, string> = {
-  overview: '/overview', pareto: '/pareto', repeats: '/repeats', reliability: '/reliability', events: '/events',
+  overview: '/dashboard', pareto: '/pareto', repeats: '/repeats', reliability: '/reliability', events: '/events',
 };
 
 /** null when the name is fine, else a plain sentence. Names are unique on a page, ignoring case and spaces at the ends. */

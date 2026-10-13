@@ -9,7 +9,7 @@ import type { Dash } from './useDash';
 
 export default function DashTop({ title, takeaway, right, dash, eventCount, hideCompare, belowTakeaway }: {
   title: string; takeaway: string; right?: ReactNode; dash: Dash; eventCount: number | null; hideCompare?: boolean;
-  /** shown right under the title and takeaway (the Overview's "Since your last visit" card) */
+  /** shown right under the title and takeaway (the Dashboard's "Since your last visit" card) */
   belowTakeaway?: ReactNode;
 }) {
   return (

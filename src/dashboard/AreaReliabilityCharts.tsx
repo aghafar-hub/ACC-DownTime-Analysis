@@ -8,7 +8,7 @@ import HBars, { type HRow } from '../charts/HBars';
 import QuadrantChart from '../charts/QuadrantChart';
 import ScaleHeatmap, { type ScaleRow } from '../charts/ScaleHeatmap';
 import { t } from '../i18n/t';
-import { fh, fh2, fint, fpct, monthLabel, NOT_UPLOADED_FOOT, partialNote } from './format';
+import { fh, fh2, fint, fpct, monthAxisLabels, monthLabel, NOT_UPLOADED_FOOT, partialNote } from './format';
 import { areaReliabilityModel } from './models';
 import { targetNumber, type TargetStatus } from './targets';
 import { stateWords } from './targets';
@@ -78,7 +78,9 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
   const av = m.monthAvailability;
   const fmtAv = (x: Metric) => (x.available ? fpct(x.value) : x.code === 'not_uploaded' ? t('Not uploaded') : '-');
   const partialAny = av.months.some((x) => x.partial);
-  const colLabel = (i: number): string => `${monthLabel(av.months[i]!.month)}${av.months[i]!.partial ? '*' : ''}`;
+  const axis = monthAxisLabels(av.months.map((x) => x.month));
+  const colLabel = (i: number): string => `${axis[i]}${av.months[i]!.partial ? '*' : ''}`;
+  const colFull = (i: number): string => `${monthLabel(av.months[i]!.month)}${av.months[i]!.partial ? '*' : ''}`;
   const avRows: ScaleRow[] = av.areas.map((a) => ({
     key: a.area_id, label: a.area_id,
     cells: a.values.map((v, i) => (v.available
@@ -159,7 +161,7 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
       <ChartCard
         title={t('Availability by area and month (basis {b})', { b: basis })} subtitle={t('Each cell is the availability of one area in one month. Fixed scale {a} to {b} %; the last column is the whole range.', { a: AVAIL_MIN, b: AVAIL_MAX })} testid="chart-area-month-heat"
         summary={avSummary}
-        table={{ head: [t('Area'), ...av.months.map((_x, i) => colLabel(i)), t('Range')], rows: av.areas.map((a) => [a.area_id, ...a.values.map(fmtAv), fmtAv(m.overallAvailability.get(a.area_id) ?? { available: false, code: 'no_data', reason: '' })]) }}
+        table={{ head: [t('Area'), ...av.months.map((_x, i) => colFull(i)), t('Range')], rows: av.areas.map((a) => [a.area_id, ...a.values.map(fmtAv), fmtAv(m.overallAvailability.get(a.area_id) ?? { available: false, code: 'no_data', reason: '' })]) }}
         footnote={[partialAny ? av.months.filter((x) => x.partial).map((x) => `* ${partialNote(x)}.`).join(' ') : '', av.months.some((x) => x.notUploaded) ? `${t('n/u')} = ${t(NOT_UPLOADED_FOOT)}` : ''].filter(Boolean).join(' ') || undefined}
       >
         {() => (

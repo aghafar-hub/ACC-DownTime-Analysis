@@ -1,3 +1,5 @@
+import { tsText } from './dates';
+
 export const nf = new Intl.NumberFormat('en-GB');
 
 /** 3,482 style numbers. */
@@ -17,11 +19,8 @@ export function duration(seconds: number): string {
   return neg ? `-${out}` : out;
 }
 
-/** 'YYYY-MM-DD HH:MM:SS.mmm' -> 'YYYY-MM-DD HH:MM' */
-export const shortTs = (ts: string): string => String(ts ?? '').slice(0, 16);
+/** 'YYYY-MM-DD HH:MM:SS.mmm' -> '26 Aug 2026 14:05' (the app's one timestamp format, see dates.ts) */
+export const shortTs = (ts: string): string => tsText(ts);
 
-export function whenText(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? String(iso) : `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}, ${d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
-}
+/** A real instant in local time: '26 Aug 2026 14:05'. */
+export { whenText } from './dates';

@@ -8,7 +8,7 @@ export interface DrillState {
   rowIds?: string[];
   /** years to load in the Explorer (events can span years) */
   years: number[];
-  /** where the ids came from, for the chip: 'Pareto bar', 'Overview' ... */
+  /** where the ids came from, for the chip: 'Pareto bar', 'Dashboard' ... */
   source: string;
 }
 

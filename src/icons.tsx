@@ -5,6 +5,11 @@ import type { CSSProperties } from 'react';
 
 const PATHS: Record<string, string> = {
   dashboard: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
+  chevronsLeft: 'm11 17-5-5 5-5M18 17l-5-5 5-5',
+  chevronsRight: 'm13 17 5-5-5-5M6 17l5-5-5-5',
+  sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
+  link: 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
+  reset: 'M1 4v6h6M3.51 15a9 9 0 1 0 2.13-9.36L1 10',
   plus: 'M12 5v14M5 12h14',
   registry: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z',
   graphs: 'M22 12h-4l-3 9-6-18-3 9H2',

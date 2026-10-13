@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { tsText } from '../../util/dates';
 import { api, describeError } from '../../api';
 import type { AdminUser } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
@@ -50,7 +51,7 @@ export default function UsersAccess() {
   const byRole = users ? Object.entries(users.reduce<Record<string, number>>((m, u) => ({ ...m, [u.role_id]: (m[u.role_id] ?? 0) + 1 }), {})) : [];
   const lastLogin = users?.map((u) => u.last_login_at).filter(Boolean).sort().pop();
   const open = users?.find((u) => u.user_id === openId) ?? null;
-  const signedIn = (u: AdminUser) => (u.last_login_at ? u.last_login_at.slice(0, 16) : t('never'));
+  const signedIn = (u: AdminUser) => (u.last_login_at ? tsText(u.last_login_at) : t('never'));
 
   return (
     <div data-testid="page-users" data-section="users">

@@ -66,7 +66,7 @@ export function buildScorecard(events: readonly EventRow[], list: ValidationList
   return { months, total: finish(total) };
 }
 
-/** The Overview card appears only for a person who can open Validate, and only while something is open to check. */
+/** The Dashboard card appears only for a person who can open Validate, and only while something is open to check. */
 export function showQualityCard(canOpenValidate: boolean, summary: Pick<Scorecard, 'total'>, toCheck: number): boolean {
   return canOpenValidate && toCheck > 0 && summary.total.cleanPct !== null;
 }

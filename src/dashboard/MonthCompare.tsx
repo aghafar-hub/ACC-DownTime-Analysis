@@ -1,6 +1,7 @@
 // "Month vs month": two calendar months side by side, with a comparison table and a grouped bar chart per area.
-// Same section on Overview and Reliability. The month pair lives in the address (?mvm=YYYY-MM,YYYY-MM), so a view can be
+// Same section on the Dashboard and Reliability. The month pair lives in the address (?mvm=YYYY-MM,YYYY-MM), so a view can be
 // shared; the other dashboard filters apply, the date range and the comparison do not.
+import { monthText } from '../util/dates';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import CartesianChart, { type CartCategory, type CartSeries } from '../charts/CartesianChart';
@@ -18,12 +19,8 @@ import { defaultMonthPair, MONTH_PAIR_PARAM, monthCompareModel, monthPairText, m
 import type { Dash } from './useDash';
 import './dashboard.css';
 
-const NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** "2026-03" -> "Mar 2026" */
-export const monthLong = (key: string): string => {
-  const [y, m] = key.split('-');
-  return `${NAMES[Number(m) - 1] ?? m} ${y}`;
-};
+export const monthLong = (key: string): string => monthText(key);
 
 function rowLabel(id: CompareId, basis: string): string {
   switch (id) {
