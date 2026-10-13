@@ -8,7 +8,7 @@ import './Sidebar.css';
 
 // Left rail (desktop and tablet): 68 px with the leaf mark, 248 px with the
 // full logo and labels on hover or focus. Always the dark sidebar colour,
-// in every theme. The logo appears only here and on the login screen.
+// in every theme. The app icon is the collapsed mark; the company logo shows when the rail opens and on the login screen.
 export default function Sidebar() {
   const pages = useVisiblePages();
   const base = import.meta.env.BASE_URL;
@@ -16,7 +16,7 @@ export default function Sidebar() {
     <div className="sidebar-rail">
       <nav className="sidebar-nav-root" aria-label={t('Primary')}>
         <div className="sidebar-logo">
-          <img src={`${base}brand/acc-leaf-mark.png`} alt="" className="sidebar-logo-mark" />
+          <img src={`${base}icons/pwa-192.png`} alt="" className="sidebar-logo-mark" />
           <img src={`${base}brand/acc-logo-full.png`} alt={t('ACC Downtime Analysis')} className="sidebar-logo-full" />
         </div>
         <div className="sidebar-nav">

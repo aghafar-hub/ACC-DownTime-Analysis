@@ -15,7 +15,7 @@ export default defineConfig({
       // 'prompt': a new version waits for the person to tap Reload
       // (src/mobile/UpdatePrompt.tsx) instead of reloading mid-form.
       registerType: 'prompt',
-      includeAssets: ['icons/favicon-16.png', 'icons/favicon-32.png', 'icons/apple-touch-icon.png'],
+      includeAssets: ['favicon.ico', 'icons/favicon-16.png', 'icons/favicon-32.png', 'icons/apple-touch-icon.png'],
       manifest: {
         name: 'ACC Downtime Analysis',
         short_name: 'ACC Downtime',
@@ -29,8 +29,9 @@ export default defineConfig({
         display_override: ['standalone', 'minimal-ui'],
         orientation: 'any',
         categories: ['business', 'productivity'],
-        background_color: '#F3F5F8',
-        theme_color: '#FFFFFF',
+        // the app icon's navy: the install splash and the title bar of the installed app
+        background_color: '#0A1627',
+        theme_color: '#0A1627',
         icons: [
           { src: 'icons/pwa-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/pwa-512.png', sizes: '512x512', type: 'image/png' },
