@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { useBackClose } from '../mobile/useBackClose';
@@ -48,7 +49,8 @@ export function BottomSheet({ title, onClose, footer, children, testid, badge, w
   title: string; onClose: () => void; footer?: ReactNode; children: ReactNode; testid?: string; badge?: string; withClose?: boolean;
 }) {
   useBackClose(true, onClose);
-  return (
+  // drawn on <body>, so a sheet opened from a sticky bar (its own stacking layer) still covers the bottom bar
+  return createPortal(
     <>
       <div className="module-sheet-backdrop" onClick={onClose} aria-hidden="true" />
       <div className="module-sheet bottom-sheet" role="dialog" aria-modal="true" aria-label={title} data-testid={testid}>
@@ -63,6 +65,7 @@ export function BottomSheet({ title, onClose, footer, children, testid, badge, w
         <div className="bottom-sheet-body">{children}</div>
         {footer && <div className="bottom-sheet-foot">{footer}</div>}
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
