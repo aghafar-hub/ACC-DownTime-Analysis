@@ -13,7 +13,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useTheme } from '../theme/ThemeContext';
 import { useValidationOptional } from '../validate/ValidationContext';
 import { dataRangeOf, notUploadedMonths } from '../calc';
-import { ChangeLine, fh, fh2, fint, fpct, metricText, MTBF_ALL_LABEL } from './format';
+import { asShown, ChangeLine, fh, fh2, fint, fpct, metricText, MTBF_ALL_LABEL } from './format';
 import type { CompareId, CompareRow } from './monthCompare';
 import { defaultMonthPair, MONTH_PAIR_PARAM, monthCompareModel, monthPairText, monthsWithData, parseMonthPair, type MonthPair } from './monthCompare';
 import type { Dash } from './useDash';
@@ -51,7 +51,25 @@ const fmtOf = (k: CompareRow['kind'], perDay = false): { f: (n: number) => strin
   }
 };
 
-export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overview' | 'reliability' }) {
+/** One change in the compact header: 'Stoppage ▲ +213.0 h'. */
+function MiniChange({ label, row, f, unit }: { label: string; row: CompareRow | undefined; f: (n: number) => string; unit: string }) {
+  if (!row || !row.change.available) return null;
+  const c = asShown(row.change, f);
+  if (!c.available) return null;
+  const arrow = c.direction === 'up' ? '▲' : c.direction === 'down' ? '▼' : '■';
+  const sign = c.abs > 0 ? '+' : c.abs < 0 ? '−' : '';
+  return (
+    <span className="mini-change">
+      {label} <span className={`kpi-change--${c.assessment}`}><span aria-hidden="true">{arrow}</span> {sign}{f(Math.abs(c.abs))}{unit}</span>
+    </span>
+  );
+}
+
+export default function MonthCompare({ dash, page, compact = false }: {
+  dash: Dash; page: 'overview' | 'reliability';
+  /** the Dashboard's compact section: the header line already says what changed */
+  compact?: boolean;
+}) {
   const [sp, setSp] = useSearchParams();
   const { dark } = useTheme();
   const mobile = useIsMobile();
@@ -79,8 +97,8 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
   const optLabel = (m: string): string => (notUploaded.has(m) ? `${monthLong(m)} (${t('Not uploaded')})` : monthLong(m));
 
   const model = useMemo(
-    () => (open && ready && pair && dash.startup ? monthCompareModel(rows, dash.startup, dash.filters, pair) : null),
-    [open, ready, pair?.a, pair?.b, rows, dash.startup, dash.filters], // eslint-disable-line react-hooks/exhaustive-deps
+    () => ((open || compact) && ready && pair && dash.startup ? monthCompareModel(rows, dash.startup, dash.filters, pair) : null),
+    [open, compact, ready, pair?.a, pair?.b, rows, dash.startup, dash.filters], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const choose = (patch: Partial<MonthPair>) => {
@@ -142,7 +160,27 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
     }),
   });
 
-  const toggle = (
+  const rowOf = (rid: CompareId) => model?.rows.find((r) => r.id === rid);
+  const toggle = compact ? (
+    <button type="button" className="dsec-head" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen((x) => !x)} data-testid={`${id}-toggle`}>
+      <span className="dsec-chev" aria-hidden="true"><Icon name={open ? 'chevronDown' : 'chevronRight'} size={16} /></span>
+      <span className="dsec-text">
+        <b className="dsec-title">{t('Month vs month')}{pair && !mobile ? ` (${lb} vs ${la})` : ''}</b>
+        <span className="dsec-sum" data-testid={`${id}-summary`}>
+          {mobile && pair ? <span>{lb.slice(0, 3)} vs {la} · </span> : null}
+          {model && model.hasA && model.hasB ? (
+            <>
+              <MiniChange label={t('Stoppage')} row={rowOf('stoppage')} f={model.perDay ? fh2 : fh} unit={model.perDay ? ` h${t('/day')}` : ' h'} />
+              {!mobile && <MiniChange label={t('Failures')} row={rowOf('failureCount')} f={model.perDay ? fh2 : fint} unit={model.perDay ? t('/day') : ''} />}
+              {!mobile && <MiniChange label={t('Availability')} row={rowOf('availability')} f={(n) => (n * 100).toFixed(1)} unit={` ${t('pt')}`} />}
+              {!mobile && <MiniChange label={t('MTTR')} row={rowOf('mttr')} f={fh2} unit=" h" />}
+            </>
+          ) : null}
+        </span>
+      </span>
+      <span className="dsec-more" aria-hidden="true">{open ? t('Collapse') : t('Expand')}</span>
+    </button>
+  ) : (
     <button type="button" className="more-head" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen((x) => !x)} data-testid={`${id}-toggle`}>
       <span>{t('Month vs month')} {pair && <small>{la} {t('and')} {lb}</small>}</span>
       <Icon name={open ? 'chevronUp' : 'chevronDown'} size={16} />
@@ -150,7 +188,7 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
   );
 
   return (
-    <section className="more-figures" data-testid={id} data-open={open ? 'yes' : 'no'}>
+    <section className={compact ? 'card dsec' : 'more-figures'} data-testid={id} data-open={open ? 'yes' : 'no'}>
       {toggle}
       {open && (
         <div id={`${id}-body`} className="mvm-body">

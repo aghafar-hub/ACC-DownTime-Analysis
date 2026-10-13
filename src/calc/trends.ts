@@ -280,6 +280,53 @@ export function monthlyHoursByClassification(input: Omit<MonthlyInput, 'chains' 
   }));
 }
 
+export interface ClassDayPoint {
+  date: string;
+  /** the day lies inside the data coverage and in an uploaded month */
+  hasData: boolean;
+  /** P6: the day lies in a month that was not uploaded */
+  notUploaded: boolean;
+  /** stopped hours per classification (area-hours) */
+  hours: Record<ClassificationCode, number>;
+  total: number;
+}
+
+/**
+ * Stopped hours per day and classification code: the daily counterpart of monthlyHoursByClassification (the same
+ * attribution and day split as dailySeries), so each day sums to that day's planned + failure + other hours.
+ */
+export function dailyHoursByClassification(input: Omit<MonthlyInput, 'chains' | 'settings'>): ClassDayPoint[] {
+  const rows = input.rows.filter(isAnalysable);
+  const dataRange = input.dataRange === undefined ? dataRangeOf(rows) : input.dataRange;
+  const notUploaded = new Set(resolveNotUploaded(input.rows, input.dataRange, input.notUploaded));
+  const attr = input.attribution ?? attributeRows(rows);
+  const areaSet = new Set(input.areaIds ?? rows.map((r) => r.area_id));
+  const n = daysInRange(input.range);
+  const firstMs = rangeToInterval({ from: input.range.from, to: input.range.from }).fromMs;
+  const dates = Array.from({ length: n }, (_, i) => addDays(input.range.from, i));
+  const covered = dates.map((d) => !!dataRange && d >= dataRange.from && d <= dataRange.to && !notUploaded.has(d.slice(0, 7)));
+  const zero = (): Record<ClassificationCode, number> => Object.fromEntries(CLASSIFICATION_CODES.map((c) => [c, 0])) as Record<ClassificationCode, number>;
+  const hours = dates.map(() => zero());
+  const dayIndex = (ms: number): number => Math.floor((ms - firstMs) / MS_DAY);
+  for (const r of rows) {
+    if (!areaSet.has(r.area_id) || !CLASSIFICATION_CODES.includes(r.classification)) continue;
+    for (const span of piecesOf(r, attr)) {
+      const lo = Math.max(0, dayIndex(span.fromMs));
+      const hi = Math.min(n - 1, dayIndex(span.toMs - 1));
+      for (let i = lo; i <= hi; i++) {
+        if (!covered[i]) continue;
+        const h = clippedHours(span, { fromMs: firstMs + i * MS_DAY, toMs: firstMs + (i + 1) * MS_DAY });
+        if (h > 0) hours[i]![r.classification] += h;
+      }
+    }
+  }
+  return dates.map((date, i) => ({
+    date, hasData: covered[i]!,
+    notUploaded: !covered[i] && !!dataRange && date >= dataRange.from && date <= dataRange.to && notUploaded.has(date.slice(0, 7)),
+    hours: hours[i]!, total: CLASSIFICATION_CODES.reduce((s, c) => s + hours[i]![c], 0),
+  }));
+}
+
 // ---- rolling counts ----
 
 export interface RollingPoint { date: string; count: number }

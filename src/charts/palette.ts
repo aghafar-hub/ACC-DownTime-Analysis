@@ -31,3 +31,37 @@ export const AXIS = 'var(--tk-border)';
 
 export type Marker = 'circle' | 'square' | 'diamond' | 'triangle';
 export const MARKERS: Marker[] = ['circle', 'square', 'diamond', 'triangle'];
+
+// ---------------------------------------------------------------- dashboard paints (colour + pattern)
+// The Dashboard never relies on colour alone: every stack segment has a pattern too (incidental solid, planned
+// hatched, other dotted; each classification its own). Light and dark values are tuned for contrast on the card.
+
+export type FillPattern = 'solid' | 'hatch' | 'dots' | 'stripes' | 'grid' | 'backhatch';
+export interface Paint { key: string; label: string; short: string; color: string; pattern: FillPattern }
+
+const TYPE_LIGHT = { inc: '#C2512A', pl: '#2F6BC2', cir: '#17927E' };
+const TYPE_DARK = { inc: '#E27A4E', pl: '#5E9CF2', cir: '#2FB89F' };
+
+/** Incidental (INC), planned (PL) and other (CIR): the three stop types, always in this order. */
+export function typePaints(dark: boolean): Paint[] {
+  const c = dark ? TYPE_DARK : TYPE_LIGHT;
+  return [
+    { key: 'inc', label: 'Incidental (INC)', short: 'INC', color: c.inc, pattern: 'solid' },
+    { key: 'pl', label: 'Planned (PL)', short: 'PL', color: c.pl, pattern: 'hatch' },
+    { key: 'cir', label: 'Other (CIR)', short: 'CIR', color: c.cir, pattern: 'dots' },
+  ];
+}
+
+const CLASS_LIGHT: Record<string, string> = { PRO: '#C2512A', MEC: '#7B5BB0', ELE: '#B8860B', AUT: '#C2407A' };
+const CLASS_DARK: Record<string, string> = { PRO: '#E27A4E', MEC: '#A68BE0', ELE: '#E0B33C', AUT: '#E67AA8' };
+const CLASS_PATTERN: Record<string, FillPattern> = { PRO: 'solid', MEC: 'stripes', ELE: 'grid', AUT: 'backhatch', PL: 'hatch', CIR: 'dots' };
+
+/** One paint per classification (PRO, MEC, ELE, AUT incidental; PL and CIR share the type paints). */
+export function classPaint(dark: boolean, code: string, name = code): Paint {
+  if (code === 'PL' || code === 'CIR') {
+    const p = typePaints(dark)[code === 'PL' ? 1 : 2]!;
+    return { ...p, key: code, label: name, short: code };
+  }
+  const c = (dark ? CLASS_DARK : CLASS_LIGHT)[code] ?? 'var(--tk-text-muted)';
+  return { key: code, label: name, short: code, color: c, pattern: CLASS_PATTERN[code] ?? 'solid' };
+}
