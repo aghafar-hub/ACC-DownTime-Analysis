@@ -1686,3 +1686,7 @@ button.hb-row:hover {
     display: none;
   }
 }
+.areas-table th,
+.areas-table td {
+  vertical-align: middle;
+}
