@@ -83,8 +83,12 @@ function resultSummary(startup: Startup | null, u: EventRow): string[] {
   ];
 }
 
-export default function EventDetail({ row, startup, canEdit, onClose, onChanged, assist }: {
+export default function EventDetail({ row, startup, canEdit, onClose, onChanged, assist, drawer = false, position }: {
   row: EventRow; startup: Startup | null; canEdit: boolean; onClose: () => void; onChanged: (row: EventRow) => void;
+  /** Event records on a wide screen: a panel beside the table instead of a popup */
+  drawer?: boolean;
+  /** where the record is in the list: '2 of 9' */
+  position?: string;
   /** set by the Validate page: problems explained, helps in the edit form, overlapping records */
   assist?: ValidateAssist;
 }) {
@@ -235,7 +239,31 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
   const startBeforeStop = parseTs(fromInput(form.start_ts)) !== null && parseTs(fromInput(form.stop_ts)) !== null && parseTs(fromInput(form.start_ts))! < parseTs(fromInput(form.stop_ts))!;
 
   const footer =
-    mode === 'view' ? (
+    mode === 'view' && drawer ? (
+      // the drawer: the main action first (its header has the close button)
+      canEdit ? (
+        row.is_void ? (
+          <button type="button" className="btn-primary" onClick={startVoid} data-testid="restore-event">
+            <Icon name="history" size={15} /> {t('Restore')}
+          </button>
+        ) : (
+          <>
+            <button type="button" className="btn-primary" onClick={startEdit} data-testid="edit-event">
+              <Icon name="edit" size={15} /> {t('Edit')}
+            </button>
+            {flags.length > 0 && (
+              <button type="button" className="btn" onClick={() => startKeep('keep')} data-testid="keep-event">
+                <Icon name="check" size={15} /> {t('Keep as entered')}
+              </button>
+            )}
+            <button type="button" className="btn-danger" onClick={startVoid} data-testid="void-event">
+              <Icon name="ban" size={15} /> {t('Void')}
+            </button>
+            <span className="sm-foot-note">{t('Saves to history')}</span>
+          </>
+        )
+      ) : <span className="sm-foot-note">{t('View only')}</span>
+    ) : mode === 'view' ? (
       <>
         <button type="button" className="btn" onClick={onClose}>{t('Close')}</button>
         {canEdit && (
@@ -276,7 +304,17 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
       </>
     );
 
-  if (keepMode) {
+  const keepModal = keepMode ? (
+    <KeepModal
+      mode={keepMode}
+      targets={[{ event: row, problems: keepMode === 'keep' ? flags : [], kept }]}
+      onClose={endKeep}
+      onSaved={(updated) => { setLastKept(updated); onChanged(updated); }}
+      onFinished={() => undefined}
+    />
+  ) : null;
+  // a popup replaces the popup; beside the table the drawer stays and the Keep popup opens over the page
+  if (keepMode && !drawer) {
     return (
       <KeepModal
         mode={keepMode}
@@ -289,10 +327,12 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
   }
 
   return (
+    <>
     <ShellModal
       icon="list"
+      variant={drawer ? 'drawer' : 'modal'}
       title={`${row.area_id} · ${row.code_raw || 'N/A'}`}
-      subtitle={<span><span className="mono">{row.event_id}</span> · {dateText(row.event_date)}</span>}
+      subtitle={<span><span className="mono">{row.event_id}</span> · {dateText(row.event_date)}{position && <> · <span className="badge" data-testid="detail-position">{position}</span></>}</span>}
       badge={<span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}><EventBadges row={row} maxFlags={0} owners={ownerLookup} /></span>}
       onClose={onClose}
       footer={footer}
@@ -315,8 +355,8 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
           <FormSection icon="clock" title={t('When')}>
             <dl className="kv">
               <dt>{t('Date')}</dt><dd>{dateText(row.event_date)}</dd>
-              <dt>{t('Stopped at')}</dt><dd className="mono">{row.stop_ts}</dd>
-              <dt>{t('Restarted at')}</dt><dd className="mono">{row.start_ts}</dd>
+              <dt>{t('Stopped at')}</dt><dd title={row.stop_ts} data-testid="detail-stop">{tsText(row.stop_ts)}<span className="muted">:{row.stop_ts.slice(17, 19) || '00'}</span></dd>
+              <dt>{t('Restarted at')}</dt><dd title={row.start_ts} data-testid="detail-start">{tsText(row.start_ts)}<span className="muted">:{row.start_ts.slice(17, 19) || '00'}</span></dd>
               <dt>{t('Duration')}</dt><dd className="mono" data-testid="detail-duration">{duration(row.duration_s)} <span className="muted">({row.duration_s} s)</span></dd>
               <dt>{t('New stop or continuation')}</dt><dd>{row.freq === 1 ? t('New stop') : t('Continues the stop above')}</dd>
             </dl>
@@ -630,5 +670,7 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
         </>
       )}
     </ShellModal>
+    {keepModal}
+    </>
   );
 }

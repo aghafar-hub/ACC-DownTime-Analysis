@@ -5,7 +5,9 @@ import { useAuth } from '../auth/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { num } from '../util/format';
+import { useUserNames } from '../validate/useKeepInfo';
 import BatchWarnings from './BatchWarnings';
+import { uploaderName } from './uploader';
 import './upload.css';
 
 function StatusBadge({ s }: { s: UploadBatch['status'] }) {
@@ -16,12 +18,14 @@ function StatusBadge({ s }: { s: UploadBatch['status'] }) {
 
 const when = (ts: string): string => tsText(ts);
 
+
 /** Earlier uploads. Opening one shows the warnings recorded with it. */
 export default function UploadHistory({ batches, error, onRetry }: { batches: UploadBatch[] | null; error: string | null; onRetry: () => void }) {
   const mobile = useIsMobile();
   const { user } = useAuth();
   const [open, setOpen] = useState<UploadBatch | null>(null);
-  const who = (id: string): string => (id === user?.user_id ? t('You') : id);
+  const names = useUserNames();
+  const who = (id: string): string => uploaderName(id, user?.user_id, names);
   return (
     <section className="card" aria-label={t('Upload history')} data-testid="upload-history">
       <h2>{t('Upload history')}</h2>
@@ -30,7 +34,7 @@ export default function UploadHistory({ batches, error, onRetry }: { batches: Up
       {batches && batches.length === 0 && <p className="adm-note" data-testid="history-empty">{t('No uploads yet.')}</p>}
       {batches && batches.length > 0 && !mobile && (
         <div className="table-wrap">
-          <table className="data-table" data-testid="history-table">
+          <table className="data-table up-history-table" data-testid="history-table">
             <thead>
               <tr>
                 <th scope="col">{t('Uploaded')}</th><th scope="col">{t('By')}</th><th scope="col">{t('File')}</th>
@@ -44,7 +48,7 @@ export default function UploadHistory({ batches, error, onRetry }: { batches: Up
                 <tr key={b.batch_id} data-testid="history-row" data-batch={b.batch_id}>
                   <td className="nowrap mono">{when(b.uploaded_at)}</td>
                   <td className="nowrap">{who(b.uploaded_by)}</td>
-                  <td className="adm-wrap">{b.file_name || '-'}<div className="up-id">{b.batch_id}</div></td>
+                  <td className="up-file-cell"><div className="up-fname" title={`${b.file_name || '-'}\n${b.batch_id}`}>{b.file_name || '-'}</div></td>
                   <td className="num">{num(b.rows_read)}</td>
                   <td className="num">{num(b.rows_added)}</td>
                   <td className="num">{num(b.rows_identical)}</td>
@@ -65,7 +69,7 @@ export default function UploadHistory({ batches, error, onRetry }: { batches: Up
         <div className="adm-cards" data-testid="history-cards">
           {batches.map((b) => (
             <button key={b.batch_id} type="button" className="adm-card" onClick={() => setOpen(b)} data-testid="history-card" data-batch={b.batch_id} aria-label={t('Upload {file} of {when}: open warnings', { file: b.file_name || b.batch_id, when: when(b.uploaded_at) })}>
-              <div className="adm-card-top"><span className="adm-card-title">{b.file_name || b.batch_id}</span><StatusBadge s={b.status} /></div>
+              <div className="adm-card-top"><span className="adm-card-title up-fname" title={b.file_name || b.batch_id}>{b.file_name || b.batch_id}</span><StatusBadge s={b.status} /></div>
               <div className="adm-card-line mono">{when(b.uploaded_at)} · {who(b.uploaded_by)}</div>
               <div className="adm-card-line">{t('{read} read · {added} added · {same} already stored · {skipped} skipped', { read: num(b.rows_read), added: num(b.rows_added), same: num(b.rows_identical), skipped: num(b.rows_skipped) })}</div>
               <div className="adm-card-badges">

@@ -1,5 +1,6 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { attributedHours, chainHours, isBlocked, rangeToInterval } from '../calc';
 import DataStatus from '../components/DataStatus';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
@@ -66,15 +67,35 @@ export function EmptyScope({ dash }: { dash: Dash }) {
 /** The one-line takeaway when the filters leave nothing. */
 export const EMPTY_SCOPE_TAKEAWAY = 'No records match these filters.';
 
-/** Opens the Event Explorer with these events. */
+/**
+ * Opens the Event Explorer with these events. The drill carries the chart's window, the page to go back to and the
+ * hours the chart counts for exactly these events (in the window, overlapping time once), so the records page can say
+ * 'From: Pareto › 141.VL170 · Aug 2026 · 9 events, 15.7 h ✓ matches the bar'.
+ */
 export function useDrill(dash: Dash, source: string) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { ctx } = dash;
   return useCallback(
     (label: string, ids: { eventIds?: string[]; rowIds?: string[] }) => {
-      const drill: DrillState = { label, years: dash.years, source, ...ids };
+      const drill: DrillState = { label, years: dash.years, source, ...ids, back: { pathname: location.pathname, search: location.search } };
+      const window = ctx?.win.effective ?? null;
+      if (window) {
+        drill.range = { from: window.from, to: window.to };
+        const iv = rangeToInterval(window);
+        let h = 0;
+        if (ids.eventIds) {
+          const want = new Set(ids.eventIds);
+          for (const c of ctx!.scope.chains) if (want.has(c.id)) h += chainHours(c, iv, ctx!.scope.attribution);
+        } else if (ids.rowIds) {
+          const want = new Set(ids.rowIds);
+          for (const r of ctx!.scope.kpiRows) if (want.has(r.event_id) && !r.is_void && !isBlocked(r)) h += attributedHours(r, iv, ctx!.scope.attribution);
+        }
+        drill.bar = { hours: h };
+      }
       navigate('/events', { state: { drill } });
     },
-    [navigate, dash.years, source],
+    [navigate, dash.years, source, ctx, location.pathname, location.search],
   );
 }
 

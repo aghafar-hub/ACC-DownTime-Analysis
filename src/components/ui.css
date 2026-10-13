@@ -425,6 +425,19 @@
   font: 700 14px var(--sans);
   cursor: pointer;
 }
+.show-more-row {
+  display: flex;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.show-more-row .show-more {
+  margin: 0;
+  flex: 2 1 0;
+}
+.show-more-row .show-more--all {
+  flex: 1 1 0;
+  color: var(--tk-text-primary);
+}
 .phone-summary {
   display: flex;
   align-items: center;

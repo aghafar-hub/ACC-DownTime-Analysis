@@ -33,14 +33,26 @@ export function FiltersPill({ count = 0, onClick, testid, label }: { count?: num
   );
 }
 
-/** "Show 50 more · 120 left" under a long list. */
-export function ShowMore({ shown, total, onMore, testid = 'show-more' }: { shown: number; total: number; onMore: () => void; testid?: string }) {
+/** Up to this many rows left, the list also offers "Show all". */
+export const SHOW_ALL_MAX = 500;
+
+/** "Show 50 more · 120 left" under a long list; with `onAll`, also "Show all 120" while at most 500 are left. */
+export function ShowMore({ shown, total, onMore, onAll, testid = 'show-more' }: { shown: number; total: number; onMore: () => void; onAll?: () => void; testid?: string }) {
   if (shown >= total) return null;
   const left = total - shown;
-  return (
+  const more = (
     <button type="button" className="show-more" onClick={onMore} data-testid={testid}>
       {t('Show {n} more', { n: Math.min(PAGE_SIZE, left) })} · {t('{n} left', { n: left })}
     </button>
+  );
+  if (!onAll || left <= PAGE_SIZE || left > SHOW_ALL_MAX) return more;
+  return (
+    <div className="show-more-row">
+      {more}
+      <button type="button" className="show-more show-more--all" onClick={onAll} data-testid={`${testid}-all`}>
+        {t('Show all {n}', { n: total })}
+      </button>
+    </div>
   );
 }
 

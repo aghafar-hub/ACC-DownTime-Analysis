@@ -302,3 +302,159 @@ for (const theme of THEMES) {
     });
   }
 }
+
+// ---------------------------------------------------------------- R3: the Event records list
+const hoursOf = async (page: Page) => (await page.getByTestId('event-row').locator('td:nth-child(6)').allTextContents()).map((s) => Number(s.replace(/[^\d.]/g, '')));
+/** Pareto > first equipment bar (by failure hours) > Event records with the drill banner. */
+const drillFromPareto = async (page: Page) => {
+  await signInAndWait(page, 'engineer');
+  await page.goto('/#/pareto');
+  const bar = page.getByTestId('pareto-eq-hours').getByTestId('pareto-bar').first();
+  await expect(bar).toBeVisible();
+  await bar.click();
+  if (!page.url().includes('#/events')) await page.getByRole('button', { name: /^Open/ }).first().click(); // a tap pins the tooltip first
+  await expect(page).toHaveURL(/#\/events/);
+  await expect(page.getByTestId('drill-chip')).toBeVisible();
+};
+
+test.describe('Event records list (R3, desktop)', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  let errors: string[];
+  test.beforeEach(async ({ page }) => {
+    await stubFonts(page);
+    errors = watchConsole(page);
+  });
+  test.afterEach(() => expect(errors, 'console errors').toEqual([]));
+
+  test('column headings sort the list, say the order with aria-sort and keep it in the address', async ({ page }) => {
+    await open(page, '/#/events');
+    const heads = page.getByTestId('event-table').locator('thead th');
+    await expect(heads).toHaveText([/^Started/, /^Area/, /^Code/, /^Reason/, /^Class/, /^Hours/, /^Freq/, /^Status/]);
+    await expect(page.getByTestId('th-stop')).toHaveAttribute('aria-sort', 'descending');
+    await expect(page.getByTestId('th-dur')).toHaveAttribute('aria-sort', 'none');
+    // Hours: longest first, then shortest first
+    await page.getByTestId('sort-dur').click();
+    await expect(page.getByTestId('th-dur')).toHaveAttribute('aria-sort', 'descending');
+    await expect(page.getByTestId('th-stop')).toHaveAttribute('aria-sort', 'none');
+    await expect(page).toHaveURL(/sort=dur_desc/);
+    await expect(page.getByTestId('filter-sort')).toHaveValue('dur_desc');
+    let h = await hoursOf(page);
+    expect(h).toEqual([...h].sort((a, b) => b - a));
+    await page.getByTestId('sort-dur').click();
+    await expect(page.getByTestId('th-dur')).toHaveAttribute('aria-sort', 'ascending');
+    await expect(page).toHaveURL(/sort=dur_asc/);
+    h = await hoursOf(page);
+    expect(h).toEqual([...h].sort((a, b) => a - b));
+    // Area A to Z with the keyboard; the Sort field shows the same order
+    await page.getByTestId('sort-area').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('th-area')).toHaveAttribute('aria-sort', 'ascending');
+    await expect(page.getByTestId('filter-sort')).toHaveValue('area_asc');
+    await expect(page.getByTestId('list-count')).toContainText('Sorted: Area A to Z.');
+    const areas = await page.getByTestId('event-row').locator('td:nth-child(2)').allTextContents();
+    expect(areas).toEqual([...areas].sort((a, b) => a.localeCompare(b)));
+    // the order survives a reload; the Status column sorts worst first
+    await page.reload();
+    await expect(page.getByTestId('th-area')).toHaveAttribute('aria-sort', 'ascending');
+    await page.getByTestId('sort-status').click();
+    await expect(page.getByTestId('event-row').first().getByTestId('status-chip')).toHaveAttribute('data-status', /void|blocked|check/);
+    // the totals row under the table
+    await expect(page.getByTestId('event-total')).toContainText(/Total · [\d,]+ events/);
+  });
+
+  test('a record opens in a drawer beside the table; another row switches it; Escape closes it', async ({ page }) => {
+    await open(page, '/#/events');
+    const rows = page.getByTestId('event-row');
+    await rows.nth(1).locator('td').nth(3).click(); // anywhere on the row
+    const drawer = page.getByTestId('event-drawer');
+    await expect(drawer).toBeVisible();
+    await expect(page.getByTestId('event-detail')).toHaveAttribute('data-variant', 'drawer');
+    await expect(page.locator('.sm-shade')).toHaveCount(0); // no shade: the table stays usable
+    await expect(page.getByTestId('detail-position')).toHaveText(/^2 of [\d,]+$/);
+    await expect(rows.nth(1)).toHaveClass(/is-open/);
+    const t = (await page.getByTestId('event-table').boundingBox())!;
+    const d = (await drawer.boundingBox())!;
+    expect(d.x).toBeGreaterThan(t.x + t.width - 1); // beside, not over
+    const second = await rows.nth(2).getAttribute('data-event-id');
+    await rows.nth(2).getByRole('button').click();
+    await expect(page.getByTestId('event-detail')).toContainText(second!);
+    await expect(page.getByTestId('detail-position')).toHaveText(/^3 of /);
+    expect((await noSidewaysScroll(page)).ok).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(drawer).toHaveCount(0);
+  });
+
+  test('narrower than 1100 px the record opens as a popup', async ({ page }) => {
+    await page.setViewportSize({ width: 1000, height: 800 });
+    await open(page, '/#/events');
+    await page.getByTestId('event-row').first().getByRole('button').click();
+    await expect(page.getByTestId('event-detail')).toHaveAttribute('data-variant', 'modal');
+    await expect(page.getByTestId('event-drawer')).toHaveCount(0);
+    await page.getByTestId('modal-close').click();
+    await expect(page.getByTestId('event-detail')).toHaveCount(0);
+  });
+
+  test('opened from a Pareto bar: the banner says where from, the period, the count and the hours, and that they match the bar', async ({ page }) => {
+    await drillFromPareto(page);
+    const text = page.getByTestId('drill-text');
+    await expect(text).toHaveText(/^Pareto › \S+ · .+ · \d+ events?( \([\d,]+ rows\))?, [\d,.]+ h$/);
+    await expect(page.getByTestId('drill-match')).toHaveAttribute('data-match', 'yes');
+    await expect(page.getByTestId('drill-match')).toHaveText(/matches the bar/);
+    // the banner's hours are the list's hours (clipped to the period)
+    const bannerHours = (await text.textContent())!.match(/([\d,.]+) h$/)![1];
+    await expect(page.getByTestId('event-total-hours')).toHaveText(`${bannerHours} h`);
+    // the count is the number of events (head rows) the bar names
+    const n = Number((await text.textContent())!.match(/ (\d+) events?/)![1]);
+    expect(await page.getByTestId('event-row').count()).toBeGreaterThanOrEqual(n);
+    // Back to Pareto
+    await page.getByTestId('drill-back').click();
+    await expect(page.getByTestId('page-pareto')).toBeVisible();
+    // Show all records drops the drill
+    await page.goBack();
+    await expect(page.getByTestId('drill-chip')).toBeVisible();
+    await page.getByTestId('drill-remove').click();
+    await expect(page.getByTestId('drill-chip')).toHaveCount(0);
+  });
+
+  test('paging: Show 50 more, and Show all once at most 500 are left', async ({ page }) => {
+    await open(page, '/#/events');
+    await expect(page.getByTestId('show-more')).toContainText(/Show 50 more · [\d,]+ left/);
+    await expect(page.getByTestId('show-more-all')).toHaveCount(0); // more than 500 left
+    const total = Number((await page.getByTestId('tile-shown').innerText()).match(/of ([\d,]+)/)![1]!.replace(/,/g, ''));
+    expect(total - 50).toBeGreaterThan(500);
+    await page.goto(`/#/events?n=${total - 400}`);
+    await expect(page.getByTestId('show-more-all')).toHaveText(`Show all ${total}`);
+    await page.getByTestId('show-more-all').click();
+    await expect(page.getByTestId('event-row')).toHaveCount(total);
+    await expect(page.getByTestId('show-more')).toHaveCount(0);
+  });
+});
+
+test.describe('Event records list (R3, phone)', () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  test('cards like the mockup, a sticky "From" chip, the full-screen sheet', async ({ page }) => {
+    await stubFonts(page);
+    const errors = watchConsole(page);
+    await drillFromPareto(page);
+    const chip = page.getByTestId('drill-chip');
+    await expect(page.getByTestId('drill-text')).toHaveText(/^From Pareto: \S+ · .+ · \d+ events?$/);
+    // it sits in the sticky scope slot: still in view after scrolling down the list
+    await page.evaluate(() => window.scrollBy(0, 900));
+    const box = (await chip.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeLessThan(260);
+    const card = page.getByTestId('event-card').first();
+    await expect(card).toContainText(/\d{1,2} [A-Z][a-z]{2} \d{2}:\d{2}–\d{2}:\d{2}/);
+    await expect(card).toContainText(/[\d.]+ h/);
+    await expect(card.getByTestId('status-chip')).toBeVisible();
+    expect(await smallTargets(page)).toEqual([]);
+    expect((await noSidewaysScroll(page)).ok).toBe(true);
+    await card.click();
+    await expect(page.getByTestId('event-detail')).toHaveAttribute('data-variant', 'modal');
+    await page.goBack();
+    await expect(page.getByTestId('event-detail')).toHaveCount(0);
+    await page.getByTestId('drill-remove').click();
+    await expect(chip).toHaveCount(0);
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+});

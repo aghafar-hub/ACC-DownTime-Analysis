@@ -1,3 +1,4 @@
+import AccessBadge from '../components/AccessBadge';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
@@ -36,11 +37,9 @@ export default function Master() {
     <div className="page" data-testid="page-master">
       <PageHeader
         title={pageLabel(pageById('master'))}
+        right={<AccessBadge edit={edit} />}
         subtitle={s ? t('{codes} codes · {review} need review · {areas} areas · {reasons} reasons · {aliases} aliases', { codes: num(s.equipment.length), review: num(review), areas: s.areas.length, reasons: s.reasons.length, aliases: s.aliases.length }) : t('Loading…')}
       />
-      <p className="status-line" style={{ marginBottom: 12 }} data-testid="access-level">
-        {edit ? t('Your access to this page: can edit.') : t('Your access to this page: view only.')}
-      </p>
       <DataNotes st={st} />
       {props && (
         <>

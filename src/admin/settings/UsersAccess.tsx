@@ -3,6 +3,7 @@ import { dateText, tsText } from '../../util/dates';
 import { api, describeError } from '../../api';
 import type { AdminUser } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
+import AccessBadge from '../../components/AccessBadge';
 import { Tile } from '../../components/Tile';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { t } from '../../i18n/t';
@@ -58,12 +59,10 @@ export default function UsersAccess() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
         <p className="status-line" style={{ margin: 0, flex: '1 1 240px' }} data-testid="users-summary">
           {users ? t('{n} accounts · {active} active · {pending} waiting to choose a password', { n: users.length, active, pending }) : error ?? t('Loading…')}
+          {' '}<AccessBadge edit={edit} />
         </p>
         {edit && <button type="button" className="btn-primary" onClick={() => setCreating(true)} data-testid="add-user"><Icon name="plus" size={15} /> {t('Add a person')}</button>}
       </div>
-      <p className="status-line" style={{ marginBottom: 12 }} data-testid="access-level">
-        {edit ? t('Your access to this page: can edit.') : t('Your access to this page: view only.')}
-      </p>
       <div className="tiles">
         <Tile icon="users" label={t('Accounts')} value={users ? num(users.length) : '-'} sub={byRole.map(([r, n]) => `${n} ${roleName(r)}`).join(' · ')} testid="fact-users" />
         <Tile icon="check" label={t('Active')} value={users ? num(active) : '-'} testid="fact-active" />

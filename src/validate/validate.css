@@ -545,3 +545,74 @@
 .q-item .q-sub {
   margin-top: 2px;
 }
+
+/* R3: one-line desktop rows with an actions menu; quality table folded under a summary line */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.v-table .data-table td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  vertical-align: middle;
+}
+.v-problems--line {
+  flex-wrap: nowrap;
+}
+.v-clip-cell .v-clip {
+  max-width: 130px;
+}
+.v-clip-cell--hint .v-clip {
+  max-width: 160px;
+}
+.v-table .row-link.v-when {
+  font: 600 13px var(--sans);
+}
+.v-table .data-table th,
+.v-table .data-table td {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.v-clip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.v-clip.v-fix {
+  margin: 0;
+}
+.v-actions-line {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.v-actions-line .btn-primary,
+.v-actions-line .row-menu-btn {
+  min-height: 36px;
+}
+.row-menu-btn {
+  width: 36px;
+  padding: 0;
+}
+.q-card--line {
+  padding: 0;
+}
+.q-card--line > .q-details {
+  margin: 0;
+  border: 0;
+}
+.q-details summary {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.q-details summary small {
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--tk-text-secondary);
+}
+.q-details > .v-hint {
+  padding: 0 14px;
+}

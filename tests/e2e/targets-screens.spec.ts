@@ -64,7 +64,7 @@ for (const theme of ONLY) {
 
       await page.goto('/#/validate');
       await expect(page.getByTestId('quality-card')).toBeVisible();
-      if (vp.phone) await page.getByTestId('quality-details').locator('summary').click();
+      await page.getByTestId('quality-details').locator('summary').click();
       await expect(page.getByTestId(vp.phone ? 'quality-list' : 'quality-table')).toBeVisible();
       await page.getByTestId('quality-card').evaluate((el) => el.scrollIntoView({ block: 'start' }));
       await shot('validate-scorecard');

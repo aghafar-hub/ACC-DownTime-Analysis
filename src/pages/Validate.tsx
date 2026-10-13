@@ -9,6 +9,8 @@ import DataStatus from '../components/DataStatus';
 import { BottomSheet, ChipRow, CountChip, FiltersPill, PAGE_SIZE, ShowMore } from '../components/PhoneParts';
 import { SAVE_BLOCKED_EVENT } from '../components/SaveBlockedToast';
 import { PageHeader, Tile } from '../components/Tile';
+import RowMenu from '../components/RowMenu';
+import { MenuItem } from '../components/PopMenu';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t, tn } from '../i18n/t';
 import { Icon } from '../icons';
@@ -62,6 +64,28 @@ function Problems({ r }: { r: ValidationRecord }) {
       {hint && <p className="v-fix" data-testid="v-fix">{t(hint)}</p>}
       {r.kept.length > 0 && <p className="v-kept-also" data-testid="v-also-kept">{t('Also kept as entered: {list}', { list: r.kept.map(flagLabel).join(', ') })}</p>}
     </>
+  );
+}
+
+/** The desktop row: the problems on one line, what to do as a second short column (full text in the tooltip). */
+function ProblemsLine({ r }: { r: ValidationRecord }) {
+  return (
+    <div className="v-problems v-problems--line">
+      {r.problems.slice(0, 1).map((f) => <ProblemBadge key={f} flag={f} />)}
+      {r.problems.length > 1 && (
+        <span className="badge" data-testid="v-flag-more" title={r.problems.slice(1).map(flagLabel).join(', ')}>+{r.problems.length - 1}</span>
+      )}
+      {r.info.map((f) => (
+        <span key={f} className="badge" data-testid="v-info-flag" data-flag={f} title={t('Information: counted once, nothing to fix')}>
+          <span aria-hidden="true">ℹ</span> {flagLabel(f)}
+        </span>
+      ))}
+      {r.kept.length > 0 && (
+        <span className="badge" data-testid="v-also-kept" title={t('Also kept as entered: {list}', { list: r.kept.map(flagLabel).join(', ') })}>
+          <span aria-hidden="true">✓</span> {t('{n} kept', { n: r.kept.length })}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -262,6 +286,25 @@ export default function Validate() {
     );
   });
 
+  // desktop: Fix is the one visible button; Fix, Keep as entered and Void are in the row's menu
+  const rowMenu = (r: ValidationRecord) => (
+    <div className="v-actions-in v-actions-line">
+      <button type="button" className="btn-primary btn-sm" onClick={() => openFor(r.event.event_id, 'edit')} data-testid="v-fix-btn" aria-label={t('Fix {what}', { what: where(r.event) })}>
+        <Icon name="edit" size={14} /> {t('Fix')}
+      </button>
+      <RowMenu label={t('More actions for {what}', { what: where(r.event) })} testid="v-more">
+        {(close) => (
+          <>
+            <MenuItem onClick={() => { close(); openFor(r.event.event_id, 'edit'); }} testid="v-menu-fix">{t('Fix')}</MenuItem>
+            {r.problems.length > 0 && (
+              <MenuItem onClick={() => { close(); if (online) keepFor([r.event.event_id]); else editBlocked(); }} sub={t('Nothing changes; it stops being listed')} testid="v-keep-btn">{t('Keep as entered')}</MenuItem>
+            )}
+            <MenuItem onClick={() => { close(); openFor(r.event.event_id, 'void'); }} sub={t('Left out of every number, with a note')} testid="v-void-btn">{t('Void')}</MenuItem>
+          </>
+        )}
+      </RowMenu>
+    </div>
+  );
   const rowActions = (r: ValidationRecord, cls = '') => (
     <div className={cls}>
       <button type="button" className="btn-primary" onClick={() => openFor(r.event.event_id, 'edit')} data-testid="v-fix-btn" aria-label={t('Fix {what}', { what: where(r.event) })}>
@@ -300,14 +343,10 @@ export default function Validate() {
         ? <DataStatus state={st} onRetry={st.reload} what={t('master data')} />
         : <DataStatus state={v.data.state} onRetry={v.data.reload} what={t('events')} />}
 
-      {mobile ? (
-        <details className="v-help" data-testid="v-hint">
-          <summary>{t('What do ◆ and ▲ mean?')}</summary>
-          <p>{hintText}</p>
-        </details>
-      ) : (
-        <p className="v-hint" data-testid="v-hint">{hintText}</p>
-      )}
+      <details className="v-help" data-testid="v-hint">
+        <summary>{t('What do ◆ and ▲ mean?')}</summary>
+        <p>{hintText}</p>
+      </details>
       {checkMsg && (
         <div className={checkMsg.ok ? 'callout callout--success' : 'callout callout--danger'} role={checkMsg.ok ? 'status' : 'alert'} data-testid="v-recheck-result">
           <Icon name={checkMsg.ok ? 'check' : 'alert'} size={16} />
@@ -325,13 +364,13 @@ export default function Validate() {
       {dataReady && (!mobile ? (
         <div className="tiles" data-testid="v-tiles">
           <Tile icon="alert" label={`◆ ${t('Left out of the numbers')}`} value={<span data-testid="v-count-blocked">{num(summary.blocked.count)}</span>}
-            sub={t('{h} h not counted until fixed', { h: hours(summary.blocked.hours * 3600) })} tone={summary.blocked.count ? T.danger : undefined} testid="tile-blocked" />
+            sub={t('{h} h not counted until fixed', { h: hours(summary.blocked.hours * 3600) })} tone={summary.blocked.count ? T.danger : undefined} testid="tile-blocked" compact />
           <Tile icon="info" label={`▲ ${t('To review')}`} value={<span data-testid="v-count-review">{num(summary.review.count)}</span>}
-            sub={t('counted as they are')} tone={summary.review.count ? T.warning : undefined} testid="tile-review" />
+            sub={t('counted as they are')} tone={summary.review.count ? T.warning : undefined} testid="tile-review" compact />
           <Tile icon="clock" label={`ℹ ${t('Overlapping (information)')}`} value={<span data-testid="v-count-overlap">{num(summary.overlapping)}</span>}
-            sub={t('shared time counted once; nothing to fix')} testid="tile-overlap" />
+            sub={t('shared time counted once; nothing to fix')} testid="tile-overlap" compact />
           <Tile icon="check" label={`✓ ${t('Kept as entered')}`} value={<span data-testid="v-count-kept">{num(summary.kept.count)}</span>}
-            sub={<><span data-testid="v-kept-hours">{hours(summary.kept.leftOut.hours * 3600)}</span> {t('h kept as entered, left out of the numbers')}</>} testid="tile-kept" />
+            sub={<><span data-testid="v-kept-hours">{hours(summary.kept.leftOut.hours * 3600)}</span> {t('h kept as entered, left out of the numbers')}</>} testid="tile-kept" compact />
         </div>
       ) : (
         <div className="phone-summary" data-testid="v-phone-summary">
@@ -552,14 +591,15 @@ export default function Validate() {
                         <label className="v-check"><input type="checkbox" checked={allVisibleTicked} onChange={toggleVisible} aria-label={t('Tick every row shown')} data-testid="v-tick-visible" /></label>
                       </th>
                     )}
-                    <th scope="col">{t('Stopped at')}</th>
+                    <th scope="col">{t('Started')}</th>
                     <th scope="col">{t('Area')}</th>
                     <th scope="col">{t('Code')}</th>
                     <th scope="col">{t('Class')}</th>
-                    <th scope="col" className="num">{t('Duration')}</th>
+                    <th scope="col" className="num">{t('Hours')}</th>
                     <th scope="col">{t('Reason')}</th>
                     <th scope="col">{t('Problems')}</th>
-                    {editor && <th scope="col">{t('Actions')}</th>}
+                    <th scope="col">{t('What to do')}</th>
+                    {editor && <th scope="col"><span className="sr-only">{t('Actions')}</span></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -575,15 +615,16 @@ export default function Validate() {
                           </td>
                         )}
                         <td className="nowrap">
-                          <button type="button" className="row-link" onClick={() => openFor(e.event_id, 'view')} aria-label={t('Open record {id}', { id: e.event_id })}>{shortTs(e.stop_ts)}</button>
+                          <button type="button" className="row-link v-when" onClick={() => openFor(e.event_id, 'view')} aria-label={t('Open record {id}', { id: e.event_id })}>{shortTs(e.stop_ts)}</button>
                         </td>
-                        <td className="nowrap">{e.area_id}<div className="muted" style={{ fontSize: 12 }}>{areaName.get(e.area_id)}</div></td>
+                        <td className="nowrap" title={areaName.get(e.area_id)}>{e.area_id}</td>
                         <td className="mono nowrap">{e.code_raw || '-'}</td>
-                        <td>{e.classification ? <span className="badge badge--class">{e.classification}</span> : <span className="muted">{t('(none)')}</span>}</td>
-                        <td className="num">{duration(e.duration_s)}</td>
-                        <td>{e.reason_raw || <span className="muted">{t('(blank)')}</span>}</td>
-                        <td><Problems r={r} /></td>
-                        {editor && <td className="v-actions">{rowActions(r, 'v-actions-in')}</td>}
+                        <td className="nowrap">{e.classification ? <span className="badge badge--class">{e.classification}</span> : <span className="muted">{t('(none)')}</span>}</td>
+                        <td className="num" title={duration(e.duration_s)}>{(e.duration_s / 3600).toFixed(1)} h</td>
+                        <td className="v-clip-cell"><div className="v-clip" title={e.reason_raw || undefined}>{e.reason_raw || <span className="muted">{t('(blank)')}</span>}</div></td>
+                        <td><ProblemsLine r={r} /></td>
+                        <td className="v-clip-cell v-clip-cell--hint">{firstFixHint(r) ? <div className="v-clip v-fix" title={t(firstFixHint(r)!)} data-testid="v-fix">{t(firstFixHint(r)!)}</div> : <span className="muted">–</span>}</td>
+                        {editor && <td className="v-actions">{rowMenu(r)}</td>}
                       </tr>
                     );
                   })}

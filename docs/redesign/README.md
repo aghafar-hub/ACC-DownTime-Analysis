@@ -63,6 +63,11 @@ Repeats tidy (bursts shown separately).
 Records table: sortable headers, sticky header, drill context banner 'From: Losses > 141.VL170 . Aug 2026 . 9 events,
 15.7 h (matches the bar)', detail drawer. Validate: one-line rows with an actions menu, month table collapsed.
 Upload history names and wrapping; Settings clean-up ('Your access...' text, tiles); breadcrumb 'Reports > Reports'.
+Status: implemented. Notes: sorting is the page's `sort` key (`<column>_<asc|desc>`, src/pages/events/explorerFilters.ts
+sortRows); the drill carries the chart's window, the page to go back to and the bar's hours (src/dashboard/parts.tsx
+useDrill), the banner text and the match check are pure (src/pages/events/drillBanner.ts); the drawer is ShellModal's
+`variant="drawer"` at >= 1100 px; row menus use src/components/RowMenu.tsx; 'View only' is a small badge
+(src/components/AccessBadge.tsx), Edit access shows nothing.
 
 ## R4 - Phone and PWA
 Landscape compact chrome; one-line update banner on phones; report preview Fit/100% (+ zoom there, pending owner

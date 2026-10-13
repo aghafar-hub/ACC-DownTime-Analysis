@@ -1,0 +1,280 @@
+/* Event records (R3): dense sortable table, drill context banner, record drawer, phone cards. Tokens only; nothing under 12 px. */
+
+/* the page may grow when the drawer is open, so the table keeps its columns */
+.ev-page--drawer {
+  max-width: 1640px;
+}
+
+/* ---- drill context banner (desktop) */
+.ev-drill {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  padding: 10px 12px 10px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--tk-border);
+  border-left: 4px solid var(--tk-brand);
+  border-radius: 10px;
+  background: var(--tk-card-bg);
+  font-size: 14px;
+}
+.ev-drill-from {
+  font: 700 12px var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tk-brand-ink, var(--tk-brand));
+}
+.ev-drill-text {
+  min-width: 0;
+  color: var(--tk-text-primary);
+  overflow-wrap: anywhere;
+}
+.ev-drill-actions {
+  margin-inline-start: auto;
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ---- drill context chip (phone): sits in the sticky scope slot under the app bar */
+.ev-drill-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 12px 8px;
+  padding: 2px 2px 2px 12px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--tk-brand) 35%, transparent);
+  border-left: 4px solid var(--tk-brand);
+  background: var(--tk-brand-soft, var(--tk-card-sub-bg));
+  color: var(--tk-text-primary);
+  font-size: 14px;
+}
+.ev-drill-chip-text {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 0;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.ev-drill-chip-x {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--tk-text-secondary);
+  cursor: pointer;
+}
+.ev-drill-chip-x:focus-visible {
+  outline: 2px solid var(--tk-accent);
+}
+
+/* ---- the dense table */
+.ev-split {
+  display: block;
+}
+.ev-split--open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(330px, 26vw, 420px);
+  gap: 16px;
+  align-items: start;
+}
+.ev-main {
+  min-width: 0;
+}
+.ev-dense {
+  font-size: 13.5px;
+}
+.ev-dense th {
+  padding: 0;
+}
+.ev-dense td {
+  padding: 7px 9px;
+}
+.ev-split--open .ev-dense td {
+  padding: 7px 7px;
+}
+.ev-split--open .ev-sort {
+  padding: 8px 7px;
+}
+.ev-dense tfoot th,
+.ev-dense tfoot td {
+  padding: 10px;
+  border-top: 1px solid var(--tk-border);
+  background: var(--tk-table-head);
+  font-weight: 700;
+  color: var(--tk-text-primary);
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13.5px;
+}
+.ev-dense tfoot td.muted {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--tk-text-secondary);
+}
+.ev-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+.num .ev-sort {
+  justify-content: flex-end;
+}
+.ev-sort:hover,
+.ev-sort--on {
+  color: var(--tk-text-primary);
+}
+.ev-sort-arrow {
+  font-size: 12px;
+  color: var(--tk-text-muted);
+}
+.ev-sort--on .ev-sort-arrow {
+  color: var(--tk-accent);
+}
+.ev-row {
+  cursor: pointer;
+}
+.ev-dense tbody tr.is-open {
+  background: var(--tk-nav-active);
+  box-shadow: inset 3px 0 0 var(--tk-accent);
+}
+.ev-open {
+  font: 600 13.5px var(--sans);
+  color: var(--tk-text-primary);
+  padding: 0;
+  min-height: 0;
+}
+.ev-open:hover {
+  color: var(--tk-accent);
+  text-decoration: underline;
+}
+.ev-sub {
+  font-size: 12px;
+  color: var(--tk-text-secondary);
+}
+.ev-code {
+  font-weight: 600;
+}
+.ev-reason .ev-clip {
+  max-width: 280px;
+}
+.ev-split--open .ev-reason .ev-clip {
+  max-width: 160px;
+}
+.ev-split--open .ev-reason .ev-sub {
+  display: none;
+}
+.ev-tiles {
+  margin-bottom: 12px;
+}
+.ev-clip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ev-cls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.ev-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.ev-cls-code {
+  font: 600 13px var(--mono);
+}
+.ev-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ---- the drawer beside the table */
+.ev-drawer {
+  position: sticky;
+  min-height: 320px;
+  z-index: 3;
+}
+
+/* ---- phone cards (mobile-records mockup) */
+.ev-cards {
+  gap: 10px;
+}
+.ev-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+.ev-card-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ev-card-when {
+  font: 700 15px var(--sans);
+  color: var(--tk-text-primary);
+}
+.ev-card-plus {
+  font-weight: 400;
+  color: var(--tk-text-secondary);
+}
+.ev-card-h {
+  font-size: 13px;
+  color: var(--tk-text-secondary);
+  white-space: nowrap;
+}
+.ev-card-h b {
+  font: 700 17px var(--sans);
+  color: var(--tk-text-primary);
+}
+.ev-card-what {
+  font-size: 14px;
+  color: var(--tk-text-secondary);
+  overflow-wrap: anywhere;
+}
+.ev-card-what b {
+  color: var(--tk-text-primary);
+}
+.ev-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.ev-cls-chip {
+  gap: 6px;
+  color: var(--tk-text-primary);
+}
+.ev-card-go {
+  margin-inline-start: auto;
+  display: inline-flex;
+  color: var(--tk-text-muted);
+}
+.ev-phone-sort {
+  margin-inline-start: auto;
+  color: var(--tk-accent);
+  font-weight: 600;
+}

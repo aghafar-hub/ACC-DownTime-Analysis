@@ -96,21 +96,24 @@ export function QualityTable({ onPickMonth }: { onPickMonth?: (month: string) =>
     </div>
   );
   const intro = <p className="v-hint" style={{ marginTop: 0 }}>{t('Clean means no open problem. A record kept as entered counts as clean. Records with a blocking problem stay out of the numbers even when kept as entered. Choose a month to see its records.')}</p>;
+  // collapsed by default: the summary line says how clean the data is; the month table opens under it
   return (
-    <section className={mobile ? 'q-card' : 'card q-card'} aria-labelledby="q-title" data-testid="quality-card">
-      {mobile ? (
-        <details className="v-help" data-testid="quality-details">
-          <summary id="q-title">{t('Data quality by month')} <small>{all.cleanPct === null ? '' : t('{p} clean', { p: pct1(all.cleanPct) })}</small></summary>
-          {intro}
-          {body}
-        </details>
-      ) : (
-        <>
-          <h2 id="q-title">{t('Data quality by month')}</h2>
-          {intro}
-          {body}
-        </>
-      )}
+    <section className={mobile ? 'q-card' : 'card q-card q-card--line'} aria-labelledby="q-title" data-testid="quality-card">
+      <details className="v-help q-details" data-testid="quality-details">
+        <summary id="q-title">
+          <b>{t('Data quality by month')}</b>
+          <small data-testid="quality-summary">
+            {[
+              all.cleanPct === null ? '' : t('{p} clean', { p: pct1(all.cleanPct) }),
+              t('{n} to check', { n: num(all.openProblems) }),
+              t('{n} left out ({h} h)', { n: num(all.leftOut.count), h: hrs(all.leftOut.hours) }),
+              sc.months.length === 1 ? t('1 month') : t('{n} months', { n: sc.months.length }),
+            ].filter(Boolean).join(' · ')}
+          </small>
+        </summary>
+        {intro}
+        {body}
+      </details>
     </section>
   );
 }

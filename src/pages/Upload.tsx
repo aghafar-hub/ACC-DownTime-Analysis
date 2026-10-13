@@ -1,6 +1,7 @@
 import { useAuth } from '../auth/AuthContext';
 import { dateText } from '../util/dates';
 import { PageHeader, Tile } from '../components/Tile';
+import AccessBadge from '../components/AccessBadge';
 import { t } from '../i18n/t';
 import { pageById, pageLabel } from '../navigation';
 import { useTheme } from '../theme/ThemeContext';
@@ -21,11 +22,9 @@ export default function Upload() {
     <div className="page" data-testid="page-upload">
       <PageHeader
         title={pageLabel(pageById('upload'))}
+        right={<AccessBadge edit={edit} />}
         subtitle={batches ? (last ? t('{n} uploads · last on {date} ({file})', { n: batches.length, date: whenText(last.uploaded_at.replace(' ', 'T')), file: last.file_name || '-' }) : t('No uploads yet')) : error ?? t('Loading…')}
       />
-      <p className="status-line" style={{ marginBottom: 12 }} data-testid="access-level">
-        {edit ? t('Your access to this page: can edit.') : t('Your access to this page: view only.')}
-      </p>
       <div className="tiles">
         <Tile icon="upload" label={t('Uploads on record')} value={batches ? num(batches.length) : '-'} testid="fact-batches" />
         <Tile icon="calendar" label={t('Last upload')} value={last ? dateText(last.uploaded_at) : '-'} sub={last?.file_name} testid="fact-last-upload" />

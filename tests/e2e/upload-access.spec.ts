@@ -26,7 +26,7 @@ test('View access sees the history but cannot upload; Edit can', async ({ page }
   await expect(page.getByTestId('page-title')).toBeVisible();
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Upload' }).click();
   await expect(page.getByTestId('page-upload')).toBeVisible();
-  await expect(page.getByTestId('access-level')).toContainText('view only');
+  await expect(page.getByTestId('access-level')).toHaveText('View only');
   await expect(page.getByTestId('view-only-note')).toBeVisible();
   await expect(page.getByTestId('file-input')).toHaveCount(0);
   await expect(page.getByTestId('choose-file')).toHaveCount(0);
@@ -42,7 +42,7 @@ test('engineer (Edit) gets the file chooser', async ({ page }) => {
   await stubFonts(page);
   await signInAndWait(page, 'engineer');
   await page.goto('/#/upload');
-  await expect(page.getByTestId('access-level')).toContainText('can edit');
+  await expect(page.getByTestId('access-level')).toHaveCount(0);
   await expect(page.getByTestId('file-input')).toHaveCount(1);
   await expect(page.getByTestId('view-only-note')).toHaveCount(0);
   // the file chooser is reachable with the keyboard: its button comes first

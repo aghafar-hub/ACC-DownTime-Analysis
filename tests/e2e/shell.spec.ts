@@ -81,6 +81,9 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('page-tabs')).toHaveCount(0);
     await expect(page.getByRole('navigation', { name: 'Pages' })).toHaveCount(0);
     await expect(page.getByTestId('breadcrumb')).toHaveText('Setup›Master Data');
+    // a page named like its section is not said twice ('Reports › Reports')
+    await page.goto('/#/reports');
+    await expect(page.getByTestId('breadcrumb')).toHaveText('Reports');
     // Settings sits behind the gear: no section, no tabs
     await page.getByTestId('settings-btn').click();
     await expect(page.getByTestId('page-tabs')).toHaveCount(0);
@@ -149,8 +152,8 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('event-row')).toHaveCount(50);
     await page.getByTestId('show-more').click();
     await expect(page.getByTestId('event-row')).toHaveCount(100);
-    const total = await page.getByTestId('tile-shown').locator('span').nth(2).textContent();
-    expect(Number((total ?? '').replace(/,/g, ''))).toBeGreaterThan(1000);
+    const total = (await page.getByTestId('tile-shown').innerText()).match(/[\d,]+/)![0];
+    expect(Number(total.replace(/,/g, ''))).toBeGreaterThan(1000);
 
     await page.getByTestId('failure-only').click();
     await expect(page.getByTestId('event-row').first()).toContainText('Failure');
@@ -188,7 +191,7 @@ test.describe('desktop', () => {
     await expect(page.locator('[data-testid="fb-area-opt"][data-value="K.1"]')).toBeChecked();
     await closePanel(page);
     await expect(page.getByTestId('event-row').first()).toContainText('K.1');
-    await expect(page.getByTestId('event-row').first()).toContainText('Mar 2026');
+    await expect(page.getByTestId('event-row').first()).toContainText(/\b\d{1,2} Mar \d{2}:\d{2}/); // one year: the dates leave it out
     expect(failures).toContain('matching');
 
     // the year chips set the shared period to that year

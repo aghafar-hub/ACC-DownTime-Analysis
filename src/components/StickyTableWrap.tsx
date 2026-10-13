@@ -5,7 +5,7 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 /** The bottom edge of the bars that stay on top of the page (top bar, scope bar, update banner, phone page tabs). */
-function stuckTop(): number {
+export function stuckTop(): number {
   let top = 0;
   for (const el of document.querySelectorAll<HTMLElement>('.shell-topbar, .scope-slot, .module-tabs, .update-banner')) {
     const pos = getComputedStyle(el).position;

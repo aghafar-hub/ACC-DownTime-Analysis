@@ -69,7 +69,7 @@ export default function TopBar() {
       ) : (
         <div className="shell-topbar-titles">
           <div className="shell-topbar-crumb" data-testid="breadcrumb">
-            {page && !onSettings && (
+            {page && !onSettings && sectionLabel(page.group) !== pageName && (
               <>
                 <span className="shell-topbar-page" data-testid="breadcrumb-section">{sectionLabel(page.group)}</span>
                 <span className="shell-topbar-sep" aria-hidden="true">›</span>

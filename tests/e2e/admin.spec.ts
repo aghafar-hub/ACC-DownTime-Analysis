@@ -18,7 +18,7 @@ test.describe('master data', () => {
 
   test('engineer: equipment search, filters, add, edit, retire', async ({ page }) => {
     await go(page, 'engineer', 'master');
-    await expect(page.getByTestId('access-level')).toContainText('can edit');
+    await expect(page.getByTestId('access-level')).toHaveCount(0); // Edit access needs no note
     await expect(page.getByTestId('page-subtitle')).toContainText(/codes · \d+ need review/);
     const total = await page.getByTestId('equipment-count').textContent();
     expect(total).toMatch(/of \d+ codes/);
@@ -159,7 +159,7 @@ test.describe('master data', () => {
 
   test('manager: view only, nothing to change', async ({ page }) => {
     await go(page, 'manager', 'master');
-    await expect(page.getByTestId('access-level')).toContainText('view only');
+    await expect(page.getByTestId('access-level')).toHaveText('View only');
     await expect(page.getByTestId('add-equipment')).toHaveCount(0);
     await page.getByTestId('equipment-row').first().getByRole('button').click();
     await expect(page.getByTestId('equipment-modal')).toBeVisible();
