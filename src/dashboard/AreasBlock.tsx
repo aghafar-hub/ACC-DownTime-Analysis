@@ -10,6 +10,8 @@ import { MultiPick } from './FilterBar';
 import { dayLabel, fh, fh2, fint, fpct, metricText, monthLabel } from './format';
 import { monthly } from './models';
 import AreaReliabilityCharts from './AreaReliabilityCharts';
+import { TargetCell } from './TargetStatus';
+import { anyTarget, areaTargetStatuses, getTargets } from './targets';
 import type { DashCtx } from './scope';
 
 export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (label: string, eventIds: string[]) => void }) {
@@ -20,6 +22,8 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
   const basis = settings.availabilityBasis;
   const target = settings.availabilityTargetPct ?? null;
   const areaOrder = ctx.base.areaIds;
+  const targets = getTargets(settings);
+  const statuses = useMemo(() => areaTargetStatuses(perArea, targets), [perArea, targets.availabilityPct, targets.mtbfH, targets.mttrH]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const months = useMemo(() => monthly(ctx), [ctx]);
   const cats: CartCategory[] = months.map((m) => ({ key: m.month, label: monthLabel(m.month), partial: m.partial, note: m.partial && m.window ? t('Partial month: data to {d}', { d: dayLabel(m.window.to) }) : undefined }));
@@ -60,14 +64,18 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
       {kpi && (
         <section className="card" data-testid="area-table-card">
           <h2>{t('By area')}</h2>
-          <p className="chart-sub" style={{ marginBottom: 8 }}>{t('MTBF is an area-level figure; the aggregate is shown in area-hours and never averaged.')}</p>
+          <p className="chart-sub" style={{ marginBottom: 8 }}>{t('MTBF is an area-level figure; the aggregate is shown in area-hours and never averaged.')}{anyTarget(targets) ? ` ${t('Status columns compare each area with the targets set in Settings; an area without a figure has no status.')}` : ''}</p>
           <div className="table-wrap">
             <table className="data-table" data-testid="area-table">
               <thead>
                 <tr>
                   <th scope="col">{t('Area')}</th><th scope="col" className="num">{t('Stopped h')}</th><th scope="col" className="num">{t('Failures')}</th>
                   <th scope="col" className="num">{t('Operating h')}</th><th scope="col" className="num">{t('Avail. {b}', { b: basis })}</th>
-                  <th scope="col" className="num">{t('MTBF h')}</th><th scope="col" className="num">{t('MTTR h')}</th>
+                  {targets.availabilityPct !== null && <th scope="col">{t('Availability status')}</th>}
+                  <th scope="col" className="num">{t('MTBF h')}</th>
+                  {targets.mtbfH !== null && <th scope="col">{t('MTBF status')}</th>}
+                  <th scope="col" className="num">{t('MTTR h')}</th>
+                  {targets.mttrH !== null && <th scope="col">{t('MTTR status')}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -78,8 +86,11 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
                     <td className="num">{fint(a.failureCount)}</td>
                     <td className="num">{metricText(a.operatingHours, fh).text}</td>
                     <td className="num">{metricText(a.availabilityHeadline, fpct).text}</td>
+                    {targets.availabilityPct !== null && <td><TargetCell status={statuses.get(a.area_id)?.availability} testid="status-availability" /></td>}
                     <td className="num" title={metricText(a.mtbfHours, fh).reason}>{metricText(a.mtbfHours, fh).text}</td>
+                    {targets.mtbfH !== null && <td><TargetCell status={statuses.get(a.area_id)?.mtbf} testid="status-mtbf" /></td>}
                     <td className="num" title={metricText(a.mttrHours, fh2).reason}>{metricText(a.mttrHours, fh2).text}</td>
+                    {targets.mttrH !== null && <td><TargetCell status={statuses.get(a.area_id)?.mttr} testid="status-mttr" /></td>}
                   </tr>
                 ))}
               </tbody>

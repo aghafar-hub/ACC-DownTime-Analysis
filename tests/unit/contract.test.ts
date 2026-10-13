@@ -462,15 +462,15 @@ describe.each([
   });
 
   it('keep as entered: the three targets and saved views are validated the same way', async () => {
-    const ok = { target_availability_pct: '95', target_mtbf_h: '120.5', target_mttr_h: '2' };
+    const ok = { availability_target_pct: '95', target_mtbf_h: '120.5', target_mttr_h: '2' };
     await s.api.saveSettings(token, ok);
     const read = async () => Object.fromEntries((await s.api.getStartup(token)).settings.map((x) => [x.key, x.value]));
     expect(await read()).toMatchObject(ok);
-    for (const bad of [{ target_availability_pct: '101' }, { target_availability_pct: 'x' }, { target_mtbf_h: '0' }, { target_mttr_h: '-1' }, { target_mtbf_h: '100001' }] as Record<string, string>[]) {
+    for (const bad of [{ availability_target_pct: '101' }, { availability_target_pct: 'x' }, { target_mtbf_h: '0' }, { target_mttr_h: '-1' }, { target_mtbf_h: '100001' }] as Record<string, string>[]) {
       expect((await rejection(s.api.saveSettings(token, bad))).code, JSON.stringify(bad)).toBe('bad_request');
     }
-    await s.api.saveSettings(token, { target_availability_pct: '', target_mtbf_h: '', target_mttr_h: '' });
-    expect(await read()).toMatchObject({ target_availability_pct: '', target_mtbf_h: '', target_mttr_h: '' });
+    await s.api.saveSettings(token, { availability_target_pct: '', target_mtbf_h: '', target_mttr_h: '' });
+    expect(await read()).toMatchObject({ availability_target_pct: '', target_mtbf_h: '', target_mttr_h: '' });
 
     const views = JSON.stringify([{ id: 'v1', name: 'Kiln', page: 'events', query: 'area=K.1' }, { id: 'v2', name: 'Pareto', page: 'pareto', query: '' }]);
     expect(await s.api.saveNotificationPrefs(token, { saved_views: views })).toMatchObject({ saved_views: views });
@@ -532,7 +532,7 @@ describe.each([
   const keys = (list: { dedupe_key: string }[]): string[] => list.map((n) => n.dedupe_key);
 
   it('notifications: the rules produce the same alerts and updates in the backend and the mock', async () => {
-    await s.api.saveSettings(token, { repeat_min_events: '2', notif_retention_days: '30', notif_availability_target_pct: '' });
+    await s.api.saveSettings(token, { repeat_min_events: '2', notif_retention_days: '30', availability_target_pct: '' });
     s.setClock(NOON('2041-06-20'));
     ntoken = (await s.api.login(s.admin.email, s.admin.password, true)).token;
 
@@ -602,7 +602,7 @@ describe.each([
 
   it('notifications: availability below target needs the target setting, and uses the latest complete month', async () => {
     expect((await mine()).some((n) => n.type === 'availability_low')).toBe(false);
-    await s.api.saveSettings(ntoken, { notif_availability_target_pct: '95' });
+    await s.api.saveSettings(ntoken, { availability_target_pct: '95' });
     expect(await s.api.runNotificationChecks(ntoken)).toEqual({ created: 1, resolved: 0, expired: 0 });
     const a = (await mine()).filter((n) => n.type === 'availability_low');
     expect(a).toEqual([{
@@ -610,7 +610,7 @@ describe.each([
       detail: '2041-05: availability 93.5% against a target of 95% (basis B).', area_id: 'K.1', line_id: 'L.1', source_ref: '',
     }]);
     expect(await s.api.runNotificationChecks(ntoken)).toEqual({ created: 0, resolved: 0, expired: 0 });
-    await s.api.saveSettings(ntoken, { notif_availability_target_pct: '' });
+    await s.api.saveSettings(ntoken, { availability_target_pct: '' });
   });
 
   it('notifications: state and preferences belong to the caller; validation answers agree', async () => {
@@ -667,7 +667,7 @@ describe.each([
   it('notifications: settings ranges agree', async () => {
     for (const changes of [
       { notif_long_stop_hours: '0' }, { notif_spike_pct: '0' }, { notif_upload_gap_days: '0' }, { notif_retention_days: '0' },
-      { notif_availability_target_pct: '101' }, { notif_repeat_alert: 'maybe' }, { app_url: 'javascript:alert(1)' }, { app_url: 'ftp://x.example' },
+      { availability_target_pct: '101' }, { notif_repeat_alert: 'maybe' }, { app_url: 'javascript:alert(1)' }, { app_url: 'ftp://x.example' },
     ] as Record<string, string>[]) {
       expect((await rejection(s.api.saveSettings(ntoken, changes))).code, JSON.stringify(changes)).toBe('bad_request');
     }

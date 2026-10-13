@@ -32,7 +32,8 @@ test('the schema gains the three event columns and the new settings', () => {
   const cols = env.json(env.run('SCHEMA.tables.events.columns')).map((c) => c.name);
   assert.deepEqual(cols.slice(-3), ['accepted_flags', 'accepted_by', 'accepted_at']);
   const keys = env.rows('settings').map((s) => s.key);
-  for (const k of ['target_availability_pct', 'target_mtbf_h', 'target_mttr_h']) assert.ok(keys.includes(k), k);
+  for (const k of ['availability_target_pct', 'target_mtbf_h', 'target_mttr_h']) assert.ok(keys.includes(k), k);
+  assert.ok(!keys.includes('target_availability_pct') && !keys.includes('notif_availability_target_pct'));
   assert.equal(env.run('APP_VERSION'), '1.3.0');
 });
 
@@ -59,7 +60,7 @@ test('ensureSchema + seedDefaults upgrade a 1.2.0 database without touching data
   for (const k of Object.keys(before[0])) assert.deepEqual(after[0][k], before[0][k], k);
   assert.equal(after[0].accepted_flags, '');
   assert.deepEqual(env.rows('settings').filter((s) => !s.key.startsWith('target_')).map((s) => [s.key, s.value]), settingsBefore.map((s) => [s.key, s.value]));
-  assert.equal(env.rows('settings').filter((s) => s.key.startsWith('target_')).length, 3);
+  assert.equal(env.rows('settings').filter((s) => s.key.startsWith('target_')).length, 2);
   // and it works on the upgraded sheet
   const r = accept(env, admin.token, after[0], ['unknown_code']);
   assert.equal(r.status, 'ok');
@@ -245,14 +246,14 @@ test('notifications: accepted flags are not counted as records to validate; bloc
 test('settings: the three targets are validated like the other settings (blank = off)', () => {
   const { env, admin } = world();
   const save = (changes) => env.call('saveSettings', admin.token, { changes });
-  assert.equal(save({ target_availability_pct: '95.5', target_mtbf_h: '120', target_mttr_h: '2.5' }).status, 'ok');
+  assert.equal(save({ availability_target_pct: '95.5', target_mtbf_h: '120', target_mttr_h: '2.5' }).status, 'ok');
   const get = (k) => env.rows('settings').find((s) => s.key === k).value;
-  assert.deepEqual([get('target_availability_pct'), get('target_mtbf_h'), get('target_mttr_h')], ['95.5', '120', '2.5']);
-  assert.equal(save({ target_availability_pct: '', target_mtbf_h: '', target_mttr_h: '' }).status, 'ok');
+  assert.deepEqual([get('availability_target_pct'), get('target_mtbf_h'), get('target_mttr_h')], ['95.5', '120', '2.5']);
+  assert.equal(save({ availability_target_pct: '', target_mtbf_h: '', target_mttr_h: '' }).status, 'ok');
   assert.equal(get('target_mtbf_h'), '');
-  assert.equal(save({ target_availability_pct: '0' }).status, 'ok');
-  assert.equal(save({ target_availability_pct: '100' }).status, 'ok');
-  for (const [k, v] of [['target_availability_pct', '100.1'], ['target_availability_pct', '-1'], ['target_availability_pct', 'abc'],
+  assert.equal(save({ availability_target_pct: '0' }).status, 'ok');
+  assert.equal(save({ availability_target_pct: '100' }).status, 'ok');
+  for (const [k, v] of [['availability_target_pct', '100.1'], ['availability_target_pct', '-1'], ['availability_target_pct', 'abc'],
     ['target_mtbf_h', '0'], ['target_mtbf_h', '-5'], ['target_mtbf_h', '100001'], ['target_mttr_h', '0'], ['target_mttr_h', 'x']]) {
     const r = save({ [k]: v });
     assert.equal(r.error?.code, 'bad_request', `${k}=${v}`);

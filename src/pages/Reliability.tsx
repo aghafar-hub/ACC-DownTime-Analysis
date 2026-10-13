@@ -6,6 +6,7 @@ import { seriesColor } from '../charts/palette';
 import { Tile } from '../components/Tile';
 import { useIsMobile } from '../hooks/useIsMobile';
 import AreasBlock from '../dashboard/AreasBlock';
+import MonthCompare from '../dashboard/MonthCompare';
 import DashTop from '../dashboard/DashTop';
 import { dayLabel, fh, fh2, fint, monthLabel } from '../dashboard/format';
 import { reliabilityTakeaway } from '../dashboard/takeaways';
@@ -130,6 +131,7 @@ export default function Reliability() {
           <Tile compact={mobile} icon="clock" label={t('Failure events')} value={fint(k.failureEventCount)} sub={t('{n} failure rows', { n: fint(k.failureCount) })} />
         </div>
       )}
+      {ctx && <MonthCompare dash={dash} page="reliability" />}
       {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}
       {model && ctx && (
         <>

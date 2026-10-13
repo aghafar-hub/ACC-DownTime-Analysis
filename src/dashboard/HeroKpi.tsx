@@ -50,8 +50,8 @@ export function InfoButton({ info, testid }: { info: KpiInfo; testid?: string })
 
 export interface SparkData { values: (number | null)[]; format: (n: number) => string; mode: 'daily' | 'weekly' | 'monthly' }
 
-export function HeroKpi({ id, label, shortLabel, value, unavailable, sub, change, tone, info, spark }: {
-  id: string; label: string; /** shown instead of `label` on a phone; the full label stays the accessible name */ shortLabel?: string; value: string; unavailable?: boolean; sub?: ReactNode; change?: ReactNode; tone?: string; info: KpiInfo; spark: SparkData;
+export function HeroKpi({ id, label, shortLabel, value, unavailable, status, sub, change, tone, info, spark }: {
+  id: string; label: string; /** shown instead of `label` on a phone; the full label stays the accessible name */ shortLabel?: string; value: string; unavailable?: boolean; /** target status line right under the value */ status?: ReactNode; sub?: ReactNode; change?: ReactNode; tone?: string; info: KpiInfo; spark: SparkData;
 }) {
   return (
     <div className="hero-kpi" data-testid={`kpi-${id}`} style={tone ? { borderLeftColor: tone } : undefined}>
@@ -62,6 +62,7 @@ export function HeroKpi({ id, label, shortLabel, value, unavailable, sub, change
         <InfoButton info={info} testid={`kpi-${id}-info`} />
       </div>
       <span className={unavailable ? 'hero-value hero-value--na' : 'hero-value'} style={tone ? { color: tone } : undefined} data-testid={`kpi-${id}-value`}>{value}</span>
+      {status}
       {sub && <span className="kpi-sub">{sub}</span>}
       {change}
       <Sparkline values={spark.values} label={label} format={spark.format} unitLabel={spark.mode === 'daily' ? t('daily') : spark.mode === 'weekly' ? t('weekly') : t('monthly')} />

@@ -37,7 +37,7 @@ place where it is fixed (deep link with filters applied); never colour alone; 12
 | `notif_long_stop_hours` | 8 | a chained failure event longer than this raises an alert |
 | `notif_spike_pct` | 30 | failure count of the last 30 days vs the 30 days before, per area, rise above this % (and at least 5 failures now) |
 | `notif_upload_gap_days` | 35 | latest stored event older than this many days → 'No upload since …' |
-| `notif_availability_target_pct` | (blank = rule off) | an area's availability (basis B) for the latest complete month below this raises an alert |
+| `availability_target_pct` (shared with the dashboards) | (blank = rule off) | an area's availability (basis B) for the latest complete month below this raises an alert |
 | `notif_repeat_alert` | true | a repeated-failure group (same code + reason, >= 2 events within the repeat window) that did not exist at the previous check raises an alert |
 | `notif_retention_days` | 30 | alerts/updates expire after this |
 | `app_url` | (blank) | base URL used for links in digest emails |

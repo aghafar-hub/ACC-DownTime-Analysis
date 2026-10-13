@@ -15,5 +15,9 @@ describe('parseSettings', () => {
     const s = parseSettings({ availability_basis: 'Z', scheduled_hours_per_day: 'abc', scheduled_days_per_week: '9', repeat_min_events: '', availability_target_pct: '' });
     expect(s).toEqual(DEFAULT_SETTINGS);
   });
+  it('parses the MTBF and MTTR targets: blank, zero, negative or text mean no target', () => {
+    expect(parseSettings({ target_mtbf_h: '120.5', target_mttr_h: '2' })).toMatchObject({ targetMtbfH: 120.5, targetMttrH: 2 });
+    for (const bad of ['', '0', '-3', 'x', '100001']) expect(parseSettings({ target_mtbf_h: bad, target_mttr_h: bad })).toMatchObject({ targetMtbfH: null, targetMttrH: null });
+  });
   it('never lets the repeat rule drop below two events', () => expect(parseSettings({ repeat_min_events: '1' }).repeatMinEvents).toBe(2));
 });

@@ -211,8 +211,8 @@ pasting the new code; everything is safe to run again. See `docs/wire-protocol.m
    file if you paste file by file.
 2. **Run `ensureSchema`.** It adds the three new sheets (`notifications`, `notification_state`, `notification_prefs`) and never
    touches your data.
-3. **Run `seedDefaults`.** It adds the seven new settings (`notif_long_stop_hours`, `notif_spike_pct`, `notif_upload_gap_days`,
-   `notif_availability_target_pct`, `notif_repeat_alert`, `notif_retention_days`, `app_url`) and never overwrites a value you
+3. **Run `seedDefaults`.** It adds the six new settings (`notif_long_stop_hours`, `notif_spike_pct`, `notif_upload_gap_days`,
+   `notif_repeat_alert`, `notif_retention_days`, `app_url`) and never overwrites a value you
    changed. Without it the defaults still apply, but the Settings page cannot show the rows.
 4. **Install the daily trigger and re-authorise.** Run **installNotificationTriggers**. Google asks once for permission again
    (new: *Send email as you* and *Manage your triggers*; the spreadsheet permission is the one you already gave). Review
@@ -242,18 +242,21 @@ Good to know:
 
 ## 12. Update to version 1.3.0 (Keep as entered, targets, saved views)
 
-Version 1.3.0 adds the **Keep as entered** button on the Validate page, three target settings and saved views. Nothing in your
+Version 1.3.0 adds the **Keep as entered** button on the Validate page, two new target settings (MTBF and MTTR; the availability target already existed) and saved views. Nothing in your
 data changes. Do these steps in order; all of them are safe to repeat.
 
 1. **Paste these 7 files** into the Apps Script project, replacing the old content of each (same names, same order does not matter):
    `Schema.js`, `Config.js`, `Access.js`, `Code.js`, `Events.js`, `Settings.js`, `Notifications.js`.
+   `Schema.js`, `Settings.js` and `Notifications.js` are part of this 1.3.0 paste set (they carry the targets and the availability
+   alert that reads `availability_target_pct`); do not skip them.
    The other files (`Utils.js`, `Crypto.js`, `Audit.js`, `Auth.js`, `Users.js`, `Master.js`, `Upload.js`, `Setup.js`) and
    `appsscript.json` did not change from 1.2.0: leave them alone. With the one-file bundle (option A2), run
    `node tools/bundle-apps-script.mjs` and paste `ACC_Downtime_Backend.gs` over `Code.gs` instead.
 2. **Run `ensureSchema`.** It adds three columns at the end of the `events` sheet (`accepted_flags`, `accepted_by`,
    `accepted_at`) and never touches existing rows or columns.
-3. **Run `seedDefaults`.** It adds three settings with blank values (`target_availability_pct`, `target_mtbf_h`,
-   `target_mttr_h`; blank = no target) and never overwrites a value you changed.
+3. **Run `seedDefaults`.** It adds two settings with blank values (`target_mtbf_h`, `target_mttr_h`; blank = no target) and never overwrites a value
+   you changed. The availability target is the existing `availability_target_pct`, and the availability alert now uses it too:
+   an old `notif_availability_target_pct` row in your sheet is ignored (you can delete it).
 4. **Deploy a new version** as in section 10 (**Manage deployments**, pencil, **Version: New version**, **Deploy**). The web app
    address stays the same, and no new permission is asked.
 5. **Check.** Open the web app address with `?action=ping`: it must answer version `1.3.0`. Run **installCheck**.

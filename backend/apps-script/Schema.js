@@ -1101,11 +1101,6 @@ var SCHEMA = {
     "description": "Latest stored event older than this many days raises 'No upload since'"
    },
    {
-    "key": "notif_availability_target_pct",
-    "value": "",
-    "description": "Availability (basis B) of the latest complete month below this percent raises an alert; blank = rule off"
-   },
-   {
     "key": "notif_repeat_alert",
     "value": "true",
     "description": "true | false. A new repeated-failure group raises an alert"
@@ -1119,11 +1114,6 @@ var SCHEMA = {
     "key": "app_url",
     "value": "",
     "description": "Web address of the app, used for the link in digest emails; blank = no link"
-   },
-   {
-    "key": "target_availability_pct",
-    "value": "",
-    "description": "Availability target shown on the dashboards, percent (0 to 100); blank = no target"
    },
    {
     "key": "target_mtbf_h",

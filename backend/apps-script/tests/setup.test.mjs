@@ -64,7 +64,7 @@ test('seedDefaults is idempotent, adds everything, and never overwrites edits', 
   env.setProp('SESSION_SIGNING_SECRET', 'x'.repeat(30));
   env.ctx.ensureSchema();
   const first = env.json(env.ctx.seedDefaults());
-  assert.deepEqual(first, { lines: 2, areas: 19, classifications: 6, roles: 4, settings: 24, tab_access: 36 });
+  assert.deepEqual(first, { lines: 2, areas: 19, classifications: 6, roles: 4, settings: 22, tab_access: 36 });
   const second = env.json(env.ctx.seedDefaults());
   assert.ok(Object.values(second).every((n) => n === 0));
   assert.equal(env.rows('areas').length, 19);

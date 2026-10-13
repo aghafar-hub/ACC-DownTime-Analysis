@@ -432,3 +432,116 @@
 .v-actions-in {
   flex-wrap: wrap;
 }
+
+/* data quality scorecard */
+.q-clean {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.q-bar {
+  display: inline-block;
+  width: 96px;
+  height: 10px;
+  border: 1px solid var(--tk-text-secondary);
+  border-radius: 3px;
+  background: var(--tk-card-bg);
+  overflow: hidden;
+}
+.q-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--tk-success);
+  border-right: 2px solid var(--tk-text-primary);
+}
+.q-sub {
+  font-size: 12px;
+  font-weight: 400;
+}
+.q-card h2 {
+  margin: 0 0 6px;
+}
+.q-card tfoot th,
+.q-card tfoot td {
+  font-weight: 700;
+  border-top: 2px solid var(--tk-border);
+}
+.q-mini {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0 0 12px;
+  padding: 8px 14px;
+  min-height: 44px;
+  border: 1px solid var(--tk-border);
+  border-left: 3px solid var(--tk-warning);
+  border-radius: 10px;
+  background: var(--tk-card-bg);
+  font-size: 14px;
+}
+.q-mini-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  font-weight: 600;
+  color: var(--tk-accent);
+}
+@media (max-width: 860px) {
+  .q-bar {
+    width: 64px;
+  }
+}
+.v-help .table-wrap {
+  margin: 0 8px 10px;
+}
+.q-card .row-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}
+@media (max-width: 860px) {
+  .q-card .row-link {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+.v-help summary small {
+  margin-left: 8px;
+  font: 400 12px var(--sans);
+  color: var(--tk-text-muted);
+}
+.q-card .data-table th,
+.q-card .data-table td {
+  vertical-align: middle;
+}
+.q-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 10px;
+}
+.q-item {
+  padding: 4px 0 8px;
+  border-top: 1px solid var(--tk-border);
+}
+.q-item--total {
+  border-top: 2px solid var(--tk-border);
+}
+.q-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 14px;
+}
+.q-item-open {
+  font-size: 13px;
+  color: var(--tk-text-secondary);
+}
+.q-item .q-sub {
+  margin-top: 2px;
+}

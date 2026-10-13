@@ -21,6 +21,7 @@ import {
   applyKeptFilter, applyValidateFilter, areasOf, BULK_CAP, EMPTY_FILTER, filterCount, filterFromParams, firstFixHint, flagCounts, monthsOf,
   type BulkResult, type KeptRecord, type ValidateFilter, type ValidationRecord,
 } from '../validate/model';
+import { QualityTable } from '../validate/Quality';
 import { useKeepNotes, useUserNames } from '../validate/useKeepInfo';
 import { useValidation } from '../validate/ValidationContext';
 import { flagLabel } from './events/eventLabels';
@@ -327,6 +328,8 @@ export default function Validate() {
           <span><span aria-hidden="true">✓</span> <b data-testid="v-count-kept">{num(summary.kept.count)}</b> {t('kept as entered')} (<span data-testid="v-kept-hours">{hours(summary.kept.leftOut.hours * 3600)}</span> h {t('left out')})</span>
         </div>
       ))}
+
+      {dataReady && <QualityTable onPickMonth={(m) => { setF({ ...EMPTY_FILTER, month: m }); setView('open'); }} />}
 
       {dataReady && (summary.total > 0 || summary.kept.count > 0) && (
         <div className="v-seg" role="group" aria-label={t('Which records')} data-testid="v-view">

@@ -23,7 +23,7 @@ function num(raw: string | undefined, dflt: number, min: number, max: number): n
 export function parseNotifSettings(settings: Setting[]): NotifSettings {
   const map: Record<string, string> = {};
   for (const s of settings) map[s.key] = s.value;
-  const target = (map.notif_availability_target_pct ?? '').trim();
+  const target = (map.availability_target_pct ?? '').trim();
   const repeat = (map.notif_repeat_alert ?? 'true').trim().toLowerCase();
   const url = (map.app_url ?? '').trim();
   return {

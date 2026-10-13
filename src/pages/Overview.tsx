@@ -9,6 +9,9 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import DashTop from '../dashboard/DashTop';
 import { ChangeLine, dayLabel, dayShort, fh, fh2, fint, fpct, fpct0, metricText, monthLabel } from '../dashboard/format';
 import { HeroKpi } from '../dashboard/HeroKpi';
+import MonthCompare from '../dashboard/MonthCompare';
+import { TargetLine } from '../dashboard/TargetStatus';
+import { targetNumber } from '../dashboard/targets';
 import { kpiInfo } from '../dashboard/kpiInfo';
 import { zoomFloor } from '../charts/scale';
 import { overviewModel, ROLLING_DAYS, sparkSeries, windowDays } from '../dashboard/models';
@@ -17,6 +20,7 @@ import { overviewTakeaway } from '../dashboard/takeaways';
 import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
 import SinceLastVisit from '../notifications/SinceLastVisit';
+import { QualityCard } from '../validate/Quality';
 import { Icon } from '../icons';
 import { useTheme } from '../theme/ThemeContext';
 import '../components/ui.css';
@@ -24,14 +28,14 @@ import '../dashboard/dashboard.css';
 
 const BASIS_NAME = { A: 'calendar', B: 'calendar minus planned', C: 'minus planned and other' } as const;
 
-function Kpi({ id, icon, label, value, sub, change, tone, unavailable, compact }: {
-  id: string; icon: string; label: string; value: string; sub?: ReactNode; change?: ReactNode; tone?: string; unavailable?: boolean; compact?: boolean;
+function Kpi({ id, icon, label, value, sub, change, status, tone, unavailable, compact }: {
+  id: string; icon: string; label: string; value: string; sub?: ReactNode; change?: ReactNode; status?: ReactNode; tone?: string; unavailable?: boolean; compact?: boolean;
 }) {
   return (
     <Tile
       icon={icon} label={label} testid={`kpi-${id}`} tone={tone} compact={compact}
       value={<span data-testid={`kpi-${id}-value`} style={unavailable ? { fontSize: 17 } : undefined}>{value}</span>}
-      sub={<>{sub && <span className="kpi-sub">{sub}</span>}{change}</>}
+      sub={<>{status}{sub && <span className="kpi-sub">{sub}</span>}{change}</>}
     />
   );
 }
@@ -163,16 +167,28 @@ export default function Overview() {
   // (6) availability per area
   const av = model?.availability ?? null;
   const avAreas = av?.areas ?? [];
+  const targets = model?.targets ?? { availabilityPct: null, mtbfH: null, mttrH: null };
+  const belowIds = new Set(model?.belowTarget?.below ?? []);
   const avRows: HRow[] = avAreas.flatMap((a) => (a.availability.available
-    ? [{ key: a.area_id, label: a.area_id, segments: [{ key: 'av', label: t('Availability (basis {b})', { b: basis }), color: 'var(--tk-accent)', value: a.availability.value * 100 }] }]
+    ? [{
+      key: a.area_id, label: a.area_id,
+      segments: [{
+        key: 'av', label: t('Availability (basis {b})', { b: basis }), value: a.availability.value * 100,
+        // below the target: striped red bar (and a ▼ after the number); otherwise the plain bar
+        color: belowIds.has(a.area_id) ? 'var(--tk-danger)' : 'var(--tk-accent)', hatch: belowIds.has(a.area_id),
+      }],
+    }]
     : []));
   const overall = av?.overall.available ? av.overall.value : null;
   // zoomed axis: from one point below the lowest value (areas and all-area line) up to 100%
-  const avFloor = zoomFloor(Math.min(...avRows.map((r) => r.segments[0]!.value), ...(overall !== null ? [overall * 100] : [])));
+  const avFloor = zoomFloor(Math.min(...avRows.map((r) => r.segments[0]!.value), ...(overall !== null ? [overall * 100] : []), ...(targets.availabilityPct !== null ? [targets.availabilityPct] : [])));
   const avNote = t('Axis starts at {n}%', { n: avFloor });
+  const belowText = model?.belowTarget
+    ? t('{n} of {m} areas below target ({x}%).', { n: model.belowTarget.below.length, m: model.belowTarget.total, x: targetNumber(targets.availabilityPct!) })
+    : '';
   const avSummary = avRows.length
-    ? t('{n} areas, lowest first. Lowest: {a} at {p}.{o} {z}.', {
-      n: avRows.length, a: avRows[0]!.label, p: `${avRows[0]!.segments[0]!.value.toFixed(1)}%`, o: overall !== null ? ` ${t('All areas together: {p}.', { p: fpct(overall) })}` : '', z: avNote,
+    ? t('{n} areas, lowest first. Lowest: {a} at {p}.{o}{b} {z}.', {
+      n: avRows.length, a: avRows[0]!.label, p: `${avRows[0]!.segments[0]!.value.toFixed(1)}%`, o: overall !== null ? ` ${t('All areas together: {p}.', { p: fpct(overall) })}` : '', b: belowText ? ` ${belowText}` : '', z: avNote,
     })
     : t('No availability can be calculated for these areas.');
 
@@ -201,10 +217,12 @@ export default function Overview() {
       <HeroKpi id="availability" label={t('Availability (basis {b})', { b: basis })} shortLabel={t('Availability {b}', { b: basis })} value={avText!.text} unavailable={avText!.unavailable}
         sub={<span data-testid="kpi-availability-abc">A {metricText(tot.availability.A, fpct).text} · B {metricText(tot.availability.B, fpct).text} · C {metricText(tot.availability.C, fpct).text}<br />{t(BASIS_NAME[basis])}</span>}
         change={<ChangeLine change={ch?.availability ?? null} fmt={(n) => (n * 100).toFixed(1)} unit=" pts" label={cmpLabel} compare={cmpMode} />}
-        info={kpiInfo('availability', basis)} spark={sparkOf(spark.availability, fpct)} />
+        info={kpiInfo('availability', basis, targets)} spark={sparkOf(spark.availability, fpct)}
+        status={<TargetLine status={model.status.availability} testid="kpi-availability-target" />} />
       <HeroKpi id="mttr" label={t('Mean restoration time')} shortLabel={t('Restoration time')} value={mttr!.text} unavailable={mttr!.unavailable}
         sub={mttr!.reason ?? t('mean duration of failure events')} change={<ChangeLine change={ch?.mttrHours ?? null} fmt={fh2} unit=" h" label={cmpLabel} compare={cmpMode} />}
-        info={kpiInfo('mttr', basis)} spark={sparkOf(spark.mttrHours, (n) => `${fh2(n)} h`)} />
+        info={kpiInfo('mttr', basis, targets)} spark={sparkOf(spark.mttrHours, (n) => `${fh2(n)} h`)}
+        status={<TargetLine status={model.status.mttr} testid="kpi-mttr-target" />} />
     </div>
   );
 
@@ -218,7 +236,7 @@ export default function Overview() {
         change={<ChangeLine change={model.otherChange} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} />
       <Kpi compact={mobile} id="operating-hours" icon="clock" label={t('Operating hours')} value={metricText(tot.operatingHours, fh, ' h').text} unavailable={!tot.operatingHours.available}
         sub={sumNote(tot.operatingHours, fh, ' h') || t('scheduled minus all stops, area-hours')} change={<ChangeLine change={ch?.operatingHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} />
-      <Kpi compact={mobile} id="mtbf" icon="trend" label={t('MTBF (area level)')} value={mtbf ? mtbf.text : t('Select one area')} unavailable={!mtbf || mtbf.unavailable || perArea.length !== 1}
+      <Kpi compact={mobile} id="mtbf" icon="trend" label={t('MTBF (area level)')} status={<TargetLine status={model.status.mtbf} testid="kpi-mtbf-target" />} value={mtbf ? mtbf.text : t('Select one area')} unavailable={!mtbf || mtbf.unavailable || perArea.length !== 1}
         sub={mtbf ? mtbf.reason ?? t('operating hours per failure') : t('Per-area MTBF is on the Reliability page; the aggregate is not an MTBF')}
         change={mtbf ? <ChangeLine change={ch?.mtbfHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} /> : undefined} />
       <Kpi compact={mobile} id="repeated" icon="repeat" label={t('Repeated failures')} value={kpi.repeatedFailureCount === 0 ? t('None recorded') : fint(kpi.repeatedFailureCount)} unavailable={kpi.repeatedFailureCount === 0}
@@ -250,6 +268,8 @@ export default function Overview() {
         <>
           {hero}
           {more}
+          <QualityCard />
+          <MonthCompare dash={dash} page="overview" />
           <Collapsible title={t('Stoppage over time')} defaultOpen testid="sec-time">
             <div className="chart-grid">
               <div className="chart-wide">
@@ -313,21 +333,30 @@ export default function Overview() {
                 )}
               </ChartCard>
               <ChartCard
-                title={t('Availability per area (basis {b})', { b: basis })} subtitle={t('Lowest first. The dashed line is the availability of all areas together.')}
-                summary={avSummary} legend={[{ label: t('Area availability'), color: 'var(--tk-accent)' }, ...(overall !== null ? [{ label: t('All areas together'), color: 'var(--tk-text-primary)', symbol: 'dash' as const }] : [])]} testid="chart-area-availability"
+                title={t('Availability per area (basis {b})', { b: basis })} subtitle={targets.availabilityPct !== null ? t('Lowest first. The solid line is all areas together, the dashed line is the target. Striped bars are below the target.') : t('Lowest first. The dashed line is the availability of all areas together.')}
+                summary={avSummary}
+                legend={[
+                  { label: targets.availabilityPct !== null ? t('On target') : t('Area availability'), color: 'var(--tk-accent)' },
+                  ...(targets.availabilityPct !== null ? [{ label: t('Below target'), color: 'var(--tk-danger)', symbol: 'hatch' as const }, { label: t('Target {x}%', { x: targetNumber(targets.availabilityPct) }), color: 'var(--tk-text-primary)', symbol: 'dash' as const }] : []),
+                  ...(overall !== null ? [{ label: t('All areas together'), color: 'var(--tk-text-primary)', symbol: (targets.availabilityPct !== null ? 'line' : 'dash') as 'line' | 'dash' }] : []),
+                ]}
+                testid="chart-area-availability"
                 table={{
-                  head: [t('Area'), t('Availability')],
+                  head: targets.availabilityPct !== null ? [t('Area'), t('Availability'), t('Status')] : [t('Area'), t('Availability')],
                   rows: [
-                    ...avAreas.map((a) => [a.area_id, metricText(a.availability, fpct).text]),
-                    ...(av ? [[t('All areas together'), metricText(av.overall, fpct).text]] : []),
+                    ...avAreas.map((a) => [a.area_id, metricText(a.availability, fpct).text, ...(targets.availabilityPct !== null ? [!a.availability.available ? '-' : belowIds.has(a.area_id) ? t('Below target') : t('On target')] : [])]),
+                    ...(av ? [[t('All areas together'), metricText(av.overall, fpct).text, ...(targets.availabilityPct !== null ? ['-'] : [])]] : []),
                   ],
                 }}
+                footnote={model?.belowTarget ? <span data-testid="below-target-count"><b>{t('{n} of {m} areas below target', { n: model.belowTarget.below.length, m: model.belowTarget.total })}</b>{model.belowTarget.below.length ? `: ${model.belowTarget.below.join(', ')}` : ''}</span> : undefined}
               >
                 {(w) => (
                   avRows.length === 0 ? <p className="muted">{t('No availability can be calculated for these areas.')}</p> : (
                     <HBars
                       rows={avRows} width={w} format={(n) => `${n.toFixed(1)}%`} xMax={100} xMin={avFloor} axisNote={avNote} axisFormat={(n) => `${n}%`}
-                      refLine={overall !== null ? { value: overall * 100, label: `${t('All areas')} ${fpct(overall)}` } : undefined}
+                      totalLabel={(r, v) => `${v.toFixed(1)}%${belowIds.has(r.key) ? ' ▼' : ''}`}
+                      refLine={overall !== null ? { value: overall * 100, label: `${t('All areas')} ${fpct(overall)}`, dash: targets.availabilityPct !== null ? 'none' : undefined } : undefined}
+                      extraRefs={targets.availabilityPct !== null ? [{ value: targets.availabilityPct, label: t('Target {x}%', { x: targetNumber(targets.availabilityPct) }) }] : []}
                       ariaLabel={t('Bars of availability per area with a line at the availability of all areas. {s}', { s: avSummary })}
                     />
                   )

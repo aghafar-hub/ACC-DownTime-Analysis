@@ -45,6 +45,13 @@ export function defaultFilters(): DashFilters {
 
 const KEYS = ['line', 'area', 'code', 'type', 'r', 'y', 'm', 'from', 'to', 'cls', 'crit', 'fail', 'reason', 'band', 'cmp'] as const;
 
+/** The parameters of a query that are NOT dashboard filters (for example the month pair of Month vs month); filter changes keep them. */
+export function nonFilterParams(sp: URLSearchParams): URLSearchParams {
+  const out = new URLSearchParams();
+  sp.forEach((v, k) => { if (!(KEYS as readonly string[]).includes(k)) out.append(k, v); });
+  return out;
+}
+
 /** Does this query carry any dashboard filter? */
 export function hasFilterParams(sp: URLSearchParams): boolean {
   return KEYS.some((k) => sp.has(k));

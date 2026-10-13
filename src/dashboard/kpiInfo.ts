@@ -1,5 +1,6 @@
 // Plain-words explanations for the hero KPIs (the (i) buttons). They describe the rules the numbers follow.
 import { t } from '../i18n/t';
+import type { Targets } from './targets';
 
 export type HeroId = 'total-hours' | 'failure-count' | 'availability' | 'mttr';
 
@@ -11,7 +12,18 @@ const BASIS_TEXT = {
   C: 'Basis C: scheduled time minus planned and other (circumstantial) stops is the time the area was expected to run. Availability is that time minus failure stops, divided by it.',
 } as const;
 
-export function kpiInfo(id: HeroId, basis: 'A' | 'B' | 'C'): KpiInfo {
+export function kpiInfo(id: HeroId, basis: 'A' | 'B' | 'C', targets?: Targets): KpiInfo {
+  const info = baseInfo(id, basis);
+  if (id === 'availability' && targets?.availabilityPct != null) {
+    info.paragraphs.push(t('Target: {x}%, set in Settings. The card says whether the availability is on target (at or above it) or below it.', { x: targets.availabilityPct }));
+  }
+  if (id === 'mttr' && targets?.mttrH != null) {
+    info.paragraphs.push(t('Target: {x} h, set in Settings. The card says whether the restoration time is on target (at or below it) or above it. A lower value is better.', { x: targets.mttrH }));
+  }
+  return info;
+}
+
+function baseInfo(id: HeroId, basis: 'A' | 'B' | 'C'): KpiInfo {
   switch (id) {
     case 'total-hours':
       return {

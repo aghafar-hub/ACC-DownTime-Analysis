@@ -445,7 +445,7 @@ are reused.
 | O4 | Equipment types, criticality, descriptions for some codes | Blank until supplied; type filter/Pareto appear when filled |
 | O5 | AFR new equipment list; placeholders `AFR` / `AFR2` | Stored and flagged |
 | O6 | PK.x / HY.x as groups in the downtime sheet | Areas exist; carry events only once the sheet uses them |
-| O7 | Availability basis, scheduled hours, repeat rule, duration bands, targets | Defaults in §8, editable in Settings; targets blank |
+| O7 | Availability basis, scheduled hours, repeat rule, duration bands, targets | Defaults in §8, editable in Settings; targets blank (one availability target `availability_target_pct`, plus `target_mtbf_h` and `target_mttr_h`) |
 | O8 | The 10 reason/classification pairs used but not listed | Listed in the reason master; kept as warnings at upload |
 | O9 | Deployment branches and URL | Test branch first, live only on request |
 

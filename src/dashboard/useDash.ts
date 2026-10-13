@@ -8,7 +8,7 @@ import { dataRangeOf, type DateRange } from '../calc';
 import { eventsResource, type ResState } from '../data/stores';
 import { useStartup, type StartupHook } from '../data/useStartup';
 import { formatDate } from '../calc';
-import { defaultFilters, hasFilterParams, parseFilters, resolveRange, serializeFilters, type DashFilters } from './filters';
+import { defaultFilters, hasFilterParams, nonFilterParams, parseFilters, resolveRange, serializeFilters, type DashFilters } from './filters';
 import { forgetDashFilters, rememberedQuery, rememberQuery } from './sharedFilters';
 import { buildBase, buildEventScope, buildKpis, buildMaster, buildWindows, coverageOf, yearsNeeded, type DashCtx } from './scope';
 
@@ -26,14 +26,22 @@ export function useDashFilters(): { filters: DashFilters; setFilters: (patch: Pa
   const filters = useMemo(() => parseFilters(new URLSearchParams(key)), [key]);
   useEffect(() => {
     if (own) rememberQuery(serializeFilters(parseFilters(sp)).toString());
-    else if (rememberedQuery()) setSp(new URLSearchParams(rememberedQuery()), { replace: true });
+    else if (rememberedQuery()) {
+      // the remembered filters come back; other parameters of the address (the month pair) stay
+      const next = new URLSearchParams(rememberedQuery());
+      nonFilterParams(sp).forEach((v, k) => next.append(k, v));
+      setSp(next, { replace: true });
+    }
   }, [own, sp, setSp]);
   const ref = useRef(filters);
   ref.current = filters;
+  const spRef = useRef(sp);
+  spRef.current = sp;
   const setFilters = useCallback(
     (patch: Partial<DashFilters>) => {
       const next = serializeFilters({ ...ref.current, ...patch });
       rememberQuery(next.toString());
+      nonFilterParams(spRef.current).forEach((v, k) => next.append(k, v));
       setSp(next, { replace: true });
     },
     [setSp],

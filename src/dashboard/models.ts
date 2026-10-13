@@ -9,6 +9,7 @@ import {
   type RollingPoint, type TopN, type YoyMonth,
 } from '../calc';
 import type { CompareMode } from './filters';
+import { areaTargetStatuses, belowTargetCount, getTargets, kpiTargetStatuses, type KpiTargetStatuses, type Targets } from './targets';
 import type { DashCtx } from './scope';
 
 // ---------------------------------------------------------------- overview
@@ -34,6 +35,12 @@ export interface OverviewModel {
   topEquipment: { bars: ParetoBar[]; total: number };
   /** availability per area (lowest first) and for all areas together */
   availability: { areas: AreaAvailability[]; overall: Metric } | null;
+  /** the optional targets from the settings (null = off) */
+  targets: Targets;
+  /** all-area availability and MTTR against their targets; MTBF only when exactly one area is in scope (as the MTBF tile) */
+  status: KpiTargetStatuses;
+  /** areas below the availability target ("N of M areas below target"); null while that target is off */
+  belowTarget: { below: string[]; total: number } | null;
 }
 
 export const ROLLING_DAYS = 7;
@@ -44,6 +51,10 @@ export function overviewModel(ctx: DashCtx): OverviewModel {
   const cmp = ctx.kpis.comparison;
   const prev = cmp && cmp.previous.status === 'ok' ? cmp.previous : null;
   const both = kpi && prev;
+  const targets = getTargets(ctx.master.settings);
+  const availability = kpi ? availabilityByArea(kpi) : null;
+  const one = kpi && kpi.areas.length === 1 ? kpi.areas[0]! : null;
+  const status = kpi ? kpiTargetStatuses(kpi.total, targets) : { availability: null, mtbf: null, mttr: null };
   return {
     kpi,
     noDataReason: cur.status === 'no_data' ? cur.reason : null,
@@ -58,7 +69,10 @@ export function overviewModel(ctx: DashCtx): OverviewModel {
     daily: daily(ctx),
     byClass: ctx.win.range ? monthlyHoursByClassification({ rows: ctx.scope.kpiRows, range: ctx.win.range, dataRange: ctx.coverage, areaIds: ctx.base.areaIds }) : [],
     topEquipment: topEquipment(ctx, 10),
-    availability: kpi ? availabilityByArea(kpi) : null,
+    availability,
+    targets,
+    status: { ...status, mtbf: one ? kpiTargetStatuses(one, targets).mtbf : null },
+    belowTarget: availability ? belowTargetCount(availability.areas, targets) : null,
   };
 }
 
@@ -348,6 +362,10 @@ export interface AreaReliabilityModel {
   overallAvailability: Map<string, Metric>;
   /** failure events that started in the window, per area (click-through) */
   failureIds: Map<string, string[]>;
+  /** the optional targets (null = off) */
+  targets: Targets;
+  /** availability, MTBF and MTTR of every area against the targets (null entries where a target is off or a figure is missing) */
+  status: Map<string, KpiTargetStatuses>;
 }
 
 /** Everything the Areas block adds below the By area table; all figures come from the same AreaKpis as that table. */
@@ -359,6 +377,7 @@ export function areaReliabilityModel(ctx: DashCtx): AreaReliabilityModel | null 
   const w0 = window.from;
   const w1 = window.to;
   for (const c of ctx.scope.failureChains) if (c.startDate >= w0 && c.startDate <= w1) failureIds.get(c.area_id)?.push(c.id);
+  const targets = getTargets(ctx.master.settings);
   return {
     basis: ctx.master.settings.availabilityBasis,
     mtbf: rankAreas(k.areas, (a) => a.mtbfHours, 'asc'),
@@ -370,6 +389,8 @@ export function areaReliabilityModel(ctx: DashCtx): AreaReliabilityModel | null 
     }),
     overallAvailability: new Map(k.areas.map((a) => [a.area_id, a.availabilityHeadline])),
     failureIds,
+    targets,
+    status: areaTargetStatuses(k.areas, targets),
   };
 }
 

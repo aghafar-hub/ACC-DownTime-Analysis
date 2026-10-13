@@ -55,8 +55,9 @@ test('notification tables follow docs/notifications-design.md section 4', () => 
   assert.deepEqual(col('notification_state', 'state').enum, ['seen', 'snoozed', 'dismissed']);
   assert.equal(col('notifications', 'dedupe_key').required, true);
   const defaults = Object.fromEntries(env.json(env.run('SCHEMA.seeds.settings')).map((s) => [s.key, s.value]));
+  assert.ok(!('notif_availability_target_pct' in defaults) && !('target_availability_pct' in defaults), 'one availability target only');
   assert.deepEqual(
-    ['notif_long_stop_hours', 'notif_spike_pct', 'notif_upload_gap_days', 'notif_availability_target_pct', 'notif_repeat_alert', 'notif_retention_days', 'app_url'].map((k) => defaults[k]),
-    ['8', '30', '35', '', 'true', '30', ''],
+    ['notif_long_stop_hours', 'notif_spike_pct', 'notif_upload_gap_days', 'notif_repeat_alert', 'notif_retention_days', 'app_url'].map((k) => defaults[k]),
+    ['8', '30', '35', 'true', '30', ''],
   );
 });

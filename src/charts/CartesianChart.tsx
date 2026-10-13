@@ -24,6 +24,8 @@ export interface CartSeries {
   pointColors?: string[];
   /** extra text per category in the tooltip */
   pointNotes?: (string | undefined)[];
+  /** bars drawn with diagonal stripes in the series colour (a second cue next to colour, for the second series of a pair) */
+  hatch?: boolean;
 }
 export interface RefLine { value: number; label: string; color?: string; dash?: string }
 
@@ -120,7 +122,7 @@ export default function CartesianChart({
           const v = s.values[i];
           const fmt = s.format ?? yFormat;
           return {
-            swatch: <Swatch color={s.pointColors?.[i] ?? s.color} symbol={s.type === 'line' ? 'line' : 'bar'} />,
+            swatch: <Swatch color={s.pointColors?.[i] ?? s.color} symbol={s.type === 'line' ? 'line' : s.hatch ? 'hatch' : 'bar'} />,
             label: s.label,
             value: v === null || v === undefined ? s.missing?.[i] ?? t('Unavailable') : fmt(v),
           };
@@ -137,6 +139,7 @@ export default function CartesianChart({
       <svg width={width} height={height} role="img" aria-label={ariaLabel} onClick={() => { hide(); setActive(null); }}>
         <title>{ariaLabel}</title>
         <HatchDefs id={`h-${uid}`} color="var(--tk-text-primary)" />
+        {series.filter((s) => s.hatch).map((s) => <HatchDefs key={s.key} id={`hs-${uid}-${s.key}`} color={s.color} />)}
         {scale.ticks.filter((v) => v >= yBot && v <= yTop).map((v) => (
           <g key={v}>
             <line x1={m.l} x2={m.l + pw} y1={y(v)} y2={y(v)} stroke={GRID} strokeWidth="1" />
@@ -163,8 +166,8 @@ export default function CartesianChart({
             const hh = y(acc) - yy;
             acc += v;
             return (
-              <rect key={`${s.key}-${i}`} x={x0} y={yy} width={w} height={Math.max(0, hh)} fill={s.pointColors?.[i] ?? s.color}
-                stroke={c.partial ? INK : 'var(--tk-card-bg)'} strokeWidth={c.partial ? 1.5 : 0.75} strokeDasharray={c.partial ? '4 2' : undefined} />
+              <rect key={`${s.key}-${i}`} x={x0} y={yy} width={w} height={Math.max(0, hh)} fill={s.hatch ? `url(#hs-${uid}-${s.key})` : s.pointColors?.[i] ?? s.color}
+                stroke={c.partial ? INK : s.hatch ? s.color : 'var(--tk-card-bg)'} strokeWidth={c.partial || s.hatch ? 1.5 : 0.75} strokeDasharray={c.partial ? '4 2' : undefined} />
             );
           });
         }))}

@@ -1,21 +1,25 @@
 // Horizontal stacked bars, one row per label (areas). Segment values come with their own colour and symbol in
 // the legend; the row total is printed at the end of the bar so nothing depends on colour alone.
 import { useState, type ReactNode } from 'react';
-import { TipLayer, TipRows, Swatch, useChartTip } from './ChartKit';
+import { HatchDefs, TipLayer, TipRows, Swatch, useChartTip, useUid } from './ChartKit';
 import { AXIS } from './palette';
 import { linear, niceTicks, axisNum } from './scale';
 
-export interface HSeg { key: string; label: string; color: string; value: number }
+export interface HSeg {
+  key: string; label: string; color: string; value: number;
+  /** draw the bar with diagonal stripes (and an outline) in `color`: a second cue next to colour, e.g. below target */
+  hatch?: boolean;
+}
 export interface HRow {
   key: string; label: string; segments: HSeg[]; note?: string;
   /** no figure can be given (for example no failures): the row shows this text instead of a bar and a number */
   unavailable?: string;
 }
 
-export interface HRef { value: number; label: string }
+export interface HRef { value: number; label: string; /** dash pattern of the line (default 6 4) */ dash?: string }
 
 export default function HBars({
-  rows, width, format, ariaLabel, totalLabel, onRow, openLabel, xMax, xMin = 0, axisNote, axisFormat = axisNum, refLine,
+  rows, width, format, ariaLabel, totalLabel, onRow, openLabel, xMax, xMin = 0, axisNote, axisFormat = axisNum, refLine, extraRefs = [],
 }: {
   rows: HRow[]; width: number; format: (n: number) => string; ariaLabel: string; totalLabel?: (r: HRow, total: number) => string;
   /** a mouse click on a row (or the button in a tapped row's tooltip) opens something, e.g. the events behind it */
@@ -28,19 +32,22 @@ export default function HBars({
   axisFormat?: (n: number) => string;
   /** a vertical reference line across all rows, labelled above the plot */
   refLine?: HRef;
+  /** more reference lines (for example a target), labelled one row higher each */
+  extraRefs?: HRef[];
 }) {
+  const uid = useUid();
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const { tip, bind, hide } = useChartTip({ current: box } as React.RefObject<HTMLDivElement | null>);
   const labelW = Math.min(96, Math.max(52, Math.max(0, ...rows.map((r) => r.label.length)) * 7 + 8));
   const totals = rows.map((r) => r.segments.reduce((s, x) => s + Math.max(0, x.value), 0));
   const valueText = (r: HRow, i: number): string => r.unavailable ?? (totalLabel ? totalLabel(r, totals[i]!) : format(totals[i]!));
   const valueW = Math.max(...rows.map((r, i) => valueText(r, i).length * 7 + 10), 40);
-  const m = { l: labelW, r: valueW, t: refLine ? 24 : 6, b: axisNote ? 40 : 24 };
+  const m = { l: labelW, r: valueW, t: refLine || extraRefs.length ? 24 + extraRefs.length * 14 : 6, b: axisNote ? 40 : 24 };
   const rowH = 28;
   const height = m.t + rows.length * rowH + m.b;
   const pw = Math.max(60, width - m.l - m.r);
   const lo = xMax !== undefined ? xMin : 0;
-  const scale = xMax !== undefined ? { ...niceTicks(lo, xMax, 4), min: lo, max: xMax } : niceTicks(0, Math.max(0, ...totals), 4);
+  const scale = xMax !== undefined ? { ...niceTicks(lo, xMax, 4), min: lo, max: xMax } : niceTicks(0, Math.max(0, ...totals, ...(refLine ? [refLine.value] : []), ...extraRefs.map((r) => r.value)), 4);
   const x = linear(scale.min, scale.max, m.l, m.l + pw);
 
   const node = (r: HRow, total: number): ReactNode => (
@@ -49,7 +56,7 @@ export default function HBars({
       {r.unavailable ? <div>{r.unavailable}</div> : <TipRows
         title={r.label}
         rows={[
-          ...r.segments.map((s) => ({ swatch: <Swatch color={s.color} />, label: s.label, value: format(s.value) })),
+          ...r.segments.map((s) => ({ swatch: <Swatch color={s.color} symbol={s.hatch ? 'hatch' : 'bar'} />, label: s.label, value: format(s.value) })),
           { label: 'Total', value: format(total) },
         ]}
       />}
@@ -62,6 +69,7 @@ export default function HBars({
     <div ref={setBox} style={{ position: 'relative' }}>
       <svg width={width} height={height} role="img" aria-label={ariaLabel} onClick={hide}>
         <title>{ariaLabel}</title>
+        <HatchDefs id={`hb-${uid}`} color="var(--tk-danger)" />
         {scale.ticks.filter((v) => v <= scale.max && v >= scale.min).map((v) => (
           <g key={v}>
             <line x1={x(v)} x2={x(v)} y1={m.t} y2={height - m.b} stroke="var(--tk-border2)" />
@@ -79,7 +87,7 @@ export default function HBars({
                 if (!(s.value > 0)) return null;
                 const x0 = x(Math.max(acc, scale.min));
                 acc += s.value;
-                return <rect key={s.key} x={x0} y={top + 4} width={Math.max(1, x(Math.max(acc, scale.min)) - x0)} height={rowH - 8} fill={s.color} stroke="var(--tk-card-bg)" strokeWidth="0.75" />;
+                return <rect key={s.key} x={x0} y={top + 4} width={Math.max(1, x(Math.max(acc, scale.min)) - x0)} height={rowH - 8} fill={s.hatch ? `url(#hb-${uid})` : s.color} stroke={s.hatch ? s.color : 'var(--tk-card-bg)'} strokeWidth={s.hatch ? 1.5 : 0.75} />;
               })}
               <text x={(xMax !== undefined ? m.l + pw : x(totals[i]!)) + 6} y={top + rowH / 2 + 4} className="chart-ink">{valueText(r, i)}</text>
               <rect className="chart-hit" x={0} y={top} width={width} height={rowH} {...bind(node(r, totals[i]!), onRow && !r.unavailable ? () => onRow(r) : undefined)} />
@@ -88,10 +96,16 @@ export default function HBars({
         })}
         {refLine && (
           <g data-testid="hbars-ref">
-            <line x1={x(refLine.value)} x2={x(refLine.value)} y1={m.t - 6} y2={height - m.b} stroke="var(--tk-text-primary)" strokeWidth="1.75" strokeDasharray="6 4" />
+            <line x1={x(refLine.value)} x2={x(refLine.value)} y1={m.t - 6} y2={height - m.b} stroke="var(--tk-text-primary)" strokeWidth="1.75" strokeDasharray={refLine.dash ?? '6 4'} />
             <text x={x(refLine.value)} y={m.t - 10} textAnchor={x(refLine.value) > m.l + pw / 2 ? 'end' : 'start'} className="chart-ink">{refLine.label}</text>
           </g>
         )}
+        {extraRefs.map((r, k) => (
+          <g key={r.label} data-testid="hbars-extra-ref">
+            <line x1={x(r.value)} x2={x(r.value)} y1={m.t - 6 - (k + 1) * 14} y2={height - m.b} stroke="var(--tk-text-primary)" strokeWidth="1.75" strokeDasharray={r.dash ?? '6 4'} />
+            <text x={x(r.value)} y={m.t - 10 - (k + 1) * 14} textAnchor={x(r.value) > m.l + pw / 2 ? 'end' : 'start'} className="chart-ink">{r.label}</text>
+          </g>
+        ))}
       {axisNote && <text x={m.l} y={height - 6} className="chart-ink" data-testid="hbars-axis-note">{axisNote}</text>}
       </svg>
       <TipLayer tip={tip} width={width} />

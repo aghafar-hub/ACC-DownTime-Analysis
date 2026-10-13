@@ -249,11 +249,11 @@ derived by the app from live data and are never stored.
 ### 9.2 Settings
 
 `notif_long_stop_hours` (8, whole hours 1-720), `notif_spike_pct` (30, 1-1000), `notif_upload_gap_days` (35, 1-3650),
-`notif_availability_target_pct` (blank = rule off, 0-100), `notif_repeat_alert` (`true` / `false`), `notif_retention_days`
+`notif_repeat_alert` (`true` / `false`), `notif_retention_days`
 (30, 1-3650), `app_url` (blank or `http(s)://...`, no spaces or quotes, up to 300 characters). Validated by `saveSettings` like
 every other setting; a database without these rows uses the defaults until `seedDefaults` adds them.
 
-Targets (backend 1.3.0, used by the dashboards later): `target_availability_pct` (blank = off, 0-100), `target_mtbf_h` and
+Targets (backend 1.3.0): `availability_target_pct` (blank = off, 0-100; also the threshold of the `availability_low` alert), `target_mtbf_h` and
 `target_mttr_h` (blank = off, more than 0 and at most 100000 hours). Validated by `saveSettings` like every other setting.
 
 ### 9.3 Rules
@@ -267,7 +267,7 @@ with the app's algorithm (1 s tolerance, a Freq = 0 row joins the open event it 
 | `long_stop` | a failure event (chain) lasts more than `notif_long_stop_hours` (summed hours of its rows) | `long_stop\|<event_id of the head>` | the event is voided, edited below the limit or the limit is raised |
 | `repeat_group` | at least `repeat_min_events` failure events with the same code and reason (code after alias resolution, reason compared by `match_key`, blank reasons and area-level N/A excluded) start within `repeat_window_days` of each other (sliding window, exactly the window still counts); one alert per cluster, when it first exists; needs `notif_repeat_alert = true` | `repeat\|<area of the first event>\|<code>\|<reason_key>\|<first event_id>` | the cluster no longer exists, or the switch is turned off |
 | `failure_spike` | per area, failures (rows with `is_failure`, by their stop time) in the 30 days ending on `L` are at least 5 and exceed the 30 days before by more than `notif_spike_pct` percent (any rise from zero counts) | `spike\|<area>\|<L>` | stays until it expires |
-| `availability_low` | basis B = (T - PL - (INC + CIR)) / (T - PL) of an area for the latest complete month is below `notif_availability_target_pct`. The month is the month of `L` if `L` is its last day, otherwise the month before; the window is clipped to the data range like the KPI cards. Off while the target is blank | `availability\|<area>\|<yyyy-mm>` | stays until it expires |
+| `availability_low` | basis B = (T - PL - (INC + CIR)) / (T - PL) of an area for the latest complete month is below `availability_target_pct`. The month is the month of `L` if `L` is its last day, otherwise the month before; the window is clipped to the data range like the KPI cards. Off while the target is blank | `availability\|<area>\|<yyyy-mm>` | stays until it expires |
 | `upload_gap` | today is more than `notif_upload_gap_days` after `L` | `upload_gap\|<L>` | newer data arrives (`L` changes) |
 | `upload_done` (update) | `uploadFinish` completes an upload | `upload\|<batch_id>` | never |
 | `user_event` (update) | a user is created, a password is reset, a role is changed | `user\|<kind>\|<user_id>\|<epoch ms>` (kind: `created`, `password_reset`, `role_changed`) | never |

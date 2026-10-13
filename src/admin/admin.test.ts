@@ -35,7 +35,7 @@ describe('settings', () => {
 
 describe('notification settings', () => {
   it('are all edited by the Notifications subtab (one group) and fall back to the stored defaults', () => {
-    expect(NOTIFICATION_KEYS.length).toBe(7);
+    expect(NOTIFICATION_KEYS.length).toBe(6);
     const group = groups().find((g) => g.id === 'alert-rules')!;
     expect(group.fields.map((f) => f.key).sort()).toEqual([...NOTIFICATION_KEYS].sort());
     for (const k of NOTIFICATION_KEYS) expect(SETTING_FALLBACKS[k], k).toBe(allDefaults[k]);
@@ -43,16 +43,16 @@ describe('notification settings', () => {
     for (const g of groups().filter((x) => x.id !== 'alert-rules')) for (const f of g.fields) expect(NOTIFICATION_KEYS).not.toContain(f.key);
   });
   it('use the ranges the server enforces, with plain messages', () => {
-    const bad = validateSettings({ ...defaults, notif_long_stop_hours: '0', notif_spike_pct: '1001', notif_upload_gap_days: '2.5', notif_availability_target_pct: '101', notif_repeat_alert: 'maybe', notif_retention_days: 'abc', app_url: 'ftp://x' });
-    expect(Object.keys(bad).sort()).toEqual(['app_url', 'notif_availability_target_pct', 'notif_long_stop_hours', 'notif_repeat_alert', 'notif_retention_days', 'notif_spike_pct', 'notif_upload_gap_days']);
+    const bad = validateSettings({ ...defaults, notif_long_stop_hours: '0', notif_spike_pct: '1001', notif_upload_gap_days: '2.5', notif_repeat_alert: 'maybe', notif_retention_days: 'abc', app_url: 'ftp://x' });
+    expect(Object.keys(bad).sort()).toEqual(['app_url', 'notif_long_stop_hours', 'notif_repeat_alert', 'notif_retention_days', 'notif_spike_pct', 'notif_upload_gap_days']);
     expect(bad.notif_long_stop_hours).toBe('Use a number from 1 to 720.');
     expect(bad.notif_upload_gap_days).toBe('Use a whole number.');
     expect(bad.notif_retention_days).toBe('Write a number.');
     expect(bad.app_url).toMatch(/http:\/\/ or https:\/\//);
   });
   it('accept a blank target and a blank or valid web address', () => {
-    expect(validateSettings({ ...defaults, notif_availability_target_pct: '', app_url: '' })).toEqual({});
-    expect(validateSettings({ ...defaults, notif_availability_target_pct: '92.5', app_url: 'https://acc.example.org/app/' })).toEqual({});
+    expect(validateSettings({ ...defaults, availability_target_pct: '', app_url: '' })).toEqual({});
+    expect(validateSettings({ ...defaults, availability_target_pct: '92.5', app_url: 'https://acc.example.org/app/' })).toEqual({});
     expect(validateSettings({ ...defaults, app_url: 'https://acc.example.org/a b' }).app_url).toBeTruthy();
     expect(validateSettings({ ...defaults, app_url: `https://x.org/${'a'.repeat(300)}` }).app_url).toBe('Use at most 300 characters.');
   });

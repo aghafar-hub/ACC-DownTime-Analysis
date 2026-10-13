@@ -14,6 +14,10 @@ export interface CalcSettings {
   durationShortMaxMin: number;
   durationLongMinMin: number;
   availabilityTargetPct: number | null;
+  /** MTBF target in hours (above 0), null = no target */
+  targetMtbfH: number | null;
+  /** MTTR target in hours (above 0), null = no target */
+  targetMttrH: number | null;
   defaultComparison: ComparisonKind;
 }
 
@@ -26,6 +30,8 @@ export const DEFAULT_SETTINGS: CalcSettings = {
   durationShortMaxMin: 30,
   durationLongMinMin: 120,
   availabilityTargetPct: null,
+  targetMtbfH: null,
+  targetMttrH: null,
   defaultComparison: 'previous_period',
 };
 
@@ -33,6 +39,13 @@ function num(raw: string | undefined, fallback: number, min: number, max: number
   if (raw === undefined || raw.trim() === '') return fallback;
   const n = Number(raw);
   return Number.isFinite(n) && n >= min && n <= max ? n : fallback;
+}
+
+/** A positive number up to 100000, or null (blank, not a number, zero or negative). */
+function positiveOrNull(raw: string | undefined): number | null {
+  const s = (raw ?? '').trim();
+  const n = Number(s);
+  return s !== '' && Number.isFinite(n) && n > 0 && n <= 100000 ? n : null;
 }
 
 /** Parse settings rows (or a key/value map). Missing or invalid values fall back to defaults. */
@@ -53,6 +66,8 @@ export function parseSettings(source: Setting[] | Record<string, string> = []): 
     durationShortMaxMin: num(map.duration_short_max_min, d.durationShortMaxMin, 0, 100000),
     durationLongMinMin: num(map.duration_long_min_min, d.durationLongMinMin, 0, 100000),
     availabilityTargetPct: target === '' || !Number.isFinite(Number(target)) ? null : Number(target),
+    targetMtbfH: positiveOrNull(map.target_mtbf_h),
+    targetMttrH: positiveOrNull(map.target_mttr_h),
     defaultComparison: cmp === 'same_period_last_year' ? cmp : d.defaultComparison,
   };
 }

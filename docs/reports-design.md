@@ -64,6 +64,13 @@ design lead where the owner was silent.
 - Targets in Settings (availability %, MTBF h, MTTR h; blank = off) with red/green status on KPI cards, area
   charts and the report; month-vs-month comparison (Overview and Reliability: pick two months side by side);
   data-quality scorecard (flagged / kept / left out per month).
+  **Built (dashboards):** the three targets are the settings `availability_target_pct` (also the threshold of the
+  `availability_low` alert), `target_mtbf_h` and `target_mttr_h`; `src/dashboard/targets.ts` holds `getTargets(settings)` and the
+  pure status logic (`targetStatus`, `kpiTargetStatuses`, `areaTargetStatuses`, `belowTargetCount`); availability and MTBF are
+  on target at or above the target, MTTR at or below; a figure is judged as it is shown (0.1 points, 0.1 h, 0.01 h). The
+  dashboard models expose it (`overviewModel().status / .belowTarget`, `areaReliabilityModel().status`), so the report's KPI strip
+  can reuse the same values. Month vs month: `src/dashboard/monthCompare.ts` (`?mvm=YYYY-MM,YYYY-MM`). Scorecard:
+  `src/validate/scorecard.ts` (`buildScorecard`).
 - Event Explorer: Excel and CSV export of the filtered events; Saved views (filter sets) for dashboards via the
   `saved_views` preference.
 

@@ -94,7 +94,7 @@ function notifNum_(map, key, dflt, min, max) {
 function notifSettings_() {
   var map = {};
   readSettings_().forEach(function (r) { map[r.key] = r.value; });
-  var target = map.notif_availability_target_pct;
+  var target = map.availability_target_pct;
   var targetN = target === undefined || target === null || String(target).trim() === '' ? null : Number(target);
   var repeat = String(map.notif_repeat_alert === undefined ? 'true' : map.notif_repeat_alert).trim().toLowerCase();
   return {
@@ -329,7 +329,7 @@ function notifScheduledDays_(from, to, perWeek) {
 /**
  * availability_low: availability on basis B, B = (T - PL - (INC + CIR)) / (T - PL), of each area for the latest
  * complete month in the data (the month of the latest event date if that date is its last day, else the month
- * before), clipped to the data range like computeKpis. Only when notif_availability_target_pct is set.
+ * before), clipped to the data range like computeKpis. Only when availability_target_pct is set.
  */
 function notifRuleAvailability_(ctx) {
   var out = [];

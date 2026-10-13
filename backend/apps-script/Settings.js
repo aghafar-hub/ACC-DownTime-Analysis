@@ -18,12 +18,10 @@ var SETTING_RULES = {
   notif_long_stop_hours: { type: 'int', min: 1, max: 720 },
   notif_spike_pct: { type: 'int', min: 1, max: 1000 },
   notif_upload_gap_days: { type: 'int', min: 1, max: 3650 },
-  notif_availability_target_pct: { type: 'number_or_blank', min: 0, max: 100 },
   notif_repeat_alert: { type: 'enum', values: ['true', 'false'] },
   notif_retention_days: { type: 'int', min: 1, max: 3650 },
   app_url: { type: 'url_or_blank' },
   // Targets shown on the dashboards (blank = no target). Hours must be above 0.
-  target_availability_pct: { type: 'number_or_blank', min: 0, max: 100 },
   target_mtbf_h: { type: 'number_or_blank', min: 0, max: 100000, minExclusive: true },
   target_mttr_h: { type: 'number_or_blank', min: 0, max: 100000, minExclusive: true }
 };

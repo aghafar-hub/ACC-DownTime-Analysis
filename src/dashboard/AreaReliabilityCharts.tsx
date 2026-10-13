@@ -10,6 +10,8 @@ import ScaleHeatmap, { type ScaleRow } from '../charts/ScaleHeatmap';
 import { t } from '../i18n/t';
 import { dayLabel, fh, fh2, fint, fpct, monthLabel } from './format';
 import { areaReliabilityModel } from './models';
+import { targetNumber, type TargetStatus } from './targets';
+import { stateWords } from './targets';
 import type { DashCtx } from './scope';
 
 const BAR = 'var(--tk-accent)';
@@ -39,6 +41,19 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
   const tableOf = (ranks: AreaRank[], f: (n: number) => string) => ranks.map((r) => [r.area_id, r.value === null ? none(r)! : f(r.value)]);
   const ranked = (ranks: AreaRank[]) => ranks.filter((r) => r.value !== null);
   const noFail = (ranks: AreaRank[]) => ranks.length - ranked(ranks).length;
+
+  // targets: a dashed line in the chart, a count in the summary, a Status column in the table
+  const tg = m.targets;
+  const stOf = (id: string, k: 'mtbf' | 'mttr'): TargetStatus | null => m.status.get(id)?.[k] ?? null;
+  const targetSummary = (ranks: AreaRank[], k: 'mtbf' | 'mttr'): string => {
+    const target = k === 'mtbf' ? tg.mtbfH : tg.mttrH;
+    if (target === null) return '';
+    const judged = ranks.map((r) => stOf(r.area_id, k)).filter((s): s is TargetStatus => !!s);
+    const off = judged.filter((s) => !s.ok).length;
+    return ` ${k === 'mtbf' ? t('{n} of {m} areas below the target of {x} h.', { n: off, m: judged.length, x: targetNumber(target) }) : t('{n} of {m} areas above the target of {x} h.', { n: off, m: judged.length, x: targetNumber(target) })}`;
+  };
+  const statusCol = (ranks: AreaRank[], k: 'mtbf' | 'mttr', target: number | null) => (target === null ? undefined : ranks.map((r) => { const s = stOf(r.area_id, k); return s ? stateWords(s) : '-'; }));
+  const withStatus = (head: string[], rows: (string | number)[][], col: string[] | undefined, label: string) => (col ? { head: [...head, label], rows: rows.map((r, i) => [...r, col[i]!]) } : { head, rows });
 
   // (d) MTBF and MTTR
   const mtbfRows = rowsOf(m.mtbf, t('MTBF'));
@@ -103,17 +118,17 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
       <div className="chart-grid chart-grid--even" data-testid="area-rank-grid">
         <ChartCard
           title={t('MTBF by area')} subtitle={t('Operating hours per failure. Lowest first: the area that fails most often relative to its running time is on top.')} testid="chart-area-mtbf"
-          summary={barSummary(m.mtbf, t('lowest MTBF'))} legend={[{ label: t('MTBF (h)'), color: BAR }]}
-          table={{ head: [t('Area'), t('MTBF h')], rows: tableOf(m.mtbf, fh) }}
+          summary={`${barSummary(m.mtbf, t('lowest MTBF'))}${targetSummary(m.mtbf, 'mtbf')}`} legend={[{ label: t('MTBF (h)'), color: BAR }, ...(tg.mtbfH !== null ? [{ label: t('Target {x} h', { x: targetNumber(tg.mtbfH) }), color: 'var(--tk-text-primary)', symbol: 'dash' as const }] : [])]}
+          table={withStatus([t('Area'), t('MTBF h')], tableOf(m.mtbf, fh), statusCol(m.mtbf, 'mtbf', tg.mtbfH), t('Status'))}
         >
-          {(w) => <HBars rows={mtbfRows} width={w} format={(n) => `${fh(n)} h`} ariaLabel={t('Bars of MTBF by area, lowest first. {s}', { s: barSummary(m.mtbf, t('lowest MTBF')) })} openLabel={t('Open events')} onRow={open} />}
+          {(w) => <HBars rows={mtbfRows} width={w} format={(n) => `${fh(n)} h`} refLine={tg.mtbfH !== null ? { value: tg.mtbfH, label: t('Target {x} h', { x: targetNumber(tg.mtbfH) }) } : undefined} ariaLabel={t('Bars of MTBF by area, lowest first. {s}', { s: barSummary(m.mtbf, t('lowest MTBF')) })} openLabel={t('Open events')} onRow={open} />}
         </ChartCard>
         <ChartCard
           title={t('MTTR by area')} subtitle={t('Mean restoration time of failure events. Highest first: the slowest area to recover is on top.')} testid="chart-area-mttr"
-          summary={barSummary(m.mttr, t('highest MTTR'))} legend={[{ label: t('MTTR (h)'), color: BAR }]}
-          table={{ head: [t('Area'), t('MTTR h')], rows: tableOf(m.mttr, fh2) }}
+          summary={`${barSummary(m.mttr, t('highest MTTR'))}${targetSummary(m.mttr, 'mttr')}`} legend={[{ label: t('MTTR (h)'), color: BAR }, ...(tg.mttrH !== null ? [{ label: t('Target {x} h', { x: targetNumber(tg.mttrH) }), color: 'var(--tk-text-primary)', symbol: 'dash' as const }] : [])]}
+          table={withStatus([t('Area'), t('MTTR h')], tableOf(m.mttr, fh2), statusCol(m.mttr, 'mttr', tg.mttrH), t('Status'))}
         >
-          {(w) => <HBars rows={mttrRows} width={w} format={(n) => `${fh2(n)} h`} ariaLabel={t('Bars of MTTR by area, highest first. {s}', { s: barSummary(m.mttr, t('highest MTTR')) })} openLabel={t('Open events')} onRow={open} />}
+          {(w) => <HBars rows={mttrRows} width={w} format={(n) => `${fh2(n)} h`} refLine={tg.mttrH !== null ? { value: tg.mttrH, label: t('Target {x} h', { x: targetNumber(tg.mttrH) }) } : undefined} ariaLabel={t('Bars of MTTR by area, highest first. {s}', { s: barSummary(m.mttr, t('highest MTTR')) })} openLabel={t('Open events')} onRow={open} />}
         </ChartCard>
       </div>
 

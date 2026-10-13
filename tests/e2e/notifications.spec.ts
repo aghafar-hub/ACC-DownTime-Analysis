@@ -309,7 +309,7 @@ test.describe('desktop', () => {
     await signInAndWait(page, 'admin');
     await page.goto('/#/settings/notifications');
     await expect(page.getByTestId('notif-admin')).toBeVisible();
-    for (const k of ['notif_long_stop_hours', 'notif_spike_pct', 'notif_upload_gap_days', 'notif_availability_target_pct', 'notif_retention_days', 'app_url']) {
+    for (const k of ['notif_long_stop_hours', 'notif_spike_pct', 'notif_upload_gap_days', 'notif_retention_days', 'app_url']) {
       await expect(page.getByTestId(`set-${k}`)).toBeVisible();
     }
     await expect(page.getByTestId('notif_repeat_alert-true')).toHaveAttribute('aria-pressed', 'true');

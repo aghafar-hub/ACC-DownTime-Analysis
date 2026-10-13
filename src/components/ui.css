@@ -288,6 +288,7 @@
 
 /* tables */
 .table-wrap {
+  position: relative; /* hidden (sr-only) text inside a wide table must not widen the page */
   overflow-x: auto;
   border: 1px solid var(--tk-border);
   border-radius: 10px;

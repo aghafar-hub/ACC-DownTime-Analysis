@@ -293,3 +293,48 @@ describe('performance', () => {
     expect(performance.now() - t0).toBeLessThan(1000);
   });
 });
+
+describe('targets in the page adapters', () => {
+  const withTargets = (extra: { key: string; value: string }[]) => buildCtx(rows, { ...startup, settings: [...db.settings.filter((s) => !extra.some((e) => e.key === s.key)), ...extra] }, f, range);
+
+  it('are off (no status anywhere) while the settings are blank', () => {
+    const m = overviewModel(ctx);
+    expect(m.targets).toEqual({ availabilityPct: null, mtbfH: null, mttrH: null });
+    expect(m.status).toEqual({ availability: null, mtbf: null, mttr: null });
+    expect(m.belowTarget).toBeNull();
+    const a = areaReliabilityModel(ctx)!;
+    expect([...a.status.values()].every((s) => s.availability === null && s.mtbf === null && s.mttr === null)).toBe(true);
+  });
+
+  it('give the hero KPIs, the below-target count and every area a status when set', () => {
+    const c = withTargets([{ key: 'availability_target_pct', value: '95' }, { key: 'target_mtbf_h', value: '100' }, { key: 'target_mttr_h', value: '2' }]);
+    const m = overviewModel(c);
+    const tot = m.kpi!.total;
+    expect(m.targets).toEqual({ availabilityPct: 95, mtbfH: 100, mttrH: 2 });
+    if (tot.availabilityHeadline.available) expect(m.status.availability?.ok).toBe(Math.round(tot.availabilityHeadline.value * 1000) / 10 >= 95);
+    if (tot.mttrHours.available) expect(m.status.mttr?.ok).toBe(Math.round(tot.mttrHours.value * 100) / 100 <= 2);
+    // the MTBF status is for a single area only (as the MTBF tile)
+    expect(m.perArea.length).toBeGreaterThan(1);
+    expect(m.status.mtbf).toBeNull();
+    const judged = m.availability!.areas.filter((a) => a.availability.available);
+    expect(m.belowTarget!.total).toBe(judged.length);
+    expect(m.belowTarget!.below).toEqual(judged.filter((a) => Math.round((a.availability as { value: number }).value * 1000) / 10 < 95).map((a) => a.area_id));
+    const a = areaReliabilityModel(c)!;
+    for (const k of c.kpis.current.status === 'ok' ? c.kpis.current.areas : []) {
+      const s = a.status.get(k.area_id)!;
+      expect(!!s.availability).toBe(k.availabilityHeadline.available);
+      expect(!!s.mtbf).toBe(k.mtbfHours.available);
+      expect(!!s.mttr).toBe(k.mttrHours.available);
+    }
+  });
+
+  it('with one area in scope the MTBF gets a status too', () => {
+    const one = db.areas[0]!.area_id;
+    const c = buildCtx(rows, { ...startup, settings: [...db.settings, { key: 'target_mtbf_h', value: '50' }] }, { ...f, areaIds: [one] }, range);
+    const m = overviewModel(c);
+    expect(m.perArea).toHaveLength(1);
+    const k = m.perArea[0]!.mtbfHours;
+    expect(m.status.mtbf === null).toBe(!k.available);
+    if (k.available) expect(m.status.mtbf!.target).toBe(50);
+  });
+});

@@ -221,14 +221,14 @@ test('availability_low: basis B per area for the latest complete month, only whe
     at('2026-09-30', '22:00', '23:00', { area_id: 'CR' }),
   ]);
   assert.deepEqual(keysOf(env, admin.token, 'availability_low'), []); // rule off while the target is blank
-  setSetting(env, admin.token, { notif_availability_target_pct: '95' });
+  setSetting(env, admin.token, { availability_target_pct: '95' });
   assert.deepEqual(check(env, admin.token), { created: 1, resolved: 0, expired: 0 });
   const n = items(env, admin.token).find((i) => i.type === 'availability_low');
   // data starts on 3 September: T = 28 days x 24 h = 672 h, K.1 lost 72 h
   assert.equal(n.dedupe_key, 'availability|K.1|2026-09');
   assert.equal(n.title, 'Availability below target: K.1 89.3%');
   assert.equal(n.detail, '2026-09: availability 89.3% against a target of 95% (basis B).');
-  setSetting(env, admin.token, { notif_availability_target_pct: '97' });
+  setSetting(env, admin.token, { availability_target_pct: '97' });
   assert.deepEqual(keysOf(env, admin.token, 'availability_low'), ['availability|K.1|2026-09']);
   assert.equal(check(env, admin.token).created, 1); // RM.1: (672-24-24)/(672-24) = 96.3 %
   assert.deepEqual(keysOf(env, admin.token, 'availability_low'), ['availability|K.1|2026-09', 'availability|RM.1|2026-09']);
@@ -434,8 +434,8 @@ test('settings: ranges are validated server-side like the other settings', () =>
   assert.equal(bad({ notif_spike_pct: '5000' }).code, 'bad_request');
   assert.equal(bad({ notif_upload_gap_days: '-1' }).code, 'bad_request');
   assert.equal(bad({ notif_retention_days: '0' }).code, 'bad_request');
-  assert.equal(bad({ notif_availability_target_pct: '101' }).code, 'bad_request');
-  assert.equal(bad({ notif_availability_target_pct: 'x' }).code, 'bad_request');
+  assert.equal(bad({ availability_target_pct: '101' }).code, 'bad_request');
+  assert.equal(bad({ availability_target_pct: 'x' }).code, 'bad_request');
   assert.equal(bad({ notif_repeat_alert: 'maybe' }).code, 'bad_request');
   assert.equal(bad({ app_url: 'javascript:alert(1)' }).code, 'bad_request');
   assert.equal(bad({ app_url: 'ftp://example.com' }).code, 'bad_request');
@@ -443,15 +443,15 @@ test('settings: ranges are validated server-side like the other settings', () =>
   assert.equal(bad({ app_url: 'https://example.com/"><script>' }).code, 'bad_request');
   assert.equal(bad({ notif_spike_pct: '40', notif_retention_days: '0' }).code, 'bad_request'); // all or nothing
   setSetting(env, admin.token, {
-    notif_long_stop_hours: '12', notif_spike_pct: '40', notif_upload_gap_days: '10', notif_availability_target_pct: '92.5',
+    notif_long_stop_hours: '12', notif_spike_pct: '40', notif_upload_gap_days: '10', availability_target_pct: '92.5',
     notif_repeat_alert: 'false', notif_retention_days: '14', app_url: 'https://acc.example.test/app/',
   });
   const s = Object.fromEntries(env.ok('getStartup', admin.token).settings.map((x) => [x.key, x.value]));
   assert.deepEqual(
-    [s.notif_long_stop_hours, s.notif_spike_pct, s.notif_upload_gap_days, s.notif_availability_target_pct, s.notif_repeat_alert, s.notif_retention_days, s.app_url],
+    [s.notif_long_stop_hours, s.notif_spike_pct, s.notif_upload_gap_days, s.availability_target_pct, s.notif_repeat_alert, s.notif_retention_days, s.app_url],
     ['12', '40', '10', '92.5', 'false', '14', 'https://acc.example.test/app/'],
   );
-  setSetting(env, admin.token, { notif_availability_target_pct: '', app_url: '' });
+  setSetting(env, admin.token, { availability_target_pct: '', app_url: '' });
 });
 
 test('a database made before notifications still works: missing settings fall back to the defaults', () => {
@@ -459,7 +459,7 @@ test('a database made before notifications still works: missing settings fall ba
   const isNew = (r) => r.key.startsWith('notif_') || r.key === 'app_url';
   const before = env.rows('settings').length;
   env.ctx.deleteRows_('settings', env.rows('settings').filter(isNew).map((r) => env.ctx.findBy_('settings', 'key', r.key)._row));
-  assert.equal(env.rows('settings').length, before - 7);
+  assert.equal(env.rows('settings').length, before - 6);
   uploadAll(env, admin.token, [at('2026-10-10', '02:00', '12:00')]);
   assert.equal(keysOf(env, admin.token, 'long_stop').length, 1); // default 8 h
   setSetting(env, admin.token, { notif_long_stop_hours: '11' }); // the row is created on first save

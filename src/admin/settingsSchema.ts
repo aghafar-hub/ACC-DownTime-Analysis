@@ -42,7 +42,6 @@ export function groups(): Group[] {
         },
         { key: 'scheduled_hours_per_day', kind: 'int', min: 1, max: 24, label: t('Scheduled hours per day'), unit: t('hours'), help: t('Hours each area is expected to run in a scheduled day (1 to 24).') },
         { key: 'scheduled_days_per_week', kind: 'int', min: 1, max: 7, label: t('Scheduled days per week'), unit: t('days'), help: t('Days each area is expected to run in a week (1 to 7). With 6, the seventh day of each week is not scheduled.') },
-        { key: 'availability_target_pct', kind: 'number_or_blank', min: 0, max: 100, label: t('Availability target'), unit: '%', help: t('The line drawn on availability charts. Leave blank for no target.') },
         {
           key: 'default_comparison', kind: 'choice', label: t('Default comparison'), help: t('What the dashboards compare a period with when you open them.'),
           options: [
@@ -64,9 +63,9 @@ export function groups(): Group[] {
     },
     {
       id: 'targets', title: t('Targets'), icon: 'limits', when: 'now',
-      intro: t('Goals for availability, MTBF and MTTR. Leave a box blank for no target. They are saved now; the dashboards will show them in a coming update.'),
+      intro: t('Goals for availability, MTBF and MTTR. Leave a box blank for no target. The dashboards show each target that is set, with whether the figure is on target.'),
       fields: [
-        { key: 'target_availability_pct', kind: 'number_or_blank', min: 0, max: 100, label: t('Target availability'), unit: '%', fallback: '', help: t('A number from 0 to 100, or blank.') },
+        { key: 'availability_target_pct', kind: 'number_or_blank', min: 0, max: 100, label: t('Availability target'), unit: '%', help: t('The line drawn on availability charts and the goal each figure is checked against. From 0 to 100, or blank.') },
         { key: 'target_mtbf_h', kind: 'number_or_blank', min: 0.01, max: 100000, label: t('Target MTBF'), unit: t('hours'), fallback: '', help: t('Mean time between failures you aim for: more than 0, up to 100,000 hours, or blank.') },
         { key: 'target_mttr_h', kind: 'number_or_blank', min: 0.01, max: 100000, label: t('Target MTTR'), unit: t('hours'), fallback: '', help: t('Mean time to repair you aim for: more than 0, up to 100,000 hours, or blank.') },
       ],
@@ -78,7 +77,6 @@ export function groups(): Group[] {
         { key: 'notif_long_stop_hours', kind: 'int', min: 1, max: 720, label: t('Long stop: more than'), unit: t('hours'), fallback: '8', help: t('A failure event that lasts longer than this raises an alert (1 to 720 whole hours).') },
         { key: 'notif_spike_pct', kind: 'int', min: 1, max: 1000, label: t('Failure spike: rise above'), unit: '%', fallback: '30', help: t('Failures of the last 30 days against the 30 days before, per area. At least 5 failures are needed now.') },
         { key: 'notif_upload_gap_days', kind: 'int', min: 1, max: 3650, label: t('No upload for'), unit: t('days'), fallback: '35', help: t('The newest stored event is older than this many days.') },
-        { key: 'notif_availability_target_pct', kind: 'number_or_blank', min: 0, max: 100, label: t('Availability alert below'), unit: '%', fallback: '', help: t('An area under this availability (basis B) in the latest complete month raises an alert. Leave blank to turn the rule off.') },
         {
           key: 'notif_repeat_alert', kind: 'choice', label: t('Repeated-failure alerts'), fallback: 'true', help: t('Raise an alert when a new repeated-failure group appears.'),
           options: [
