@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { tsText } from '../util/dates';
 import type { Metric } from '../calc';
 import { ChartCard } from '../charts/ChartKit';
 import CartesianChart, { seriesTable, type CartCategory, type CartSeries } from '../charts/CartesianChart';
@@ -212,7 +213,7 @@ export default function Reliability() {
                     {longest.map((e, i) => (
                       <tr key={e.eventId} data-testid="longest-row">
                         <td>{i + 1}</td>
-                        <td className="nowrap"><button type="button" className="row-btn mono" onClick={() => drill(t('the event {id}', { id: e.eventId }), { eventIds: [e.eventId] })} aria-label={t('Open event {id}', { id: e.eventId })}>{e.startTs.slice(0, 16)}</button></td>
+                        <td className="nowrap"><button type="button" className="row-btn" onClick={() => drill(t('the event {id}', { id: e.eventId }), { eventIds: [e.eventId] })} aria-label={t('Open event {id}', { id: e.eventId })}>{tsText(e.startTs)}</button></td>
                         <td>{e.area_id}</td><td className="mono">{e.code}</td><td>{e.reason || t('(blank)')}</td>
                         <td className="num">{fh2(e.hours)}</td><td className="num">{e.rowCount}</td>
                       </tr>

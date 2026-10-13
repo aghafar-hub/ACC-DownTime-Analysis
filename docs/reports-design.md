@@ -62,7 +62,7 @@ design lead where the owner was silent.
 ## 4. Other Phase 6 items (separate steps)
 
 - Targets in Settings (availability %, MTBF h, MTTR h; blank = off) with red/green status on KPI cards, area
-  charts and the report; month-vs-month comparison (Overview and Reliability: pick two months side by side);
+  charts and the report; month-vs-month comparison (Dashboard and Reliability: pick two months side by side);
   data-quality scorecard (flagged / kept / left out per month).
   **Built (dashboards):** the three targets are the settings `availability_target_pct` (also the threshold of the
   `availability_low` alert), `target_mtbf_h` and `target_mttr_h`; `src/dashboard/targets.ts` holds `getTargets(settings)` and the
@@ -88,7 +88,7 @@ design lead where the owner was silent.
     characters, unique ignoring case, not a ready-made template's name; at most 20.
   - Event Explorer 'Export' (Excel / CSV): exactly the filtered rows in list order, 23 columns, at most 50,000 rows (a note says when
     capped; the Excel file also has an 'Export info' sheet). It uses the events the page already loaded for the person.
-  - Saved views (`saved_views`) for Overview, Pareto, Repeats, Reliability and Event Explorer: a 'Views' button by the filter bar
+  - Saved views (`saved_views`) for the Dashboard (page id `overview`), Pareto, Repeats, Reliability and Event Explorer: a 'Views' button by the filter bar
     (`src/views/`): apply, rename, delete, 'Save current filters as view'; at most 20 in all pages, query at most 1500 characters,
     names unique per page. A dashboard view is the filter query (the shared-filter store follows it); an Event Explorer view is its
     filter query (`q line area cls crit fail from to show sort`), applied by `/events?<query>`, which the page reads once and then

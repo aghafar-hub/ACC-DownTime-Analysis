@@ -1,7 +1,8 @@
-// The filters of Overview, Pareto, Repeats and Reliability are one shared state. The URL query is the source of
-// truth on a page; this module remembers the last one so a tab opened without a query gets the same filters, and
-// keeps it in sessionStorage so a reload of the app (or a tab opened from the menu) still has it. Event Explorer
-// has its own filters and does not touch this. Storage may be blocked: then it lives in memory only.
+// The scope of the Dashboard, Pareto, Repeats, Reliability and Event records is one shared state (the scope bar,
+// ScopeBar.tsx). The URL query is the source of truth on a page; this module remembers the last one so a page opened
+// without a query gets the same filters, and keeps it in sessionStorage so a reload of the app (or a page opened from
+// the menu) still has it. Event records keep their own search, Show and order in their own query keys. The report
+// builder copies it on 'Use current dashboard filters'. Storage may be blocked: then it lives in memory only.
 import { store } from '../storagePrefix';
 import { parseFilters, serializeFilters } from './filters';
 

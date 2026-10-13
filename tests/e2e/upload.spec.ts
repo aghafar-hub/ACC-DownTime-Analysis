@@ -341,7 +341,7 @@ test.describe('upload flow', () => {
     await expect(page.getByTestId('count-late')).toContainText('2');
     const month = page.getByTestId('late-month');
     await expect(month).toHaveCount(1);
-    await expect(month).toContainText('January 2025: 6 rows');
+    await expect(month).toContainText('Jan 2025: 6 rows');
     await expect(month).toContainText('not stored yet');
     await expect(page.getByTestId('late-row')).toHaveCount(2);
     await expect(page.getByTestId('late-progress')).toContainText('0 of 3 decided');

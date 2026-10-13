@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { tsText } from '../../util/dates';
+import { dateText, tsText } from '../../util/dates';
 import { api, describeError } from '../../api';
 import type { AdminUser } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
@@ -68,7 +68,7 @@ export default function UsersAccess() {
         <Tile icon="users" label={t('Accounts')} value={users ? num(users.length) : '-'} sub={byRole.map(([r, n]) => `${n} ${roleName(r)}`).join(' · ')} testid="fact-users" />
         <Tile icon="check" label={t('Active')} value={users ? num(active) : '-'} testid="fact-active" />
         <Tile icon="shield" label={t('Using a temporary password')} value={users ? num(pending) : '-'} sub={t('must choose their own')} testid="fact-pending" />
-        <Tile icon="clock" label={t('Latest sign-in')} value={lastLogin ? lastLogin.slice(0, 10) : '-'} sub={lastLogin ? whenText(lastLogin.replace(' ', 'T')) : undefined} testid="fact-last-login" />
+        <Tile icon="clock" label={t('Latest sign-in')} value={lastLogin ? dateText(lastLogin) : '-'} sub={lastLogin ? whenText(lastLogin.replace(' ', 'T')) : undefined} testid="fact-last-login" />
       </div>
       {error && <div className="callout callout--danger" role="alert"><span>{error}</span><button type="button" className="btn btn-sm" onClick={load}>{t('Try again')}</button></div>}
       {users && !mobile && (

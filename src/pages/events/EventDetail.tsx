@@ -395,7 +395,7 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
               <div className="callout" role="note" data-testid="detail-kept" style={{ marginTop: 10 }}>
                 <Icon name="check" size={16} />
                 <span>
-                  <b data-testid="detail-kept-by">{t('Kept as entered by {name} on {date}', { name: userName(row.accepted_by), date: (row.accepted_at ?? '').slice(0, 16) })}</b>
+                  <b data-testid="detail-kept-by">{t('Kept as entered by {name} on {date}', { name: userName(row.accepted_by), date: tsText(row.accepted_at ?? '') })}</b>
                   {keptNoteRow?.note ? <>{': '}<span data-testid="detail-kept-note">{keptNoteRow.note}</span></> : null}
                   <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
                     {kept.map((f) => <span key={f} className="badge" data-testid="detail-kept-flag" data-flag={f}><span aria-hidden="true">✓</span> {flagLabel(f)}</span>)}

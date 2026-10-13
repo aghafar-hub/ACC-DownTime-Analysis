@@ -599,7 +599,7 @@ test.describe('Phase 4: more charts (desktop)', () => {
       const row = rows.nth(i);
       const strip = row.getByTestId('occ-strip');
       const occurrences = num(await row.locator('td').nth(4).textContent());
-      await expect(strip).toHaveAttribute('aria-label', /\d+ occurrences, first \d{4}-\d{2}-\d{2}, last \d{4}-\d{2}-\d{2}/);
+      await expect(strip).toHaveAttribute('aria-label', /\d+ occurrences, first \d{1,2} [A-Z][a-z]{2} \d{4}, last \d{1,2} [A-Z][a-z]{2} \d{4}/);
       expect(Number(await strip.getAttribute('data-count'))).toBe(occurrences);
       expect(await strip.locator('circle').count()).toBe(occurrences);
       const last = await row.locator('td').nth(9).textContent(); // Equipment, Area(s), Reason, Timeline, Occurrences, Bursts, Total, Avg, Max, Last

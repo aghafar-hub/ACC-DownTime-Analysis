@@ -2,7 +2,7 @@
 
 Installable web app (PWA) that analyses cement-plant downtime. Built so far:
 sign-in with per-tab access, the five themes and phone layout, the four
-dashboards (Overview, Pareto and Contributors, Repeated Failures, Reliability
+dashboards (Dashboard, Pareto and Contributors, Repeated Failures, Reliability
 Trends), the Event Explorer with in-app correction of events (edit or void, with
 a required reason and a full history), the Upload page (reads the monthly
 workbook, review screen, chunked upload), Master Data, Settings and Users, and

@@ -1,5 +1,6 @@
 // Tiny timeline: one dot per occurrence on a time axis from the start to the end of the range. Decoration plus a
 // text equivalent: the accessible name gives the count and the first and last dates.
+import { dateText } from '../util/dates';
 import { t } from '../i18n/t';
 import { MS_DAY, parseDate } from '../calc/time';
 
@@ -15,7 +16,7 @@ export default function OccurrenceStrip({ dates, from, to, label }: { dates: str
   const last = dates[dates.length - 1];
   const name = dates.length === 0
     ? t('{l}: no occurrences', { l: label })
-    : t('{l}: {n} occurrences, first {a}, last {b}', { l: label, n: dates.length, a: first!, b: last! });
+    : t('{l}: {n} occurrences, first {a}, last {b}', { l: label, n: dates.length, a: dateText(first!), b: dateText(last!) });
   return (
     <svg className="occ-strip" width={STRIP_W} height={H} viewBox={`0 0 ${STRIP_W} ${H}`} role="img" aria-label={name} data-testid="occ-strip" data-count={dates.length}>
       <title>{name}</title>

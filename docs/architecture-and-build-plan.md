@@ -15,7 +15,7 @@ Version 1 does three things:
 
 1. **Ingest** the monthly cumulative downtime workbook: upload, validate, add new
    rows only, warn on anything that differs from stored data.
-2. **Analyse** the stored events in five dashboard tabs (Overview, Pareto and
+2. **Analyse** the stored events in five dashboard tabs (Dashboard, Pareto and
    Contributors, Repeated Failures, Reliability Trends, Event Explorer).
 3. **Correct** stored events (edit fields or void a record) with a full history.
 4. **Administer** master data (equipment, areas, reasons), settings and users.
@@ -417,7 +417,7 @@ are reused.
 
 - **Shell:** left rail (dark in all themes), top bar with breadcrumb, online dot,
   global search, avatar menu; page tabs; phone bottom bar and More sheet.
-- **Pages:** Overview, Pareto and Contributors, Repeated Failures, Reliability
+- **Pages:** Dashboard (formerly Overview; route /dashboard, /overview redirects), Pareto and Contributors, Repeated Failures, Reliability
   Trends, Event Explorer, Upload, Master Data, Settings and Users.
 - **Page pattern:** header with a live-number subtitle; summary tiles; one filter
   row (global filters apply to every chart and table); the list.

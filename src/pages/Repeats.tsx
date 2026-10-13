@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { dateText } from '../util/dates';
 import type { RepeatGroup } from '../calc';
 import { ChartCard } from '../charts/ChartKit';
 import CartesianChart, { type CartCategory } from '../charts/CartesianChart';
@@ -168,7 +169,7 @@ export default function Repeats() {
                         <td className="num">{fh(g.totalHours)}</td>
                         <td className="num">{fh2(g.avgHours)}</td>
                         <td className="num">{fh2(g.maxHours)}</td>
-                        <td className="nowrap mono">{g.lastFailureDate}</td>
+                        <td className="nowrap">{dateText(g.lastFailureDate)}</td>
                         <td className="num">{fint(g.previousPeriodOccurrences)}</td>
                         <td className="mono nowrap">{gaps(g)}</td>
                       </tr>
@@ -187,7 +188,7 @@ export default function Repeats() {
                     <div className="event-card-line">{g.reasonLabel}</div>
                     {g.burstCount > 0 && <div className="event-card-line" data-testid="repeat-bursts">{t('{n} of them bursts (less than 1 h after the previous one in the same area)', { n: fint(g.burstCount) })}</div>}
                     <div className="event-card-line mono">{fh(g.totalHours)} h total · avg {fh2(g.avgHours)} · max {fh2(g.maxHours)}</div>
-                    <div className="event-card-line mono">{t('Last')} {g.lastFailureDate} · {t('previous period')} {g.previousPeriodOccurrences}</div>
+                    <div className="event-card-line mono">{t('Last')} {dateText(g.lastFailureDate)} · {t('previous period')} {g.previousPeriodOccurrences}</div>
                     <div className="event-card-line mono">{t('Days between')}: {gaps(g)}</div>
                     {win && <div className="event-card-line occ-line"><span className="muted">{t('Timeline')}</span> <OccurrenceStrip dates={g.occurrenceDates} from={win.from} to={win.to} label={`${g.equipmentId}, ${g.reasonLabel}`} /></div>}
                   </button>

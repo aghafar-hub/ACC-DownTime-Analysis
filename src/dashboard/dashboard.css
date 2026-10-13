@@ -1,83 +1,6 @@
-/* Dashboard pages: filter bar, KPI tiles, tables. Tokens only; nothing under 12px. */
+/* Dashboard pages: KPI tiles, tables, pick lists (the scope bar is scopebar.css). Tokens only; nothing under 12px. */
 .dash-page > * {
   min-width: 0;
-}
-.filter-bar {
-  margin-bottom: 12px;
-  padding: 10px 14px;
-}
-.fb-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  align-items: flex-end;
-}
-.fb-row .field {
-  min-width: 0;
-}
-.fb-range-field {
-  flex: 0 1 200px;
-}
-.fb-extra {
-  flex: 0 1 150px;
-}
-.fb-row .select,
-.fb-row .input,
-.fb-filters-btn {
-  min-height: 44px;
-}
-.fb-compare .chip {
-  min-height: 44px;
-}
-.fb-filters-btn {
-  gap: 8px;
-}
-.fb-filters-btn--on {
-  border-color: var(--tk-accent);
-}
-.fb-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--tk-accent);
-  color: var(--tk-accent-text);
-  font: 700 12px var(--sans);
-}
-.fb-panel {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--tk-border2);
-}
-.filter-bar .fb-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
-  gap: 12px;
-  align-items: end;
-}
-.fb-line {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  align-items: flex-end;
-  margin-top: 12px;
-}
-.fb-scope {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 14px;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--tk-text-muted);
-  align-items: center;
-}
-.fb-scope b {
-  color: var(--tk-text-secondary);
-  font-family: var(--mono);
-  font-weight: 600;
 }
 .fb-active {
   display: flex;
@@ -88,25 +11,6 @@
 .fb-active .chip {
   min-height: 44px;
   padding: 3px 12px;
-}
-@media (max-width: 860px) {
-  .filter-bar {
-    padding: 10px 12px;
-  }
-  .fb-range-field {
-    flex: 1 1 150px;
-  }
-  .fb-filters-btn,
-  .fb-row > .pm {
-    order: 2;
-  }
-  .fb-compare {
-    order: 3;
-    flex: 1 1 100%;
-  }
-  .fb-extra {
-    flex: 1 1 130px;
-  }
 }
 .mp {
   position: relative;

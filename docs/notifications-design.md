@@ -24,7 +24,7 @@ place where it is fixed (deep link with filters applied); never colour alone; 12
 - Panel groups: Action needed, Alerts, Updates. Row = severity icon + text label, one-line title with
   count, area/line chip, age, primary button; alerts/updates also have Snooze (1 day / 7 days) and Dismiss.
 - 'Watch areas' filter chips in the panel (the person's followed areas; empty = all).
-- Overview gets a collapsible 'Since your last visit' card (new events, new failures, biggest change,
+- The Dashboard (formerly Overview) gets a collapsible 'Since your last visit' card (new events, new failures, biggest change,
   new repeated groups, new alerts); last-seen timestamp kept per user on the server (N3) and per device
   as a fallback (N1/N2).
 - Settings → new subtab 'Notifications': per person (alert types on/off, watched areas, digest email
