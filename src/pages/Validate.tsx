@@ -255,11 +255,11 @@ export default function Validate() {
       <button type="button" className="btn-primary" onClick={() => openFor(r.event.event_id, 'edit')} data-testid="v-fix-btn" aria-label={t('Fix {what}', { what: where(r.event) })}>
         <Icon name="edit" size={15} /> {t('Fix')}
       </button>
-      <button type="button" className="btn" onClick={() => (online ? keepFor([r.event.event_id]) : editBlocked())} data-testid="v-keep-btn" aria-label={t('Keep {what} as entered', { what: where(r.event) })}>
-        <Icon name="check" size={15} /> {t('Keep as entered')}
-      </button>
       <button type="button" className="btn-danger" onClick={() => openFor(r.event.event_id, 'void')} data-testid="v-void-btn" aria-label={t('Void {what}', { what: where(r.event) })}>
         <Icon name="ban" size={15} /> {t('Void')}
+      </button>
+      <button type="button" className="btn" onClick={() => (online ? keepFor([r.event.event_id]) : editBlocked())} data-testid="v-keep-btn" aria-label={t('Keep {what} as entered', { what: where(r.event) })}>
+        <Icon name="check" size={15} /> {t('Keep as entered')}
       </button>
     </div>
   );
@@ -412,7 +412,7 @@ export default function Validate() {
       {dataReady && view === 'kept' && summary.kept.count > 0 && (
         <div style={{ marginTop: 12 }} data-testid="v-kept-list">
           <p className="v-hint" data-testid="v-kept-hint">
-            {t('These records were checked and kept exactly as entered. Nothing in them was changed. Records marked ◆ before are still left out of the numbers because they cannot be calculated.')}
+            {t('Checked and kept exactly as entered. Nothing in these records was changed.')}
           </p>
           {filteredKept.length === 0 ? (
             <div className="callout" role="status" data-testid="v-no-results">

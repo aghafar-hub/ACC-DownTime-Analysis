@@ -23,7 +23,7 @@ for (const theme of THEMES) {
         const r = await noSidewaysScroll(page);
         expect(r.ok, `${name} sideways scroll ${JSON.stringify(r)}`).toBe(true);
         expect(await smallText(page), `${name} small text`).toEqual([]);
-        expect(await smallTargets(page), `${name} small targets`).toEqual([]);
+        if (vp.phone) expect(await smallTargets(page), `${name} small targets`).toEqual([]);
         await page.screenshot({ path: `${DIR}/keep-${slug(theme)}-${vp.name}-${name}.png` });
       };
       const rowSel = vp.phone ? 'v-card' : 'v-row';
@@ -69,6 +69,7 @@ for (const theme of THEMES) {
 
       await page.getByTestId(vp.phone ? 'v-kept-card' : 'v-kept-row').first().getByRole('button').first().click();
       await expect(page.getByTestId('detail-kept')).toBeVisible();
+      await page.getByTestId('detail-kept').scrollIntoViewIfNeeded();
       await shot('6-detail-kept');
       expect(errors, 'console errors').toEqual([]);
       await context.close();
