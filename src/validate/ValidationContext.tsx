@@ -27,7 +27,7 @@ export interface ValidationState {
   recheck: (updated: EventRow) => ValidationRecord | null;
 }
 
-const EMPTY_LIST: ValidationList = { records: [], keptRecords: [], summary: { total: 0, blocked: { count: 0, hours: 0 }, kept: { count: 0, leftOut: { count: 0, hours: 0 } }, review: { count: 0 }, overlapping: 0, byFlag: {} } };
+const EMPTY_LIST: ValidationList = { records: [], overlapRecords: [], keptRecords: [], summary: { total: 0, blocked: { count: 0, hours: 0 }, kept: { count: 0, leftOut: { count: 0, hours: 0 } }, review: { count: 0 }, overlapping: 0, byFlag: {} } };
 const ctx = createContext<ValidationState | null>(null);
 
 const yearOf = (e: Pick<EventRow, 'event_date'>): number => Number(String(e.event_date).slice(0, 4));

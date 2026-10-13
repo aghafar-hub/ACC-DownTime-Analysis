@@ -45,6 +45,8 @@ var NOTIF_SNOOZE_MAX_DAYS_ = 366;
 var NOTIF_BLOCKING_FLAGS_ = ['missing_classification', 'invalid_classification', 'unknown_area', 'end_before_start'];
 var NOTIF_INFO_FLAGS_ = ['code_not_in_area'];
 var MS_DAY_ = 86400000;
+// P5 (src/calc/repeats.ts): the same code and reason in different areas within 10 minutes is one occurrence.
+var NOTIF_CROSS_AREA_MERGE_MS_ = 10 * 60000;
 
 // ---------- small helpers ----------
 
@@ -77,11 +79,28 @@ function splitFlags_(flags) {
   return String(flags === null || flags === undefined ? '' : flags).split(',').map(function (f) { return f.trim(); }).filter(Boolean);
 }
 /** Stored flags minus the ones a user kept as entered (events.accepted_flags). Accepted flags are not open problems. */
+/**
+ * P2 (src/calc/flags.ts hasFailureFlagMismatch): Failure = YES on a PL / CIR row or on a continuation (Freq = 0) row.
+ * Worked out from the row, never stored; a record carries it as an open problem until it is kept as entered.
+ */
+function failureFlagMismatch_(e) {
+  return toBool_(e.is_failure) && (e.classification === 'PL' || e.classification === 'CIR' || Number(e.freq) === 0);
+}
+
+/** P2 (src/calc/events.ts isFailureHead): Freq = 1, Failure = YES, not PL and not CIR. */
+function isFailureHead_(row) {
+  return Number(row.freq) === 1 && row.is_failure === true && row.classification !== 'PL' && row.classification !== 'CIR';
+}
+
 function openFlags_(e) {
   var kept = splitFlags_(e.accepted_flags);
   return splitFlags_(e.flags).filter(function (f) { return kept.indexOf(f) < 0; });
 }
-function hasOpenProblem_(e) { return openFlags_(e).some(function (f) { return NOTIF_INFO_FLAGS_.indexOf(f) < 0; }); }
+function hasOpenProblem_(e) {
+  if (openFlags_(e).some(function (f) { return NOTIF_INFO_FLAGS_.indexOf(f) < 0; })) return true;
+  // the derived warning failure_flag_mismatch (the app's Validate list); overlaps are information, never counted
+  return failureFlagMismatch_(e) && splitFlags_(e.accepted_flags).indexOf('failure_flag_mismatch') < 0;
+}
 function isBlockedFlags_(flags) { return splitFlags_(flags).some(function (f) { return NOTIF_BLOCKING_FLAGS_.indexOf(f) >= 0; }); }
 function hasProblemFlags_(flags) { return splitFlags_(flags).some(function (f) { return NOTIF_INFO_FLAGS_.indexOf(f) < 0; }); }
 
@@ -134,10 +153,16 @@ function notifChainArea_(parsed, tol) {
     return {
       id: p.row.event_id, area_id: p.row.area_id, line_id: p.row.line_id, head: p.row, rows: [p.row],
       startMs: p.stop, endMs: p.start, startDate: String(p.row.stop_ts).slice(0, 10),
-      durationS: p.start > p.stop ? (p.start - p.stop) / 1000 : 0, isFailure: !orphan && p.row.is_failure === true, orphan: orphan
+      durationS: p.start > p.stop ? (p.start - p.stop) / 1000 : 0, isFailure: !orphan && isFailureHead_(p.row), orphan: orphan
     };
   }
+  // exact duplicates (same area, code, stop, restart, class) are one stop: they share the stop, so they are neighbours here
+  var sameStop = NaN, seen = [];
   parsed.forEach(function (p) {
+    if (p.stop !== sameStop) { sameStop = p.stop; seen = []; }
+    var dk = codeKey_(p.row.code_raw || '') + '|' + p.row.start_ts + '|' + p.row.classification;
+    if (seen.indexOf(dk) >= 0) return;
+    seen.push(dk);
     var w = 0;
     for (var r = 0; r < open.length; r++) if (open[r].tail >= p.stop - tol) open[w++] = open[r];
     open.length = w;
@@ -260,7 +285,28 @@ function notifRuleLongStop_(ctx, chains) {
   return out;
 }
 
-/** repeat_group: same code and reason, at least repeat_min_events failure events within repeat_window_days. */
+/**
+ * Port of groupOccurrences in src/calc/repeats.ts (sorted failure events of one group): an event joins the current
+ * occurrence when it starts at most 10 minutes after the occurrence's first event and its area is not in it yet.
+ */
+function notifOccurrences_(sorted) {
+  var out = [];
+  sorted.forEach(function (c) {
+    var cur = out.length ? out[out.length - 1] : null;
+    if (cur && c.startMs - cur.startMs <= NOTIF_CROSS_AREA_MERGE_MS_ && cur.areas.indexOf(c.area_id) < 0) {
+      cur.members.push(c);
+      cur.areas.push(c.area_id);
+    } else {
+      out.push({ members: [c], startMs: c.startMs, areas: [c.area_id] });
+    }
+  });
+  return out;
+}
+
+/**
+ * repeat_group: same code and reason, at least repeat_min_events OCCURRENCES within repeat_window_days. An occurrence is
+ * one failure event, or several in different areas that start within 10 minutes (P5).
+ */
 function notifRuleRepeat_(ctx, chains) {
   var out = [];
   if (!ctx.st.repeatAlert) return out;
@@ -278,9 +324,10 @@ function notifRuleRepeat_(ctx, chains) {
   order.forEach(function (key) {
     var g = groups[key];
     g.list.sort(function (a, b) { return (a.startMs - b.startMs) || (a.id < b.id ? -1 : 1); });
-    var clusters = notifFindClusters_(g.list.map(function (c) { return c.startMs; }), ctx.st.repeatMinEvents, ctx.st.repeatWindowDays);
+    var occs = notifOccurrences_(g.list);
+    var clusters = notifFindClusters_(occs.map(function (o) { return o.startMs; }), ctx.st.repeatMinEvents, ctx.st.repeatWindowDays);
     clusters.forEach(function (cl) {
-      var first = g.list[cl[0]], last = g.list[cl[cl.length - 1]];
+      var first = occs[cl[0]].members[0], last = occs[cl[cl.length - 1]].members[0];
       if (last.startDate < ctx.cutoff) return;
       var label = oneLine_(first.head.reason_raw, 120);
       out.push(notifCandidate_('repeat_group', 'repeat|' + first.area_id + '|' + g.code + '|' + g.reasonKey + '|' + first.id,
@@ -292,19 +339,18 @@ function notifRuleRepeat_(ctx, chains) {
   return out;
 }
 
-/** failure_spike: failures (rows with is_failure) in the 30 days ending at the latest event date vs the 30 days before. */
-function notifRuleSpike_(ctx) {
+/** failure_spike: failure EVENTS (P2: chains with a Freq 1, Failure YES, not PL / CIR head) that started in the 30 days ending at the latest event date vs the 30 days before. */
+function notifRuleSpike_(ctx, chains) {
   var out = [];
   if (!ctx.latest) return out;
   var nowFrom = dateMs_(addDays_(ctx.latest, -(NOTIF_SPIKE_DAYS_ - 1)));
   var nowTo = dateMs_(ctx.latest) + MS_DAY_;
   var prevFrom = nowFrom - NOTIF_SPIKE_DAYS_ * MS_DAY_;
   var counts = {};
-  ctx.rows.forEach(function (r) {
-    if (r.is_failure !== true) return;
-    var stop = parseTs_(r.stop_ts);
-    if (stop === null) return;
-    var c = counts[r.area_id] || (counts[r.area_id] = { now: 0, prev: 0 });
+  chains.forEach(function (ch) {
+    if (!ch.isFailure) return;
+    var stop = ch.startMs;
+    var c = counts[ch.area_id] || (counts[ch.area_id] = { now: 0, prev: 0 });
     if (stop >= nowFrom && stop < nowTo) c.now++;
     else if (stop >= prevFrom && stop < nowFrom) c.prev++;
   });
@@ -340,9 +386,56 @@ function notifScheduledDays_(from, to, perWeek) {
 }
 
 /**
+ * Port of attributeRows in src/calc/attribution.ts for one window (P1): the downtime of an area is the UNION of its rows;
+ * time covered by several rows goes to one of them: PL before incidental before CIR, then the row that started first,
+ * then the longer one, then the lower event id. Returns { area: { pl, inc, cir } } in hours inside [wFrom, wTo).
+ */
+function notifUnionHours_(rows, wFrom, wTo) {
+  var byArea = {};
+  rows.forEach(function (r) {
+    var s = parseTs_(r.stop_ts), e = parseTs_(r.start_ts);
+    if (s === null || e === null || !(e > s)) return;
+    var prec = r.classification === 'PL' ? 0 : r.classification === 'CIR' ? 2 : 1;
+    (byArea[r.area_id] = byArea[r.area_id] || []).push({ row: r, from: s, to: e, prec: prec });
+  });
+  function better(a, b) {
+    if (a.prec !== b.prec) return a.prec < b.prec;
+    if (a.from !== b.from) return a.from < b.from;
+    if (a.to !== b.to) return a.to > b.to;
+    return a.row.event_id < b.row.event_id;
+  }
+  var out = {};
+  Object.keys(byArea).forEach(function (area) {
+    var items = byArea[area].sort(function (a, b) { return (a.from - b.from) || (a.to - b.to); });
+    var pts = [];
+    items.forEach(function (i) { pts.push(i.from, i.to); });
+    pts.sort(function (a, b) { return a - b; });
+    var acc = out[area] = { pl: 0, inc: 0, cir: 0 };
+    var next = 0, active = [];
+    for (var p = 0; p + 1 < pts.length; p++) {
+      var lo = pts[p], hi = pts[p + 1];
+      if (hi === lo) continue;
+      while (next < items.length && items[next].from <= lo) active.push(items[next++]);
+      active = active.filter(function (i) { return i.to > lo; });
+      if (!active.length) continue;
+      var win = active[0];
+      for (var k = 1; k < active.length; k++) if (better(active[k], win)) win = active[k];
+      var f = Math.max(lo, wFrom), u = Math.min(hi, wTo);
+      if (!(u > f)) continue;
+      var h = (u - f) / 3600000;
+      if (win.prec === 0) acc.pl += h;
+      else if (win.prec === 2) acc.cir += h;
+      else acc.inc += h;
+    }
+  });
+  return out;
+}
+
+/**
  * availability_low: availability on basis B, B = (T - PL - (INC + CIR)) / (T - PL), of each area for the latest
  * complete month in the data (the month of the latest event date if that date is its last day, else the month
- * before), clipped to the data range like computeKpis. Only when availability_target_pct is set.
+ * before), clipped to the data range like computeKpis. Overlapping stops of one area count once (P1, union per area);
+ * a month without any record is 'not uploaded' and raises nothing (P6). Only when availability_target_pct is set.
  */
 function notifRuleAvailability_(ctx) {
   var out = [];
@@ -362,20 +455,17 @@ function notifRuleAvailability_(ctx) {
   if (lo > from) from = lo;
   if (hi < to) to = hi;
   if (from > to) return out;
+  // P6: no record at all (voided ones aside) starts or runs in the month: not uploaded, nothing to judge
+  var mFrom = dateMs_(month + '-01'), mTo = dateMs_(lastDayOfMonth_(month)) + MS_DAY_;
+  var uploaded = ctx.all.some(function (r) {
+    var s = parseTs_(r.stop_ts), e = parseTs_(r.start_ts);
+    return s !== null && s < mTo && (s >= mFrom || (e !== null && e > mFrom));
+  });
+  if (!uploaded) return out;
   var wFrom = dateMs_(from), wTo = dateMs_(to) + MS_DAY_;
   var t = notifScheduledDays_(from, to, ctx.st.daysPerWeek) * ctx.st.hoursPerDay;
-  var acc = {};
-  ctx.rows.forEach(function (r) {
-    var a = acc[r.area_id] || (acc[r.area_id] = { pl: 0, inc: 0, cir: 0 });
-    var s = parseTs_(r.stop_ts), e = parseTs_(r.start_ts);
-    if (s === null || e === null) return;
-    var f = Math.max(s, wFrom), u = Math.min(e, wTo);
-    var h = u > f ? (u - f) / 3600000 : 0;
-    if (h <= 0) return;
-    if (r.classification === 'PL') a.pl += h;
-    else if (r.classification === 'CIR') a.cir += h;
-    else a.inc += h;
-  });
+  var acc = notifUnionHours_(ctx.rows, wFrom, wTo);
+  ctx.rows.forEach(function (r) { if (!acc[r.area_id]) acc[r.area_id] = { pl: 0, inc: 0, cir: 0 }; });
   Object.keys(acc).sort().forEach(function (area) {
     var a = acc[area];
     var den = t - a.pl;
@@ -395,7 +485,7 @@ function notifRuleAvailability_(ctx) {
 function notifCandidates_(ctx) {
   var chains = notifBuildChains_(ctx.rows);
   return [].concat(
-    notifRuleLongStop_(ctx, chains), notifRuleRepeat_(ctx, chains), notifRuleSpike_(ctx),
+    notifRuleLongStop_(ctx, chains), notifRuleRepeat_(ctx, chains), notifRuleSpike_(ctx, chains),
     notifRuleAvailability_(ctx), notifRuleGap_(ctx)
   );
 }

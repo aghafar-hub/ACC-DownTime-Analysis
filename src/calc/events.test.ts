@@ -76,10 +76,16 @@ describe('buildFailureEvents', () => {
     const a = row({ stop: '2026-03-02 10:00', start: '2026-03-02 11:00' });
     const b = row({ stop: '2026-03-02 11:00', start: '2026-03-02 12:00', freq: 0 });
     const c = row({ stop: '2026-03-02 12:00', start: '2026-03-02 13:00', freq: 0 });
-    const dup = row({ stop: '2026-03-02 12:00', start: '2026-03-02 13:00', freq: 0 }); // duplicate of c
+    const dup = row({ stop: '2026-03-02 12:00', start: '2026-03-02 13:00', freq: 0 }); // exact duplicate of c (P1: one stop)
     const r = buildFailureEvents([a, b, c, dup]);
     expect(r.chains[0]!.rows).toHaveLength(3);
-    expect(r.orphans).toHaveLength(1);
+    expect(r.duplicates).toEqual([dup]);
+    expect(r.orphans).toHaveLength(0);
+    // a second continuation that is NOT an exact duplicate (other code) still cannot claim the same tail: orphan
+    const other = row({ stop: '2026-03-02 12:00', start: '2026-03-02 13:00', freq: 0, code: '100.A2' });
+    const r2 = buildFailureEvents([a, b, c, other]);
+    expect(r2.chains[0]!.rows).toHaveLength(3);
+    expect(r2.orphans).toHaveLength(1);
   });
 
   it('a non-failure chain (planned) is a chain but not a failure event', () => {

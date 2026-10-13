@@ -519,6 +519,35 @@ test('digest builder: counts the person can act on, new alerts filtered by their
   assert.ok(!env.json(env.ctx.buildDigest_(env.ctx.findUserById_(admin.user_id), env.ctx.digestContext_())).text.includes('New alerts'));
 });
 
+test('digest counts (P1/P2): a Failure YES on a PL / CIR / Freq 0 row is to validate until kept as entered; overlaps are information', () => {
+  const { env, admin } = setup();
+  const listed = { reason_raw: 'Bearing failure' };
+  uploadAll(env, admin.token, [
+    at('2026-10-01', '02:00', '03:00', { ...listed, code_raw: '100.AA01' }), // clean
+    at('2026-10-01', '02:30', '03:30', { ...listed, code_raw: '100.AA01', reason_raw: 'Bearing failure', stop_ts: '2026-10-01 02:30:00.000' }), // overlaps the first: information only
+    at('2026-10-02', '02:00', '03:00', { ...listed, classification: 'PL', criticality: 'NO_INC', reason_raw: 'Planned work' }), // PL + Failure YES
+    at('2026-10-02', '03:00', '04:00', { ...listed, freq: 0 }), // continuation + Failure YES
+  ]);
+  const before = env.ctx.digestContext_().counts;
+  assert.equal(before.validate - before.codes >= 0, true);
+  const mismatch = env.ok('getEvents', admin.token, { year: 2026 }).filter((e) => e.is_failure && (e.classification === 'PL' || e.freq === 0));
+  assert.equal(mismatch.length, 2);
+  const openNow = (e) => env.ctx.hasOpenProblem_(e);
+  const events = env.ok('getEvents', admin.token, { year: 2026 });
+  // only the two mismatches (plus whatever stored flags the rows carry) are to validate: the overlapping pair is not
+  const clean = events.filter((e) => !e.flags);
+  assert.deepEqual(clean.map(openNow).sort(), clean.map((e) => mismatch.some((m) => m.event_id === e.event_id)).sort());
+  const cont = mismatch.find((e) => e.freq === 0);
+  assert.equal(cont.flags || '', ''); // nothing stored: only the derived warning makes it a record to validate
+  assert.equal(openNow(cont), true);
+  env.ok('acceptEventFlags', admin.token, { eventId: cont.event_id, flags: ['failure_flag_mismatch'], note: 'Checked: entered correctly' });
+  const kept = env.ok('getEvents', admin.token, { year: 2026 }).find((e) => e.event_id === cont.event_id);
+  assert.equal(kept.accepted_flags, 'failure_flag_mismatch');
+  assert.equal(openNow(kept), false);
+  const after = env.ctx.digestContext_().counts;
+  assert.equal(after.validate, before.validate - 1);
+});
+
 test('sendDigest_: only active users who asked, daily or Sunday weekly, once a day, last_digest_at recorded, new alerts since then', () => {
   const { env, admin, eng } = digestWorld();
   const sent = stubMailApp(env);

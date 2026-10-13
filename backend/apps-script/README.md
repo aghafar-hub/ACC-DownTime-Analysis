@@ -252,6 +252,11 @@ data changes. Do these steps in order; all of them are safe to repeat.
    The Reports page changes four of these seven files: `Schema.js` (the `reports` tab in the access list and the role defaults),
    `Config.js` (the tab list), `Access.js` (`getEvents` also accepts the `reports` tab) and `Notifications.js` (the `saved_reports`
    preference). It adds no eighth file: the paste set stays these 7 files and the version stays 1.3.0.
+   The approved analytical rules (overlapping stops counted once, failures counted as failure events, repeated failures
+   merged across areas) change two of these seven files and no other: `Notifications.js` (the alerts `availability_low`,
+   `failure_spike` and `repeat_group`, and the digest's "records to validate" count, which now includes the derived
+   `failure_flag_mismatch` warning) and `Config.js` (`failure_flag_mismatch` may be kept as entered). The paste set stays
+   these 7 files and the version stays 1.3.0.
    The other files (`Utils.js`, `Crypto.js`, `Audit.js`, `Auth.js`, `Users.js`, `Master.js`, `Upload.js`, `Setup.js`) and
    `appsscript.json` did not change from 1.2.0: leave them alone. With the one-file bundle (option A2), run
    `node tools/bundle-apps-script.mjs` and paste `ACC_Downtime_Backend.gs` over `Code.gs` instead.

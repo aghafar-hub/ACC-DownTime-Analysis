@@ -8,7 +8,7 @@ import HBars, { type HRow } from '../charts/HBars';
 import QuadrantChart from '../charts/QuadrantChart';
 import ScaleHeatmap, { type ScaleRow } from '../charts/ScaleHeatmap';
 import { t } from '../i18n/t';
-import { fh, fh2, fint, fpct, monthLabel, partialNote } from './format';
+import { fh, fh2, fint, fpct, monthLabel, NOT_UPLOADED_FOOT, partialNote } from './format';
 import { areaReliabilityModel } from './models';
 import { targetNumber, type TargetStatus } from './targets';
 import { stateWords } from './targets';
@@ -76,14 +76,16 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
 
   // (f) availability by area and month
   const av = m.monthAvailability;
-  const fmtAv = (x: Metric) => (x.available ? fpct(x.value) : '-');
+  const fmtAv = (x: Metric) => (x.available ? fpct(x.value) : x.code === 'not_uploaded' ? t('Not uploaded') : '-');
   const partialAny = av.months.some((x) => x.partial);
   const colLabel = (i: number): string => `${monthLabel(av.months[i]!.month)}${av.months[i]!.partial ? '*' : ''}`;
   const avRows: ScaleRow[] = av.areas.map((a) => ({
     key: a.area_id, label: a.area_id,
     cells: a.values.map((v, i) => (v.available
       ? { text: fpct(v.value), value: v.value * 100, title: `${a.area_id}, ${monthLabel(av.months[i]!.month)}: ${fpct(v.value)}${av.months[i]!.partial ? ` (${t('partial month')})` : ''}` }
-      : { text: '–', value: null, title: `${a.area_id}, ${monthLabel(av.months[i]!.month)}: ${t('no data')}` })),
+      : av.months[i]!.notUploaded
+        ? { text: t('n/u'), value: null, title: `${a.area_id}, ${monthLabel(av.months[i]!.month)}: ${t('Not uploaded: no records for this month')}` }
+        : { text: '–', value: null, title: `${a.area_id}, ${monthLabel(av.months[i]!.month)}: ${t('no data')}` })),
     summary: (() => {
       const o = m.overallAvailability.get(a.area_id);
       return o && o.available ? { text: fpct(o.value), value: o.value * 100, title: `${a.area_id}: ${fpct(o.value)}` } : { text: '–', value: null, title: `${a.area_id}: ${t('unavailable')}` };
@@ -94,14 +96,14 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
   let gaps = 0;
   for (const a of av.areas) {
     a.values.forEach((v, i) => {
-      if (!v.available) { gaps++; return; }
+      if (!v.available) { if (!av.months[i]!.notUploaded) gaps++; return; }
       if (v.value * 100 < AVAIL_MIN) below++;
       if (!lowest || v.value < lowest.v) lowest = { area: a.area_id, month: av.months[i]!.month, v: v.value };
     });
   }
   const lo = lowest as { area: string; month: string; v: number } | null;
   const avSummary = lo
-    ? `${t('Lowest: {a} in {m}, {v}.', { a: lo.area, m: monthLabel(lo.month), v: fpct(lo.v) })} ${t('{n} area-months are below {x}%.', { n: below, x: AVAIL_MIN })}${gaps ? ` ${t('{n} area-months have no data (gaps).', { n: gaps })}` : ''}`
+    ? `${t('Lowest: {a} in {m}, {v}.', { a: lo.area, m: monthLabel(lo.month), v: fpct(lo.v) })} ${t('{n} area-months are below {x}%.', { n: below, x: AVAIL_MIN })}${gaps ? ` ${t('{n} area-months have no data (gaps).', { n: gaps })}` : ''}${av.months.some((x) => x.notUploaded) ? ` ${t('Not uploaded')}: ${av.months.filter((x) => x.notUploaded).map((x) => monthLabel(x.month)).join(', ')}.` : ''}`
     : t('No availability can be calculated for these areas.');
 
   // (g) failure rate
@@ -158,11 +160,11 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
         title={t('Availability by area and month (basis {b})', { b: basis })} subtitle={t('Each cell is the availability of one area in one month. Fixed scale {a} to {b} %; the last column is the whole range.', { a: AVAIL_MIN, b: AVAIL_MAX })} testid="chart-area-month-heat"
         summary={avSummary}
         table={{ head: [t('Area'), ...av.months.map((_x, i) => colLabel(i)), t('Range')], rows: av.areas.map((a) => [a.area_id, ...a.values.map(fmtAv), fmtAv(m.overallAvailability.get(a.area_id) ?? { available: false, code: 'no_data', reason: '' })]) }}
-        footnote={partialAny ? av.months.filter((x) => x.partial).map((x) => `* ${partialNote(x)}.`).join(' ') : undefined}
+        footnote={[partialAny ? av.months.filter((x) => x.partial).map((x) => `* ${partialNote(x)}.`).join(' ') : '', av.months.some((x) => x.notUploaded) ? `${t('n/u')} = ${t(NOT_UPLOADED_FOOT)}` : ''].filter(Boolean).join(' ') || undefined}
       >
         {() => (
           <ScaleHeatmap
-            cols={av.months.map((x, i) => ({ key: x.month, label: colLabel(i), title: x.partial ? `${monthLabel(x.month)} (${t('partial month')})` : monthLabel(x.month) }))}
+            cols={av.months.map((x, i) => ({ key: x.month, label: colLabel(i), title: x.notUploaded ? `${monthLabel(x.month)} (${t('Not uploaded')})` : x.partial ? `${monthLabel(x.month)} (${t('partial month')})` : monthLabel(x.month) }))}
             rows={avRows} min={AVAIL_MIN} max={AVAIL_MAX} caption={t('Availability by area and month')} rowHead={t('Area')} summaryHead={t('Range')}
             legendFormat={(n) => `${n}%`} below={t('under {x}% (strongest shade)', { x: AVAIL_MIN })}
           />

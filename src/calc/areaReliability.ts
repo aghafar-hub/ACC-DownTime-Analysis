@@ -8,6 +8,7 @@ import type { EventRow } from '../api/types';
 import type { ChainedEvent } from './events';
 import type { AreaKpis } from './kpis';
 import type { Metric } from './metric';
+import { notUploadedMonths } from './kpis';
 import { monthlySeries, type MonthlyInput } from './trends';
 import type { DateRange } from './time';
 
@@ -101,7 +102,7 @@ export function mtbfMttrQuadrants(areas: AreaKpis[]): QuadrantResult {
 }
 
 export interface AreaMonthAvailability {
-  months: { month: string; partial: boolean; window: DateRange | null }[];
+  months: { month: string; partial: boolean; window: DateRange | null; notUploaded: boolean }[];
   /** one row per area in the order given; one availability metric per month (unavailable = no data: a gap) */
   areas: { area_id: string; values: Metric[] }[];
 }
@@ -125,9 +126,11 @@ export function areaMonthAvailability(input: MonthlyInput & { areaIds: string[];
   const areas = input.areaIds.map((area_id) => {
     const pts = monthlySeries({
       rows: rowsBy.get(area_id) ?? [], chains: input.chains ? chainsBy.get(area_id) ?? [] : undefined, range: input.range,
-      dataRange: input.dataRange, areaIds: [area_id], settings: input.settings,
+      dataRange: input.dataRange, areaIds: [area_id], settings: input.settings, attribution: input.attribution,
+      // months not uploaded are plant-wide: never re-derive them from one area's rows
+      notUploaded: input.notUploaded ?? (input.dataRange === undefined ? notUploadedMonths(input.rows) : []),
     });
-    if (months.length === 0) months = pts.map((p) => ({ month: p.month, partial: p.partial, window: p.window }));
+    if (months.length === 0) months = pts.map((p) => ({ month: p.month, partial: p.partial, window: p.window, notUploaded: p.notUploaded }));
     return { area_id, values: pts.map((p) => p.availability) };
   });
   return { months, areas };

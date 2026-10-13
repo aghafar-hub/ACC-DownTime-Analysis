@@ -6,7 +6,7 @@ import DataNotes from '../components/DataNotes';
 import { BottomSheet, ChipRow, CountChip, FiltersPill, PAGE_SIZE, ShowMore } from '../components/PhoneParts';
 import { PageHeader, Tile } from '../components/Tile';
 import YearSwitch from '../components/YearSwitch';
-import { buildFailureEvents, isBlocked } from '../calc';
+import { buildFailureEvents, isBlocked, isFailureHead } from '../calc';
 import { readDrill } from '../dashboard/drill';
 import { useEventsForYears } from '../dashboard/useDash';
 import { useYearData } from '../data/useYearData';
@@ -209,7 +209,7 @@ export default function EventExplorer() {
       if (hasOpenProblemFlags(e)) issues++;
       if (e.is_void || isBlocked(e)) continue; // left out of the numbers like everywhere else, but still listed below
       if (e.duration_s > 0) sec += e.duration_s;
-      if (e.is_failure) failures++;
+      if (isFailureHead(e)) failures++; // P2: a failure = the first row of a failure event (Freq 1, Failure YES, not PL / CIR)
     }
     return { sec, failures, issues };
   }, [filtered]);

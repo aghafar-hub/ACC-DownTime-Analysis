@@ -1,4 +1,4 @@
-/** Repeated failures: same equipment code and reason, several failure events inside a sliding window. */
+/** Repeated failures: same equipment code and reason, several occurrences (failure events, merged across areas within 10 min) inside a sliding window. */
 import type { ChainedEvent } from './events';
 import { analysableChains, chainHours } from './events';
 import { matchKey, rowCode, type CodeLookup } from './normalize';
@@ -9,12 +9,17 @@ export interface RepeatOptions {
   settings: Pick<CalcSettings, 'repeatMinEvents' | 'repeatWindowDays'>;
   /** Report recurrences that started in this window. History before it is still used to find clusters. */
   window?: DateRange;
-  /** Counted per group as previousPeriodOccurrences (all failure events of the group in this window). */
+  /** Counted per group as previousPeriodOccurrences (all occurrences of the group in this window, merged across areas the same way). */
   previousWindow?: DateRange;
   lookup?: CodeLookup;
   /** keep events with a blank reason (default false: a blank reason says nothing about "same reason") */
   includeBlankReason?: boolean;
 }
+
+/** P5: the same code and reason in DIFFERENT areas starting within this many minutes is one occurrence. */
+export const CROSS_AREA_MERGE_MINUTES = 10;
+/** P5: an occurrence in the same area that starts less than this many minutes after the previous one restarted is a burst. */
+export const BURST_GAP_MINUTES = 60;
 
 export interface RepeatGroup {
   /** `${equipment code}|${reason match key}` */
@@ -23,8 +28,12 @@ export interface RepeatGroup {
   reasonKey: string;
   reasonLabel: string;
   areaIds: string[];
-  /** events in qualifying clusters that started in the window */
+  /**
+   * occurrences in qualifying clusters that started in the window. One occurrence = failure events of the group that
+   * start within 10 minutes of each other in DIFFERENT areas (one cause seen by several areas); bursts still count.
+   */
   occurrences: number;
+  /** hours of the occurrences' failure events (each event's own length; area-hours when an occurrence spans areas) */
   totalHours: number;
   avgHours: number;
   maxHours: number;
@@ -36,20 +45,35 @@ export interface RepeatGroup {
   occurrenceDates: string[];
   /** recurrences = occurrences after the first of each cluster */
   recurrenceCount: number;
+  /** occurrences of the group (merged the same way) that started in the previous window, clustered or not */
   previousPeriodOccurrences: number;
+  /** failure events of the occurrences (every area) */
   eventIds: string[];
+  /**
+   * occurrences in the window that are BURSTS: in an area where the previous occurrence of the group restarted less
+   * than 1 h before. They are counted as occurrences too; shown apart so a quick re-trip is not read as a new problem.
+   */
+  burstCount: number;
+  /** occurrences in the window that joined events of several areas (within 10 minutes) */
+  mergedOccurrences: number;
 }
 
 export interface RecurrenceEvent {
+  /** the first failure event of the occurrence */
   eventId: string;
+  /** every failure event of the occurrence (several when areas were merged) */
+  eventIds: string[];
   groupKey: string;
   equipmentId: string;
   reasonLabel: string;
   areaId: string;
+  areaIds: string[];
   startDate: string;
   hours: number;
-  /** days since the previous failure in the same group (null for the first occurrence of the group in the data) */
+  /** days since the previous occurrence in the same group (null for the first occurrence of the group in the data) */
   daysSincePrevious: number | null;
+  /** a burst: less than 1 h after the previous occurrence restarted in the same area */
+  burst: boolean;
 }
 
 export interface RepeatResult {
@@ -58,6 +82,45 @@ export interface RepeatResult {
 }
 
 interface Keyed { chain: ChainedEvent; equipmentId: string; reasonKey: string }
+
+/** One occurrence: failure events of one group that start within 10 minutes in different areas. */
+export interface Occurrence {
+  members: ChainedEvent[];
+  startMs: number;
+  areaIds: string[];
+  burst: boolean;
+}
+
+/**
+ * Merge the failure events of ONE group (sorted by start) into occurrences: an event joins the current occurrence when it
+ * starts at most CROSS_AREA_MERGE_MINUTES after the occurrence's first event and its area is not in it yet. Then each
+ * occurrence is marked a burst when, in one of its areas, the previous occurrence restarted less than BURST_GAP_MINUTES
+ * before this one stopped.
+ */
+export function groupOccurrences(sorted: ChainedEvent[]): Occurrence[] {
+  const out: (Occurrence & { areas: Set<string> })[] = [];
+  const mergeMs = CROSS_AREA_MERGE_MINUTES * 60_000;
+  for (const c of sorted) {
+    const cur = out[out.length - 1];
+    if (cur && c.startMs - cur.startMs <= mergeMs && !cur.areas.has(c.area_id)) {
+      cur.members.push(c);
+      cur.areas.add(c.area_id);
+    } else {
+      out.push({ members: [c], startMs: c.startMs, areaIds: [], burst: false, areas: new Set([c.area_id]) });
+    }
+  }
+  const lastEnd = new Map<string, number>();
+  const gapMs = BURST_GAP_MINUTES * 60_000;
+  for (const o of out) {
+    for (const m of o.members) {
+      const prev = lastEnd.get(m.area_id);
+      if (prev !== undefined && m.startMs - prev < gapMs) o.burst = true;
+    }
+    for (const m of o.members) lastEnd.set(m.area_id, Math.max(lastEnd.get(m.area_id) ?? -Infinity, m.endMs));
+    o.areaIds = [...o.areas].sort();
+  }
+  return out.map(({ areas: _a, ...o }) => o);
+}
 
 /**
  * Indices (sorted by start) of events that belong to a window of >= minEvents events whose start times differ
@@ -111,8 +174,9 @@ export function findRepeatedFailures(chains: ChainedEvent[], o: RepeatOptions): 
   const recurrences: RecurrenceEvent[] = [];
   for (const [key, list] of groupChains(analysableChains(chains), o)) {
     list.sort((a, b) => a.chain.startMs - b.chain.startMs || (a.chain.id < b.chain.id ? -1 : 1));
-    const clusters = findClusters(list.map((k) => k.chain.startMs), o.settings.repeatMinEvents, o.settings.repeatWindowDays);
-    const inWin = (idx: number): boolean => win === null || (list[idx]!.chain.startMs >= win.fromMs && list[idx]!.chain.startMs < win.toMs);
+    const occs = groupOccurrences(list.map((k) => k.chain));
+    const clusters = findClusters(occs.map((x) => x.startMs), o.settings.repeatMinEvents, o.settings.repeatWindowDays);
+    const inWin = (idx: number): boolean => win === null || (occs[idx]!.startMs >= win.fromMs && occs[idx]!.startMs < win.toMs);
     const occ: number[] = [];
     const rec: number[] = [];
     for (const cl of clusters) {
@@ -123,27 +187,31 @@ export function findRepeatedFailures(chains: ChainedEvent[], o: RepeatOptions): 
       });
     }
     if (rec.length === 0) continue;
-    const hours = occ.map((i) => chainHours(list[i]!.chain));
+    const hoursOf = (x: Occurrence): number => x.members.reduce((sum, c) => sum + chainHours(c), 0);
+    const hours = occ.map((i) => hoursOf(occs[i]!));
     const first = list[0]!;
     const label = (first.chain.head.reason_raw ?? '').trim().replace(/\s+/g, ' ');
     const gaps: number[] = [];
-    for (let k = 1; k < occ.length; k++) gaps.push((list[occ[k]!]!.chain.startMs - list[occ[k - 1]!]!.chain.startMs) / MS_DAY);
-    const total = hours.reduce((s, h) => s + h, 0);
+    for (let k = 1; k < occ.length; k++) gaps.push((occs[occ[k]!]!.startMs - occs[occ[k - 1]!]!.startMs) / MS_DAY);
+    const total = hours.reduce((sum, h) => sum + h, 0);
     groups.push({
       key, equipmentId: first.equipmentId, reasonKey: first.reasonKey, reasonLabel: label,
-      areaIds: [...new Set(occ.map((i) => list[i]!.chain.area_id))].sort(),
+      areaIds: [...new Set(occ.flatMap((i) => occs[i]!.areaIds))].sort(),
       occurrences: occ.length, totalHours: total, avgHours: total / occ.length, maxHours: Math.max(...hours),
-      lastFailureDate: formatDate(list[occ[occ.length - 1]!]!.chain.startMs),
-      daysBetween: gaps, occurrenceDates: occ.map((i) => list[i]!.chain.startDate), recurrenceCount: rec.length,
-      previousPeriodOccurrences: prev ? list.filter((k) => k.chain.startMs >= prev.fromMs && k.chain.startMs < prev.toMs).length : 0,
-      eventIds: occ.map((i) => list[i]!.chain.id),
+      lastFailureDate: formatDate(occs[occ[occ.length - 1]!]!.startMs),
+      daysBetween: gaps, occurrenceDates: occ.map((i) => occs[i]!.members[0]!.startDate), recurrenceCount: rec.length,
+      previousPeriodOccurrences: prev ? occs.filter((x) => x.startMs >= prev.fromMs && x.startMs < prev.toMs).length : 0,
+      eventIds: occ.flatMap((i) => occs[i]!.members.map((c) => c.id)),
+      burstCount: occ.filter((i) => occs[i]!.burst).length,
+      mergedOccurrences: occ.filter((i) => occs[i]!.members.length > 1).length,
     });
     for (const idx of rec) {
-      const k = list[idx]!;
+      const x = occs[idx]!;
+      const head = x.members[0]!;
       recurrences.push({
-        eventId: k.chain.id, groupKey: key, equipmentId: k.equipmentId, reasonLabel: label, areaId: k.chain.area_id,
-        startDate: k.chain.startDate, hours: chainHours(k.chain),
-        daysSincePrevious: idx > 0 ? (k.chain.startMs - list[idx - 1]!.chain.startMs) / MS_DAY : null,
+        eventId: head.id, eventIds: x.members.map((c) => c.id), groupKey: key, equipmentId: first.equipmentId, reasonLabel: label,
+        areaId: head.area_id, areaIds: x.areaIds, startDate: head.startDate, hours: hoursOf(x),
+        daysSincePrevious: idx > 0 ? (x.startMs - occs[idx - 1]!.startMs) / MS_DAY : null, burst: x.burst,
       });
     }
   }

@@ -210,7 +210,8 @@ function overlapWarnings(targets: Set<string>, uploaded: DiffUploadRow[], flagsB
   const hit = findOverlaps(events, tolS).ids;
   const out: DiffWarning[] = [];
   for (const u of uploaded) {
-    if (targets.has(u.fingerprint) && hit.has(u.fingerprint)) out.push(warn('overlap_in_area', u, `Overlaps another stop in area ${u.area_id}`));
+    // information only (P1): overlapping stops of one area are counted once, nothing to decide or fix
+    if (targets.has(u.fingerprint) && hit.has(u.fingerprint)) out.push(warn('overlap_in_area', u, `Overlaps another stop in area ${u.area_id}; the shared time is counted once`, 'info'));
   }
   return out;
 }

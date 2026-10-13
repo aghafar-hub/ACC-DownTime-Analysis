@@ -3,7 +3,7 @@ import type { EventRow } from '../api/types';
 import {
   applyKeptFilter, keepChoices, keepConsequence, keepConsequenceMany, keepSetFor, plainKeepReason, undoSetFor,
   applyValidateFilter, buildClassificationSuggester, buildValidation, capSelection, compareRecords, EMPTY_FILTER, filterCount, filterFromParams, firstFixHint,
-  flagCounts, planBulk, plainReason, recheckRecord, runBulk, storedProblems, BULK_CAP, OVERLAP_FLAG,
+  flagCounts, planBulk, plainReason, recheckRecord, runBulk, storedProblems, BULK_CAP, MISMATCH_FLAG, OVERLAP_FLAG,
 } from './model';
 
 const ev = (id: string, area: string, stop: string, start: string, over: Partial<EventRow> = {}): EventRow => ({
@@ -60,14 +60,32 @@ describe('kept as entered', () => {
     expect(r.summary.blocked.count).toBe(1);
     expect(r.summary.blocked.hours).toBeCloseTo(3, 5);
   });
-  it('an accepted overlap is not listed; the partner still is', () => {
+  it('P1: an overlap is information, never open; an earlier acceptance of it still shows under kept', () => {
     const o = buildValidation([
       ev('o1', 'K.3', '2026-04-10 08:00:00', '2026-04-10 10:00:00', { accepted_flags: 'overlap_in_area' }),
       ev('o2', 'K.3', '2026-04-10 09:00:00', '2026-04-10 11:00:00'),
     ]);
-    expect(o.records.map((r) => r.event.event_id)).toEqual(['o2']);
+    expect(o.records).toEqual([]);
+    expect(o.overlapRecords.map((r) => r.event.event_id)).toEqual(['o2', 'o1']);
     expect(o.keptRecords.map((r) => r.event.event_id)).toEqual(['o1']);
-    expect(o.summary.overlapping).toBe(1);
+    expect(o.summary.overlapping).toBe(2);
+    expect(o.summary.total).toBe(0);
+  });
+  it('P2: failure_flag_mismatch is a derived warning (Failure YES on PL / CIR / Freq 0) that can be kept as entered', () => {
+    const m = buildValidation([
+      ev('pl', 'K.1', '2026-05-10 08:00:00', '2026-05-10 09:00:00', { classification: 'PL', is_failure: true }),
+      ev('cir', 'K.1', '2026-05-11 08:00:00', '2026-05-11 09:00:00', { classification: 'CIR', is_failure: true }),
+      ev('cont', 'K.1', '2026-05-12 08:00:00', '2026-05-12 09:00:00', { freq: 0, is_failure: true }),
+      ev('ok', 'K.1', '2026-05-13 08:00:00', '2026-05-13 09:00:00'),
+      ev('plno', 'K.1', '2026-05-14 08:00:00', '2026-05-14 09:00:00', { classification: 'PL', is_failure: false }),
+      ev('kept', 'K.1', '2026-05-15 08:00:00', '2026-05-15 09:00:00', { classification: 'CIR', is_failure: true, accepted_flags: MISMATCH_FLAG, accepted_at: '2026-06-01 10:00:00.000' }),
+    ]);
+    expect(m.records.map((r) => r.event.event_id).sort()).toEqual(['cir', 'cont', 'pl']);
+    expect(m.records.every((r) => r.problems.join() === MISMATCH_FLAG && !r.blocking)).toBe(true);
+    expect(m.summary.byFlag).toEqual({ [MISMATCH_FLAG]: 3 });
+    expect(m.summary.review.count).toBe(3);
+    expect(m.keptRecords.map((k) => k.event.event_id)).toEqual(['kept']);
+    expect(flagCounts(m.records)).toEqual([{ flag: MISMATCH_FLAG, count: 3, blocking: false }]);
   });
   it('filters kept records by area, month and search', () => {
     expect(applyKeptFilter(l.keptRecords, { ...EMPTY_FILTER, area: 'K.2' }).map((k) => k.event.event_id)).toEqual(['mixed']);
@@ -108,28 +126,30 @@ describe('kept as entered', () => {
 
 describe('buildValidation', () => {
   const l = buildValidation(DATA);
-  it('lists stored flags and the derived overlap, never voided or clean records', () => {
-    expect(l.records.map((r) => r.event.event_id).sort()).toEqual(['code', 'nocls', 'o1', 'o2', 'rev']);
-    const o1 = l.records.find((r) => r.event.event_id === 'o1')!;
-    expect(o1.problems).toEqual([OVERLAP_FLAG]);
+  it('lists stored flags, never voided or clean records; overlaps are information (P1), listed apart', () => {
+    expect(l.records.map((r) => r.event.event_id).sort()).toEqual(['code', 'nocls', 'rev']);
+    expect(l.overlapRecords.map((r) => r.event.event_id).sort()).toEqual(['o1', 'o2']);
+    const o1 = l.overlapRecords.find((r) => r.event.event_id === 'o1')!;
+    expect(o1.problems).toEqual([]);
+    expect(o1.info).toEqual([OVERLAP_FLAG]);
     expect(o1.partners).toEqual(['o2']);
     expect(o1.blocking).toBe(false);
   });
   it('sorts blocking first, then newest stop first', () => {
-    expect(l.records.map((r) => r.event.event_id)).toEqual(['rev', 'nocls', 'o2', 'o1', 'code']);
+    expect(l.records.map((r) => r.event.event_id)).toEqual(['rev', 'nocls', 'code']);
   });
-  it('counts blocked, review and overlapping', () => {
-    expect(l.summary.total).toBe(5);
+  it('counts blocked, review and overlapping (overlapping is information, not in the totals)', () => {
+    expect(l.summary.total).toBe(3);
     expect(l.summary.blocked.count).toBe(2);
     expect(l.summary.blocked.hours).toBeCloseTo(2, 5); // 'nocls' is 2 h; the restart-before-stop record counts 0 h
-    expect(l.summary.review.count).toBe(3);
+    expect(l.summary.review.count).toBe(1);
     expect(l.summary.overlapping).toBe(2);
-    expect(l.summary.byFlag).toMatchObject({ missing_classification: 1, blank_reason: 1, end_before_start: 1, unknown_code: 1, overlap_in_area: 2 });
+    expect(l.summary.byFlag).toEqual({ missing_classification: 1, blank_reason: 1, end_before_start: 1, unknown_code: 1 });
   });
   it('a blocked record does not take part in the overlap search', () => {
     const blockedPartner = ev('b', 'K.3', '2026-04-10 09:30:00', '2026-04-10 09:45:00', { flags: 'unknown_area' });
     const r = buildValidation([...DATA, blockedPartner]);
-    expect(r.records.find((x) => x.event.event_id === 'o1')!.partners).toEqual(['o2']);
+    expect(r.overlapRecords.find((x) => x.event.event_id === 'o1')!.partners).toEqual(['o2']);
     expect(r.records.find((x) => x.event.event_id === 'b')!.partners).toEqual([]);
   });
   it('orders stored problems blocking first and drops repeats', () => {
@@ -149,8 +169,8 @@ describe('information flags (cause in another area)', () => {
   it('a record whose only flag is information is not a problem: not listed, not counted', () => {
     const l = buildValidation([...DATA, cross]);
     expect(l.records.map((r) => r.event.event_id)).not.toContain('cross');
-    expect(l.summary.total).toBe(5);
-    expect(l.summary.review.count).toBe(3);
+    expect(l.summary.total).toBe(3);
+    expect(l.summary.review.count).toBe(1);
     expect(l.summary.byFlag.code_not_in_area).toBeUndefined();
     expect(storedProblems(cross)).toEqual([]);
     expect(recheckRecord(DATA, cross)).toBeNull();
@@ -165,13 +185,15 @@ describe('information flags (cause in another area)', () => {
 });
 
 describe('recheckRecord', () => {
-  it('returns null once nothing is left to fix, and keeps an overlap that remains', () => {
+  it('returns null once nothing is left to fix; an overlap alone is nothing to fix (information)', () => {
     const fixed = { ...DATA[1], classification: 'PRO' as const, flags: 'blank_reason' };
     expect(recheckRecord(DATA, fixed)!.problems).toEqual(['blank_reason']);
     expect(recheckRecord(DATA, { ...fixed, flags: undefined })).toBeNull();
     const o2 = DATA.find((e) => e.event_id === 'o2')!;
-    expect(recheckRecord(DATA, o2)!.partners).toEqual(['o1']);
-    expect(recheckRecord(DATA, { ...o2, stop_ts: '2026-04-10 10:30:00.000', start_ts: '2026-04-10 11:00:00.000' })).toBeNull();
+    expect(recheckRecord(DATA, o2)).toBeNull();
+    const withProblem = recheckRecord(DATA, { ...o2, flags: 'unknown_code' })!;
+    expect(withProblem.partners).toEqual(['o1']);
+    expect(withProblem.info).toEqual([OVERLAP_FLAG]);
     expect(recheckRecord(DATA, { ...o2, is_void: true })).toBeNull();
   });
 });
@@ -180,16 +202,19 @@ describe('filters', () => {
   const l = buildValidation(DATA);
   it('filters by problem (any of), area, month, blocking and text', () => {
     const ids = (f: Partial<typeof EMPTY_FILTER>) => applyValidateFilter(l.records, { ...EMPTY_FILTER, ...f }).map((r) => r.event.event_id).sort();
-    expect(ids({})).toHaveLength(5);
+    expect(ids({})).toHaveLength(3);
     expect(ids({ flags: ['unknown_code'] })).toEqual(['code']);
     expect(ids({ flags: ['unknown_code', 'blank_reason'] })).toEqual(['code', 'nocls']);
-    expect(ids({ flags: [OVERLAP_FLAG] })).toEqual(['o1', 'o2']);
-    expect(ids({ area: 'K.3' })).toEqual(['o1', 'o2', 'rev']);
+    expect(ids({ flags: [OVERLAP_FLAG] })).toEqual([]);
+    expect(ids({ area: 'K.3' })).toEqual(['rev']);
     expect(ids({ month: '2026-03' })).toEqual(['nocls']);
     expect(ids({ blockingOnly: true })).toEqual(['nocls', 'rev']);
-    expect(ids({ q: 'belt' })).toEqual(['o2']);
-    expect(ids({ q: ' N/A ' })).toEqual(['o2']);
     expect(ids({ area: 'K.3', flags: ['end_before_start'], blockingOnly: true })).toEqual(['rev']);
+    // the Overlaps view (information) is filtered the same way
+    const info = (f: Partial<typeof EMPTY_FILTER>) => applyValidateFilter(l.overlapRecords, { ...EMPTY_FILTER, ...f }).map((r) => r.event.event_id).sort();
+    expect(info({ q: 'belt' })).toEqual(['o2']);
+    expect(info({ q: ' N/A ' })).toEqual(['o2']);
+    expect(info({ area: 'K.3' })).toEqual(['o1', 'o2']);
   });
   it('counts active filters', () => {
     expect(filterCount(EMPTY_FILTER)).toBe(0);
@@ -201,7 +226,6 @@ describe('filters', () => {
       { flag: 'end_before_start', count: 1, blocking: true },
       { flag: 'unknown_code', count: 1, blocking: false },
       { flag: 'blank_reason', count: 1, blocking: false },
-      { flag: 'overlap_in_area', count: 2, blocking: false },
     ]);
   });
   it('gives the fix text of the first problem', () => {

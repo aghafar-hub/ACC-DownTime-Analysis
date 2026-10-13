@@ -47,8 +47,26 @@ export function dayShort(d: string): string {
   return `${Number(day)} ${names[Number(m) - 1] ?? m}`;
 }
 
-/** Tooltip note of a partial month: the days it shows ("Partial month: 15 Jan 2026 to 31 Jan 2026" or "...: data to 10 Feb 2026"). */
-export function partialNote(m: { month: string; partial: boolean; window: { from: string; to: string } | null }): string | undefined {
+/** P6: a month (or day) inside the coverage with no record at all in the data: never 0 h or 100 %. */
+export const NOT_UPLOADED = 'Not uploaded';
+/** Footnote under a chart or table that has months not uploaded. */
+export const NOT_UPLOADED_FOOT = 'Months marked "Not uploaded" have no records at all in the data (nothing was uploaded for them): they are left out, never shown as 0 h or 100%.';
+
+/** The reason a month has no value: 'Not uploaded' or 'No data for this month'; undefined when it has data. */
+export function monthMissing(m: { hasData: boolean; notUploaded?: boolean }): string | undefined {
+  if (m.hasData) return undefined;
+  return m.notUploaded ? t('Not uploaded: no records for this month') : t('No data for this month');
+}
+
+/** The same for a day. */
+export function dayMissing(d: { hasData: boolean; notUploaded?: boolean }): string | undefined {
+  if (d.hasData) return undefined;
+  return d.notUploaded ? t('Not uploaded: no records for this month') : t('No data for this day');
+}
+
+/** Tooltip note of a partial month: the days it shows ("Partial month: 15 Jan 2026 to 31 Jan 2026" or "...: data to 10 Feb 2026"); 'Not uploaded' for a month without records. */
+export function partialNote(m: { month: string; partial: boolean; window: { from: string; to: string } | null; notUploaded?: boolean }): string | undefined {
+  if (m.notUploaded) return t('Not uploaded: no records for this month');
   if (!m.partial || !m.window) return undefined;
   return m.window.from.endsWith('-01')
     ? t('Partial month: data to {d}', { d: dayLabel(m.window.to) })
@@ -62,6 +80,11 @@ export function rangeLabel(r: { from: string; to: string }): string {
   return r.from === r.to ? dayLabel(r.from) : `${dayLabel(r.from)} – ${dayLabel(r.to)}`;
 }
 
+/** P4: the one label of the all-area MTBF (operating area-hours of every area in scope / failure events), on every screen. */
+export const MTBF_ALL_LABEL = 'MTBF · all areas (area-hours)';
+/** The line under it. */
+export const MTBF_ALL_SUB = 'operating area-hours of all areas per failure event; per-area MTBF in the Areas table';
+
 /** The change line under a KPI: arrow + sign + words, coloured by good / bad; never colour alone. */
 export function noChangeText(compare: CompareMode): string {
   if (compare === 'none') return t('No comparison selected');
@@ -72,6 +95,17 @@ export function noChangeText(compare: CompareMode): string {
 export function ChangeLine({ change, fmt, unit = '', label, testid, compare = 'none' }: { change: Change | null; fmt: (n: number) => string; unit?: string; label: string; testid?: string; compare?: CompareMode }): ReactNode {
   if (!change) return <span className="kpi-change kpi-change--none" data-testid={testid}>{noChangeText(compare)}</span>;
   if (!change.available) return <span className="kpi-change kpi-change--none" data-testid={testid}>{t('No comparison: {reason}', { reason: change.reason })}</span>;
+  if (change.perDay) {
+    // P7: the comparison period is only partly covered: per-day rates, no better / worse
+    const c = asShown(change, fh2);
+    const sign = c.abs > 0 ? '+' : c.abs < 0 ? '−' : '';
+    const arrow = c.direction === 'up' ? '▲' : c.direction === 'down' ? '▼' : '■';
+    return (
+      <span className="kpi-change kpi-change--neutral" data-testid={testid} data-per-day="true">
+        <span aria-hidden="true">{arrow}</span> {sign}{fh2(Math.abs(c.abs))}{unit}{t('/day')} {t(change.note ?? 'per day')} <span className="kpi-change-label">{label}</span>
+      </span>
+    );
+  }
   const c = asShown(change, fmt);
   const sign = c.abs > 0 ? '+' : c.abs < 0 ? '−' : '';
   const arrow = c.direction === 'up' ? '▲' : c.direction === 'down' ? '▼' : '■';

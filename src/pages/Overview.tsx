@@ -7,12 +7,15 @@ import { CLASS_ORDER, STACK_COLORS, classColor } from '../charts/palette';
 import { Tile } from '../components/Tile';
 import { useIsMobile } from '../hooks/useIsMobile';
 import DashTop from '../dashboard/DashTop';
-import { ChangeLine, dayLabel, dayShort, fh, fh2, fint, fpct, fpct0, metricText, monthLabel, PARTIAL_FOOT, partialNote } from '../dashboard/format';
-import { HeroKpi } from '../dashboard/HeroKpi';
+import {
+  ChangeLine, dayLabel, dayMissing, dayShort, fh, fh2, fint, fpct, fpct0, metricText, monthLabel, monthMissing, MTBF_ALL_LABEL, MTBF_ALL_SUB, NOT_UPLOADED, NOT_UPLOADED_FOOT,
+  PARTIAL_FOOT, partialNote,
+} from '../dashboard/format';
+import { HeroKpi, InfoButton } from '../dashboard/HeroKpi';
 import MonthCompare from '../dashboard/MonthCompare';
 import { TargetLine } from '../dashboard/TargetStatus';
 import { targetNumber } from '../dashboard/targets';
-import { kpiInfo } from '../dashboard/kpiInfo';
+import { kpiInfo, type KpiInfo } from '../dashboard/kpiInfo';
 import { zoomFloor } from '../charts/scale';
 import { overviewModel, ROLLING_DAYS, sparkSeries, windowDays } from '../dashboard/models';
 import { Collapsible, EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, useDrill } from '../dashboard/parts';
@@ -28,14 +31,15 @@ import '../dashboard/dashboard.css';
 
 const BASIS_NAME = { A: 'calendar', B: 'calendar minus planned', C: 'minus planned and other' } as const;
 
-function Kpi({ id, icon, label, value, sub, change, status, tone, unavailable, compact }: {
+function Kpi({ id, icon, label, value, sub, change, status, tone, unavailable, compact, info }: {
   id: string; icon: string; label: string; value: string; sub?: ReactNode; change?: ReactNode; status?: ReactNode; tone?: string; unavailable?: boolean; compact?: boolean;
+  info?: KpiInfo;
 }) {
   return (
     <Tile
       icon={icon} label={label} testid={`kpi-${id}`} tone={tone} compact={compact}
       value={<span data-testid={`kpi-${id}-value`} style={unavailable ? { fontSize: 17 } : undefined}>{value}</span>}
-      sub={<>{status}{sub && <span className="kpi-sub">{sub}</span>}{change}</>}
+      sub={<>{status}{sub && <span className="kpi-sub">{sub}</span>}{info && <InfoButton info={info} testid={`kpi-${id}-info`} />}{change}</>}
     />
   );
 }
@@ -87,7 +91,7 @@ export default function Overview() {
   // ---- chart data
   const months = model?.monthly ?? [];
   const cats: CartCategory[] = months.map((m) => ({ key: m.month, label: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
-  const missing = months.map((m) => (m.hasData ? undefined : t('No data for this month')));
+  const missing = months.map(monthMissing);
   const hfmt = (n: number) => `${fh(n)} h`;
   const stackSeries: CartSeries[] = [
     { key: 'failure', label: t('Failure (INC)'), color: STACK_COLORS.failure, type: 'bar', stack: 's', values: months.map((m) => (m.hasData ? m.failureHours : null)), format: hfmt, missing },
@@ -110,7 +114,7 @@ export default function Overview() {
   // (1) daily hours with the rolling average
   const days = model?.daily ?? [];
   const dcats: CartCategory[] = days.map((d) => ({ key: d.date, label: dayShort(d.date), note: dayLabel(d.date) }));
-  const dmissing = days.map((d) => (d.hasData ? undefined : t('No data for this day')));
+  const dmissing = days.map(dayMissing);
   const dailySeries: CartSeries[] = [
     { key: 'failure', label: t('Failure (INC)'), color: STACK_COLORS.failure, type: 'bar', stack: 'd', values: days.map((d) => (d.hasData ? d.failureHours : null)), format: hfmt, missing: dmissing },
     { key: 'planned', label: t('Planned (PL)'), color: STACK_COLORS.planned, type: 'bar', stack: 'd', values: days.map((d) => (d.hasData ? d.plannedHours : null)), format: hfmt, missing: dmissing },
@@ -130,7 +134,7 @@ export default function Overview() {
   // (3) monthly hours by classification
   const byClass = model?.byClass ?? [];
   const ccats: CartCategory[] = byClass.map((m) => ({ key: m.month, label: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
-  const cmissing = byClass.map((m) => (m.hasData ? undefined : t('No data for this month')));
+  const cmissing = byClass.map(monthMissing);
   const classSeries: CartSeries[] = CLASS_ORDER.map((code) => ({
     key: code, label: code, color: classColor(dark, code), type: 'bar', stack: 'c', values: byClass.map((m) => (m.hasData ? m.hours[code] : null)), format: hfmt, missing: cmissing,
   }));
@@ -201,8 +205,8 @@ export default function Overview() {
   const ch = model?.changes ?? null;
   const tot = kpi?.total;
   const redIf = (v: number | undefined): string | undefined => (v ? T.danger : undefined);
-  const mtbfOne = perArea.length === 1;
-  const mtbf = tot ? (mtbfOne ? metricText(perArea[0]!.mtbfHours, fh, ' h') : null) : null;
+  // P4: one MTBF rule everywhere: all-area operating area-hours / failure events (per-area MTBF in the Areas table)
+  const mtbf = tot ? metricText(tot.mtbfHours, fh, ' h') : null;
   const mttr = tot ? metricText(tot.mttrHours, fh2, ' h') : null;
   const avText = tot ? metricText(tot.availabilityHeadline, fpct) : null;
   const spark = ctx && model ? sparkSeries(model.daily, model.monthly, windowDays(ctx)) : null;
@@ -238,9 +242,9 @@ export default function Overview() {
         change={<ChangeLine change={model.otherChange} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} />
       <Kpi compact={mobile} id="operating-hours" icon="clock" label={t('Operating hours')} value={metricText(tot.operatingHours, fh, ' h').text} unavailable={!tot.operatingHours.available}
         sub={sumNote(tot.operatingHours, fh, ' h') || t('scheduled minus all stops, area-hours')} change={<ChangeLine change={ch?.operatingHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} />
-      <Kpi compact={mobile} id="mtbf" icon="trend" label={t('MTBF (area level)')} status={<TargetLine status={model.status.mtbf} testid="kpi-mtbf-target" />} value={mtbf ? mtbf.text : t('Select one area')} unavailable={!mtbf || mtbf.unavailable || perArea.length !== 1}
-        sub={mtbf ? mtbf.reason ?? t('operating hours per failure') : t('Per-area MTBF is on the Reliability page; the aggregate is not an MTBF')}
-        change={mtbf ? <ChangeLine change={ch?.mtbfHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} /> : undefined} />
+      <Kpi compact={mobile} id="mtbf" icon="trend" label={t(MTBF_ALL_LABEL)} status={<TargetLine status={model.status.mtbf} testid="kpi-mtbf-target" />} value={mtbf!.text} unavailable={mtbf!.unavailable}
+        sub={mtbf!.reason ?? t(MTBF_ALL_SUB)} info={kpiInfo('mtbf', basis, targets)}
+        change={<ChangeLine change={ch?.mtbfHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmpMode} />} />
       <Kpi compact={mobile} id="repeated" icon="repeat" label={t('Repeated failures')} value={kpi.repeatedFailureCount === 0 ? t('None recorded') : fint(kpi.repeatedFailureCount)} unavailable={kpi.repeatedFailureCount === 0}
         sub={t('{g} groups; recurrence events after the first', { g: fint(kpi.repeatGroups) })} tone={redIf(kpi.repeatedFailureCount)} change={<ChangeLine change={model.repeatedChange} fmt={fint} label={cmpLabel} compare={cmpMode} />} />
       <Kpi compact={mobile} id="top-area" icon="limits" label={t('Largest contributor by failure hours')}
@@ -283,7 +287,7 @@ export default function Overview() {
                     head: [t('Day'), t('Failure h'), t('Planned h'), t('Other h'), t('Total h'), t('{n}-day average h', { n: ROLLING_DAYS })],
                     rows: days.map((d) => (d.hasData
                       ? [d.date, fh(d.failureHours), fh(d.plannedHours), fh(d.otherHours), fh(d.downtimeHours), d.rollingDowntimeHours === null ? '-' : fh(d.rollingDowntimeHours)]
-                      : [d.date, '-', '-', '-', '-', '-'])),
+                      : [d.date, d.notUploaded ? t(NOT_UPLOADED) : '-', '-', '-', '-', '-'])),
                   }}
                   footnote={t('Days without a stop show no bar. The average covers up to {n} days, fewer at the start of the range.', { n: ROLLING_DAYS })}
                 >
@@ -294,7 +298,7 @@ export default function Overview() {
                 title={t('Monthly stoppage hours')} subtitle={t('Failure, planned and other hours per month, summed over areas (area-hours). * partial month')}
                 summary={stackSummary} legend={legendStack} testid="chart-monthly-stack"
                 table={seriesTable(cats, stackSeries, t('Month'), (_s, n) => `${fh(n)}`)}
-                footnote={months.some((m) => m.partial) ? t(PARTIAL_FOOT) : undefined}
+                footnote={[months.some((m) => m.partial) ? t(PARTIAL_FOOT) : '', months.some((m) => m.notUploaded) ? t(NOT_UPLOADED_FOOT) : ''].filter(Boolean).join(' ') || undefined}
               >
                 {(w) => <CartesianChart categories={cats} series={stackSeries} width={w} ariaLabel={t('Stacked bar chart of monthly stoppage hours. {s}', { s: stackSummary })} yFormat={(n) => `${n}`} />}
               </ChartCard>
@@ -303,9 +307,9 @@ export default function Overview() {
                 summary={classSummary} legend={CLASS_ORDER.map((code) => ({ label: code, color: classColor(dark, code), note: classNames.get(code) }))} testid="chart-class-month"
                 table={{
                   head: [t('Month'), ...CLASS_ORDER, t('Total h')],
-                  rows: byClass.map((m) => [m.partial ? `${monthLabel(m.month)} (${t('partial')})` : monthLabel(m.month), ...CLASS_ORDER.map((c) => (m.hasData ? fh(m.hours[c]) : '-')), m.hasData ? fh(m.total) : '-']),
+                  rows: byClass.map((m) => [m.partial ? `${monthLabel(m.month)} (${t('partial')})` : monthLabel(m.month), ...CLASS_ORDER.map((c) => (m.hasData ? fh(m.hours[c]) : m.notUploaded ? t(NOT_UPLOADED) : '-')), m.hasData ? fh(m.total) : m.notUploaded ? t(NOT_UPLOADED) : '-']),
                 }}
-                footnote={byClass.some((m) => m.partial) ? t(PARTIAL_FOOT) : undefined}
+                footnote={[byClass.some((m) => m.partial) ? t(PARTIAL_FOOT) : '', byClass.some((m) => m.notUploaded) ? t(NOT_UPLOADED_FOOT) : ''].filter(Boolean).join(' ') || undefined}
               >
                 {(w) => <CartesianChart categories={ccats} series={classSeries} width={w} ariaLabel={t('Stacked bar chart of monthly stopped hours by classification. {s}', { s: classSummary })} yFormat={(n) => `${n}`} />}
               </ChartCard>

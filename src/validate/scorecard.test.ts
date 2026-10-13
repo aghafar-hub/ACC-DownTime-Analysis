@@ -61,13 +61,13 @@ describe('buildScorecard', () => {
     expect(buildScorecard(DATA, list)).toEqual(sc);
   });
 
-  it('counts an overlap (found by comparing records) as an open problem', () => {
+  it('P1: an overlap (found by comparing records) is information, not an open problem; P2: a failure flag mismatch is', () => {
     const o = buildScorecard([
       ev('o1', 'K.3', '2026-06-10 08:00:00', '2026-06-10 10:00:00'),
       ev('o2', 'K.3', '2026-06-10 09:00:00', '2026-06-10 11:00:00'),
-      ev('o3', 'K.3', '2026-06-12 09:00:00', '2026-06-12 11:00:00'),
+      ev('o3', 'K.3', '2026-06-12 09:00:00', '2026-06-12 11:00:00', { classification: 'PL', is_failure: true }),
     ]);
-    expect(o.months[0]).toMatchObject({ records: 3, openProblems: 2 });
+    expect(o.months[0]).toMatchObject({ records: 3, openProblems: 1 });
   });
 
   it('no records: empty scorecard with no percentage', () => {

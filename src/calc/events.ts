@@ -1,5 +1,6 @@
 /** Chaining of downtime rows into events (docs section 8). */
 import type { EventRow } from '../api/types';
+import { attributedHours, duplicateKey, type Attribution } from './attribution';
 import { isBlocked } from './flags';
 import { MS_SECOND, clippedHours, parseTs, type Interval } from './time';
 
@@ -45,7 +46,10 @@ export interface ChainedEvent {
   startDate: string;
   /** sum of the rows' seconds */
   durationS: number;
-  /** head row is a failure and the chain is not an orphan */
+  /**
+   * A failure EVENT (P2): the chain is not an orphan and its head is a Freq = 1 row with Failure = YES and an incidental
+   * classification (not PL, not CIR). Failure counts, MTBF, the failure rate and repeats count these events, not rows.
+   */
   isFailure: boolean;
   /** first row has Freq = 0: continuation of an event that is not in the data */
   orphan: boolean;
@@ -58,6 +62,8 @@ export interface BuildOptions {
   includeVoid?: boolean;
   /** keep rows with a blocking data problem (default false: they are left out until fixed) */
   includeInvalid?: boolean;
+  /** keep exact duplicate rows (default false: a second row with the same area, code, stop, restart and class is one stop) */
+  keepDuplicates?: boolean;
 }
 
 export interface EventBuild {
@@ -69,6 +75,13 @@ export interface EventBuild {
   orphans: ChainedEvent[];
   /** rows with unreadable timestamps (cannot be chained) */
   unreadable: EventRow[];
+  /** exact duplicates left out of the chains (the first copy is kept) */
+  duplicates: EventRow[];
+}
+
+/** The head row makes a failure event: Freq = 1, Failure = YES, and not planned (PL) or circumstantial (CIR). */
+export function isFailureHead(row: Pick<EventRow, 'freq' | 'is_failure' | 'classification'>): boolean {
+  return row.freq === 1 && row.is_failure === true && row.classification !== 'PL' && row.classification !== 'CIR';
 }
 
 interface Parsed { row: EventRow; stop: number; start: number; idx: number }
@@ -84,7 +97,7 @@ function newChain(p: Parsed, orphan: boolean): ChainedEvent {
     endMs: p.start,
     startDate: p.row.stop_ts.slice(0, 10),
     durationS: p.start > p.stop ? (p.start - p.stop) / MS_SECOND : 0,
-    isFailure: !orphan && p.row.is_failure,
+    isFailure: !orphan && isFailureHead(p.row),
     orphan,
   };
 }
@@ -95,11 +108,20 @@ function extend(c: ChainedEvent, p: Parsed): void {
   if (p.start > p.stop) c.durationS += (p.start - p.stop) / MS_SECOND;
 }
 
-function chainArea(parsed: Parsed[], tol: number): ChainedEvent[] {
+function chainArea(parsed: Parsed[], tol: number, duplicates: EventRow[] | null): ChainedEvent[] {
   parsed.sort((a, b) => a.stop - b.stop || b.row.freq - a.row.freq || a.idx - b.idx);
   const out: ChainedEvent[] = [];
   const open: { chain: ChainedEvent; tail: number }[] = [];
+  // exact duplicates share the stop, so they are neighbours in this order: keep the first (Freq = 1 first, then file order)
+  let sameStop = NaN;
+  let seen: string[] = [];
   for (const p of parsed) {
+    if (duplicates) {
+      if (p.stop !== sameStop) { sameStop = p.stop; seen = []; }
+      const k = duplicateKey(p.row);
+      if (seen.includes(k)) { duplicates.push(p.row); continue; }
+      seen.push(k);
+    }
     // later rows cannot attach to a tail that restarted earlier than this stop minus the tolerance: drop it (in place)
     let w = 0;
     for (let r = 0; r < open.length; r++) if (open[r]!.tail >= p.stop - tol) open[w++] = open[r]!;
@@ -136,6 +158,7 @@ export function buildFailureEvents(rows: EventRow[], options: BuildOptions = {})
   const tol = options.toleranceMs ?? MS_SECOND;
   const byArea = new Map<string, Parsed[]>();
   const unreadable: EventRow[] = [];
+  const duplicates: EventRow[] = [];
   rows.forEach((row, idx) => {
     if (row.is_void && !options.includeVoid) return;
     if (isBlocked(row) && !options.includeInvalid) return;
@@ -150,17 +173,33 @@ export function buildFailureEvents(rows: EventRow[], options: BuildOptions = {})
     else byArea.set(row.area_id, [{ row, stop, start, idx }]);
   });
   const chains: ChainedEvent[] = [];
-  for (const list of byArea.values()) chains.push(...chainArea(list, tol));
+  for (const list of byArea.values()) chains.push(...chainArea(list, tol, options.keepDuplicates ? null : duplicates));
   chains.sort((a, b) => a.startMs - b.startMs || (a.area_id < b.area_id ? -1 : a.area_id > b.area_id ? 1 : 0) || (a.id < b.id ? -1 : 1));
   return {
     chains,
     failureEvents: chains.filter((c) => c.isFailure),
     orphans: chains.filter((c) => c.orphan),
     unreadable,
+    duplicates,
   };
 }
 
-export function chainHours(c: ChainedEvent, window: Interval | null = null): number {
+/** Exact duplicate rows of a list (the copies that do not count, see attribution.ts). Voided and blocked rows are ignored. */
+export function exactDuplicates(rows: EventRow[]): EventRow[] {
+  return buildFailureEvents(rows).duplicates;
+}
+
+/**
+ * Hours of a chain inside the window. With an attribution (attribution.ts) each row counts only the time it owns, so
+ * stops that overlap in the same area are counted once; without one every row counts whole (clipped to the window).
+ * `window` null and no attribution: the event's own length.
+ */
+export function chainHours(c: ChainedEvent, window: Interval | null = null, attr?: Attribution): number {
+  if (attr) {
+    let h = 0;
+    for (const r of c.rows) h += attributedHours(r, window, attr);
+    return h;
+  }
   if (window === null) return c.durationS / 3600;
   let h = 0;
   for (const r of c.rows) h += rowHours(r, window);

@@ -94,8 +94,8 @@ const TEXT: Record<WarningType, Text> = {
   },
   overlap_in_area: {
     label: 'Overlaps another stop in the same area',
-    help: 'Two stops in one area run at the same time. Both are added and flagged.',
-    tone: 'warning', symbol: '▲',
+    help: 'Two stops in one area run at the same time. Both are added; the shared time is counted once (planned before incidental before other; else the stop that started first). Nothing to decide or fix.',
+    tone: 'info', symbol: '●',
   },
   placeholder_code: {
     label: 'Placeholder equipment code',

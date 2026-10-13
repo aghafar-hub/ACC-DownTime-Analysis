@@ -68,7 +68,7 @@ export function sectionTable(s: SectionModel, model: ReportModel): ExportTable |
       return withNotes({
         id: s.id, sheet: t(SHEET_TITLES.daily),
         columns: [exportCol(t('Day'), 'date'), exportCol(t('Failure h'), 'h1'), exportCol(t('Planned h'), 'h1'), exportCol(t('Other h'), 'h1'), exportCol(t('Total h'), 'h1'), exportCol(t('{n}-day average h', { n: d.rollingDays }), 'h1')],
-        rows: d.days.map((p) => (p.hasData ? [p.date, p.failureHours, p.plannedHours, p.otherHours, p.downtimeHours, p.rollingDowntimeHours] : [p.date, null, null, null, null, null])),
+        rows: d.days.map((p) => (p.hasData ? [p.date, p.failureHours, p.plannedHours, p.otherHours, p.downtimeHours, p.rollingDowntimeHours] : [p.date, p.notUploaded ? 'Not uploaded' : null, null, null, null, null])),
       }, s);
     }
     case 'monthly': return withNotes(fromTable(s.id, s.data.table), s);
@@ -78,7 +78,7 @@ export function sectionTable(s: SectionModel, model: ReportModel): ExportTable |
       const tb: ExportTable = {
         id: s.id, sheet: t(SHEET_TITLES.classes),
         columns: [exportCol(t('Month')), ...cols.map((c) => exportCol(`${c} h`, 'h1')), exportCol(t('Total h'), 'h1')],
-        rows: d.months.map((m) => [m.month, ...cols.map((c) => (m.hasData ? m.hours[c as keyof typeof m.hours] : null)), m.hasData ? m.total : null]),
+        rows: d.months.map((m) => [m.month, ...cols.map((c) => (m.hasData ? m.hours[c as keyof typeof m.hours] : null)), m.hasData ? m.total : m.notUploaded ? 'Not uploaded' : null]),
         total: [t('Total'), ...cols.map((c) => d.totals.find((x) => x.code === c)?.hours ?? 0), d.totals.reduce((a, x) => a + x.hours, 0)],
       };
       return withNotes(tb, s);

@@ -10,7 +10,7 @@ import { useStartup, type StartupHook } from '../data/useStartup';
 import { formatDate } from '../calc';
 import { defaultFilters, hasFilterParams, nonFilterParams, parseFilters, resolveRange, serializeFilters, type DashFilters } from './filters';
 import { forgetDashFilters, rememberedQuery, rememberQuery } from './sharedFilters';
-import { buildBase, buildEventScope, buildKpis, buildMaster, buildWindows, coverageOf, yearsNeeded, type DashCtx } from './scope';
+import { buildBase, buildEventScope, buildKpis, buildMaster, buildWindows, coverageOf, notUploadedOf, yearsNeeded, type DashCtx } from './scope';
 
 // ---------------------------------------------------------------- filters in the URL
 
@@ -165,6 +165,7 @@ export function useDash(opts: { extraYearsBack?: number } = {}): Dash {
   // staged so a date change does not rebuild the chains and a classification change does not rebuild the base
   const master = useMemo(() => (startup ? buildMaster(startup) : null), [startup]);
   const coverage = useMemo(() => (ready ? coverageOf(data.rows) : null), [ready, data.rows]);
+  const notUploaded = useMemo(() => (ready ? notUploadedOf(data.rows, coverage) : []), [ready, data.rows, coverage]);
   const baseKey = `${filters.lineIds.join('|')}#${filters.areaIds.join('|')}`;
   const base = useMemo(
     () => (ready && startup && master ? buildBase(data.rows, startup, filters, master) : null),
@@ -184,12 +185,12 @@ export function useDash(opts: { extraYearsBack?: number } = {}): Dash {
     [winKey, coverage, master],
   );
   const kpis = useMemo(
-    () => (scope && base && win && master ? buildKpis(scope, base, win, coverage, master) : null),
-    [scope, base, win, coverage, master],
+    () => (scope && base && win && master ? buildKpis(scope, base, win, coverage, master, notUploaded) : null),
+    [scope, base, win, coverage, master, notUploaded],
   );
   const ctx = useMemo<DashCtx | null>(
-    () => (scope && base && win && master && kpis ? { master, base, scope, win, coverage, kpis } : null),
-    [scope, base, win, master, kpis, coverage],
+    () => (scope && base && win && master && kpis ? { master, base, scope, win, coverage, notUploaded, kpis } : null),
+    [scope, base, win, master, kpis, coverage, notUploaded],
   );
   const reload = useCallback(() => {
     st.reload();

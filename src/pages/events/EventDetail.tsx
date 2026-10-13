@@ -3,7 +3,7 @@ import { api, describeError } from '../../api';
 import type { ClassificationCode, EventChanges, EventEdit, EventRow, Startup } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import ShellModal, { FormSection } from '../../components/ShellModal';
-import { acceptedFlagsOf, FLAG_INFO, isBlockingFlag, isInfoFlag, openFlagsOf } from '../../calc/flags';
+import { acceptedFlagsOf, FLAG_INFO, hasFailureFlagMismatch, isBlockingFlag, isInfoFlag, openFlagsOf } from '../../calc/flags';
 import KeepModal from '../../validate/KeepModal';
 import { useUserNames } from '../../validate/useKeepInfo';
 import { SAVE_BLOCKED_EVENT } from '../../components/SaveBlockedToast';
@@ -120,9 +120,10 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
     () => (startup?.reasons.filter((r) => r.classification === form.classification && r.active).map((r) => r.text_as_listed.trim()) ?? []),
     [startup, form.classification],
   );
-  // the OPEN stored problems (information flags are not problems; flags kept as entered are not open), plus the overlap found by comparing records (Validate page)
+  // the OPEN stored problems (information flags are not problems; flags kept as entered are not open), plus the derived
+  // failure_flag_mismatch. Overlaps found by comparing records (Validate page) are information, shown apart.
   const kept = acceptedFlagsOf(row);
-  const flags = [...openFlagsOf(row), ...(assist?.overlaps?.length && !kept.includes('overlap_in_area') ? ['overlap_in_area'] : [])];
+  const flags = [...openFlagsOf(row), ...(hasFailureFlagMismatch(row) && !kept.includes('failure_flag_mismatch') ? ['failure_flag_mismatch'] : [])];
   const keptNoteRow = (history ?? []).filter((h) => h.field === 'accepted_flags' && (h.new_value ?? '') !== '').at(-1);
   const ownerLookup = useMemo(() => buildOwnerLookup(startup?.equipment_areas), [startup]);
   const crossOwners = ownersOfRow(row, ownerLookup);
@@ -340,6 +341,27 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
           </FormSection>
 
           <FormSection icon="alert" title={t('Data checks')}>
+            {!!assist?.overlaps?.length && (
+              <div className="callout" role="note" data-testid="overlap-note" style={{ marginBottom: 8 }}>
+                <Icon name="info" size={16} />
+                <span>
+                  <span className="badge" data-testid="detail-info-flag" data-flag="overlap_in_area"><span aria-hidden="true">ℹ</span> {flagLabel('overlap_in_area')}</span>{' '}
+                  {t(FLAG_INFO.overlap_in_area.problem)}
+                  <ul className="history" style={{ marginTop: 8 }} data-testid="overlap-partners">
+                    {assist.overlaps.map((o) => (
+                      <li key={o.event_id} className="v-partner" data-testid="overlap-partner" data-event-id={o.event_id}>
+                        <span>
+                          <b className="mono">{shortTs(o.stop_ts)} → {shortTs(o.start_ts)}</b> · {o.area_id} · <span className="mono">{o.code_raw || 'N/A'}</span> · {o.classification}
+                        </span>
+                        {assist.onOpenOther && (
+                          <button type="button" className="btn btn-sm" onClick={() => assist.onOpenOther!(o.event_id)} data-testid="open-partner">{t('Open this record')}</button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </span>
+              </div>
+            )}
             {crossArea && (
               <div className="callout" role="note" data-testid="cause-note">
                 <Icon name="info" size={16} />
@@ -363,20 +385,6 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
                       </span>{' '}
                       <span>{info ? t(info.problem) : flagHelp(f)}</span>
                       {info && <div className="muted" data-testid="detail-flag-fix"><b>{t('What to do')}:</b> {t(info.fix)}</div>}
-                      {f === 'overlap_in_area' && assist?.overlaps && (
-                        <ul className="history" style={{ marginTop: 8 }} data-testid="overlap-partners">
-                          {assist.overlaps.map((o) => (
-                            <li key={o.event_id} className="v-partner" data-testid="overlap-partner" data-event-id={o.event_id}>
-                              <span>
-                                <b className="mono">{shortTs(o.stop_ts)} → {shortTs(o.start_ts)}</b> · {o.area_id} · <span className="mono">{o.code_raw || 'N/A'}</span> · {o.classification}
-                              </span>
-                              {assist.onOpenOther && (
-                                <button type="button" className="btn btn-sm" onClick={() => assist.onOpenOther!(o.event_id)} data-testid="open-partner">{t('Open this record')}</button>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
                     </li>
                   );
                 })}

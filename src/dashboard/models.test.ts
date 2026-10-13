@@ -313,9 +313,10 @@ describe('targets in the page adapters', () => {
     expect(m.targets).toEqual({ availabilityPct: 95, mtbfH: 100, mttrH: 2 });
     if (tot.availabilityHeadline.available) expect(m.status.availability?.ok).toBe(Math.round(tot.availabilityHeadline.value * 1000) / 10 >= 95);
     if (tot.mttrHours.available) expect(m.status.mttr?.ok).toBe(Math.round(tot.mttrHours.value * 100) / 100 <= 2);
-    // the MTBF status is for a single area only (as the MTBF tile)
+    // P4: the MTBF status is for 'MTBF · all areas (area-hours)', the same figure as the tile, also with several areas
     expect(m.perArea.length).toBeGreaterThan(1);
-    expect(m.status.mtbf).toBeNull();
+    if (tot.mtbfHours.available) expect(m.status.mtbf?.ok).toBe(Math.round(tot.mtbfHours.value * 10) / 10 >= 100);
+    else expect(m.status.mtbf).toBeNull();
     const judged = m.availability!.areas.filter((a) => a.availability.available);
     expect(m.belowTarget!.total).toBe(judged.length);
     expect(m.belowTarget!.below).toEqual(judged.filter((a) => Math.round((a.availability as { value: number }).value * 1000) / 10 < 95).map((a) => a.area_id));
@@ -360,5 +361,51 @@ describe('R0: drill ids, repeats heat maps', () => {
     for (const h of [r.heatMonthHours, r.heatMonthCount, r.heatReasonHours, r.heatReasonCount, r.heatAll.monthHours, r.heatAll.reasonCount]) {
       expect(h.rows.map((x) => x.key)).not.toContain('N/A');
     }
+  });
+});
+
+describe('owner rules P3 / P4 in the page adapters', () => {
+  it('P3: with event-level filters the KPI hours equal the Pareto totals of the same scope', () => {
+    for (const patch of [{ failureOnly: true }, { durationBand: 'long' as const }, { classifications: ['MEC' as const] }, { criticality: ['INC' as const] }]) {
+      const c = buildCtx(rows, startup, { ...f, ...patch }, range);
+      const k = overviewModel(c).kpi!;
+      const all = classModel(c, 'hours', false)!;
+      expect(all.total, JSON.stringify(patch)).toBeCloseTo(k.total.downtimeHours, 6);
+      // every kept event is whole: its continuation rows are in the KPI rows
+      const kpiIds = new Set(c.scope.kpiRows.map((r) => r.event_id));
+      expect(c.scope.chains.every((ch) => ch.rows.every((r) => kpiIds.has(r.event_id)))).toBe(true);
+    }
+    const fail = buildCtx(rows, startup, { ...f, failureOnly: true }, range);
+    expect(areaModel(fail, 'hours')!.total).toBeCloseTo(overviewModel(fail).kpi!.total.downtimeHours, 6);
+    expect(fail.scope.chains.every((ch) => ch.isFailure)).toBe(true);
+  });
+
+  it('P4: one MTBF value and rule for the tile status, the month table and the report card', () => {
+    const m = overviewModel(ctx);
+    const tot = m.kpi!.total;
+    const op = m.kpi!.areas.reduce((s, a) => s + (a.operatingHours.available ? a.operatingHours.value : 0), 0);
+    expect(tot.mtbfHours.available && tot.mtbfHours.value).toBeCloseTo(op / tot.failureCount, 6);
+    expect(m.kpi!.total.failureCount).toBe(m.kpi!.areas.reduce((s, a) => s + a.failureCount, 0));
+  });
+});
+
+describe('owner rule P7 in the page adapters', () => {
+  it('a comparison period covered for less than 90 %: totals per day, labelled, never better or worse', () => {
+    const first = coverage.from.slice(0, 7);
+    const trimmed = rows.filter((r) => r.stop_ts >= `${first}-20`);
+    const next = addDays(`${first}-28`, 10).slice(0, 7);
+    const win = { from: `${next}-01`, to: addDays(`${addDays(`${next}-28`, 10).slice(0, 7)}-01`, -1) };
+    const c = buildCtx(trimmed, startup, { ...f, preset: 'custom', from: win.from, to: win.to, compare: 'previous_period' }, win);
+    const m = overviewModel(c);
+    expect(c.kpis.comparison!.scaling!.perDay).toBe(true);
+    for (const ch of [m.downtimeChange!, m.changes!.failureHours, m.changes!.failureCount, m.repeatedChange!]) {
+      expect(ch.available).toBe(true);
+      if (!ch.available) continue;
+      expect(ch.perDay).toBe(true);
+      expect(ch.assessment).toBe('neutral');
+      expect(ch.note).toMatch(/^per day \(previous period only partly covered: \d+ of \d+ days\)$/);
+    }
+    const av = m.changes!.availability;
+    expect(av.available && av.perDay).toBeFalsy();
   });
 });

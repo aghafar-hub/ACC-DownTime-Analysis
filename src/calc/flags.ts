@@ -17,8 +17,21 @@ export const WARNING_FLAGS = [
 ] as const;
 /** Stored like the others, but explain a record instead of reporting a problem. */
 export const INFO_FLAGS = ['code_not_in_area'] as const;
-/** Found by comparing events with each other (never stored): see overlaps.ts */
-export const DERIVED_FLAGS = ['overlap_in_area'] as const;
+/**
+ * Worked out by the browser, never stored:
+ *  - overlap_in_area (overlaps.ts): INFORMATION. Overlapping stops of one area are counted once (attribution.ts), so
+ *    there is nothing to fix; Validate shows them apart, as information.
+ *  - failure_flag_mismatch: WARNING. Failure = YES on a PL or CIR row, or on a continuation (Freq = 0) row. Such a row
+ *    is never a failure event (events.ts isFailureHead); a person may keep it as entered.
+ */
+export const DERIVED_FLAGS = ['overlap_in_area', 'failure_flag_mismatch'] as const;
+/** Derived flags that are information only (nothing to fix). */
+export const DERIVED_INFO_FLAGS = ['overlap_in_area'] as const;
+
+/** P2: Failure says YES on a planned/other (PL, CIR) or continuation (Freq = 0) row. */
+export function hasFailureFlagMismatch(e: Pick<EventRow, 'is_failure' | 'classification' | 'freq'>): boolean {
+  return e.is_failure === true && (e.classification === 'PL' || e.classification === 'CIR' || e.freq === 0);
+}
 
 export type BlockingFlag = (typeof BLOCKING_FLAGS)[number];
 export type WarningFlag = (typeof WARNING_FLAGS)[number];
@@ -96,16 +109,21 @@ export const FLAG_INFO: Record<EventFlag, FlagInfo> = {
     fix: 'Correct the line (the area decides which line a record belongs to).',
   },
   overlap_in_area: {
-    flag: 'overlap_in_area', blocking: false, label: 'Overlaps another stop',
-    problem: 'Another record in the same area covers part of the same time, so hours are counted twice.',
-    fix: 'Check the two records; correct the times of one, or void a duplicate.',
+    flag: 'overlap_in_area', blocking: false, info: true, label: 'Overlaps another stop',
+    problem: 'Another record in the same area covers part of the same time. The shared time is counted once: planned (PL) before incidental before other (CIR); between records of the same kind, the one that started first.',
+    fix: 'Nothing to fix. Correct the times only if one of the records is a mistake.',
+  },
+  failure_flag_mismatch: {
+    flag: 'failure_flag_mismatch', blocking: false, label: 'Failure flag mismatch',
+    problem: 'Failure says YES on a planned/other or continuation row. Only the first row (Freq = 1) of an incidental stop can be a failure, so this row is not counted as one.',
+    fix: 'Set Failure to NO, or correct the classification or Freq. Keep it as entered if it is right; it still does not count as a failure.',
   },
 };
 
 const BLOCKING = new Set<string>(BLOCKING_FLAGS);
-const INFO = new Set<string>(INFO_FLAGS);
+const INFO = new Set<string>([...INFO_FLAGS, ...DERIVED_INFO_FLAGS]);
 
-/** True for a flag that only explains a record (nothing to fix). */
+/** True for a flag that only explains a record (nothing to fix): code_not_in_area and the derived overlap_in_area. */
 export const isInfoFlag = (flag: string): boolean => INFO.has(flag);
 
 /** The flags of an event as a list (an empty list when there are none). */

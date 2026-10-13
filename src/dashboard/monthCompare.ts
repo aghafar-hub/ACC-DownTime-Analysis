@@ -101,7 +101,8 @@ const NO_DATA = (m: string): Metric => unavail('no_data', `No data in ${m}`);
 
 function figures(k: KpiResult, month: string): Record<CompareId, Metric> {
   if (k.status !== 'ok') {
-    const na = NO_DATA(month);
+    // P6: a month inside the data without any record is 'Not uploaded', never 0 h
+    const na = k.reason.startsWith('Not uploaded') ? unavail('not_uploaded', `Not uploaded: no records in ${month}`) : NO_DATA(month);
     return { stoppage: na, failureHours: na, planned: na, other: na, failureCount: na, operating: na, availability: na, mttr: na, mtbf: na, repeated: na };
   }
   const t = k.total;

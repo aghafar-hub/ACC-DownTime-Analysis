@@ -2,8 +2,8 @@
 
 Source: full read-only inspection (analysis/data, desktop, mobile/PWA) and the mockups in this folder
 (illustrative numbers). The owner approved the design and the plan order R0 -> R5. Calculations, data
-sources, permissions and working features are preserved. The analytical changes P1-P7 are NOT approved
-yet: do not implement them until the owner says so.
+sources, permissions and working features are preserved. The analytical changes P1-P7 were approved by the
+owner and are implemented in the calc engine (see the section at the end).
 
 Mockups: desktop-dashboard.png (full page), desktop-drilldown.png, mobile-dashboard-1..11.png (phone,
 same page scrolled), mobile-filters.png, mobile-records.png, mobile-chart-tap.png.
@@ -67,7 +67,10 @@ left/right; Pareto as horizontal bars on phones and tooltip clamped above the bo
 ## R5 - performance
 Route-level code splitting; lazy older years (Validate counts); memo/caching of heavy models.
 
-## Analytical changes awaiting approval (do not implement yet)
-P1 overlaps counted once per area; P2 failures = failure events; P3 event-level filters; P4 one MTBF rule;
-P5 repeats across areas merged / own-stop; P6 'Not uploaded' months instead of 0 h / 100 %; P7 suppress totals change
-when the comparison period is not fully covered.
+## Analytical changes (approved by the owner, implemented)
+P1 overlaps counted once per area (union; shared time PL > INC > CIR, then the stop that started first; exact
+duplicates once); P2 failures = failure events (head Freq 1, Failure YES, not PL/CIR; `failure_flag_mismatch`
+warning); P3 event-level filters keep whole events; P4 one MTBF rule, 'MTBF · all areas (area-hours)'; P5 repeats in
+different areas within 10 min merged, bursts (< 1 h in one area) shown apart; P6 'Not uploaded' months instead of
+0 h / 100 %; P7 per-day comparison when the comparison period is covered < 90 %. Rules: src/calc/README.md and
+docs/architecture-and-build-plan.md section 8.

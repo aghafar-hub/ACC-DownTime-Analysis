@@ -1,5 +1,5 @@
 import type { ClassificationCode, Criticality, EventRow } from '../api/types';
-import { rowSeconds, rowSpan } from './events';
+import { rowSeconds, rowSpan, type ChainedEvent } from './events';
 import { blockingFlagsOf, isBlocked, BLOCKING_FLAGS } from './flags';
 import type { MasterIndex } from './masters';
 import { codeKey, matchKey, rowCode } from './normalize';
@@ -95,6 +95,25 @@ export function applyFilters(events: EventRow[], filter: Filter, ctx: FilterCont
     }
     if (needEquipment && !matchesEquipment(e, sets, ctx.index)) return false;
     return true;
+  });
+}
+
+/**
+ * EVENT-level filter (P3): keeps whole chains. Classification, criticality, reason and equipment are read from the head
+ * row (the cause), line and area from the stopped area, 'Failures only' keeps failure events (ChainedEvent.isFailure),
+ * the duration band uses the WHOLE event's duration. The date range is not applied here (windows clip the hours).
+ * KPI hours are then the rows of the kept chains (clipped to the window), so KPIs and Paretos agree for the same scope.
+ */
+export function filterChains(chains: ChainedEvent[], filter: Filter, ctx: FilterContext): ChainedEvent[] {
+  const head = { ...filter, dateRange: null, durationBand: null, failureOnly: false, lineIds: [], areaIds: [] };
+  const line = new Set(filter.lineIds);
+  const area = new Set(filter.areaIds);
+  return chains.filter((c) => {
+    if (filter.failureOnly && !c.isFailure) return false;
+    if (filter.durationBand && durationBandOf(c.durationS, ctx.settings) !== filter.durationBand) return false;
+    if (area.size && !area.has(c.area_id)) return false;
+    if (line.size && !line.has(lineOf(c.head, ctx.index))) return false;
+    return applyFilters([c.head], head, ctx).length === 1;
   });
 }
 

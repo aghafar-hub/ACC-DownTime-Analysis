@@ -355,6 +355,13 @@ export function buildSyntheticDb(seed = 20260101): SyntheticDb {
     if (derivedNotes.has(idx)) eventNotes.set(events[events.length - 1].event_id, derivedNotes.get(idx)!);
   });
 
+  // two planned stops entered with Failure = YES (P2: failure_flag_mismatch on the Validate page; never failure events)
+  let mismatches = 0;
+  for (const e of events) {
+    if (mismatches >= 2) break;
+    if (e.classification === 'PL' && e.freq === 1 && !e.flags && e.event_date >= '2026-05-01') { e.is_failure = true; mismatches++; }
+  }
+
   // ---- batch history and warnings
   const upload_batches: UploadBatch[] = [];
   const upload_warnings: UploadWarning[] = [];

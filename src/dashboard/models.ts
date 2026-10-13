@@ -1,7 +1,7 @@
 // Page adapters: pick the calc function for each dashboard element and hand it the scope. No arithmetic of
 // their own beyond joining calc outputs (tests compare every headline number with a direct calc call).
 import {
-  areaMonthAvailability, areaPareto, availabilityByArea, failureStartHeatmap, linePareto, mtbfMttrQuadrants, rankAreas, reasonMonthHeatmap, buildPareto, classificationPareto, dailySeries, daysInRange, monthlyHoursByClassification, compareValues, avail, durationHistogram, equipmentMonthHeatmap,
+  areaMonthAvailability, areaPareto, availabilityByArea, failureStartHeatmap, linePareto, mtbfMttrQuadrants, rankAreas, reasonMonthHeatmap, buildPareto, classificationPareto, dailySeries, daysInRange, monthlyHoursByClassification, compareTotal, avail, durationHistogram, equipmentMonthHeatmap,
   equipmentPareto, equipmentReasonHeatmap, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
   reasonParetoForEquipment, resolvedKey, rollingFailureCounts, rowCode, yearOverYear,
   type AreaAvailability, type AreaKpis, type AreaMonthAvailability, type AreaRank, type QuadrantResult, type ClassMonthPoint, type DayPoint, type Metric, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
@@ -37,7 +37,7 @@ export interface OverviewModel {
   availability: { areas: AreaAvailability[]; overall: Metric } | null;
   /** the optional targets from the settings (null = off) */
   targets: Targets;
-  /** all-area availability and MTTR against their targets; MTBF only when exactly one area is in scope (as the MTBF tile) */
+  /** all-area availability, MTBF (all areas, area-hours) and MTTR against their targets */
   status: KpiTargetStatuses;
   /** areas below the availability target ("N of M areas below target"); null while that target is off */
   belowTarget: { below: string[]; total: number } | null;
@@ -53,7 +53,6 @@ export function overviewModel(ctx: DashCtx): OverviewModel {
   const both = kpi && prev;
   const targets = getTargets(ctx.master.settings);
   const availability = kpi ? availabilityByArea(kpi) : null;
-  const one = kpi && kpi.areas.length === 1 ? kpi.areas[0]! : null;
   const status = kpi ? kpiTargetStatuses(kpi.total, targets) : { availability: null, mtbf: null, mttr: null };
   return {
     kpi,
@@ -61,17 +60,20 @@ export function overviewModel(ctx: DashCtx): OverviewModel {
     prev,
     compare: ctx.win.compare,
     changes: cmp?.changes ?? null,
-    downtimeChange: both ? compareValues(avail(kpi.total.downtimeHours), avail(prev.total.downtimeHours), 'lower') : null,
-    otherChange: both ? compareValues(avail(kpi.total.otherHours), avail(prev.total.otherHours), 'none') : null,
-    repeatedChange: both ? compareValues(avail(kpi.repeatedFailureCount), avail(prev.repeatedFailureCount), 'lower') : null,
+    // P7: totals are compared per day when the comparison period is covered for less than 90 %
+    downtimeChange: both ? compareTotal(avail(kpi.total.downtimeHours), avail(prev.total.downtimeHours), 'lower', cmp?.scaling) : null,
+    otherChange: both ? compareTotal(avail(kpi.total.otherHours), avail(prev.total.otherHours), 'none', cmp?.scaling) : null,
+    repeatedChange: both ? compareTotal(avail(kpi.repeatedFailureCount), avail(prev.repeatedFailureCount), 'lower', cmp?.scaling) : null,
     monthly: monthly(ctx),
     perArea: kpi?.areas ?? [],
     daily: daily(ctx),
-    byClass: ctx.win.range ? monthlyHoursByClassification({ rows: ctx.scope.kpiRows, range: ctx.win.range, dataRange: ctx.coverage, areaIds: ctx.base.areaIds }) : [],
+    byClass: ctx.win.range ? monthlyHoursByClassification({
+      rows: ctx.scope.kpiRows, range: ctx.win.range, dataRange: ctx.coverage, areaIds: ctx.base.areaIds, attribution: ctx.scope.attribution, notUploaded: ctx.notUploaded,
+    }) : [],
     topEquipment: topEquipment(ctx, 10),
     availability,
     targets,
-    status: { ...status, mtbf: one ? kpiTargetStatuses(one, targets).mtbf : null },
+    status,
     belowTarget: availability ? belowTargetCount(availability.areas, targets) : null,
   };
 }
@@ -82,7 +84,7 @@ export function daily(ctx: DashCtx): DayPoint[] {
   if (!range) return [];
   return dailySeries({
     rows: ctx.scope.kpiRows, chains: ctx.scope.chains, range, dataRange: ctx.coverage, areaIds: ctx.base.areaIds,
-    settings: ctx.master.settings, rollingDays: ROLLING_DAYS,
+    settings: ctx.master.settings, rollingDays: ROLLING_DAYS, attribution: ctx.scope.attribution, notUploaded: ctx.notUploaded,
   });
 }
 
@@ -90,7 +92,7 @@ export function daily(ctx: DashCtx): DayPoint[] {
 export function topEquipment(ctx: DashCtx, n: number): { bars: ParetoBar[]; total: number } {
   const window = ctx.win.effective;
   if (!window) return { bars: [], total: 0 };
-  const own = equipmentPareto(ctx.scope.failureChains, ctx.master.index, { measure: 'hours', window }).own;
+  const own = equipmentPareto(ctx.scope.failureChains, ctx.master.index, { measure: 'hours', window, attribution: ctx.scope.attribution }).own;
   return { bars: own.bars.filter((b) => !b.isOthers).slice(0, n), total: own.total };
 }
 
@@ -175,7 +177,7 @@ export function windowDays(ctx: DashCtx): number {
 export function monthly(ctx: DashCtx, areaId?: string): MonthPoint[] {
   return monthlySeries({
     rows: ctx.scope.kpiRows, chains: ctx.scope.chains, range: ctx.win.range, dataRange: ctx.coverage,
-    areaIds: areaId ? [areaId] : ctx.base.areaIds, settings: ctx.master.settings,
+    areaIds: areaId ? [areaId] : ctx.base.areaIds, settings: ctx.master.settings, attribution: ctx.scope.attribution, notUploaded: ctx.notUploaded,
   });
 }
 
@@ -191,7 +193,7 @@ export function equipmentModel(ctx: DashCtx): EquipmentModel | null {
   if (!window) return null;
   const chains = ctx.scope.failureChains;
   return {
-    hours: equipmentPareto(chains, ctx.master.index, { measure: 'hours', window }),
+    hours: equipmentPareto(chains, ctx.master.index, { measure: 'hours', window, attribution: ctx.scope.attribution }),
     count: equipmentPareto(chains, ctx.master.index, { measure: 'count', window }),
   };
 }
@@ -210,24 +212,24 @@ export interface ReasonModel {
 export function reasonModel(ctx: DashCtx, split: boolean): ReasonModel | null {
   const window = ctx.win.effective;
   if (!window) return null;
-  const o = { window, splitByClassification: split };
+  const o = { window, splitByClassification: split, attribution: ctx.scope.attribution };
   return { hours: reasonPareto(ctx.scope.failureChains, { ...o, measure: 'hours' }), count: reasonPareto(ctx.scope.failureChains, { ...o, measure: 'count' }) };
 }
 
 export function reasonForEquipmentModel(ctx: DashCtx, code: string, split: boolean, measure: ParetoMeasure): ParetoResult | null {
   const window = ctx.win.effective;
   if (!window || !code) return null;
-  return reasonParetoForEquipment(ctx.scope.failureChains, code, ctx.master.index, { window, measure, splitByClassification: split });
+  return reasonParetoForEquipment(ctx.scope.failureChains, code, ctx.master.index, { window, measure, splitByClassification: split, attribution: ctx.scope.attribution });
 }
 
 export function areaModel(ctx: DashCtx, measure: ParetoMeasure): ParetoResult | null {
   const window = ctx.win.effective;
-  return window ? areaPareto(ctx.scope.failureChains, { window, measure }) : null;
+  return window ? areaPareto(ctx.scope.failureChains, { window, measure, attribution: ctx.scope.attribution }) : null;
 }
 
 export function classModel(ctx: DashCtx, measure: ParetoMeasure, failureOnly: boolean): ParetoResult | null {
   const window = ctx.win.effective;
-  return window ? classificationPareto(ctx.scope.chains, { window, measure, failureOnly }) : null;
+  return window ? classificationPareto(ctx.scope.chains, { window, measure, failureOnly, attribution: ctx.scope.attribution }) : null;
 }
 
 /** Failure Pareto by production line (the line of the stopped area in the master data). */
@@ -236,7 +238,7 @@ export function lineModel(ctx: DashCtx, measure: ParetoMeasure): ParetoResult | 
   if (!window) return null;
   const index = ctx.master.index;
   return linePareto(ctx.scope.failureChains, {
-    window, measure, lineOf: (a) => index.areaById.get(a)?.line_id ?? '', lineLabel: (l) => ctx.master.lineNames.get(l) ?? l,
+    window, measure, lineOf: (a) => index.areaById.get(a)?.line_id ?? '', lineLabel: (l) => ctx.master.lineNames.get(l) ?? l, attribution: ctx.scope.attribution,
   });
 }
 
@@ -252,10 +254,11 @@ export function reasonMonthModel(ctx: DashCtx): ReasonMonthModel | null {
   const window = ctx.win.effective;
   if (!window) return null;
   const chains = ctx.scope.failureChains;
+  const attribution = ctx.scope.attribution;
   return {
-    hours: reasonMonthHeatmap(chains, window, { measure: 'hours', maxRows: 12 }),
+    hours: reasonMonthHeatmap(chains, window, { measure: 'hours', maxRows: 12, attribution }),
     count: reasonMonthHeatmap(chains, window, { measure: 'count', maxRows: 12 }),
-    hoursAll: reasonMonthHeatmap(chains, window, { measure: 'hours' }),
+    hoursAll: reasonMonthHeatmap(chains, window, { measure: 'hours', attribution }),
     countAll: reasonMonthHeatmap(chains, window, { measure: 'count' }),
   };
 }
@@ -284,7 +287,8 @@ export function repeatsModel(ctx: DashCtx): RepeatsModel | null {
   const result = findRepeatedFailures(chains, {
     settings: ctx.master.settings, window, previousWindow: ctx.win.compareRange ?? undefined, lookup: index,
   });
-  const hours = equipmentPareto(chains, index, { measure: 'hours', window }).own;
+  const attribution = ctx.scope.attribution;
+  const hours = equipmentPareto(chains, index, { measure: 'hours', window, attribution }).own;
   const count = equipmentPareto(chains, index, { measure: 'count', window }).own;
   const h = new Map(hours.bars.map((b) => [b.key, b]));
   // the heat maps follow the page's rule: N/A (the whole area stopped, no equipment) is not a repeated equipment cause
@@ -294,14 +298,14 @@ export function repeatsModel(ctx: DashCtx): RepeatsModel | null {
     .filter((p) => p.count > 0);
   return {
     result, window, scatter,
-    heatMonthHours: equipmentMonthHeatmap(coded, index, window, { measure: 'hours', maxRows: 15 }),
+    heatMonthHours: equipmentMonthHeatmap(coded, index, window, { measure: 'hours', maxRows: 15, attribution }),
     heatMonthCount: equipmentMonthHeatmap(coded, index, window, { measure: 'count', maxRows: 15 }),
-    heatReasonHours: equipmentReasonHeatmap(coded, index, window, { measure: 'hours', maxRows: 12, maxCols: 8 }),
+    heatReasonHours: equipmentReasonHeatmap(coded, index, window, { measure: 'hours', maxRows: 12, maxCols: 8, attribution }),
     heatReasonCount: equipmentReasonHeatmap(coded, index, window, { measure: 'count', maxRows: 12, maxCols: 8 }),
     heatAll: {
-      monthHours: equipmentMonthHeatmap(coded, index, window, { measure: 'hours' }),
+      monthHours: equipmentMonthHeatmap(coded, index, window, { measure: 'hours', attribution }),
       monthCount: equipmentMonthHeatmap(coded, index, window, { measure: 'count' }),
-      reasonHours: equipmentReasonHeatmap(coded, index, window, { measure: 'hours', maxCols: 8 }),
+      reasonHours: equipmentReasonHeatmap(coded, index, window, { measure: 'hours', maxCols: 8, attribution }),
       reasonCount: equipmentReasonHeatmap(coded, index, window, { measure: 'count', maxCols: 8 }),
     },
   };
@@ -342,7 +346,10 @@ export function reliabilityModel(ctx: DashCtx, areaId?: string): ReliabilityMode
   return {
     monthly: monthly(ctx, areaId),
     histogram: durationHistogram(ctx.scope.failureChains, ctx.master.settings, window),
-    yoy: yearOverYear({ rows: ctx.scope.kpiRows, chains: ctx.scope.chains, year: yoyYear, settings: ctx.master.settings, areaIds, dataRange: ctx.coverage }),
+    yoy: yearOverYear({
+      rows: ctx.scope.kpiRows, chains: ctx.scope.chains, year: yoyYear, settings: ctx.master.settings, areaIds, dataRange: ctx.coverage,
+      attribution: ctx.scope.attribution, notUploaded: ctx.notUploaded,
+    }),
     yoyYear,
     longest: longestEvents(ctx.scope.chains, 10, { failureOnly: true, window }),
   };
@@ -388,6 +395,7 @@ export function areaReliabilityModel(ctx: DashCtx): AreaReliabilityModel | null 
     rate: { rows: rankAreas(k.areas, (a) => a.failureRatePer1000h, 'desc'), overall: k.total.failureRatePer1000h },
     monthAvailability: areaMonthAvailability({
       rows: ctx.scope.kpiRows, chains: ctx.scope.chains, range: ctx.win.range, dataRange: ctx.coverage, areaIds: ctx.base.areaIds, settings: ctx.master.settings,
+      attribution: ctx.scope.attribution, notUploaded: ctx.notUploaded,
     }),
     overallAvailability: new Map(k.areas.map((a) => [a.area_id, a.availabilityHeadline])),
     failureIds,

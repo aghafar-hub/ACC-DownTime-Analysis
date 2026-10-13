@@ -1,4 +1,5 @@
 /** Pareto analysis. Percentages are always against the COMPLETE filtered total, never the displayed top N. */
+import { attributeRows, type Attribution } from './attribution';
 import { analysableChains, chainHours, startedIn, type ChainedEvent } from './events';
 import { areasOf, type MasterIndex } from './masters';
 import { matchKey, resolvedKey, rowCode, type ResolvedCode } from './normalize';
@@ -106,6 +107,17 @@ export interface ChainParetoOptions {
   /** hours are clipped to the window; events count where they start. Omit for no window. */
   window?: DateRange;
   topN?: TopN;
+  /**
+   * Who owns overlapping time (attribution.ts). Pass the attribution of the KPI scope so the Pareto hours equal the KPI
+   * hours; default: the attribution of every row of the chains passed in (before any failure-only selection).
+   */
+  attribution?: Attribution;
+}
+
+/** The attribution to use for hours: the one given, else one over all rows of the chains passed in. Null for counts. */
+export function attributionFor(chains: ChainedEvent[], o: { measure?: ParetoMeasure; attribution?: Attribution }): Attribution | undefined {
+  if (o.measure === 'count') return undefined;
+  return o.attribution ?? attributeRows(analysableChains(chains).flatMap((c) => c.rows));
 }
 
 function windowOf(o: { window?: DateRange }): Interval | null {
@@ -114,18 +126,20 @@ function windowOf(o: { window?: DateRange }): Interval | null {
 
 /**
  * Value of one event for a measure. Hours: all rows of the chain, clipped to the window (a chain that started
- * before the window still contributes its hours inside it). Count: 1 if the event started in the window.
+ * before the window still contributes its hours inside it); with an attribution each row counts only the time it owns
+ * (overlaps in one area counted once). Count: 1 if the event started in the window.
  */
-export function chainValue(c: ChainedEvent, measure: ParetoMeasure, window: Interval | null): number {
-  if (measure === 'hours') return chainHours(c, window);
+export function chainValue(c: ChainedEvent, measure: ParetoMeasure, window: Interval | null, attr?: Attribution): number {
+  if (measure === 'hours') return chainHours(c, window, attr);
   return window === null || startedIn(c, window) ? 1 : 0;
 }
 
 function chainPareto(
   chains: ChainedEvent[], o: ChainParetoOptions, keyOf: (c: ChainedEvent) => string, labelOf: (c: ChainedEvent) => string,
+  attr: Attribution | undefined,
 ): ParetoResult {
   const w = windowOf(o);
-  return pareto(analysableChains(chains), { key: keyOf, label: labelOf, measure: (c) => chainValue(c, o.measure, w), eventId: (c) => c.id }, o.topN ?? 'all');
+  return pareto(analysableChains(chains), { key: keyOf, label: labelOf, measure: (c) => chainValue(c, o.measure, w, attr), eventId: (c) => c.id }, o.topN ?? 'all');
 }
 
 export interface EquipmentParetoResult {
@@ -160,8 +174,9 @@ export function classifyOwnStop(c: ChainedEvent, index: MasterIndex): { cls: Own
  */
 export function equipmentPareto(chains: ChainedEvent[], index: MasterIndex, o: ChainParetoOptions): EquipmentParetoResult {
   const groups: Record<OwnStopClass, ChainedEvent[]> = { own: [], otherAreas: [], unassigned: [], areaLevel: [], unknown: [] };
+  const attr = attributionFor(chains, o);
   for (const c of analysableChains(chains)) if (c.isFailure) groups[classifyOwnStop(c, index).cls].push(c);
-  const build = (cs: ChainedEvent[]): ParetoResult => chainPareto(cs, o, (c) => resolvedKey(rowCode(c.head, index)), (c) => resolvedKey(rowCode(c.head, index)));
+  const build = (cs: ChainedEvent[]): ParetoResult => chainPareto(cs, o, (c) => resolvedKey(rowCode(c.head, index)), (c) => resolvedKey(rowCode(c.head, index)), attr);
   return {
     own: build(groups.own), otherAreas: build(groups.otherAreas), unassigned: build(groups.unassigned),
     areaLevel: build(groups.areaLevel), unknown: build(groups.unknown),
@@ -188,7 +203,7 @@ function reasonLabelOf(c: ChainedEvent, split: boolean): string {
 /** Reason Pareto over failure events, grouped by matchKey of the head row's reason. */
 export function reasonPareto(chains: ChainedEvent[], o: ReasonParetoOptions): ParetoResult {
   const split = o.splitByClassification === true;
-  return chainPareto(chains.filter((c) => c.isFailure), o, (c) => reasonKeyOf(c, split), (c) => reasonLabelOf(c, split));
+  return chainPareto(chains.filter((c) => c.isFailure), o, (c) => reasonKeyOf(c, split), (c) => reasonLabelOf(c, split), attributionFor(chains, o));
 }
 
 /** Reason Pareto for the failure events of one equipment code (the "why does X fail" view). */
@@ -198,12 +213,12 @@ export function reasonParetoForEquipment(chains: ChainedEvent[], equipmentId: st
     const code = rowCode(c.head, index);
     return code.kind === 'equipment' && code.equipmentId.toUpperCase() === want;
   });
-  return reasonPareto(mine, o);
+  return reasonPareto(mine, { ...o, attribution: attributionFor(chains, o) });
 }
 
 /** Failure Pareto by stopped area. */
 export function areaPareto(chains: ChainedEvent[], o: ChainParetoOptions): ParetoResult {
-  return chainPareto(chains.filter((c) => c.isFailure), o, (c) => c.area_id, (c) => c.area_id);
+  return chainPareto(chains.filter((c) => c.isFailure), o, (c) => c.area_id, (c) => c.area_id, attributionFor(chains, o));
 }
 
 export interface ClassificationParetoOptions extends ChainParetoOptions {
@@ -214,7 +229,7 @@ export interface ClassificationParetoOptions extends ChainParetoOptions {
 /** Pareto by the head row's classification. */
 export function classificationPareto(chains: ChainedEvent[], o: ClassificationParetoOptions): ParetoResult {
   const src = o.failureOnly ? chains.filter((c) => c.isFailure) : chains;
-  return chainPareto(src, o, (c) => c.head.classification, (c) => c.head.classification);
+  return chainPareto(src, o, (c) => c.head.classification, (c) => c.head.classification, attributionFor(chains, o));
 }
 
 export interface LineParetoOptions extends ChainParetoOptions {
@@ -226,5 +241,5 @@ export interface LineParetoOptions extends ChainParetoOptions {
 /** Failure Pareto by production line: the line of the stopped area. Totals equal the area Pareto. */
 export function linePareto(chains: ChainedEvent[], o: LineParetoOptions): ParetoResult {
   const label = o.lineLabel ?? ((l: string) => l);
-  return chainPareto(chains.filter((c) => c.isFailure), o, (c) => o.lineOf(c.area_id) || '(no line)', (c) => label(o.lineOf(c.area_id)) || '(no line)');
+  return chainPareto(chains.filter((c) => c.isFailure), o, (c) => o.lineOf(c.area_id) || '(no line)', (c) => label(o.lineOf(c.area_id)) || '(no line)', attributionFor(chains, o));
 }

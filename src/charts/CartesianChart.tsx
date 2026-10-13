@@ -43,7 +43,7 @@ export function seriesTable(categories: CartCategory[], series: CartSeries[], fi
     head: [firstHead, ...series.map((s) => s.label)],
     rows: categories.map((c, i) => [
       c.partial ? `${c.label} (${t('partial')})` : c.label,
-      ...series.map((s) => (s.values[i] === null || s.values[i] === undefined ? (s.missing?.[i] ? `${t('Unavailable')}` : '-') : fmt(s, s.values[i]!))),
+      ...series.map((s) => (s.values[i] === null || s.values[i] === undefined ? (s.missing?.[i] ? (s.missing[i]!.startsWith(t('Not uploaded')) ? t('Not uploaded') : t('Unavailable')) : '-') : fmt(s, s.values[i]!))),
     ]),
   };
 }

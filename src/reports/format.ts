@@ -25,6 +25,16 @@ export function changeText(change: Change | null, unit: KpiCard['changeUnit'], c
   if (compare === 'none') return null;
   if (!change) return NONE(noChangeText(compare));
   if (!change.available) return NONE(t('No comparison: {reason}', { reason: change.reason }));
+  if (change.perDay) {
+    // P7: the comparison period is only partly covered: per-day rates, never better or worse
+    const c = asShown(change, fh2);
+    const sign = c.abs > 0 ? '+' : c.abs < 0 ? MINUS : '';
+    const u = unit === 'count' ? t('/day') : `h${t('/day')}`;
+    return {
+      arrow: c.direction === 'up' ? '▲' : c.direction === 'down' ? '▼' : '■',
+      amount: `${c.direction === 'flat' ? '' : sign}${fh2(Math.abs(c.abs))} ${u}`, words: t(change.note ?? 'per day'), tone: 'neutral',
+    };
+  }
   const amountOf = (a: number): string => (unit === 'pts' ? `${nf1.format(a * 100)} ${t('pts')}` : unit === 'count' ? fint(a) : unit === 'h2' ? `${fh2(a)} h` : `${fh(a)} h`);
   change = asShown(change, amountOf);
   const sign = change.abs > 0 ? '+' : change.abs < 0 ? MINUS : '';

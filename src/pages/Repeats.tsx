@@ -22,10 +22,10 @@ import '../components/ui.css';
 import '../dashboard/dashboard.css';
 import StickyTableWrap from '../components/StickyTableWrap';
 
-type SortKey = 'equipmentId' | 'areas' | 'reason' | 'occurrences' | 'totalHours' | 'avgHours' | 'maxHours' | 'last' | 'prev';
+type SortKey = 'equipmentId' | 'areas' | 'reason' | 'occurrences' | 'bursts' | 'totalHours' | 'avgHours' | 'maxHours' | 'last' | 'prev';
 const COLS: { key: SortKey; label: string; num?: boolean }[] = [
   { key: 'equipmentId', label: 'Equipment' }, { key: 'areas', label: 'Area(s)' }, { key: 'reason', label: 'Reason' },
-  { key: 'occurrences', label: 'Occurrences', num: true }, { key: 'totalHours', label: 'Total h', num: true }, { key: 'avgHours', label: 'Avg h', num: true },
+  { key: 'occurrences', label: 'Occurrences', num: true }, { key: 'bursts', label: 'Bursts', num: true }, { key: 'totalHours', label: 'Total h', num: true }, { key: 'avgHours', label: 'Avg h', num: true },
   { key: 'maxHours', label: 'Max h', num: true }, { key: 'last', label: 'Last failure' }, { key: 'prev', label: 'Previous period', num: true },
 ];
 
@@ -35,6 +35,7 @@ function sortVal(g: RepeatGroup, k: SortKey): string | number {
     case 'areas': return g.areaIds.join(',');
     case 'reason': return g.reasonLabel.toLowerCase();
     case 'occurrences': return g.occurrences;
+    case 'bursts': return g.burstCount;
     case 'totalHours': return g.totalHours;
     case 'avgHours': return g.avgHours;
     case 'maxHours': return g.maxHours;
@@ -163,6 +164,7 @@ export default function Repeats() {
                         <td>{g.reasonLabel}</td>
                         <td className="occ-cell">{win && <OccurrenceStrip dates={g.occurrenceDates} from={win.from} to={win.to} label={`${g.equipmentId}, ${g.reasonLabel}`} />}</td>
                         <td className="num">{fint(g.occurrences)}</td>
+                        <td className="num" data-testid="repeat-bursts">{g.burstCount ? fint(g.burstCount) : '-'}</td>
                         <td className="num">{fh(g.totalHours)}</td>
                         <td className="num">{fh2(g.avgHours)}</td>
                         <td className="num">{fh2(g.maxHours)}</td>
@@ -183,6 +185,7 @@ export default function Repeats() {
                   <button key={g.key} type="button" className="event-card" onClick={() => select(g.equipmentId)} data-testid="repeat-card">
                     <div className="event-card-top"><span className="event-card-code">{g.equipmentId} · {g.areaIds.join(', ')}</span><span className="badge badge--danger"><span aria-hidden="true">◆</span> {g.occurrences}×</span></div>
                     <div className="event-card-line">{g.reasonLabel}</div>
+                    {g.burstCount > 0 && <div className="event-card-line" data-testid="repeat-bursts">{t('{n} of them bursts (less than 1 h after the previous one in the same area)', { n: fint(g.burstCount) })}</div>}
                     <div className="event-card-line mono">{fh(g.totalHours)} h total · avg {fh2(g.avgHours)} · max {fh2(g.maxHours)}</div>
                     <div className="event-card-line mono">{t('Last')} {g.lastFailureDate} · {t('previous period')} {g.previousPeriodOccurrences}</div>
                     <div className="event-card-line mono">{t('Days between')}: {gaps(g)}</div>
@@ -192,6 +195,7 @@ export default function Repeats() {
               </div>
             )}
             <ShowMore shown={visible.length} total={groups.length} onMore={() => setShown((n) => n + PAGE_SIZE)} />
+            <p className="chart-foot" data-testid="repeat-burst-note">{t('One occurrence = the same code and reason; when it stops several areas within 10 minutes it counts once. A burst is an occurrence less than 1 h after the previous one restarted in the same area: it still counts as an occurrence, and the Bursts column shows how many of them were quick re-trips.')}</p>
             {singles > 0 && <p className="chart-foot" data-testid="repeat-singles">{t('{n} more groups have only one occurrence in this range (the earlier ones are before it); they count in the tiles above but are not listed.', { n: fint(singles) })}</p>}
           </section>
 

@@ -4,10 +4,9 @@
 import { ApiError, REPORT_PRESETS, REPORT_SECTION_IDS, REPORT_TEMPLATES, SAVED_REPORTS_MAX, type Area, type EventRow, type NotificationSeverity, type NotificationType, type Setting, type UploadBatch } from './types';
 import { isValidDate } from '../util/normalize';
 import {
-  addDays, buildFailureEvents, computeKpis, findClusters, lastDayOfMonth, matchKey, monthRange, parseSettings, rowCode,
-  rowSpan, parseDate, MS_DAY, type CalcSettings, type ChainedEvent, type MasterIndex,
+  addDays, buildFailureEvents, computeKpis, findClusters, groupOccurrences, lastDayOfMonth, matchKey, monthRange, parseSettings, rowCode,
+  parseDate, MS_DAY, type CalcSettings, type ChainedEvent, type MasterIndex,
 } from '../calc';
-import { isBlocked } from '../calc';
 
 export interface NotifSettings {
   longStopHours: number; spikePct: number; uploadGapDays: number; availabilityTargetPct: number | null;
@@ -100,9 +99,11 @@ export function notificationCandidates(input: RuleInput): Candidate[] {
     }
     for (const g of groups.values()) {
       g.list.sort((a, b) => a.startMs - b.startMs || (a.id < b.id ? -1 : 1));
-      for (const cl of findClusters(g.list.map((c) => c.startMs), st.calc.repeatMinEvents, st.calc.repeatWindowDays)) {
-        const first = g.list[cl[0]!]!;
-        const last = g.list[cl[cl.length - 1]!]!;
+      // P5: the same code and reason in different areas within 10 minutes is one occurrence
+      const occs = groupOccurrences(g.list);
+      for (const cl of findClusters(occs.map((o) => o.startMs), st.calc.repeatMinEvents, st.calc.repeatWindowDays)) {
+        const first = occs[cl[0]!]!.members[0]!;
+        const last = occs[cl[cl.length - 1]!]!.members[0]!;
         if (last.startDate < cutoff) continue;
         out.push(alert('repeat_group', `repeat|${first.area_id}|${g.code}|${g.reasonKey}|${first.id}`,
           `Repeated failure: ${g.code} - ${oneLine(first.head.reason_raw, 120)}`,
@@ -112,20 +113,17 @@ export function notificationCandidates(input: RuleInput): Candidate[] {
     }
   }
 
-  // failure_spike: failures (rows with is_failure) in the 30 days to the latest event date vs the 30 days before
-  const analysable = events.filter((e) => !isBlocked(e));
+  // failure_spike: failure EVENTS (P2) that started in the 30 days to the latest event date vs the 30 days before
   const nowFrom = parseDate(addDays(latest, -29))!;
   const nowTo = parseDate(latest)! + MS_DAY;
   const prevFrom = nowFrom - 30 * MS_DAY;
   const counts = new Map<string, { now: number; prev: number }>();
-  for (const e of analysable) {
-    if (!e.is_failure) continue;
-    const span = rowSpan(e);
-    if (!span) continue;
-    const c = counts.get(e.area_id) ?? { now: 0, prev: 0 };
-    counts.set(e.area_id, c);
-    if (span.fromMs >= nowFrom && span.fromMs < nowTo) c.now++;
-    else if (span.fromMs >= prevFrom && span.fromMs < nowFrom) c.prev++;
+  for (const ch of chains) {
+    if (!ch.isFailure) continue;
+    const c = counts.get(ch.area_id) ?? { now: 0, prev: 0 };
+    counts.set(ch.area_id, c);
+    if (ch.startMs >= nowFrom && ch.startMs < nowTo) c.now++;
+    else if (ch.startMs >= prevFrom && ch.startMs < nowFrom) c.prev++;
   }
   for (const area of [...counts.keys()].sort()) {
     const c = counts.get(area)!;
@@ -137,7 +135,8 @@ export function notificationCandidates(input: RuleInput): Candidate[] {
       `${c.now} failures in the 30 days to ${latest}, against ${c.prev} in the 30 days before.`, area, lineOf(area)));
   }
 
-  // availability_low: basis B of the latest complete month, only when a target is set
+  // availability_low: basis B of the latest complete month, only when a target is set. computeKpis counts overlapping
+  // stops of one area once (P1) and gives no_data for a month that was not uploaded (P6).
   if (st.availabilityTargetPct !== null) {
     let month = latest.slice(0, 7);
     if (latest !== lastDayOfMonth(month)) {

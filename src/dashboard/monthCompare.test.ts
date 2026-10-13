@@ -130,6 +130,18 @@ describe('monthCompareModel', () => {
     expect(e.rows[0]!.change.available).toBe(false);
   });
 
+  it('P6: a month inside the data with no record at all is Not uploaded: unavailable, never 0 h, not offered', () => {
+    const gap = pair.b;
+    const without = rows.filter((r) => r.stop_ts.slice(0, 7) !== gap && r.start_ts.slice(0, 7) !== gap);
+    expect(monthsWithData(without)).not.toContain(gap);
+    const e = monthCompareModel(without, startup, defaultFilters(), { a: pair.a, b: gap });
+    expect(e.hasB).toBe(false);
+    const st = e.rows.find((r) => r.id === 'stoppage')!;
+    expect(st.b.available).toBe(false);
+    expect(st.b.available ? '' : st.b.reason).toMatch(/Not uploaded/);
+    expect(st.change.available).toBe(false);
+  });
+
   it('same month on both sides gives no change', () => {
     const s = monthCompareModel(rows, startup, defaultFilters(), { a: pair.a, b: pair.a });
     for (const r of s.rows) if (r.change.available) expect(r.change.direction).toBe('flat');

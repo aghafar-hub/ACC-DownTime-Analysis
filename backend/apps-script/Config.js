@@ -32,8 +32,11 @@ var PLACEHOLDER_CODES = ['AFR', 'AFR2'];
 var BLOCKING_FLAG_NAMES = ['missing_classification', 'invalid_classification', 'unknown_area', 'end_before_start'];
 var WARNING_FLAG_NAMES = ['missing_code', 'unknown_code', 'placeholder', 'unlisted_reason', 'blank_reason', 'line_mismatch'];
 var INFO_FLAG_NAMES = ['code_not_in_area'];
-/** Found by the browser by comparing events; the server never computes it. */
-var DERIVED_FLAG_NAMES = ['overlap_in_area'];
+/**
+ * Worked out by the browser, never stored (src/calc/flags.ts DERIVED_FLAGS): overlap_in_area (information: overlapping
+ * stops of one area are counted once) and failure_flag_mismatch (warning: Failure = YES on a PL / CIR or Freq = 0 row).
+ */
+var DERIVED_FLAG_NAMES = ['overlap_in_area', 'failure_flag_mismatch'];
 var KNOWN_FLAG_NAMES = BLOCKING_FLAG_NAMES.concat(WARNING_FLAG_NAMES, INFO_FLAG_NAMES, DERIVED_FLAG_NAMES);
 var ACCEPT_NOTE_MIN = 3;
 

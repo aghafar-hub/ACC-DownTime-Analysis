@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useEvents } from './useEvents';
 import { useStartup, useYear } from './useStartup';
+import { isFailureHead } from '../calc/events';
 
 /** Master data plus the events of the selected year, with a few plain counts. */
 export function useYearData() {
@@ -23,7 +24,7 @@ export function useYearData() {
         voided++;
         continue;
       }
-      if (e.is_failure) failures++;
+      if (isFailureHead(e)) failures++;
       if (e.edited) edited++;
       if (e.flags) flagged++;
       if (e.duration_s > 0) seconds += e.duration_s;

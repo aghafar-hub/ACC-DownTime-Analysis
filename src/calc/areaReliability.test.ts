@@ -12,7 +12,7 @@ const settings = parseSettings({});
 /** An area with `failures` failures, `events` events of `mttrH` hours each and 1000 operating hours. */
 function area(id: string, failures: number, mttrH: number): AreaKpis {
   const s = emptySums();
-  s.inc = failures * mttrH; s.failures = failures; s.events = failures; s.eventSeconds = failures * mttrH * 3600;
+  s.inc = failures * mttrH; s.events = failures; s.eventSeconds = failures * mttrH * 3600;
   const k = composeKpis(id, 1000 + s.inc, s, settings);
   return k;
 }

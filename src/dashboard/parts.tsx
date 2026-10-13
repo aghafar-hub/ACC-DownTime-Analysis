@@ -12,7 +12,29 @@ import type { Dash } from './useDash';
 export function DashStatus({ dash }: { dash: Dash }) {
   const { st, data } = dash;
   if (st.error || (st.loading && !st.data)) return <DataStatus state={st} onRetry={st.reload} what={t('master data')} />;
-  return <DataStatus state={data.state} onRetry={data.reload} what={t('events')} />;
+  return (
+    <>
+      <DataStatus state={data.state} onRetry={data.reload} what={t('events')} />
+      <NotUploadedLine dash={dash} />
+    </>
+  );
+}
+
+const MONTH3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthText = (m: string): string => `${MONTH3[Number(m.slice(5, 7)) - 1] ?? m.slice(5, 7)} ${m.slice(0, 4)}`;
+
+/** P6: the data status line names the months inside the data that have no record at all (information, never 0 h or 100 %). */
+export function NotUploadedLine({ dash }: { dash: Dash }) {
+  const ctx = dash.ctx;
+  if (!ctx || !ctx.coverage || ctx.notUploaded.length === 0) return null;
+  return (
+    <p className="status-line" role="note" data-testid="data-status-not-uploaded">
+      <Icon name="info" size={14} />{' '}
+      {t('Data {a} to {b}. Not uploaded (no records at all): {m}. These months are left out of the numbers, never shown as 0 h or 100%.', {
+        a: ctx.coverage.from, b: ctx.coverage.to, m: ctx.notUploaded.map(monthText).join(', '),
+      })}
+    </p>
+  );
 }
 
 /** On the phone a section folds away under a 48 px heading; on a desktop it is simply shown. */

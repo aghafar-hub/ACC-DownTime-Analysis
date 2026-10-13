@@ -1,6 +1,6 @@
 /** A number that may be unavailable. Unavailable is never shown as 0 or Infinity. */
 export type UnavailableCode =
-  | 'no_data' | 'no_failures' | 'no_exposure' | 'no_scheduled_time' | 'no_master' | 'no_comparison' | 'not_applicable';
+  | 'no_data' | 'not_uploaded' | 'no_failures' | 'no_exposure' | 'no_scheduled_time' | 'no_master' | 'no_comparison' | 'not_applicable';
 
 export interface Available { available: true; value: number }
 export interface Unavailable { available: false; code: UnavailableCode; reason: string }

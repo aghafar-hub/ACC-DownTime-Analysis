@@ -726,4 +726,60 @@ describe.each([
     await load('scenario-august.xlsx', [await srow(t('08-04', '01:00'), t('08-04', '01:30'), { area_id: 'CR' })]);
     expect((await s.api.getNotifications(ntoken)).items.some((n) => n.type === 'upload_gap')).toBe(false);
   });
+  it('notifications P1/P2/P5: overlaps count once for availability, failures are events, areas within 10 minutes are one occurrence', async () => {
+    // a later year with its own clock; the target is set first, so the upload's own check already sees it
+    s.setClock(NOON('2043-06-21'));
+    ntoken = (await s.api.login(s.admin.email, s.admin.password, true)).token;
+    await s.api.saveSettings(ntoken, { availability_target_pct: '99.5', repeat_min_events: '2' });
+    const u = (d: string, h: string): string => `2043-${d} ${h}:00.000`;
+    const ids: Record<string, string> = {};
+    const row = async (stop: string, start: string, over: Partial<UploadRow> = {}): Promise<UploadRow> => {
+      const r = await srow(stop, start, over);
+      ids[`${r.area_id}|${stop}`] = eventIdFromFingerprint(r.fingerprint);
+      return r;
+    };
+    const rows: UploadRow[] = [
+      // P1, May (the latest complete month): CM.1 has a 20 h failure and a 20 h CIR stop over the same time: 20 h down, not 40 h
+      await row(u('05-10', '00:00'), u('05-10', '20:00'), { area_id: 'CM.1' }),
+      await row(u('05-10', '00:00'), u('05-10', '20:00'), { area_id: 'CM.1', code_raw: 'N/A', classification: 'CIR', criticality: 'NO_INC', is_failure: false, reason_raw: 'Overlap CIR' }),
+      // K.2: planned 00-12 and a failure 06-14: the shared 6 h are planned (PL before INC): PL 12 h + INC 2 h, not 12 + 8
+      await row(u('05-12', '00:00'), u('05-12', '12:00'), { area_id: 'K.2', line_id: 'L.2', classification: 'PL', criticality: 'NO_INC', is_failure: false }),
+      await row(u('05-12', '06:00'), u('05-12', '14:00'), { area_id: 'K.2', line_id: 'L.2' }),
+      // P5: the same code and reason in K.1 and HD 5 minutes apart is ONE occurrence; with a second one in K.1: a group of 2
+      await row(u('06-10', '08:00'), u('06-10', '08:30'), { reason_raw: 'Cross area reason' }),
+      await row(u('06-10', '08:05'), u('06-10', '08:20'), { area_id: 'HD', reason_raw: 'Cross area reason' }),
+      await row(u('06-20', '08:00'), u('06-20', '08:30'), { reason_raw: 'Cross area reason' }),
+      // ... and a pair that is only one occurrence raises nothing
+      await row(u('06-15', '08:00'), u('06-15', '08:30'), { reason_raw: 'Merged only' }),
+      await row(u('06-15', '08:03'), u('06-15', '08:20'), { area_id: 'HD', reason_raw: 'Merged only' }),
+      // P2: five failure events in RM.1, each continued by a Freq 0 row that also says Failure YES: 5 failures, not 10
+      ...(await Promise.all(['01', '02', '03', '04', '05'].flatMap((d) => [
+        row(u(`06-${d}`, '01:00'), u(`06-${d}`, '02:00'), { area_id: 'RM.1' }),
+        row(u(`06-${d}`, '02:00'), u(`06-${d}`, '03:00'), { area_id: 'RM.1', freq: 0, reason_raw: 'Continued' }),
+      ]))),
+      // P2: five planned stops in CR that say Failure YES are not failures: no spike for CR
+      ...(await Promise.all(['01', '02', '03', '04', '05'].map((d) => row(u(`06-${d}`, '05:00'), u(`06-${d}`, '06:00'), { area_id: 'CR', classification: 'PL', criticality: 'NO_INC' })))),
+    ];
+    await load('scenario-2043.xlsx', rows);
+    expect((await s.api.runNotificationChecks(ntoken)).created).toBe(0); // the upload already ran the checks
+    const all = (await s.api.getNotifications(ntoken)).items.filter((n) => n.severity === 'alert').map(view);
+    const got = all.filter((n) => n.dedupe_key.includes('|2043-') || Object.values(ids).includes(n.source_ref)).sort((a, b) => (a.dedupe_key < b.dedupe_key ? -1 : 1));
+    const k1 = ids[`K.1|${u('06-10', '08:00')}`]!;
+    expect(got).toEqual([
+      {
+        type: 'availability_low', severity: 'alert', dedupe_key: 'availability|CM.1|2043-05', title: 'Availability below target: CM.1 97.3%',
+        detail: '2043-05: availability 97.3% against a target of 99.5% (basis B).', area_id: 'CM.1', line_id: 'L.1', source_ref: '',
+      },
+      {
+        type: 'repeat_group', severity: 'alert', dedupe_key: `repeat|K.1|900.ZZ01|cross area reason|${k1}`,
+        title: 'Repeated failure: 900.ZZ01 - Cross area reason', detail: '2 failures within 30 days, latest 2043-06-20. First in K.1.',
+        area_id: 'K.1', line_id: 'L.1', source_ref: k1,
+      },
+      {
+        type: 'failure_spike', severity: 'alert', dedupe_key: 'spike|RM.1|2043-06-20', title: 'Failures rising in RM.1: 5 (none before)',
+        detail: '5 failures in the 30 days to 2043-06-20, against 0 in the 30 days before.', area_id: 'RM.1', line_id: 'L.1', source_ref: '',
+      },
+    ]);
+    await s.api.saveSettings(ntoken, { availability_target_pct: '' });
+  });
 });

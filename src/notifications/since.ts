@@ -2,7 +2,7 @@
 // An event is new when it was stored after that time (created_at); events without a created_at count by their
 // event date (new when the date is after the last-seen day).
 import type { EventRow } from '../api/types';
-import { buildFailureEvents, findRepeatedFailures, isBlocked, type CodeLookup, type CalcSettings } from '../calc';
+import { buildFailureEvents, findRepeatedFailures, isBlocked, isFailureHead, type CodeLookup, type CalcSettings } from '../calc';
 import { parseStamp } from './age';
 
 export interface SinceInput {
@@ -47,7 +47,7 @@ export function computeSince(input: SinceInput): SinceSummary {
   let seconds = 0;
   const perArea = new Map<string, number>();
   for (const e of fresh) {
-    if (!e.is_failure || isBlocked(e)) continue;
+    if (!isFailureHead(e) || isBlocked(e)) continue; // P2: failure events (Freq 1, Failure YES, not PL / CIR)
     failures++;
     if (e.duration_s > 0) seconds += e.duration_s;
     perArea.set(e.area_id, (perArea.get(e.area_id) ?? 0) + 1);

@@ -342,10 +342,27 @@ continues at 00:00:00 after a midnight split) joins it, even if its reason or
 classification differs. A Freq = 0 row with no predecessor is an orphan and
 raises a warning. Event duration is the sum of its rows.
 
-**Hours per area.** Failure hours = hours of INC rows (continuations included).
-Planned = PL rows. Other = CIR rows. The three never overlap within an area.
+**Hours per area (P1, owner-approved 2026-10-13).** The downtime of an area is the
+UNION of its rows: stops that overlap in time count once. Shared time goes to one
+row: PL (planned) first, then INC (every incidental class), then CIR; between rows
+of the same class, the row that started first (then the longer, then the lower
+event id). Failure hours = time owned by INC rows (continuations included),
+Planned = PL rows, Other = CIR rows; they never overlap. Pareto and heat-map hours
+use the same attribution, so their totals equal the KPI hours of the same scope.
+Exact duplicates (same area, code, stop, restart and class) count once.
 
-**Failure count.** Rows with Failure = YES (sheet value).
+**Failure count (P2).** Failure EVENTS: chains whose head row has Freq = 1,
+Failure = YES and a class other than PL and CIR. MTBF, the failure rate, the
+spike alert and repeats use event counts. A row with Failure = YES that is PL,
+CIR or Freq = 0 carries the derived warning `failure_flag_mismatch` (Validate).
+
+**Event-level filters (P3).** Failures only, duration band (whole event),
+classification, criticality, equipment and reason select whole events by their
+head row; KPI hours are all rows of the kept events, clipped to the window.
+
+**Months not uploaded (P6).** A month inside the data coverage with no record at
+all (plant-wide) is 'Not uploaded': no value in monthly series, heat maps, YoY
+and month vs month, and left out of the scheduled time T, never 0 h or 100 %.
 
 **Availability** (per area, scheduled time 24 × 7 by default, setting):
 
@@ -356,8 +373,10 @@ Planned = PL rows. Other = CIR rows. The three never overlap within an area.
 | C — minus planned and circumstantial | (T − PL − CIR − INC) / (T − PL − CIR) |
 
 **Operating hours** = T − (PL + CIR + INC) for the area and window.
-**MTBF** = operating hours ÷ failure count (area level only).
-**Failure rate** = failures ÷ operating hours × 1,000.
+**MTBF (P4)** = operating hours ÷ failure events, per area; the all-area figure,
+always labelled 'MTBF · all areas (area-hours)', is the summed operating
+area-hours of every area in scope ÷ all failure events (never an average).
+**Failure rate** = failure events ÷ operating hours × 1,000.
 **Mean restoration time** = mean event duration of failure events that started in
 the window (cohort rule: by start period).
 **Zero failures** shows "none recorded", never an infinite MTBF.
@@ -373,14 +392,19 @@ shown in a separate view: "stopped by other areas". This prevents counting a
 cause twice.
 
 **Repeated failures.** Group by (equipment code, reason key); `N/A` excluded.
-A group qualifies with ≥ 2 failure events within the window (default 30 days).
+One occurrence = a failure event, or failure events in DIFFERENT areas that
+start within 10 minutes (P5). An occurrence less than 1 h after the previous one
+restarted in the same area is a burst: it still counts, and is shown apart.
+A group qualifies with ≥ 2 occurrences within the window (default 30 days).
 Show qualifying groups and recurrence events (occurrences after the first)
 separately. Fields: occurrences, total hours, average and maximum duration, last
 failure date, days between failures, previous-period occurrences.
 
 **Comparisons.** Previous period, same period last year, or custom; always show
 absolute hours and exposure-adjusted rates. Partial months compare against the
-equivalent elapsed period.
+equivalent elapsed period. When less than 90 % of the comparison period has data
+(P7), totals are compared as per-day rates, labelled 'per day (previous period
+only partly covered: N of M days)', and never called better or worse.
 
 **Cross-area totals** are labelled area-hours and never averaged as percentages.
 

@@ -3,9 +3,9 @@
 // No calculation lives here: it only chooses which rows / chains / windows go into src/calc.
 import type { EventRow, Startup } from '../api/types';
 import {
-  addDays, applyFilters, buildFailureEvents, buildIndex, comparisonRange, computeKpis, computeKpisWithComparison, dataRangeOf,
-  emptyFilter, intersectRanges, parseSettings, type CalcSettings, type ChainedEvent, type DateRange, type Filter,
-  type KpiComparison, type KpiResult, type MasterIndex,
+  addDays, applyFilters, attributeRows, buildFailureEvents, buildIndex, comparisonRange, computeKpis, computeKpisWithComparison, dataRangeOf,
+  emptyFilter, filterChains, intersectRanges, isAnalysable, notUploadedMonths, parseSettings, type Attribution, type CalcSettings, type ChainedEvent,
+  type DateRange, type Filter, type KpiComparison, type KpiResult, type MasterIndex,
 } from '../calc';
 import { areasInScope, compareKind, eventLevelFilter, hasEventLevelFilter, type CompareMode, type DashFilters } from './filters';
 
@@ -36,23 +36,23 @@ export function buildBase(rows: EventRow[], startup: Startup, f: Pick<DashFilter
 
 /** Stage 2: the event-level filters (classification, equipment, reason ...) on top of the base. */
 export interface EventScope {
-  /** rows passing every filter except the date range (row level: hours are summed from these) */
+  /** the rows of the kept chains (whole events; hours are summed from these, clipped to the window) */
   kpiRows: EventRow[];
-  /** chains whose head row passes the event-level filters (events stay whole) */
+  /** chains kept by the event-level filters (P3: whole events, by their head row and whole duration) */
   chains: ChainedEvent[];
   failureChains: ChainedEvent[];
+  /** who owns overlapping time among kpiRows (P1): every hour figure of the scope uses it, so KPIs and Paretos agree */
+  attribution: Attribution;
 }
 
 export function buildEventScope(base: BaseScope, f: DashFilters, master: Master): EventScope {
   if (!hasEventLevelFilter(f)) {
-    return { kpiRows: base.rows, chains: base.chains, failureChains: base.chains.filter((c) => c.isFailure) };
+    return { kpiRows: base.rows, chains: base.chains, failureChains: base.chains.filter((c) => c.isFailure), attribution: attributeRows(base.rows.filter(isAnalysable)) };
   }
-  const filter = eventLevelFilter(f);
   const ctx = { settings: master.settings, index: master.index };
-  const kpiRows = applyFilters(base.rows, filter, ctx);
-  const headIds = new Set(applyFilters(base.chains.map((c) => c.head), filter, ctx).map((r) => r.event_id));
-  const chains = base.chains.filter((c) => headIds.has(c.head.event_id));
-  return { kpiRows, chains, failureChains: chains.filter((c) => c.isFailure) };
+  const chains = filterChains(base.chains, eventLevelFilter(f), ctx);
+  const kpiRows = chains.flatMap((c) => c.rows);
+  return { kpiRows, chains, failureChains: chains.filter((c) => c.isFailure), attribution: attributeRows(kpiRows) };
 }
 
 /** Stage 3: window, comparison window and the KPI results. */
@@ -76,10 +76,10 @@ export interface KpiBundle {
   comparison: KpiComparison | null;
 }
 
-export function buildKpis(scope: EventScope, base: BaseScope, win: Windows, coverage: DateRange | null, master: Master): KpiBundle {
+export function buildKpis(scope: EventScope, base: BaseScope, win: Windows, coverage: DateRange | null, master: Master, notUploaded: string[] = []): KpiBundle {
   const input = {
     rows: scope.kpiRows, chains: scope.chains, window: win.range, dataRange: coverage, areaIds: base.areaIds,
-    settings: master.settings, index: master.index,
+    settings: master.settings, index: master.index, attribution: scope.attribution, notUploaded,
   };
   if (win.compare === 'none') return { current: computeKpis(input), comparison: null };
   const comparison = computeKpisWithComparison(input, win.compare);
@@ -93,6 +93,11 @@ export function rowsInRange(scope: EventScope, range: DateRange): EventRow[] {
 
 export function coverageOf(rows: EventRow[]): DateRange | null {
   return dataRangeOf(rows);
+}
+
+/** P6: months inside the coverage with no record at all in the loaded rows (plant-wide, before any filter). */
+export function notUploadedOf(rows: EventRow[], coverage: DateRange | null): string[] {
+  return coverage ? notUploadedMonths(rows, coverage) : [];
 }
 
 /** Years that must be loaded: the range, its comparison window, the repeat-window history, and optional years back. */
@@ -115,14 +120,17 @@ export interface DashCtx {
   scope: EventScope;
   win: Windows;
   coverage: DateRange | null;
+  /** P6: months inside the coverage with no record at all (plant-wide): 'Not uploaded' */
+  notUploaded: string[];
   kpis: KpiBundle;
 }
 
 export function buildCtx(rows: EventRow[], startup: Startup, f: DashFilters, range: DateRange): DashCtx {
   const master = buildMaster(startup);
   const coverage = coverageOf(rows);
+  const notUploaded = notUploadedOf(rows, coverage);
   const base = buildBase(rows, startup, f, master);
   const scope = buildEventScope(base, f, master);
   const win = buildWindows(range, coverage, f, master.settings);
-  return { master, base, scope, win, coverage, kpis: buildKpis(scope, base, win, coverage, master) };
+  return { master, base, scope, win, coverage, notUploaded, kpis: buildKpis(scope, base, win, coverage, master, notUploaded) };
 }

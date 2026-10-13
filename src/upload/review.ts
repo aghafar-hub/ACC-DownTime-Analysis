@@ -112,23 +112,22 @@ export interface FlagSummary {
   flags: FlagCount[];
   /** rows with at least one blocking flag: stored, but left out of the numbers until fixed */
   blockedRows: number;
-  /** rows with warnings only (including overlaps) */
+  /** rows with warnings only (overlaps are information: counted once, not a problem) */
   warningRows: number;
   /** rows with any problem */
   total: number;
 }
 
-const FLAG_ORDER: string[] = [...BLOCKING_FLAGS, ...WARNING_FLAGS, 'overlap_in_area'];
+const FLAG_ORDER: string[] = [...BLOCKING_FLAGS, ...WARNING_FLAGS];
 
 /** Counts, per flag, of the rows that will be stored with a problem. Information flags (cause in another area) are not problems and are left out.  Late rows the person chose to skip are not counted; undecided ones are, as they will be unless skipped. */
 export function flagSummary(review: Review, decisions: Decisions): FlagSummary {
-  const overlap = new Set(review.diff.warnings.filter((w) => w.type === 'overlap_in_area' && w.fingerprint).map((w) => w.fingerprint as string));
   const by = new Map<string, FlagCount>();
   let blockedRows = 0;
   let warningRows = 0;
   for (const d of review.diff.rows) {
     if (d.status === 'identical' || d.status === 'changed_row' || (d.status === 'late_row' && lateDecision(review, decisions, d) === 'skip')) continue;
-    const flags = [...d.flags.filter((f) => !isInfoFlag(f)), ...(overlap.has(d.fingerprint) ? ['overlap_in_area'] : [])];
+    const flags = d.flags.filter((f) => !isInfoFlag(f));
     if (!flags.length) continue;
     if (flags.some(isBlockingFlag)) blockedRows++;
     else warningRows++;

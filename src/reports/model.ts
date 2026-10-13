@@ -14,7 +14,7 @@ import {
 import { CLASS_ORDER } from '../charts/palette';
 import { zoomFloor } from '../charts/scale';
 import type { CompareMode } from '../dashboard/filters';
-import { fh, fh2, fint, fpct, fpct0, monthLabel } from '../dashboard/format';
+import { fh, fh2, fint, fpct, fpct0, monthLabel, MTBF_ALL_LABEL } from '../dashboard/format';
 import { kpiInfo } from '../dashboard/kpiInfo';
 import {
   areaModel, areaReliabilityModel, classModel, cutPareto, equipmentModel, lineModel, overviewModel, reasonModel, repeatsModel, ROLLING_DAYS, whenFailuresStart,
@@ -323,18 +323,17 @@ function summarySection(env: Env): SummarySection {
       change: ch?.mttrHours ?? null, changeUnit: 'h2', status: ov.status.mttr,
     },
   ];
-  if (one) {
-    kpis.push({
-      id: 'mtbf', label: t('MTBF ({a})', { a: one.area_id }), text: one.mtbfHours.available ? `${fh(one.mtbfHours.value)} h` : one.mtbfHours.code === 'no_failures' ? t('None recorded') : t('Unavailable'),
-      value: metricNum(one.mtbfHours), unavailable: !one.mtbfHours.available && one.mtbfHours.code !== 'no_failures', sub: t('operating hours per failure'),
-      change: ch?.mtbfHours ?? null, changeUnit: 'h', status: ov.status.mtbf,
-    });
-  } else {
-    kpis.push({
-      id: 'repeats', label: t('Repeated failures'), text: k.repeatedFailureCount === 0 ? t('None recorded') : fint(k.repeatedFailureCount), value: k.repeatedFailureCount, unavailable: false,
-      sub: t('{g} groups; events after the first', { g: fint(k.repeatGroups) }), change: ov.repeatedChange, changeUnit: 'count', status: null,
-    });
-  }
+  // P4: one MTBF rule and label everywhere (all-area operating area-hours / failure events)
+  kpis.push({
+    id: 'mtbf', label: t(MTBF_ALL_LABEL), text: tot.mtbfHours.available ? `${fh(tot.mtbfHours.value)} h` : tot.mtbfHours.code === 'no_failures' ? t('None recorded') : t('Unavailable'),
+    value: metricNum(tot.mtbfHours), unavailable: !tot.mtbfHours.available && tot.mtbfHours.code !== 'no_failures',
+    sub: one ? t('operating hours per failure event, 1 area') : t('operating area-hours per failure event'),
+    change: ch?.mtbfHours ?? null, changeUnit: 'h', status: ov.status.mtbf,
+  });
+  kpis.push({
+    id: 'repeats', label: t('Repeated failures'), text: k.repeatedFailureCount === 0 ? t('None recorded') : fint(k.repeatedFailureCount), value: k.repeatedFailureCount, unavailable: false,
+    sub: t('{g} groups; occurrences after the first', { g: fint(k.repeatGroups) }), change: ov.repeatedChange, changeUnit: 'count', status: null,
+  });
   const top = ov.topEquipment.bars[0];
   const bullets = summaryBullets({
     downtimeHours: down, failureHours: tot.failureHours, plannedHours: tot.plannedHours, otherHours: tot.otherHours,
@@ -367,7 +366,7 @@ function dailySection(env: Env): DailySection {
   const picked = all ? days : [...dataDays].sort((a, b) => b.downtimeHours - a.downtimeHours || (a.date < b.date ? -1 : 1)).slice(0, 10);
   const table: ReportTable = {
     columns: [col(t('Day')), col(t('Failure h'), 'hours'), col(t('Planned h'), 'hours'), col(t('Other h'), 'hours'), col(t('Total h'), 'hours'), col(t('{n}-day average h', { n: ROLLING_DAYS }), 'hours')],
-    rows: picked.map((d) => (d.hasData ? [d.date, d.failureHours, d.plannedHours, d.otherHours, d.downtimeHours, d.rollingDowntimeHours] : [d.date, null, null, null, null, null])),
+    rows: picked.map((d) => (d.hasData ? [d.date, d.failureHours, d.plannedHours, d.otherHours, d.downtimeHours, d.rollingDowntimeHours] : [d.date, d.notUploaded ? t('Not uploaded') : null, null, null, null, null])),
   };
   const emptyText = env.noData ?? (dataDays.length === 0 ? t('No daily data in this period.') : null);
   return {
@@ -390,7 +389,7 @@ function monthlySection(env: Env): MonthlySection {
   const table: ReportTable = {
     columns: [col(t('Month')), col(t('Failure h'), 'hours'), col(t('Planned h'), 'hours'), col(t('Other h'), 'hours'), col(t('Total h'), 'hours'), col(t('Failures'), 'count')],
     rows: months.map((m) => [m.partial ? `${monthLabel(m.month)} (${t('partial')})` : monthLabel(m.month),
-      ...(m.hasData ? [m.failureHours, m.plannedHours, m.otherHours, m.failureHours + m.plannedHours + m.otherHours, m.failureCount] : [null, null, null, null, null])]),
+      ...(m.hasData ? [m.failureHours, m.plannedHours, m.otherHours, m.failureHours + m.plannedHours + m.otherHours, m.failureCount] : m.notUploaded ? [t('Not uploaded'), null, null, null, null] : [null, null, null, null, null])]),
     total: withData.length > 1 ? [t('Total'), sum((m) => m.failureHours), sum((m) => m.plannedHours), sum((m) => m.otherHours), sum((m) => m.failureHours + m.plannedHours + m.otherHours), sum((m) => m.failureCount)] : undefined,
   };
   return {
@@ -398,6 +397,7 @@ function monthlySection(env: Env): MonthlySection {
       months: withData.length, failureHours: sum((m) => m.failureHours), plannedHours: sum((m) => m.plannedHours), otherHours: sum((m) => m.otherHours), peak,
     }), env.noData ?? (withData.length === 0 ? t('No monthly data in this period.') : null), [
       t('Failure, planned and other hours per month, summed over the areas in scope (area-hours). A month still in progress or only partly covered by data is marked and outlined with a dashed line.'),
+      ...(months.some((m) => m.notUploaded) ? [t('Not uploaded (no records at all, left out, never 0 h): {m}.', { m: months.filter((m) => m.notUploaded).map((m) => monthLabel(m.month)).join(', ') })] : []),
     ]),
     data: { months, table },
   };
@@ -497,7 +497,7 @@ function mtbfMttrSection(env: Env): MtbfMttrSection {
     ...section('mtbf_mttr', mtbfMttrTakeaway({
       lowestMtbf: lo ? { areaId: lo.area_id, value: lo.value! } : null, highestMttr: hi ? { areaId: hi.area_id, value: hi.value! } : null, withFailures: ranked(mtbf).length, areaCount: mtbf.length,
     }), env.noData ?? (!m || ranked(mtbf).length === 0 ? t('No area has failures in this period, so there is nothing to rank.') : null), [
-      t('MTBF = operating hours divided by failures; MTTR = mean length of the failure events that started in the period. Both are worked out per area; the aggregate is never averaged.'),
+      t('MTBF = operating hours divided by failure events; MTTR = mean length of the failure events that started in the period. Both are worked out per area; the all-area figure (MTBF · all areas (area-hours)) divides the summed operating area-hours by all failure events, never an average of the areas.'),
       t('Areas with no failures have no MTBF and no MTTR and are listed last.'),
     ]),
     data: { mtbf, mttr, targets, status: m?.status ?? new Map(), table },
@@ -796,7 +796,9 @@ function methodologySection(env: Env): MethodologySection {
     {
       term: t('MTBF and failure rate'),
       paragraphs: [
-        t('MTBF is the operating hours of an area divided by its failures; the failure rate is failures per 1,000 operating hours. Both are worked out per area from the summed hours. When an area has no failures they are not defined, and the report says so instead of showing a zero.'),
+        t('MTBF is the operating hours divided by the failure events (a failure event starts with a row that has Freq 1 and Failure YES and is not PL or CIR); the failure rate is failure events per 1,000 operating hours. Per area they use the area\'s hours; MTBF · all areas (area-hours) uses the summed operating area-hours of all areas and all failure events. When there are no failures they are not defined, and the report says so instead of showing a zero.'),
+        t('Stops of one area that overlap in time are counted once: the shared time goes to planned (PL) first, then incidental, then other (CIR); between stops of the same kind, to the one that started first. Exact duplicate records count once.'),
+        t('Months inside the data with no record at all are shown as Not uploaded and left out of the scheduled time, never as 0 h or 100%. When less than 90% of the comparison period has data, totals are compared per day and not called better or worse.'),
       ],
     },
     {

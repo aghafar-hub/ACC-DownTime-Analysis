@@ -37,7 +37,7 @@ const monthName = (key: string): string => {
 };
 
 type OpenState = { id: string; mode: 'view' | 'edit' | 'void' } | null;
-type View = 'open' | 'kept';
+type View = 'open' | 'kept' | 'overlaps';
 type KeepState = { mode: 'keep' | 'undo'; targets: KeepTarget[] } | null;
 
 /** One problem as a badge: ◆ for a problem that leaves the record out of the numbers, ▲ for one that is only to review. */
@@ -54,7 +54,14 @@ function Problems({ r }: { r: ValidationRecord }) {
   const hint = firstFixHint(r);
   return (
     <>
-      <div className="v-problems">{r.problems.map((f) => <ProblemBadge key={f} flag={f} />)}</div>
+      <div className="v-problems">
+        {r.problems.map((f) => <ProblemBadge key={f} flag={f} />)}
+        {r.info.map((f) => (
+          <span key={f} className="badge" data-testid="v-info-flag" data-flag={f} title={t('Information: counted once, nothing to fix')}>
+            <span aria-hidden="true">ℹ</span> {flagLabel(f)}
+          </span>
+        ))}
+      </div>
       {hint && <p className="v-fix" data-testid="v-fix">{t(hint)}</p>}
       {r.kept.length > 0 && <p className="v-kept-also" data-testid="v-also-kept">{t('Also kept as entered: {list}', { list: r.kept.map(flagLabel).join(', ') })}</p>}
     </>
@@ -112,7 +119,11 @@ export default function Validate() {
   const set = (p: Partial<ValidateFilter>) => setF((cur) => ({ ...cur, ...p }));
   const reset = () => setF(EMPTY_FILTER);
 
-  const filtered = useMemo(() => applyValidateFilter(list.records, { ...f, q }), [list.records, f, q]);
+  // the Overlaps view lists every overlapping record as INFORMATION (problem chips and 'blocking only' do not apply there)
+  const filtered = useMemo(
+    () => (view === 'overlaps' ? applyValidateFilter(list.overlapRecords, { ...f, flags: [], blockingOnly: false, q }) : applyValidateFilter(list.records, { ...f, q })),
+    [list.records, list.overlapRecords, f, q, view],
+  );
   const filteredKept = useMemo(() => applyKeptFilter(list.keptRecords, { ...f, q }), [list.keptRecords, f, q]);
   useEffect(() => setShown(PAGE_SIZE), [f, q, view]);
   const visible = filtered.slice(0, shown);
@@ -125,6 +136,8 @@ export default function Validate() {
   const months = useMemo(() => monthsOf(both), [both]);
   const areaName = useMemo(() => new Map(startup?.areas.map((a) => [a.area_id, a.name]) ?? []), [startup]);
   const recordById = useMemo(() => new Map(list.records.map((r) => [r.event.event_id, r])), [list.records]);
+  const infoById = useMemo(() => new Map(list.overlapRecords.map((r) => [r.event.event_id, r])), [list.overlapRecords]);
+  const tickable = editor && view === 'open';
 
   // ticked rows that are still in the list (a fixed row drops out of the selection by itself)
   const selIds = useMemo(() => list.records.filter((r) => sel.has(r.event.event_id)).map((r) => r.event.event_id), [list.records, sel]);
@@ -159,7 +172,7 @@ export default function Validate() {
   };
 
   const openEvent = useMemo(() => (open ? rows.find((e) => e.event_id === open.id) ?? null : null), [open, rows]);
-  const openRecord = open ? recordById.get(open.id) : undefined;
+  const openRecord = open ? recordById.get(open.id) ?? infoById.get(open.id) : undefined;
   const byId = useCallback((id: string) => rows.find((e) => e.event_id === id), [rows]);
   const overlaps = useMemo(
     () => (openRecord ? openRecord.partners.map((id) => rows.find((e) => e.event_id === id)).filter((e): e is EventRow => !!e) : []),
@@ -202,7 +215,7 @@ export default function Validate() {
       ? `${t('Nothing needs checking.')}${keptNote0}`
       : `${tn(summary.total, '{n} record needs checking', '{n} records need checking')}, ${t('{m} of them left out of the numbers ({h} h)', { m: num(summary.blocked.count), h: hours(summary.blocked.hours * 3600) })}${keptNote0}`;
 
-  const hintText = `${t('Records marked ◆ are left out of every chart and total until they are fixed. Records marked ▲ are counted as they are; check them when you can.')} ${
+  const hintText = `${t('Records marked ◆ are left out of every chart and total until they are fixed. Records marked ▲ are counted as they are; check them when you can.')} ${t('Stops that overlap in the same area (ℹ) are information only: the shared time is counted once.')} ${
     editor
       ? `${t('If a record is correct as entered, use Keep as entered: nothing in it changes and it stops being listed.')} ${t('Use Re-check after you add equipment codes, aliases or reasons in Master Data: it checks every record again.')}`
       : t('You can read this list. Someone with Edit access to Event Explorer fixes the records.')
@@ -260,9 +273,11 @@ export default function Validate() {
       <button type="button" className="btn-danger" onClick={() => openFor(r.event.event_id, 'void')} data-testid="v-void-btn" aria-label={t('Void {what}', { what: where(r.event) })}>
         <Icon name="ban" size={15} /> {t('Void')}
       </button>
-      <button type="button" className="btn" onClick={() => (online ? keepFor([r.event.event_id]) : editBlocked())} data-testid="v-keep-btn" aria-label={t('Keep {what} as entered', { what: where(r.event) })}>
-        <Icon name="check" size={15} /> {t('Keep as entered')}
-      </button>
+      {r.problems.length > 0 && (
+        <button type="button" className="btn" onClick={() => (online ? keepFor([r.event.event_id]) : editBlocked())} data-testid="v-keep-btn" aria-label={t('Keep {what} as entered', { what: where(r.event) })}>
+          <Icon name="check" size={15} /> {t('Keep as entered')}
+        </button>
+      )}
     </div>
   );
 
@@ -316,8 +331,8 @@ export default function Validate() {
             sub={t('{h} h not counted until fixed', { h: hours(summary.blocked.hours * 3600) })} tone={summary.blocked.count ? T.danger : undefined} testid="tile-blocked" />
           <Tile icon="info" label={`▲ ${t('To review')}`} value={<span data-testid="v-count-review">{num(summary.review.count)}</span>}
             sub={t('counted as they are')} tone={summary.review.count ? T.warning : undefined} testid="tile-review" />
-          <Tile icon="clock" label={`▲ ${t('Overlapping')}`} value={<span data-testid="v-count-overlap">{num(summary.overlapping)}</span>}
-            sub={t('hours may be counted twice')} tone={summary.overlapping ? T.warning : undefined} testid="tile-overlap" />
+          <Tile icon="clock" label={`ℹ ${t('Overlapping (information)')}`} value={<span data-testid="v-count-overlap">{num(summary.overlapping)}</span>}
+            sub={t('shared time counted once; nothing to fix')} testid="tile-overlap" />
           <Tile icon="check" label={`✓ ${t('Kept as entered')}`} value={<span data-testid="v-count-kept">{num(summary.kept.count)}</span>}
             sub={<><span data-testid="v-kept-hours">{hours(summary.kept.leftOut.hours * 3600)}</span> {t('h kept as entered, left out of the numbers')}</>} testid="tile-kept" />
         </div>
@@ -325,14 +340,14 @@ export default function Validate() {
         <div className="phone-summary" data-testid="v-phone-summary">
           <span><span className="v-sym v-sym--blocking" aria-hidden="true">◆</span> <b data-testid="v-count-blocked">{num(summary.blocked.count)}</b> {t('left out')} ({hours(summary.blocked.hours * 3600)} h)</span>
           <span><span className="v-sym v-sym--warning" aria-hidden="true">▲</span> <b data-testid="v-count-review">{num(summary.review.count)}</b> {t('to review')}</span>
-          <span><span className="v-sym v-sym--warning" aria-hidden="true">▲</span> <b data-testid="v-count-overlap">{num(summary.overlapping)}</b> {t('overlapping')}</span>
+          <span><span aria-hidden="true">ℹ</span> <b data-testid="v-count-overlap">{num(summary.overlapping)}</b> {t('overlapping (counted once)')}</span>
           <span><span aria-hidden="true">✓</span> <b data-testid="v-count-kept">{num(summary.kept.count)}</b> {t('kept as entered')} (<span data-testid="v-kept-hours">{hours(summary.kept.leftOut.hours * 3600)}</span> h {t('left out')})</span>
         </div>
       ))}
 
       {dataReady && <QualityTable onPickMonth={(m) => { setF({ ...EMPTY_FILTER, month: m }); setView('open'); }} />}
 
-      {dataReady && (summary.total > 0 || summary.kept.count > 0) && (
+      {dataReady && (summary.total > 0 || summary.kept.count > 0 || summary.overlapping > 0) && (
         <div className="v-seg" role="group" aria-label={t('Which records')} data-testid="v-view">
           <button type="button" className="v-seg-btn" aria-pressed={view === 'open'} onClick={() => setView('open')} data-testid="v-view-open">
             {t('Open')} <b>{num(summary.total)}</b>
@@ -340,10 +355,15 @@ export default function Validate() {
           <button type="button" className="v-seg-btn" aria-pressed={view === 'kept'} onClick={() => setView('kept')} data-testid="v-view-kept">
             {t('Kept as entered')} <b>{num(summary.kept.count)}</b>
           </button>
+          {summary.overlapping > 0 && (
+            <button type="button" className="v-seg-btn" aria-pressed={view === 'overlaps'} onClick={() => setView('overlaps')} data-testid="v-view-overlaps">
+              {t('Overlaps (information)')} <b>{num(summary.overlapping)}</b>
+            </button>
+          )}
         </div>
       )}
 
-      {dataReady && (view === 'open' ? summary.total > 0 : summary.kept.count > 0) && (!mobile ? (
+      {dataReady && (view === 'open' ? summary.total > 0 : view === 'kept' ? summary.kept.count > 0 : summary.overlapping > 0) && (!mobile ? (
         <section className="card" aria-label={t('Filters')} data-testid="v-filters">
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             {searchBox}
@@ -501,9 +521,15 @@ export default function Validate() {
         </div>
       )}
 
-      {dataReady && view === 'open' && summary.total > 0 && (
+      {dataReady && view === 'overlaps' && summary.overlapping > 0 && (
+        <p className="v-hint" data-testid="v-overlap-hint">
+          {t('Information only: these records overlap another record of the same area. The shared time is counted once: planned (PL) before incidental before other (CIR); between records of the same kind, the one that started first. Nothing needs fixing unless a time was entered wrongly.')}
+        </p>
+      )}
+
+      {dataReady && ((view === 'open' && summary.total > 0) || (view === 'overlaps' && summary.overlapping > 0)) && (
         <div style={{ marginTop: 12 }}>
-          {editor && filtered.length > 0 && (
+          {tickable && filtered.length > 0 && (
             <div className="v-toolbar" data-testid="v-toolbar">
               <button type="button" className="btn" onClick={selectAllMatching} data-testid="v-select-all">
                 {filtered.length > BULK_CAP
@@ -524,7 +550,7 @@ export default function Validate() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    {editor && (
+                    {tickable && (
                       <th scope="col">
                         <label className="v-check"><input type="checkbox" checked={allVisibleTicked} onChange={toggleVisible} aria-label={t('Tick every row shown')} data-testid="v-tick-visible" /></label>
                       </th>
@@ -544,7 +570,7 @@ export default function Validate() {
                     const e = r.event;
                     return (
                       <tr key={e.event_id} data-testid="v-row" data-event-id={e.event_id} data-blocking={r.blocking ? 'yes' : 'no'}>
-                        {editor && (
+                        {tickable && (
                           <td>
                             <label className="v-check">
                               <input type="checkbox" checked={sel.has(e.event_id)} onChange={() => toggle(e.event_id)} aria-label={t('Tick {what}', { what: where(e) })} data-testid="v-tick" />
@@ -574,7 +600,7 @@ export default function Validate() {
                 return (
                   <div key={e.event_id} className={`v-card ${r.blocking ? 'v-card--blocking' : 'v-card--warning'}`} data-testid="v-card" data-event-id={e.event_id} data-blocking={r.blocking ? 'yes' : 'no'}>
                     <div className="v-card-top">
-                      {editor && (
+                      {tickable && (
                         <label className="v-check">
                           <input type="checkbox" checked={sel.has(e.event_id)} onChange={() => toggle(e.event_id)} aria-label={t('Tick {what}', { what: where(e) })} data-testid="v-tick" />
                         </label>

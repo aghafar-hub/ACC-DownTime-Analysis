@@ -110,9 +110,14 @@ The server computes the flags on `uploadChunk`, on `editEvent` and on `revalidat
 | `code_not_in_area` | information | the code resolves to an equipment that has areas, and the row's (known) area is not one of them. The flag stays stored exactly as before; the client treats it as information ("Cause in another area"), not as a problem: not listed on Validate, not counted in badges, banners or filters |
 | `line_mismatch` | warning | the area is known and `line_id` differs from the area's line (the area decides the line) |
 
-`overlap_in_area` is a **derived** flag (two events of one area covering the same time, tolerance 1 s): it is found by
-comparing events in the browser (`src/calc/overlaps.ts`) and is never stored. `orphan_continuation` and
-`duration_mismatch` are upload-time warnings only and are not stored either.
+Two **derived** flags are worked out in the browser and never stored:
+- `overlap_in_area` (information): two events of one area covering the same time, tolerance 1 s (`src/calc/overlaps.ts`).
+  Overlapping stops of one area are counted once in every figure (union per area, `src/calc/attribution.ts`), so it is
+  nothing to fix; Validate shows it apart, as information.
+- `failure_flag_mismatch` (warning): Failure = YES on a PL or CIR row, or on a continuation (Freq = 0) row. Such a row is
+  never a failure event; the digest counts it as a record to validate until it is kept as entered.
+
+`orphan_continuation` and `duration_mismatch` are upload-time warnings only and are not stored either.
 
 **Blocking rule.** A record that carries a blocking flag stays in the table and is shown, but is left out of every
 calculation (KPIs, Pareto, repeats, trends, overlaps) until it is fixed, exactly like a voided record.
@@ -177,9 +182,9 @@ are excluded from analysis.
 (section 4a) it carries. Nothing in the record changes.
 
 - Needs `events` Edit. `flags` is a list and is the **full new accepted set**: sending fewer flags undoes some, an empty list
-  undoes all. Every name must be a known flag (the four blocking, six warning, information `code_not_in_area` and derived
-  `overlap_in_area`; `KNOWN_FLAG_NAMES` in `Config.js` mirrors `src/calc/flags.ts`). A flag must be one the record carries in `events.flags`
-  (or already accepted, or the derived `overlap_in_area`, which the server cannot compute).
+  undoes all. Every name must be a known flag (the four blocking, six warning, information `code_not_in_area` and the derived
+  `overlap_in_area` (information) and `failure_flag_mismatch` (warning); `KNOWN_FLAG_NAMES` in `Config.js` mirrors `src/calc/flags.ts`).
+  A flag must be one the record carries in `events.flags` (or already accepted, or one of the two derived flags, which are never stored).
 - `note` is required, at least 3 characters (also for an undo), at most 500.
 - Stored in `events`: `accepted_flags` (comma separated, catalogue order), `accepted_by` (user_id), `accepted_at` (timestamp). An empty
   set clears all three. `flags`, `edited`, `equipment_id` and every other field stay as they are; no flag is recalculated.
@@ -188,7 +193,7 @@ are excluded from analysis.
   that changes nothing (`bad_request`, "Nothing was changed.").
 - **Pruning.** After `editEvent` or `revalidateEvents` recomputes the flags, accepted flags the record no longer carries are dropped
   (`accepted_by`/`accepted_at` are cleared when nothing is left) and an `event_edits` row records it ("Removed automatically: ...").
-  The derived `overlap_in_area` is kept until the user undoes it. Upload never touches stored rows.
+  The derived flags (`overlap_in_area`, `failure_flag_mismatch`) are kept until the user undoes them. Upload never touches stored rows.
 - **Meaning for the numbers.** An accepted warning flag is resolved: the record is normal everywhere. An accepted blocking flag stops being
   something to fix (not listed on Validate, not in the badge, the banner or the notifications) but the record is still left out of the
   calculations, because the blocking rule (section 4a) reads the stored `flags`, never `accepted_flags`.
@@ -267,15 +272,17 @@ Targets (backend 1.3.0): `availability_target_pct` (blank = off, 0-100; also the
 ### 9.3 Rules
 
 All rules leave out voided events and events with a blocking flag, exactly like the app (section 4a), and chain rows into events
-with the app's algorithm (1 s tolerance, a Freq = 0 row joins the open event it continues).
+with the app's algorithm (1 s tolerance, a Freq = 0 row joins the open event it continues; an exact duplicate row, same area, code,
+stop, restart and classification, is one stop). A **failure event** is a chain whose head row has Freq = 1, Failure = YES and a
+class other than PL and CIR (owner decision P2; `src/calc/events.ts` `isFailureHead`).
 "Latest event date" `L` is the largest `event_date` of any stored non-void event. "Today" is the plant-local date of the server clock.
 
 | Type | Raised when | `dedupe_key` | Resolved when |
 |---|---|---|---|
 | `long_stop` | a failure event (chain) lasts more than `notif_long_stop_hours` (summed hours of its rows) | `long_stop\|<event_id of the head>` | the event is voided, edited below the limit or the limit is raised |
-| `repeat_group` | at least `repeat_min_events` failure events with the same code and reason (code after alias resolution, reason compared by `match_key`, blank reasons and area-level N/A excluded) start within `repeat_window_days` of each other (sliding window, exactly the window still counts); one alert per cluster, when it first exists; needs `notif_repeat_alert = true` | `repeat\|<area of the first event>\|<code>\|<reason_key>\|<first event_id>` | the cluster no longer exists, or the switch is turned off |
-| `failure_spike` | per area, failures (rows with `is_failure`, by their stop time) in the 30 days ending on `L` are at least 5 and exceed the 30 days before by more than `notif_spike_pct` percent (any rise from zero counts) | `spike\|<area>\|<L>` | stays until it expires |
-| `availability_low` | basis B = (T - PL - (INC + CIR)) / (T - PL) of an area for the latest complete month is below `availability_target_pct`. The month is the month of `L` if `L` is its last day, otherwise the month before; the window is clipped to the data range like the KPI cards. Off while the target is blank | `availability\|<area>\|<yyyy-mm>` | stays until it expires |
+| `repeat_group` | at least `repeat_min_events` OCCURRENCES with the same code and reason (code after alias resolution, reason compared by `match_key`, blank reasons and area-level N/A excluded) start within `repeat_window_days` of each other (sliding window, exactly the window still counts); one occurrence = one failure event, or several failure events in DIFFERENT areas that start within 10 minutes of the occurrence's first event (P5); one alert per cluster, when it first exists; needs `notif_repeat_alert = true`. The detail's "N failures" counts occurrences | `repeat\|<area of the first event>\|<code>\|<reason_key>\|<first event_id>` | the cluster no longer exists, or the switch is turned off |
+| `failure_spike` | per area, failure EVENTS (by the head's stop time) in the 30 days ending on `L` are at least 5 and exceed the 30 days before by more than `notif_spike_pct` percent (any rise from zero counts) | `spike\|<area>\|<L>` | stays until it expires |
+| `availability_low` | basis B = (T - PL - (INC + CIR)) / (T - PL) of an area for the latest complete month is below `availability_target_pct`. The month is the month of `L` if `L` is its last day, otherwise the month before; the window is clipped to the data range like the KPI cards. The area's downtime is the UNION of its stops (P1): time covered by several rows counts once, for PL first, then INC, then CIR (same class: the row that started first). A month without any non-void record is not uploaded and raises nothing. Off while the target is blank | `availability\|<area>\|<yyyy-mm>` | stays until it expires |
 | `upload_gap` | today is more than `notif_upload_gap_days` after `L` | `upload_gap\|<L>` | newer data arrives (`L` changes) |
 | `upload_done` (update) | `uploadFinish` completes an upload | `upload\|<batch_id>` | never |
 | `user_event` (update) | a user is created, a password is reset, a role is changed | `user\|<kind>\|<user_id>\|<epoch ms>` (kind: `created`, `password_reset`, `role_changed`) | never |
@@ -300,7 +307,9 @@ users with an e-mail address, at most one digest per person per plant-local day,
 Content (plain text and simple HTML, counts and titles only, never event rows):
 
 - Needs action (only what the server can count, for people who could act on it): records to validate (events with an OPEN flag: a stored flag
-  other than the information flag `code_not_in_area` that nobody kept as entered, section 6a; the number left out of the numbers because of a blocking flag), records with an
+  other than the information flag `code_not_in_area` that nobody kept as entered, section 6a, or the derived warning
+  `failure_flag_mismatch` (Failure = YES on a PL / CIR or Freq = 0 row) not kept as entered; overlaps are information and never
+  counted; the number left out of the numbers because of a blocking flag), records with an
   unknown or placeholder code (needs `master` Edit), equipment to review (`needs_review`, needs `master` Edit). Pending late months
   are known to the browser only and are not in the e-mail.
 - New alerts since the person's `last_digest_at`: open alerts of the person's `alert_types` and `watch_areas` (an alert without an

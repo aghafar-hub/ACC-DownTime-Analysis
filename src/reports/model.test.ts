@@ -7,6 +7,7 @@ import { defaultFilters } from '../dashboard/filters';
 import { buildSyntheticDb } from '../mock/synthetic';
 import { buildReport, describeFilters, reportContext, scopeCounts, type ReportModel, type SectionModel } from './model';
 import { SECTION_ORDER } from './sections';
+import { MTBF_ALL_LABEL } from '../dashboard/format';
 import { defaultSetup, type ReportSetup } from './setup';
 
 const db = buildSyntheticDb();
@@ -90,12 +91,18 @@ describe('filters', () => {
     const eq = run(withFilters({ equipmentIds: [code] }));
     expect(eq.scope.events).toBeGreaterThan(0);
     expect(eq.scope.events).toBeLessThan(full.scope.events);
+    // P3: event-level filters keep WHOLE events: the PL events with their continuation rows (any class)
     const cls = run(withFilters({ classifications: ['PL'] }));
-    expect(get(cls, 'events').data.table.rows.every((r) => r[3] === 'PL')).toBe(true);
+    const clsCtx = reportContext(withFilters({ classifications: ['PL'] }), startup, db.events, asOf).ctx;
+    expect(clsCtx.scope.chains.every((c) => c.head.classification === 'PL')).toBe(true);
+    expect(get(cls, 'events').data.table.rows.some((r) => r[3] === 'PL')).toBe(true);
     const inc = run(withFilters({ criticality: ['NO_INC'] }));
     expect(inc.scope.events).toBeLessThan(full.scope.events);
     const fail = run(withFilters({ failuresOnly: true }));
-    expect(get(fail, 'events').data.table.rows.every((r) => r[6] === 'Yes')).toBe(true);
+    const failCtx = reportContext(withFilters({ failuresOnly: true }), startup, db.events, asOf).ctx;
+    expect(failCtx.scope.chains.length).toBeGreaterThan(0);
+    expect(failCtx.scope.chains.every((c) => c.isFailure)).toBe(true);
+    expect(get(fail, 'events').data.table.rows.some((r) => r[6] === 'Yes')).toBe(true);
     expect(fail.scope.events).toBeLessThan(full.scope.events);
   });
   it('numbers equal the dashboards for the same filters (area + classification)', () => {
@@ -155,5 +162,20 @@ describe('comparison, empty data, excluded records', () => {
     const q = get(run(base({ sections: ['quality'] })), 'quality');
     expect(q.takeaway).toMatch(/records were checked/);
     expect(q.data.counted).toBe(run(base()).scope.events);
+  });
+});
+
+describe('P4: the report uses the one MTBF rule and label', () => {
+  it('the summary card is MTBF · all areas (area-hours) = the dashboard total, with or without one area', () => {
+    for (const filters of [{}, { areaIds: ['K.1'] }]) {
+      const setup = withFilters(filters);
+      const m = run(setup);
+      const { ctx } = reportContext(setup, startup, db.events, asOf);
+      const k = overviewModel(ctx).kpi!;
+      const card = get(m, 'summary').data.kpis.find((x) => x.id === 'mtbf')!;
+      expect(card.label).toBe(MTBF_ALL_LABEL);
+      expect(card.value).toBe(k.total.mtbfHours.available ? k.total.mtbfHours.value : null);
+      expect(get(m, 'summary').data.kpis.some((x) => x.id === 'repeats')).toBe(true);
+    }
   });
 });

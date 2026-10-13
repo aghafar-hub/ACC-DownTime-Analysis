@@ -1,18 +1,21 @@
 /** Reliability trends: monthly series, rolling counts, year-over-year, histograms, heatmaps, longest events. */
 import type { ClassificationCode, EventRow } from '../api/types';
+import { attributeRows, piecesOf, type Attribution } from './attribution';
 import { analysableChains, buildFailureEvents, isAnalysable, type ChainedEvent } from './events';
 import { durationBandOf, type DurationBand } from './filters';
-import { addRowHours, compareValues, composeKpis, dataRangeOf, emptySums, type AreaKpis, type Change, type HourSums } from './kpis';
+import {
+  addRowHours, compareTotal, compareValues, composeKpis, dataRangeOf, emptySums, periodCoverage, resolveNotUploaded, totalsScaling,
+  type AreaKpis, type Change, type HourSums,
+} from './kpis';
 import type { MasterIndex } from './masters';
 import { avail, unavail, type Metric } from './metric';
 import { CLASSIFICATION_CODES, matchKey, resolvedKey, rowCode } from './normalize';
-import { chainValue, type ParetoMeasure } from './pareto';
+import { attributionFor, chainValue, type ParetoMeasure } from './pareto';
 import type { CalcSettings } from './settings';
 import {
   MS_DAY, addDays, clippedHours, daysInRange, formatTs, intersectRanges, monthKey, monthRange, monthsOfRange, rangeToInterval, sameRange,
   scheduledHours, splitByMonth, type DateRange, type Interval,
 } from './time';
-import { rowSpan } from './events';
 
 // ---- monthly series ----
 
@@ -22,7 +25,10 @@ export interface MonthPoint {
   requested: DateRange;
   /** days with data; shorter than `requested` for a month still in progress */
   window: DateRange | null;
+  /** false outside the data range and for a month not uploaded */
   hasData: boolean;
+  /** P6: the month lies inside the data coverage but has no record at all (plant-wide): 'Not uploaded', never 0 h or 100 % */
+  notUploaded: boolean;
   /** the month shows fewer days than the calendar month (range cut or data ends inside it): not a full month */
   partial: boolean;
   plannedHours: number;
@@ -44,14 +50,20 @@ export interface MonthlyInput {
   dataRange?: DateRange | null;
   areaIds?: string[];
   settings: CalcSettings;
+  /** who owns overlapping time (attribution.ts); default: attributeRows over the analysable rows */
+  attribution?: Attribution;
+  /** months with no record at all, plant-wide (see notUploadedMonths and KpiInput.notUploaded) */
+  notUploaded?: readonly string[];
 }
 
 const NO_DATA = (): Metric => unavail('no_data', 'No data for this month');
+const NOT_UPLOADED = (): Metric => unavail('not_uploaded', 'Not uploaded: no records for this month');
 
-function noDataPoint(month: string, requested: DateRange): MonthPoint {
+function noDataPoint(month: string, requested: DateRange, notUploaded = false): MonthPoint {
+  const na = notUploaded ? NOT_UPLOADED : NO_DATA;
   return {
-    month, requested, window: null, hasData: false, partial: false, plannedHours: 0, failureHours: 0, otherHours: 0, failureCount: 0,
-    operatingHours: NO_DATA(), mtbfHours: NO_DATA(), mttrHours: NO_DATA(), failureRatePer1000h: NO_DATA(), availability: NO_DATA(), kpis: null,
+    month, requested, window: null, hasData: false, notUploaded, partial: false, plannedHours: 0, failureHours: 0, otherHours: 0, failureCount: 0,
+    operatingHours: na(), mtbfHours: na(), mttrHours: na(), failureRatePer1000h: na(), availability: na(), kpis: null,
   };
 }
 
@@ -77,29 +89,20 @@ interface MonthSlot { month: string; requested: DateRange; window: DateRange | n
 export function monthlySeries(input: MonthlyInput): MonthPoint[] {
   const rows = input.rows.filter(isAnalysable);
   const dataRange = input.dataRange === undefined ? dataRangeOf(rows) : input.dataRange;
+  const notUploaded = new Set(resolveNotUploaded(input.rows, input.dataRange, input.notUploaded));
+  const attr = input.attribution ?? attributeRows(rows);
   const areaIds = input.areaIds ?? [...new Set(rows.map((r) => r.area_id))].sort();
   const areaSet = new Set(areaIds);
   const slots: MonthSlot[] = monthsOfRange(input.range).map((month) => {
     const requested = intersectRanges(monthRange(month), input.range) ?? monthRange(month);
-    const window = dataRange ? intersectRanges(requested, dataRange) : null;
+    const window = dataRange && !notUploaded.has(month) ? intersectRanges(requested, dataRange) : null;
     return { month, requested, window, interval: window ? rangeToInterval(window) : null, sums: emptySums() };
   });
   const first = monthNumber(slots[0]?.month ?? '1970-01');
   const last = slots.length - 1;
   for (const r of rows) {
-    const span = areaSet.has(r.area_id) ? rowSpan(r) : null;
-    if (!span) continue;
-    const lo = Math.max(0, monthNumber(r.stop_ts) - first);
-    const hi = Math.min(last, monthNumber(r.start_ts) - first);
-    for (let i = lo; i <= hi; i++) {
-      const s = slots[i]!;
-      if (!s.interval) continue;
-      const h = clippedHours(span, s.interval);
-      if (h > 0) addRowHours(s.sums, r, h);
-    }
-    const si = monthNumber(r.stop_ts) - first;
-    const slot = si >= 0 && si <= last ? slots[si]! : null;
-    if (r.is_failure && slot?.interval && span.fromMs >= slot.interval.fromMs && span.fromMs < slot.interval.toMs) slot.sums.failures++;
+    if (!areaSet.has(r.area_id)) continue;
+    for (const piece of piecesOf(r, attr)) addPieceByMonth(slots, first, last, r, piece);
   }
   const chains = analysableChains(input.chains ?? buildFailureEvents(rows).chains);
   for (const c of chains) {
@@ -112,10 +115,10 @@ export function monthlySeries(input: MonthlyInput): MonthPoint[] {
     }
   }
   return slots.map((s) => {
-    if (!s.window) return noDataPoint(s.month, s.requested);
+    if (!s.window) return noDataPoint(s.month, s.requested, notUploaded.has(s.month) && !!dataRange && !!intersectRanges(s.requested, dataRange));
     const t = composeKpis('ALL', scheduledHours(s.window, input.settings) * areaIds.length, s.sums, input.settings);
     return {
-      month: s.month, requested: s.requested, window: s.window, hasData: true, partial: isPartialWindow(s.month, s.window),
+      month: s.month, requested: s.requested, window: s.window, hasData: true, notUploaded: false, partial: isPartialWindow(s.month, s.window),
       plannedHours: t.plannedHours, failureHours: t.failureHours, otherHours: t.otherHours, failureCount: t.failureCount,
       operatingHours: t.operatingHours, mtbfHours: t.mtbfHours, mttrHours: t.mttrHours, failureRatePer1000h: t.failureRatePer1000h,
       availability: t.availabilityHeadline, kpis: t,
@@ -123,12 +126,26 @@ export function monthlySeries(input: MonthlyInput): MonthPoint[] {
   });
 }
 
+/** Add the hours of one attributed piece of a row to the month slots it touches (clipped to each slot's window). */
+function addPieceByMonth(slots: { interval: Interval | null; sums: HourSums }[], first: number, last: number, r: EventRow, piece: Interval): void {
+  const lo = Math.max(0, monthNumber(formatTs(piece.fromMs)) - first);
+  const hi = Math.min(last, monthNumber(formatTs(piece.toMs - 1)) - first);
+  for (let i = lo; i <= hi; i++) {
+    const s = slots[i]!;
+    if (!s.interval) continue;
+    const h = clippedHours(piece, s.interval);
+    if (h > 0) addRowHours(s.sums, r, h);
+  }
+}
+
 // ---- daily series ----
 
 export interface DayPoint {
   date: string;
-  /** the day lies inside the data coverage; without data every figure is 0 and `kpis` is null */
+  /** the day lies inside the data coverage and in an uploaded month; without data every figure is 0 and `kpis` is null */
   hasData: boolean;
+  /** P6: the day lies in a month that was not uploaded (no record at all, plant-wide) */
+  notUploaded: boolean;
   plannedHours: number;
   failureHours: number;
   otherHours: number;
@@ -169,26 +186,27 @@ export function rollingMean(values: (number | null)[], n: number): (number | nul
 export function dailySeries(input: DailyInput): DayPoint[] {
   const rows = input.rows.filter(isAnalysable);
   const dataRange = input.dataRange === undefined ? dataRangeOf(rows) : input.dataRange;
+  const notUploaded = new Set(resolveNotUploaded(input.rows, input.dataRange, input.notUploaded));
+  const attr = input.attribution ?? attributeRows(rows);
   const areaIds = input.areaIds ?? [...new Set(rows.map((r) => r.area_id))].sort();
   const areaSet = new Set(areaIds);
   const n = daysInRange(input.range);
   const firstMs = rangeToInterval({ from: input.range.from, to: input.range.from }).fromMs;
   const dates = Array.from({ length: n }, (_, i) => addDays(input.range.from, i));
-  const covered = dates.map((d) => !!dataRange && d >= dataRange.from && d <= dataRange.to);
+  const covered = dates.map((d) => !!dataRange && d >= dataRange.from && d <= dataRange.to && !notUploaded.has(d.slice(0, 7)));
   const sums = dates.map(() => emptySums());
   const dayIndex = (ms: number): number => Math.floor((ms - firstMs) / MS_DAY);
   for (const r of rows) {
-    const span = areaSet.has(r.area_id) ? rowSpan(r) : null;
-    if (!span) continue;
-    const lo = Math.max(0, dayIndex(span.fromMs));
-    const hi = Math.min(n - 1, dayIndex(span.toMs - 1));
-    for (let i = lo; i <= hi; i++) {
-      if (!covered[i]) continue;
-      const h = clippedHours(span, { fromMs: firstMs + i * MS_DAY, toMs: firstMs + (i + 1) * MS_DAY });
-      if (h > 0) addRowHours(sums[i]!, r, h);
+    if (!areaSet.has(r.area_id)) continue;
+    for (const span of piecesOf(r, attr)) {
+      const lo = Math.max(0, dayIndex(span.fromMs));
+      const hi = Math.min(n - 1, dayIndex(span.toMs - 1));
+      for (let i = lo; i <= hi; i++) {
+        if (!covered[i]) continue;
+        const h = clippedHours(span, { fromMs: firstMs + i * MS_DAY, toMs: firstMs + (i + 1) * MS_DAY });
+        if (h > 0) addRowHours(sums[i]!, r, h);
+      }
     }
-    const si = dayIndex(span.fromMs);
-    if (r.is_failure && si >= 0 && si < n && covered[si]) sums[si]!.failures++;
   }
   for (const c of analysableChains(input.chains ?? buildFailureEvents(rows).chains)) {
     if (!c.isFailure || !areaSet.has(c.area_id)) continue;
@@ -201,10 +219,10 @@ export function dailySeries(input: DailyInput): DayPoint[] {
   const points = dates.map((date, i): Omit<DayPoint, 'rollingDowntimeHours'> => {
     const s = sums[i]!;
     if (!covered[i]) {
-      return { date, hasData: false, plannedHours: 0, failureHours: 0, otherHours: 0, downtimeHours: 0, failureCount: 0, kpis: null };
+      return { date, hasData: false, notUploaded: !!dataRange && date >= dataRange.from && date <= dataRange.to && notUploaded.has(date.slice(0, 7)), plannedHours: 0, failureHours: 0, otherHours: 0, downtimeHours: 0, failureCount: 0, kpis: null };
     }
     const kpis = composeKpis('ALL', scheduledHours({ from: date, to: date }, input.settings) * areaIds.length, s, input.settings);
-    return { date, hasData: true, plannedHours: s.pl, failureHours: s.inc, otherHours: s.cir, downtimeHours: s.pl + s.inc + s.cir, failureCount: s.failures, kpis };
+    return { date, hasData: true, notUploaded: false, plannedHours: s.pl, failureHours: s.inc, otherHours: s.cir, downtimeHours: s.pl + s.inc + s.cir, failureCount: s.events, kpis };
   });
   const rolling = rollingMean(points.map((p) => (p.hasData ? p.downtimeHours : null)), input.rollingDays ?? 7);
   return points.map((p, i) => ({ ...p, rollingDowntimeHours: rolling[i] ?? null }));
@@ -215,6 +233,8 @@ export function dailySeries(input: DailyInput): DayPoint[] {
 export interface ClassMonthPoint {
   month: string;
   hasData: boolean;
+  /** P6: inside the coverage but no record at all (plant-wide) */
+  notUploaded: boolean;
   partial: boolean;
   window: DateRange | null;
   /** stopped hours per classification (area-hours) */
@@ -222,33 +242,40 @@ export interface ClassMonthPoint {
   total: number;
 }
 
-/** Stopped hours per month and classification code (PRO, MEC, ELE, AUT, PL, CIR). Months sum to the monthly series' planned + failure + other hours. */
+/**
+ * Stopped hours per month and classification code (PRO, MEC, ELE, AUT, PL, CIR). Overlapping time goes to the row that
+ * owns it (attribution.ts), so months sum to the monthly series' planned + failure + other hours.
+ */
 export function monthlyHoursByClassification(input: Omit<MonthlyInput, 'chains' | 'settings'>): ClassMonthPoint[] {
   const rows = input.rows.filter(isAnalysable);
   const dataRange = input.dataRange === undefined ? dataRangeOf(rows) : input.dataRange;
+  const notUploaded = new Set(resolveNotUploaded(input.rows, input.dataRange, input.notUploaded));
+  const attr = input.attribution ?? attributeRows(rows);
   const areaSet = new Set(input.areaIds ?? rows.map((r) => r.area_id));
   const zero = (): Record<ClassificationCode, number> => Object.fromEntries(CLASSIFICATION_CODES.map((c) => [c, 0])) as Record<ClassificationCode, number>;
   const slots = monthsOfRange(input.range).map((month) => {
     const requested = intersectRanges(monthRange(month), input.range) ?? monthRange(month);
-    const window = dataRange ? intersectRanges(requested, dataRange) : null;
+    const window = dataRange && !notUploaded.has(month) ? intersectRanges(requested, dataRange) : null;
     return { month, requested, window, interval: window ? rangeToInterval(window) : null, hours: zero() };
   });
   const first = monthNumber(slots[0]?.month ?? '1970-01');
   const last = slots.length - 1;
   for (const r of rows) {
-    const span = areaSet.has(r.area_id) ? rowSpan(r) : null;
-    if (!span || !CLASSIFICATION_CODES.includes(r.classification)) continue;
-    const lo = Math.max(0, monthNumber(r.stop_ts) - first);
-    const hi = Math.min(last, monthNumber(r.start_ts) - first);
-    for (let i = lo; i <= hi; i++) {
-      const s = slots[i]!;
-      if (!s.interval) continue;
-      const h = clippedHours(span, s.interval);
-      if (h > 0) s.hours[r.classification] += h;
+    if (!areaSet.has(r.area_id) || !CLASSIFICATION_CODES.includes(r.classification)) continue;
+    for (const piece of piecesOf(r, attr)) {
+      const lo = Math.max(0, monthNumber(formatTs(piece.fromMs)) - first);
+      const hi = Math.min(last, monthNumber(formatTs(piece.toMs - 1)) - first);
+      for (let i = lo; i <= hi; i++) {
+        const s = slots[i]!;
+        if (!s.interval) continue;
+        const h = clippedHours(piece, s.interval);
+        if (h > 0) s.hours[r.classification] += h;
+      }
     }
   }
   return slots.map((s) => ({
-    month: s.month, hasData: !!s.window, partial: !!s.window && isPartialWindow(s.month, s.window), window: s.window,
+    month: s.month, hasData: !!s.window, notUploaded: notUploaded.has(s.month) && !!dataRange && !!intersectRanges(s.requested, dataRange),
+    partial: !!s.window && isPartialWindow(s.month, s.window), window: s.window,
     hours: s.hours, total: CLASSIFICATION_CODES.reduce((sum, c) => sum + s.hours[c], 0),
   }));
 }
@@ -303,11 +330,13 @@ export function yearOverYear(input: YoyInput): YoyMonth[] {
   return cur.map((c, i) => {
     const p = prev[i]!;
     const both = c.hasData && p.hasData;
-    const none = (): Change => ({ available: false, reason: 'No data for one of the months' });
+    const none = (): Change => ({ available: false, reason: c.notUploaded || p.notUploaded ? 'Not uploaded for one of the months' : 'No data for one of the months' });
+    // P7: last year's month covered for less than 90 %: totals as per-day rates, no verdict
+    const scaling = both && c.window ? totalsScaling(daysInRange(c.window), periodCoverage(p.requested, p.window), 'same month last year') : null;
     return {
       monthNumber: i + 1, current: c, previous: p,
-      failureHours: both ? compareValues(avail(c.failureHours), avail(p.failureHours), 'lower') : none(),
-      failureCount: both ? compareValues(avail(c.failureCount), avail(p.failureCount), 'lower') : none(),
+      failureHours: both ? compareTotal(avail(c.failureHours), avail(p.failureHours), 'lower', scaling) : none(),
+      failureCount: both ? compareTotal(avail(c.failureCount), avail(p.failureCount), 'lower', scaling) : none(),
       mtbfHours: compareValues(c.mtbfHours, p.mtbfHours, 'higher'),
       failureRatePer1000h: compareValues(c.failureRatePer1000h, p.failureRatePer1000h, 'lower'),
     };
@@ -418,7 +447,11 @@ export function buildHeatmap(cells: HeatCell[], opts: { maxRows?: number; maxCol
   return { rows, cols, values, total, omittedRows: opts.fixedRows ? 0 : allRows.length - rows.length, omittedCols: allColCount - cols.length };
 }
 
-export interface HeatmapOptions { measure: ParetoMeasure; maxRows?: number; maxCols?: number }
+export interface HeatmapOptions {
+  measure: ParetoMeasure; maxRows?: number; maxCols?: number;
+  /** who owns overlapping time (attribution.ts); default: over every row of the events passed in */
+  attribution?: Attribution;
+}
 
 /**
  * Equipment x month. Hours are split across months at the month boundary (an event over a month end shows in
@@ -432,16 +465,17 @@ export function equipmentMonthHeatmap(failureEvents: ChainedEvent[], index: Mast
 }
 
 /** Month cells of one event: hours split at month boundaries (clipped to the window), a count in the month the event starts. */
-function monthCells(c: ChainedEvent, row: { key: string; label: string }, w: Interval, measure: ParetoMeasure): HeatCell[] {
+function monthCells(c: ChainedEvent, row: { key: string; label: string }, w: Interval, measure: ParetoMeasure, attr: Attribution | undefined): HeatCell[] {
   if (measure === 'count') {
     return c.startMs >= w.fromMs && c.startMs < w.toMs ? [{ row: row.key, rowLabel: row.label, col: monthKey(c.startDate), colLabel: monthKey(c.startDate), value: 1 }] : [];
   }
   const cells: HeatCell[] = [];
   for (const r of c.rows) {
-    const span = rowSpan(r);
-    const clipped = span && { fromMs: Math.max(span.fromMs, w.fromMs), toMs: Math.min(span.toMs, w.toMs) };
-    if (!clipped || clipped.toMs <= clipped.fromMs) continue;
-    for (const p of splitByMonth(clipped)) cells.push({ row: row.key, rowLabel: row.label, col: p.month, colLabel: p.month, value: (p.toMs - p.fromMs) / 3_600_000 });
+    for (const span of piecesOf(r, attr)) {
+      const clipped = { fromMs: Math.max(span.fromMs, w.fromMs), toMs: Math.min(span.toMs, w.toMs) };
+      if (clipped.toMs <= clipped.fromMs) continue;
+      for (const p of splitByMonth(clipped)) cells.push({ row: row.key, rowLabel: row.label, col: p.month, colLabel: p.month, value: (p.toMs - p.fromMs) / 3_600_000 });
+    }
   }
   return cells;
 }
@@ -450,7 +484,8 @@ function causeMonthHeatmap(failureEvents: ChainedEvent[], range: DateRange, o: H
   const w = rangeToInterval(range);
   const months = monthsOfRange(range);
   const cells: HeatCell[] = [];
-  for (const c of analysableChains(failureEvents)) if (c.isFailure) cells.push(...monthCells(c, rowOf(c), w, o.measure));
+  const attr = attributionFor(failureEvents, o);
+  for (const c of analysableChains(failureEvents)) if (c.isFailure) cells.push(...monthCells(c, rowOf(c), w, o.measure, attr));
   return buildHeatmap(cells, { maxRows: o.maxRows, fixedCols: months.map((m) => ({ key: m, label: m, total: 0 })) });
 }
 
@@ -493,13 +528,14 @@ export function failureStartHeatmap(failureEvents: ChainedEvent[], window: DateR
 export function equipmentReasonHeatmap(failureEvents: ChainedEvent[], index: MasterIndex | undefined, window: DateRange | undefined, o: HeatmapOptions): Heatmap {
   const w = window ? rangeToInterval(window) : null;
   const cells: HeatCell[] = [];
+  const attr = attributionFor(failureEvents, o);
   for (const c of analysableChains(failureEvents)) {
     if (!c.isFailure) continue;
     const code = resolvedKey(rowCode(c.head, index));
     const rk = matchKey(c.head.reason_raw);
     cells.push({
       row: code, rowLabel: code, col: rk, colLabel: (c.head.reason_raw ?? '').trim().replace(/\s+/g, ' ') || '(blank)',
-      value: chainValue(c, o.measure, w),
+      value: chainValue(c, o.measure, w, attr),
     });
   }
   return buildHeatmap(cells, { maxRows: o.maxRows, maxCols: o.maxCols });

@@ -11,8 +11,8 @@ import { Icon } from '../icons';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useTheme } from '../theme/ThemeContext';
 import { useValidationOptional } from '../validate/ValidationContext';
-import { dataRangeOf } from '../calc';
-import { ChangeLine, fh, fh2, fint, fpct, metricText } from './format';
+import { dataRangeOf, notUploadedMonths } from '../calc';
+import { ChangeLine, fh, fh2, fint, fpct, metricText, MTBF_ALL_LABEL } from './format';
 import type { CompareId, CompareRow } from './monthCompare';
 import { defaultMonthPair, MONTH_PAIR_PARAM, monthCompareModel, monthPairText, monthsWithData, parseMonthPair, type MonthPair } from './monthCompare';
 import type { Dash } from './useDash';
@@ -35,7 +35,7 @@ function rowLabel(id: CompareId, basis: string): string {
     case 'operating': return t('Operating hours');
     case 'availability': return t('Availability (basis {b})', { b: basis });
     case 'mttr': return t('MTTR');
-    case 'mtbf': return t('MTBF, all areas (area-hours)');
+    case 'mtbf': return t(MTBF_ALL_LABEL);
     case 'repeated': return t('Repeated failures');
   }
 }
@@ -77,6 +77,9 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
   const def = useMemo(() => defaultMonthPair(months, coverage), [months, coverage]);
   const pair: MonthPair | null = urlPair ?? def;
   const options = useMemo(() => [...new Set([...months, ...(pair ? [pair.a, pair.b] : [])])].sort().reverse(), [months, pair]);
+  // P6: a month inside the data with no record at all is 'Not uploaded': never offered, and marked when a link names it
+  const notUploaded = useMemo(() => new Set(ready ? notUploadedMonths(rows, coverage) : []), [ready, rows, coverage]);
+  const optLabel = (m: string): string => (notUploaded.has(m) ? `${monthLong(m)} (${t('Not uploaded')})` : monthLong(m));
 
   const model = useMemo(
     () => (open && ready && pair && dash.startup ? monthCompareModel(rows, dash.startup, dash.filters, pair) : null),
@@ -161,13 +164,13 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
                 <div className="field">
                   <label htmlFor={`${id}-a`}>{t('Month A')}</label>
                   <select id={`${id}-a`} className="select" value={pair.a} onChange={(e) => choose({ a: e.target.value })} data-testid={`${id}-a`}>
-                    {options.map((m) => <option key={m} value={m}>{monthLong(m)}</option>)}
+                    {options.map((m) => <option key={m} value={m} disabled={notUploaded.has(m)}>{optLabel(m)}</option>)}
                   </select>
                 </div>
                 <div className="field">
                   <label htmlFor={`${id}-b`}>{t('Month B')}</label>
                   <select id={`${id}-b`} className="select" value={pair.b} onChange={(e) => choose({ b: e.target.value })} data-testid={`${id}-b`}>
-                    {options.map((m) => <option key={m} value={m}>{monthLong(m)}</option>)}
+                    {options.map((m) => <option key={m} value={m} disabled={notUploaded.has(m)}>{optLabel(m)}</option>)}
                   </select>
                 </div>
               </div>

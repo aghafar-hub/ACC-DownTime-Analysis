@@ -1,10 +1,11 @@
 // The Validate page's data: which records need checking, why, and how to fix several at once.
 // Pure TypeScript (no React, no network) so it is unit-tested on its own.
 //
-// A record's problems = its stored flags (events.flags) + the derived `overlap_in_area`, found by
-// comparing events (findOverlaps over the loaded events; blocked and voided ones are ignored there).
-// Voided records never appear. Information flags (code_not_in_area: "Cause in another area") are not problems:
-// they are dropped here, so a record whose only flag is one of them is simply fine and is not listed.
+// A record's problems = its stored flags (events.flags) + the derived WARNING `failure_flag_mismatch` (Failure = YES on a
+// PL / CIR or Freq = 0 row, worked out from the row itself). Voided records never appear. Information flags are not
+// problems: code_not_in_area ("Cause in another area") and the derived `overlap_in_area` (found by comparing events with
+// findOverlaps; overlapping stops of one area are counted once, see calc/attribution.ts). A record whose only flags are
+// information is not listed as open; overlaps stay visible as information (`partners`, the Overlaps view and tile).
 //
 // "Keep as entered": flags a person acknowledged (events.accepted_flags) are not open any more. A record with only accepted
 // problems leaves the open list and is listed under "Kept as entered" instead. An accepted WARNING makes the record normal;
@@ -12,19 +13,24 @@
 // stored flags), so its hours are shown apart as "Kept as entered, left out of the numbers".
 import type { EventChanges, EventRow } from '../api/types';
 import {
-  acceptedFlagsOf, blockedSummary, BLOCKING_FLAGS, codeKey, FLAG_INFO, findOverlaps, isBlocked, isBlockingFlag, isInfoFlag, isKeptLeftOut,
+  acceptedFlagsOf, blockedSummary, BLOCKING_FLAGS, codeKey, FLAG_INFO, findOverlaps, hasFailureFlagMismatch, isBlocked, isBlockingFlag, isInfoFlag, isKeptLeftOut,
   isOpenBlocked, rowSeconds, splitFlags, WARNING_FLAGS,
 } from '../calc';
 
+/** Derived INFORMATION: the record overlaps another of the same area (counted once; nothing to fix). */
 export const OVERLAP_FLAG = 'overlap_in_area';
+/** Derived WARNING: Failure = YES on a planned/other or continuation row. */
+export const MISMATCH_FLAG = 'failure_flag_mismatch';
 
-/** Every flag of the catalogue in display order: blocking first, then warnings, then the derived one. */
-export const FLAG_ORDER: string[] = [...BLOCKING_FLAGS, ...WARNING_FLAGS, OVERLAP_FLAG];
+/** Every problem of the catalogue in display order: blocking first, then warnings (the derived mismatch last). */
+export const FLAG_ORDER: string[] = [...BLOCKING_FLAGS, ...WARNING_FLAGS, MISMATCH_FLAG];
 
 export interface ValidationRecord {
   event: EventRow;
-  /** OPEN problems: stored flags (blocking first) followed by `overlap_in_area` when the record overlaps another, minus the ones kept as entered */
+  /** OPEN problems: stored flags (blocking first) followed by `failure_flag_mismatch` when it applies, minus the ones kept as entered */
   problems: string[];
+  /** information about the record (never a problem): `overlap_in_area` when it overlaps another record of the same area */
+  info: string[];
   /** flags of this record that were kept as entered (it can be in the open list for other problems) */
   kept: string[];
   /** has at least one open blocking problem: left out of the numbers until fixed */
@@ -53,9 +59,9 @@ export interface ValidationSummary {
   blocked: { count: number; hours: number };
   /** records with something kept as entered, and among them the ones still left out of the numbers (hours) */
   kept: { count: number; leftOut: { count: number; hours: number } };
-  /** analysed as they are, but worth a look (warnings or an overlap, and no blocking problem) */
+  /** analysed as they are, but worth a look (warnings, and no blocking problem) */
   review: { count: number };
-  /** records that overlap another record (blocking ones cannot: they are ignored by the overlap search) */
+  /** INFORMATION: records that overlap another record of the same area (counted once; blocking ones are ignored by the overlap search) */
   overlapping: number;
   /** records per problem */
   byFlag: Record<string, number>;
@@ -64,6 +70,8 @@ export interface ValidationSummary {
 export interface ValidationList {
   /** records with open problems */
   records: ValidationRecord[];
+  /** INFORMATION: every record that overlaps another of the same area (problems or not), newest stop first */
+  overlapRecords: ValidationRecord[];
   /** records with problems kept as entered, newest acceptance first */
   keptRecords: KeptRecord[];
   summary: ValidationSummary;
@@ -85,12 +93,24 @@ export function openStoredProblems(e: Pick<EventRow, 'flags' | 'accepted_flags'>
   return storedProblems(e).filter((f) => !kept.has(f));
 }
 
-function recordOf(e: EventRow, partners: string[]): ValidationRecord | null {
+/** The open problems of a record: stored ones plus the derived failure_flag_mismatch, minus the ones kept as entered. */
+export function openProblemsOf(e: EventRow): string[] {
   const kept = acceptedFlagsOf(e);
   const problems = openStoredProblems(e);
-  if (partners.length && !kept.includes(OVERLAP_FLAG)) problems.push(OVERLAP_FLAG);
-  if (problems.length === 0) return null;
-  return { event: e, problems, kept, blocking: problems.some(isBlockingFlag), partners, month: e.stop_ts.slice(0, 7) };
+  if (hasFailureFlagMismatch(e) && !kept.includes(MISMATCH_FLAG)) problems.push(MISMATCH_FLAG);
+  return problems;
+}
+
+/** The record as Validate shows it (with its overlaps as information), or null when it has no open problem. */
+function fullRecordOf(e: EventRow, partners: string[]): ValidationRecord {
+  const kept = acceptedFlagsOf(e);
+  const problems = openProblemsOf(e);
+  return { event: e, problems, info: partners.length ? [OVERLAP_FLAG] : [], kept, blocking: problems.some(isBlockingFlag), partners, month: e.stop_ts.slice(0, 7) };
+}
+
+function recordOf(e: EventRow, partners: string[]): ValidationRecord | null {
+  const r = fullRecordOf(e, partners);
+  return r.problems.length === 0 ? null : r;
 }
 
 /** Newest acceptance first, then event id. */
@@ -115,20 +135,23 @@ export function compareRecords(a: ValidationRecord, b: ValidationRecord): number
 export function buildValidation(events: readonly EventRow[]): ValidationList {
   const overlaps = findOverlaps(events);
   const records: ValidationRecord[] = [];
+  const overlapRecords: ValidationRecord[] = [];
   for (const e of events) {
     if (e.is_void) continue;
-    const r = recordOf(e, overlaps.partners.get(e.event_id) ?? []);
-    if (r) records.push(r);
+    const partners = overlaps.partners.get(e.event_id) ?? [];
+    const full = fullRecordOf(e, partners);
+    if (full.problems.length) records.push(full);
+    if (partners.length) overlapRecords.push(full);
   }
   records.sort(compareRecords);
+  overlapRecords.sort((a, b) => b.event.stop_ts.localeCompare(a.event.stop_ts) || a.event.event_id.localeCompare(b.event.event_id));
   const byFlag: Record<string, number> = {};
-  let overlapping = 0;
   let review = 0;
   for (const r of records) {
     for (const f of r.problems) byFlag[f] = (byFlag[f] ?? 0) + 1;
-    if (r.partners.length) overlapping++;
     if (!r.blocking) review++;
   }
+  const overlapping = overlapRecords.length;
   const keptRecords: KeptRecord[] = [];
   for (const e of events) {
     const k = keptOf(e);
@@ -141,6 +164,7 @@ export function buildValidation(events: readonly EventRow[]): ValidationList {
   const lo = blockedSummary(live.filter(isKeptLeftOut)).total;
   return {
     records,
+    overlapRecords,
     keptRecords,
     summary: {
       total: records.length, blocked: { count: b.count, hours: b.hours },

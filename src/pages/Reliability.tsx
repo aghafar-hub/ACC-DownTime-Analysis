@@ -8,7 +8,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import AreasBlock from '../dashboard/AreasBlock';
 import MonthCompare from '../dashboard/MonthCompare';
 import DashTop from '../dashboard/DashTop';
-import { fh, fh2, fint, monthLabel, partialNote } from '../dashboard/format';
+import { fh, fh2, fint, monthLabel, monthMissing, MTBF_ALL_LABEL, MTBF_ALL_SUB, partialNote } from '../dashboard/format';
 import { reliabilityTakeaway } from '../dashboard/takeaways';
 import { reliabilityModel, whenFailuresStart } from '../dashboard/models';
 import HeatmapTable from '../charts/HeatmapTable';
@@ -49,7 +49,7 @@ export default function Reliability() {
   const mttr = line('mttr', t('Mean restoration time (h)'), (m) => m.mttrHours, fh2, 1);
   const rate = line('rate', t('Failures per 1,000 operating hours'), (m) => m.failureRatePer1000h, fh2, 2);
   const gapCount = (s: CartSeries) => s.values.filter((v) => v === null).length;
-  const gapNote = (s: CartSeries) => (gapCount(s) ? t('{n} months have no value (gaps): no failures or no data. Hover or tap a month for the reason.', { n: gapCount(s) }) : undefined);
+  const gapNote = (s: CartSeries) => (gapCount(s) ? t('{n} months have no value (gaps): no failures, no data or not uploaded. Hover or tap a month for the reason.', { n: gapCount(s) }) : undefined);
   const areaLabel = areaId || t('all areas (area-hours)');
 
   const hist = model?.histogram;
@@ -88,9 +88,17 @@ export default function Reliability() {
   };
   const yfmt = yoyMetric === 'failureCount' ? fint : yoyMetric === 'rate' ? fh2 : fh;
   const yseries: CartSeries[] = model ? [
-    { key: 'prev', label: String(model.yoyYear - 1), color: seriesColor(dark, 1), type: 'bar', values: yoy.map((y) => pickY(y.previous)), format: yfmt },
-    { key: 'cur', label: String(model.yoyYear), color: seriesColor(dark, 0), type: 'bar', values: yoy.map((y) => pickY(y.current)), format: yfmt },
+    { key: 'prev', label: String(model.yoyYear - 1), color: seriesColor(dark, 1), type: 'bar', values: yoy.map((y) => pickY(y.previous)), format: yfmt, missing: yoy.map((y) => monthMissing(y.previous)) },
+    { key: 'cur', label: String(model.yoyYear), color: seriesColor(dark, 0), type: 'bar', values: yoy.map((y) => pickY(y.current)), format: yfmt, missing: yoy.map((y) => monthMissing(y.current)) },
   ] : [];
+  const MONTHS3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const yoyNotUploaded = yoy.flatMap((y) => [y.previous, y.current]).filter((p) => p.notUploaded).map((p) => monthLabel(p.month));
+  // P7: last year's month covered for less than 90 %: its totals are compared per day
+  const yoyPerDay = yoy.filter((y) => y.failureHours.available && y.failureHours.perDay).map((y) => MONTHS3[y.monthNumber - 1]!);
+  const yoyFoot = [
+    yoyNotUploaded.length ? `${t('Not uploaded')}: ${yoyNotUploaded.join(', ')}.` : '',
+    yoyPerDay.length ? t('Last year is only partly covered in {m}: compare those months per day.', { m: yoyPerDay.join(', ') }) : '',
+  ].filter(Boolean).join(' ') || undefined;
   const yoyLabels: Record<YoyMetric, string> = { failureHours: t('Failure hours'), failureCount: t('Failure count'), mtbf: t('MTBF (h)'), rate: t('Failures per 1,000 h') };
 
   const startHeat = useMemo(() => (ctx ? whenFailuresStart(ctx, startMeasure) : null), [ctx, startMeasure]);
@@ -127,10 +135,10 @@ export default function Reliability() {
       {empty && <EmptyScope dash={dash} />}
       {k && !empty && (
         <div className="kpi-grid" data-testid="reliability-tiles">
-          <Tile compact={mobile} icon="trend" label={t('MTBF ({a})', { a: areaId || t('aggregate over areas') })} value={<span data-testid="rt-mtbf">{mt(k.mtbfHours, fh)}</span>} sub={k.mtbfHours.available ? t('operating hours per failure') : (k.mtbfHours.reason)} />
+          <Tile compact={mobile} icon="trend" label={areaId ? t('MTBF ({a})', { a: areaId }) : t(MTBF_ALL_LABEL)} value={<span data-testid="rt-mtbf">{mt(k.mtbfHours, fh)}</span>} sub={k.mtbfHours.available ? (areaId ? t('operating hours per failure event') : t(MTBF_ALL_SUB)) : (k.mtbfHours.reason)} />
           <Tile compact={mobile} icon="repeat" label={t('Mean restoration time')} value={<span data-testid="rt-mttr">{mt(k.mttrHours, fh2)}</span>} sub={t('failure events that started in the range')} />
           <Tile compact={mobile} icon="alert" label={t('Failures per 1,000 operating hours')} value={k.failureRatePer1000h.available ? fh2(k.failureRatePer1000h.value) : t('Unavailable')} sub={k.failureRatePer1000h.available ? undefined : k.failureRatePer1000h.reason} />
-          <Tile compact={mobile} icon="clock" label={t('Failure events')} value={fint(k.failureEventCount)} sub={t('{n} failure rows', { n: fint(k.failureCount) })} />
+          <Tile compact={mobile} icon="clock" label={t('Failure events')} value={fint(k.failureEventCount)} sub={t('first row Freq 1, Failure YES, not PL or CIR')} />
         </div>
       )}
       {ctx && <MonthCompare dash={dash} page="reliability" />}
@@ -189,7 +197,7 @@ export default function Reliability() {
           </div>
           <ChartCard title={t('Year over year, by month')} subtitle={t('{a} against {b}, {m}', { a: model.yoyYear, b: model.yoyYear - 1, m: yoyLabels[yoyMetric] })} testid="chart-yoy"
             controls={<Toggle value={yoyMetric} options={(Object.keys(yoyLabels) as YoyMetric[]).map((v) => ({ value: v, label: yoyLabels[v] }))} onChange={setYoyMetric} label={t('Measure')} testid="yoy-measure" />}
-            summary={t('Months without data in either year are left out.')} legend={yseries.map((s) => ({ label: s.label, color: s.color }))}
+            summary={t('Months without data in either year are left out.')} legend={yseries.map((s) => ({ label: s.label, color: s.color }))} footnote={yoyFoot}
             table={seriesTable(ycats, yseries, t('Month'), (_s, n) => yfmt(n))}>
             {(w) => <CartesianChart categories={ycats} series={yseries} width={w} ariaLabel={t('Grouped bars comparing each month with the same month a year earlier')} yFormat={(n) => `${n}`} maxBarWidth={26} />}
           </ChartCard>
