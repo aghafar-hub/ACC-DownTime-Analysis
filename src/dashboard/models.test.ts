@@ -409,3 +409,20 @@ describe('owner rule P7 in the page adapters', () => {
     expect(av.available && av.perDay).toBeFalsy();
   });
 });
+
+describe('owner rule P6 in the page adapters', () => {
+  it('months with no record at all are Not uploaded in the monthly series, the class series and the cause x month heat maps', () => {
+    const gap = '2026-08';
+    const without = rows.filter((r) => r.stop_ts.slice(0, 7) !== gap && r.start_ts.slice(0, 7) !== gap);
+    const win = { from: '2026-06-01', to: '2026-09-30' };
+    const c = buildCtx(without, startup, { ...f, preset: 'custom', from: win.from, to: win.to }, win);
+    expect(c.notUploaded).toEqual([gap]);
+    const m = overviewModel(c);
+    expect(m.monthly.find((p) => p.month === gap)).toMatchObject({ hasData: false, notUploaded: true });
+    expect(m.byClass.find((p) => p.month === gap)).toMatchObject({ hasData: false, notUploaded: true });
+    expect(m.kpi!.notUploaded).toEqual([gap]);
+    expect(m.kpi!.total.scheduledHours).toBe((122 - 31) * 24 * c.base.areaIds.length);
+    const rm = reasonMonthModel(c)!;
+    expect(rm.hoursAll.cols.find((x) => x.key === gap)!.label).toBe(`${gap} n/u`);
+  });
+});
