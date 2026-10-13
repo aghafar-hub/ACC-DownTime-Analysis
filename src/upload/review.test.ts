@@ -6,7 +6,7 @@ import { createMockApi } from '../api/mockApi';
 import type { SyntheticDb } from '../mock/synthetic';
 import { parseWorkbook, type ParsedFile } from './parseWorkbook';
 import {
-  buildPlan, buildReview, checkGroups, csvCell, csvText, decideAll, decisionsComplete, flagSummary, monthKey, monthLabel, reviewCsv,
+  buildPlan, buildReview, checkGroups, criticalityItems, criticalityTitle, csvCell, csvText, decideAll, decisionsComplete, flagSummary, monthKey, monthLabel, reviewCsv,
   storedWarningsCsv, undecidedCount,
 } from './review';
 import { INFO_CHECK_TYPES, OTHER_CHECK_TYPES } from './warningText';
@@ -243,6 +243,23 @@ describe('a cause in another area (information)', () => {
   it('is listed as Information in the downloadable list', async () => {
     const review = buildReview(await parse(simpleRows(1, '2026-11-02', { code: foreign() })), startup, stored);
     expect(reviewCsv(review, {})).toMatch(/^2,Information,Cause in another area,.*Added; nothing to fix/m);
+  });
+});
+
+describe('criticality written differently', () => {
+  it('is listed in the review and the downloadable list, with a check tag only where the sheet rule disagrees', async () => {
+    const rows = [...simpleRows(1, '2026-11-02', { classification: 'MEC' }), ...simpleRows(1, '2026-11-03', { classification: 'CIR', failure: 'NO' })];
+    const bytes = await buildWorkbook(rows, { overrides: [[0, 'CRITICALITY', 'Incidential'], [1, 'CRITICALITY', 'Incidential']] });
+    const parsed = await parseWorkbook(bytes);
+    if (!parsed.ok) throw new Error(parsed.message);
+    const review = buildReview(parsed, startup, stored);
+    const items = criticalityItems(review, {});
+    expect(items.map((i) => [i.source_row, i.from, i.to, i.classification, i.conflict])).toEqual([[2, 'Incidential', 'INC', 'MEC', false], [3, 'Incidential', 'INC', 'CIR', true]]);
+    expect(criticalityTitle(items)).toBe('Criticality written differently (read as INC)');
+    const csv = reviewCsv(review, {});
+    expect(csv).toMatch(/^2,Information,Criticality written differently,.*classification MEC.*Added; nothing to fix/m);
+    expect(csv).toMatch(/^3,Information,Criticality written differently,.*classification CIR.*Read as INC; check row/m);
+    expect(buildPlan(review, {}).warnings.some((w) => /Criticality/.test(w.detail ?? ''))).toBe(false);
   });
 });
 

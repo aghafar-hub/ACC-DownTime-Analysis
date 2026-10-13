@@ -195,6 +195,60 @@ test.describe('upload flow', () => {
     expect(errors, 'console errors').toEqual([]);
   });
 
+  const critRows = (): SheetRowSpec[] => [
+    ...simpleRows(1, '2026-11-02', { classification: 'MEC' }),
+    ...simpleRows(1, '2026-11-03', { classification: 'CIR', failure: 'NO' }),
+  ];
+  const critOverrides = (): Parameters<typeof buildWorkbook>[1] => ({
+    trailingBlankFormulaRows: 40, overrides: [[0, 'CRITICALITY', 'Incidential'], [1, 'CRITICALITY', 'Incidential']],
+  });
+
+  test('CRITICALITY written as "Incidential" is read as INC, listed under Information, and never blocks', async ({ page }) => {
+    const errors = watchConsole(page);
+    await signInAndWait(page, 'engineer');
+    await openUpload(page);
+    await page.getByTestId('file-input').setInputFiles(await file(critRows(), 'crit.xlsx', critOverrides()));
+    await expect(page.getByTestId('review')).toBeVisible();
+    await expect(page.getByTestId('count-new')).toContainText('2');
+    const g = page.getByTestId('info-criticality');
+    await expect(g).toContainText('Criticality written differently (read as INC)');
+    await expect(g.locator('.badge--info').first()).toContainText('2');
+    await g.locator('summary').click();
+    const rows = g.getByTestId('info-criticality-row');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText('Written "Incidential", read as INC; classification MEC');
+    await expect(rows.nth(0)).not.toContainText('Check this row');
+    await expect(rows.nth(1)).toContainText('classification CIR');
+    await expect(rows.nth(1)).toContainText('Check this row');
+    await expect(page.getByTestId('late-section')).toHaveCount(0);
+    await expect(page.getByTestId('upload-confirm')).toBeEnabled();
+    await expect(page.getByTestId('upload-confirm')).toContainText('Upload 2 rows');
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await g.scrollIntoViewIfNeeded();
+    await page.getByTestId('info-section').screenshot({ path: 'test-results/screens-admin/upload-crit-1280.png' });
+    await page.getByTestId('upload-confirm').click();
+    await page.getByTestId('confirm-ok').click();
+    await expect(page.getByTestId('result-added')).toContainText('2');
+    expect(errors, 'console errors').toEqual([]);
+  });
+
+  test('CRITICALITY note on a phone', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, reducedMotion: 'reduce' });
+    const page = await context.newPage();
+    await stubFonts(page);
+    await signInAndWait(page, 'engineer');
+    await openUpload(page, true);
+    await page.getByTestId('file-input').setInputFiles(await file(critRows(), 'crit.xlsx', critOverrides()));
+    await expect(page.getByTestId('review')).toBeVisible();
+    const g = page.getByTestId('info-criticality');
+    await g.locator('summary').click();
+    await expect(g.getByTestId('info-criticality-row').nth(1)).toContainText('Check this row');
+    const r = await noSidewaysScroll(page);
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    await page.getByTestId('info-section').screenshot({ path: 'test-results/screens-admin/upload-crit-390.png' });
+    await context.close();
+  });
+
   test('wrong files are refused with a clear message', async ({ page }) => {
     await signInAndWait(page, 'engineer');
     await openUpload(page);
