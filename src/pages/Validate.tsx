@@ -28,6 +28,7 @@ import { flagLabel } from './events/eventLabels';
 import EventDetail from './events/EventDetail';
 import '../components/ui.css';
 import '../validate/validate.css';
+import StickyTableWrap from '../components/StickyTableWrap';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthName = (key: string): string => {
@@ -424,7 +425,7 @@ export default function Validate() {
               <button type="button" className="btn btn-sm" onClick={reset}>{t('Reset filters')}</button>
             </div>
           ) : !mobile ? (
-            <div className="table-wrap v-table" data-testid="v-kept-table">
+            <StickyTableWrap className="v-table" testid="v-kept-table">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -464,7 +465,7 @@ export default function Validate() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </StickyTableWrap>
           ) : (
             <div className="event-cards" data-testid="v-kept-cards">
               {visibleKept.map((k) => {
@@ -519,7 +520,7 @@ export default function Validate() {
               <button type="button" className="btn btn-sm" onClick={reset}>{t('Reset filters')}</button>
             </div>
           ) : !mobile ? (
-            <div className="table-wrap v-table" data-testid="v-table">
+            <StickyTableWrap className="v-table" testid="v-table">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -565,7 +566,7 @@ export default function Validate() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </StickyTableWrap>
           ) : (
             <div className="event-cards" data-testid="v-cards">
               {visible.map((r) => {

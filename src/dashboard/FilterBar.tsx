@@ -323,6 +323,9 @@ export default function FilterBar({ dash, eventCount, hideCompare }: { dash: Das
         {range && effective && (effective.from !== range.from || effective.to !== range.to) && (
           <span data-testid="fb-clipped">{t('Calculated for {r}, where data exists', { r: rangeLabel(effective) })}</span>
         )}
+        {range && effective && effective.from === range.from && effective.to === range.to && ctx?.kpis.current.status === 'ok' && ctx.kpis.current.partial && (
+          <span data-testid="fb-partial">{t('Month in progress: data to {d}, not a whole month', { d: dayLabel(effective.to) })}</span>
+        )}
       </div>
       {mobile && open && (
         <BottomSheet

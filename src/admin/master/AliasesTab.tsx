@@ -8,6 +8,7 @@ import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
 import ConfirmDialog from '../ConfirmDialog';
 import { useAction, type TabProps } from '../useAction';
+import StickyTableWrap from '../../components/StickyTableWrap';
 
 function AliasModal({ startup, onClose, onSaved }: { startup: TabProps['startup']; onClose: () => void; onSaved: (s: string) => void }) {
   const { run, busy, error } = useAction();
@@ -91,7 +92,7 @@ export default function AliasesTab({ startup, canEdit, reload, toast }: TabProps
       </div>
       <p className="adm-note">{t('When the workbook has an alias in the EQUIPMENT CODE column, the app reads it as the real code.')}</p>
       {list.length === 0 ? <div className="callout" role="status" data-testid="alias-empty"><Icon name="info" size={16} /><span>{t('No aliases.')}</span></div> : !mobile ? (
-        <div className="table-wrap" data-testid="alias-table">
+        <StickyTableWrap testid="alias-table">
           <table className="data-table">
             <thead><tr><th scope="col">{t('Alias')}</th><th scope="col">{t('Real code')}</th><th scope="col">{t('Why')}</th>{canEdit && <th scope="col"><span className="sr-only">{t('Actions')}</span></th>}</tr></thead>
             <tbody>
@@ -103,7 +104,7 @@ export default function AliasesTab({ startup, canEdit, reload, toast }: TabProps
               ))}
             </tbody>
           </table>
-        </div>
+        </StickyTableWrap>
       ) : (
         <div className="adm-cards" data-testid="alias-cards">
           {list.map((a) => (

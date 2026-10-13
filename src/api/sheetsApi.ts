@@ -10,25 +10,49 @@ interface Envelope {
   error?: { message?: string; code?: string; accessDenied?: boolean };
 }
 
+/** How long a call may take before the app gives up and says so: 45 s, 180 s for the upload steps and the re-check. */
+export const API_TIMEOUT_MS = 45_000;
+export const API_LONG_TIMEOUT_MS = 180_000;
+const LONG_ACTIONS: ReadonlySet<string> = new Set(['uploadStart', 'uploadChunk', 'uploadFinish', 'revalidateEvents']);
+export const timeoutFor = (action: string): number => (LONG_ACTIONS.has(action) ? API_LONG_TIMEOUT_MS : API_TIMEOUT_MS);
+const TIMEOUT_TEXT = 'The server took too long to answer. Check your connection and try again.';
+
 export function createSheetsApi(url: string): Api {
   async function call<T>(action: string, token: string, params: Record<string, unknown> = {}): Promise<T> {
-    let res: Response;
+    // a call that never answers (a stalled network, a sleeping server) ends with a clear message instead of a spinner
+    const ctrl = typeof AbortController === 'undefined' ? null : new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      ctrl?.abort();
+    }, timeoutFor(action));
     try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action, token: token || '', params }),
-        redirect: 'follow',
-      });
-    } catch {
-      throw new ApiError('Cannot reach the server. Check your connection and try again.', 'network');
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action, token: token || '', params }),
+          redirect: 'follow',
+          signal: ctrl?.signal,
+        });
+      } catch {
+        throw new ApiError(timedOut ? TIMEOUT_TEXT : 'Cannot reach the server. Check your connection and try again.', 'network');
+      }
+      let body: Envelope;
+      try {
+        body = (await res.json()) as Envelope;
+      } catch {
+        if (timedOut) throw new ApiError(TIMEOUT_TEXT, 'network');
+        throw new ApiError('The server sent an answer the app cannot read. Please try again.', 'server');
+      }
+      return unwrap<T>(body);
+    } finally {
+      clearTimeout(timer);
     }
-    let body: Envelope;
-    try {
-      body = (await res.json()) as Envelope;
-    } catch {
-      throw new ApiError('The server sent an answer the app cannot read. Please try again.', 'server');
-    }
+  }
+
+  function unwrap<T>(body: Envelope): T {
     if (body && body.status === 'ok') return body.data as T;
     const e = body?.error;
     if (e) throw new ApiError(e.message || 'Something went wrong. Please try again.', e.code || 'server', !!e.accessDenied || e.code === 'forbidden');

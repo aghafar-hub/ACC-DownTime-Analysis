@@ -8,6 +8,7 @@ import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
 import ConfirmDialog from '../ConfirmDialog';
 import { useAction, type TabProps } from '../useAction';
+import StickyTableWrap from '../../components/StickyTableWrap';
 
 const Active = ({ on }: { on: boolean }) => on
   ? <span className="badge badge--success"><span aria-hidden="true">●</span> {t('Active')}</span>
@@ -115,7 +116,7 @@ export default function AreasTab({ startup, canEdit, reload, toast }: TabProps) 
         {canEdit && <div className="adm-toolbar-actions"><button type="button" className="btn-primary" onClick={() => setEditing('new')} data-testid="add-area"><Icon name="plus" size={15} /> {t('Add area')}</button></div>}
       </div>
       {!mobile ? (
-        <div className="table-wrap" data-testid="areas-table">
+        <StickyTableWrap testid="areas-table">
           <table className="data-table">
             <thead><tr><th scope="col">{t('Area')}</th><th scope="col">{t('Name')}</th><th scope="col">{t('Line')}</th><th scope="col" className="num">{t('Order')}</th><th scope="col">{t('Status')}</th><th scope="col">{t('In downtime sheet')}</th></tr></thead>
             <tbody>
@@ -131,7 +132,7 @@ export default function AreasTab({ startup, canEdit, reload, toast }: TabProps) 
               ))}
             </tbody>
           </table>
-        </div>
+        </StickyTableWrap>
       ) : (
         <div className="adm-cards" data-testid="areas-cards">
           {list.map((a) => (

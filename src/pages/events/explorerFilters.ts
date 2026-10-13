@@ -80,8 +80,7 @@ const SORTS: Sort[] = ['stop_desc', 'stop_asc', 'dur_desc'];
 /** Only non-default values are written, so an empty filter set is an empty query. */
 export function serializeExplorerFilters(f: Filters): URLSearchParams {
   const sp = new URLSearchParams();
-  // written as typed (a trailing space is kept while typing 'belt c'); a blank search is not written
-  if (f.q.trim()) sp.set('q', f.q);
+  if (f.q.trim()) sp.set('q', f.q.trim());
   if (f.line) sp.set('line', f.line);
   if (f.area) sp.set('area', f.area);
   f.classes.forEach((c) => sp.append('cls', c));

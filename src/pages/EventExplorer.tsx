@@ -34,6 +34,7 @@ import EventDetail from './events/EventDetail';
 import TimelineView from './events/TimelineView';
 import './events/timeline.css';
 import '../components/ui.css';
+import StickyTableWrap from '../components/StickyTableWrap';
 
 function SortField({ f, set, id }: { f: Filters; set: (p: Partial<Filters>) => void; id: string }) {
   return (
@@ -142,19 +143,29 @@ export default function EventExplorer() {
   // is simply such an address. Every change replaces the entry (typing does not fill the history).
   const classCodes = startup?.classifications.map((c) => c.code) ?? null;
   const classKey = classCodes?.join(',') ?? '';
-  const filterKey = serializeExplorerFilters(parseExplorerFilters(params, classCodes)).toString();
-  const f = useMemo(() => parseExplorerFilters(new URLSearchParams(filterKey), classCodes), [filterKey, classKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  const writeParams = (edit: (p: URLSearchParams) => void) =>
-    setParams((cur) => {
-      const p = new URLSearchParams(cur);
-      edit(p);
-      return p;
-    }, { replace: true, state: location.state });
+  const filterKey = EXPLORER_KEYS.map((k) => params.getAll(k).join('\u0001')).join('\u0002');
+  const f = useMemo(() => parseExplorerFilters(params, classCodes), [filterKey, classKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Location updates render in a transition, so two quick changes (a chip, then a select) could both start from the
+  // same rendered query and the second would drop the first. Each change therefore starts from the address as it is
+  // now (the hash is written at once), not from the last render.
+  const liveParams = (): URLSearchParams => {
+    const h = window.location.hash;
+    const i = h.indexOf('?');
+    return h.startsWith('#/') ? new URLSearchParams(i < 0 ? '' : h.slice(i + 1)) : new URLSearchParams(params);
+  };
+  const writeParams = (edit: (p: URLSearchParams) => void) => {
+    const p = liveParams();
+    edit(p);
+    setParams(p, { replace: true, state: location.state });
+  };
+  const liveFilters = (): Filters => parseExplorerFilters(liveParams(), classCodes);
   const setF = (next: Filters) =>
     writeParams((p) => {
       EXPLORER_KEYS.forEach((k) => p.delete(k));
       p.delete(SHOWN_PARAM); // a new filter starts at the first page again
       serializeExplorerFilters(next).forEach((v, k) => p.append(k, v));
+      // the search is kept as typed while typing ('belt ' before 'belt c'); a saved view stores it trimmed
+      if (next.q.trim()) p.set('q', next.q);
     });
   const [sheet, setSheet] = useState(false);
   const shownParam = Number(params.get(SHOWN_PARAM));
@@ -162,8 +173,19 @@ export default function EventExplorer() {
   const setShown = (n: number) => writeParams((p) => { if (n > PAGE_SIZE) p.set(SHOWN_PARAM, String(n)); else p.delete(SHOWN_PARAM); });
   const [openId, setOpenId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const set = (p: Partial<Filters>) => setF({ ...f, ...p });
-  const q = useDeferredValue(f.q);
+  const set = (p: Partial<Filters>) => setF({ ...liveFilters(), ...p });
+  // the search box answers each key at once (its text is local); the address follows. A change that did not come
+  // from typing here (Back, Reset, a saved view) is copied into the box.
+  const [qText, setQText] = useState(f.q);
+  useEffect(() => {
+    const live = liveParams().get('q') ?? '';
+    if (live !== qText) setQText(live);
+  }, [f.q]); // eslint-disable-line react-hooks/exhaustive-deps
+  const typeSearch = (v: string) => {
+    setQText(v);
+    set({ q: v });
+  };
+  const q = useDeferredValue(qText);
 
   // the top bar's search shortcut lands here with the box focused
   const focusKey = (location.state as { focusSearch?: number } | null)?.focusSearch;
@@ -198,7 +220,7 @@ export default function EventExplorer() {
   const visible = filtered.slice(0, shown);
   const total = sourceRows.length;
   const dataReady = drill ? multi.ready : !!ev.data;
-  const filtersOn = activeCount(f) + (f.q.trim() ? 1 : 0);
+  const filtersOn = activeCount(f) + (qText.trim() ? 1 : 0);
   const reset = () => setF(EMPTY);
 
   // ---- export: exactly the rows of the list (same filters, same order), capped at EVENTS_EXPORT_CAP
@@ -243,7 +265,7 @@ export default function EventExplorer() {
     <div className="field" style={{ flex: '1 1 260px', minWidth: 0 }}>
       <label htmlFor="ev-search">{t('Search')}</label>
       <input
-        id="ev-search" ref={searchRef} className="input" type="search" value={f.q} onChange={(e) => set({ q: e.target.value })}
+        id="ev-search" ref={searchRef} className="input" type="search" value={qText} onChange={(e) => typeSearch(e.target.value)}
         placeholder={t('Code, reason or description')} autoComplete="off" data-testid="event-search"
       />
     </div>
@@ -323,7 +345,7 @@ export default function EventExplorer() {
           </div>
           <div className="field" style={{ marginBottom: 8 }}>
             <label htmlFor="ev-search" className="field-label">{t('Search')}</label>
-            <input id="ev-search" ref={searchRef} className="input" type="search" value={f.q} onChange={(e) => set({ q: e.target.value })} placeholder={t('Code, reason or description')} autoComplete="off" data-testid="event-search" />
+            <input id="ev-search" ref={searchRef} className="input" type="search" value={qText} onChange={(e) => typeSearch(e.target.value)} placeholder={t('Code, reason or description')} autoComplete="off" data-testid="event-search" />
           </div>
           <ChipRow label={t('Quick filters')}>
             <CountChip on={f.failureOnly} onClick={() => set({ failureOnly: !f.failureOnly })} testid="failure-only">{t('Failures only')}</CountChip>
@@ -362,7 +384,7 @@ export default function EventExplorer() {
               <button type="button" className="btn btn-sm" onClick={reset}>{t('Reset filters')}</button>
             </div>
           ) : !mobile ? (
-            <div className="table-wrap" data-testid="event-table">
+            <StickyTableWrap testid="event-table">
               <table className="data-table">
                 <thead>
                   <tr>
@@ -391,7 +413,7 @@ export default function EventExplorer() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </StickyTableWrap>
           ) : (
             <div className="event-cards" data-testid="event-cards">
               {visible.map((e) => (

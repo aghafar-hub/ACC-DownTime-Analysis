@@ -20,6 +20,7 @@ import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import '../components/ui.css';
 import '../dashboard/dashboard.css';
+import StickyTableWrap from '../components/StickyTableWrap';
 
 type SortKey = 'equipmentId' | 'areas' | 'reason' | 'occurrences' | 'totalHours' | 'avgHours' | 'maxHours' | 'last' | 'prev';
 const COLS: { key: SortKey; label: string; num?: boolean }[] = [
@@ -151,7 +152,7 @@ export default function Repeats() {
             <h2>{t('Investigation table')}</h2>
             <p className="chart-sub" style={{ marginBottom: 8 }}>{t('Select a row to see the failure timeline of that equipment. N/A and blank reasons are excluded. The small timeline shows when each occurrence happened across the range.')}</p>
             {groups.length === 0 ? <p className="muted" data-testid="repeat-none">{t('No repeated failures in this range.')}</p> : !mobile ? (
-              <div className="table-wrap">
+              <StickyTableWrap>
                 <table className="data-table" data-testid="repeat-table">
                   <thead><tr>{COLS.slice(0, 3).map(th)}<th scope="col">{t('Timeline')}</th>{COLS.slice(3).map(th)}<th scope="col">{t('Days between')}</th></tr></thead>
                   <tbody>
@@ -172,7 +173,7 @@ export default function Repeats() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </StickyTableWrap>
             ) : (
               <div className="event-cards" data-testid="repeat-cards">
                 <div className="chip-row" role="group" aria-label={t('Sort by')}>

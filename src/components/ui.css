@@ -535,3 +535,10 @@
   font-size: 12.5px;
   color: var(--tk-text-secondary);
 }
+/* page-relative sticky headings (StickyTableWrap moves the cells down while the page scrolls) */
+.table-wrap--sticky .data-table th {
+  z-index: 2;
+}
+.table-wrap--sticky.is-stuck .data-table th {
+  box-shadow: 0 2px 0 var(--tk-border);
+}

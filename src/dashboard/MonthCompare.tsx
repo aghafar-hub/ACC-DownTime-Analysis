@@ -99,12 +99,21 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
     return [...model.areas].sort((x, y) => Math.max(y.a?.downtimeHours ?? 0, y.b?.downtimeHours ?? 0) - Math.max(x.a?.downtimeHours ?? 0, x.b?.downtimeHours ?? 0) || x.area_id.localeCompare(y.area_id));
   }, [model]);
   const cats: CartCategory[] = areas.map((a) => ({ key: a.area_id, label: a.area_id }));
+  // a partial month: the bars are per day with data too, like the table
+  const perDay = !!model?.perDay;
+  const divA = perDay && model!.daysA > 0 ? model!.daysA : 1;
+  const divB = perDay && model!.daysB > 0 ? model!.daysB : 1;
   const series = (pick: (k: NonNullable<(typeof areas)[number]['a']>) => number, fmt: (n: number) => string, unit: string): CartSeries[] => [
-    { key: 'a', label: `${t('Month A')}: ${la}`, color: seriesColor(dark, 0), type: 'bar', values: areas.map((a) => (a.a ? pick(a.a) : null)), format: (n) => `${fmt(n)}${unit}` },
-    { key: 'b', label: `${t('Month B')}: ${lb}`, color: seriesColor(dark, 1), type: 'bar', values: areas.map((a) => (a.b ? pick(a.b) : null)), format: (n) => `${fmt(n)}${unit}`, hatch: true },
+    { key: 'a', label: `${t('Month A')}: ${la}`, color: seriesColor(dark, 0), type: 'bar', values: areas.map((a) => (a.a ? pick(a.a) / divA : null)), format: (n) => `${fmt(n)}${unit}` },
+    { key: 'b', label: `${t('Month B')}: ${lb}`, color: seriesColor(dark, 1), type: 'bar', values: areas.map((a) => (a.b ? pick(a.b) / divB : null)), format: (n) => `${fmt(n)}${unit}`, hatch: true },
   ];
-  const hoursSeries = series((k) => k.downtimeHours, fh, ' h');
-  const countSeries = series((k) => k.failureCount, fint, '');
+  const day = t('/day');
+  const hFmt = perDay ? fh2 : fh;
+  const cFmt = perDay ? fh2 : fint;
+  const hUnit = perDay ? ` h${day}` : ' h';
+  const cUnit = perDay ? ` ${day}` : '';
+  const hoursSeries = series((k) => k.downtimeHours, hFmt, hUnit);
+  const countSeries = series((k) => k.failureCount, cFmt, cUnit);
   const legend = [
     { label: `${t('Month A')}: ${la}`, color: seriesColor(dark, 0) },
     { label: `${t('Month B')}: ${lb}`, color: seriesColor(dark, 1), symbol: 'hatch' as const },
@@ -216,16 +225,16 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
                   {(!model.hasA || !model.hasB) && <p className="chart-foot" data-testid="mvm-nodata">{t('A month without data shows no figures and no change.')}</p>}
                   <div className="chart-grid" style={{ marginTop: 12 }}>
                     <ChartCard
-                      title={t('Stoppage hours by area')} subtitle={t('Month A (solid) against month B (striped), hours stopped per area')} testid="chart-mvm-hours"
-                      summary={sumOf(hoursSeries, fh, ' h')} legend={legend} table={tableOf(hoursSeries, fh, 1)}
+                      title={t('Stoppage hours by area')} subtitle={perDay ? t('Month A (solid) against month B (striped), hours stopped per area and day with data') : t('Month A (solid) against month B (striped), hours stopped per area')} testid="chart-mvm-hours"
+                      summary={sumOf(hoursSeries, hFmt, hUnit)} legend={legend} table={tableOf(hoursSeries, hFmt, perDay ? 2 : 1)}
                     >
-                      {(w) => <CartesianChart categories={cats} series={hoursSeries} width={w} ariaLabel={t('Grouped bars of stoppage hours by area, month A against month B. {s}', { s: sumOf(hoursSeries, fh, ' h') })} yFormat={(n) => `${n}`} rotateLabels maxBarWidth={18} />}
+                      {(w) => <CartesianChart categories={cats} series={hoursSeries} width={w} ariaLabel={t('Grouped bars of stoppage hours by area, month A against month B. {s}', { s: sumOf(hoursSeries, hFmt, hUnit) })} yFormat={(n) => `${n}`} rotateLabels maxBarWidth={18} />}
                     </ChartCard>
                     <ChartCard
-                      title={t('Failure count by area')} subtitle={t('Month A (solid) against month B (striped), failures per area')} testid="chart-mvm-count"
-                      summary={sumOf(countSeries, fint, '')} legend={legend} table={tableOf(countSeries, fint, 0)}
+                      title={t('Failure count by area')} subtitle={perDay ? t('Month A (solid) against month B (striped), failures per area and day with data') : t('Month A (solid) against month B (striped), failures per area')} testid="chart-mvm-count"
+                      summary={sumOf(countSeries, cFmt, cUnit)} legend={legend} table={tableOf(countSeries, cFmt, perDay ? 2 : 0)}
                     >
-                      {(w) => <CartesianChart categories={cats} series={countSeries} width={w} ariaLabel={t('Grouped bars of failure count by area, month A against month B. {s}', { s: sumOf(countSeries, fint, '') })} yFormat={(n) => `${n}`} rotateLabels maxBarWidth={18} />}
+                      {(w) => <CartesianChart categories={cats} series={countSeries} width={w} ariaLabel={t('Grouped bars of failure count by area, month A against month B. {s}', { s: sumOf(countSeries, cFmt, cUnit) })} yFormat={(n) => `${n}`} rotateLabels maxBarWidth={18} />}
                     </ChartCard>
                   </div>
                 </>

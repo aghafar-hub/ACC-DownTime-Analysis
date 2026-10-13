@@ -140,11 +140,12 @@ test.describe('month vs month', () => {
     await expect(sec).toHaveAttribute('data-open', 'yes');
     const a = page.getByTestId('overview-mvm-a');
     const b = page.getByTestId('overview-mvm-b');
-    // defaults: the latest month and the one before (months are listed newest first)
+    // defaults: the last two COMPLETE months (months are listed newest first; the demo data ends inside the latest one)
     const opts = await a.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
-    expect(opts.length).toBeGreaterThan(2);
-    await expect(a).toHaveValue(opts[0]!);
-    await expect(b).toHaveValue(opts[1]!);
+    expect(opts.length).toBeGreaterThan(3);
+    await expect(a).toHaveValue(opts[1]!);
+    await expect(b).toHaveValue(opts[2]!);
+    await expect(sec.getByTestId('mvm-perday')).toHaveCount(0);
     const rows = sec.getByTestId('mvm-row');
     await expect(rows).toHaveCount(10);
     const labels = await rows.locator('th').allTextContents();
@@ -156,6 +157,13 @@ test.describe('month vs month', () => {
     await expect(sec.getByTestId('chart-mvm-hours').getByTestId('chart-summary')).toContainText(/\d+ areas\./);
     await sec.getByTestId('chart-mvm-hours').getByTestId('view-table').click();
     await expect(sec.getByTestId('chart-mvm-hours').locator('table')).toBeVisible();
+
+    // a month in progress against a whole one: per-day rates and no better / worse verdict
+    await a.selectOption(opts[0]!);
+    await expect(sec.getByTestId('mvm-perday')).toBeVisible();
+    await expect(rows.first().getByTestId('mvm-a')).toContainText('h/day');
+    await expect(rows.first().getByTestId('mvm-change')).not.toContainText(/better|worse/);
+    for (const txt of await sec.getByTestId('mvm-change').allTextContents()) expect(txt).not.toMatch(/better|worse/);
 
     // choose months: the address carries them and survives a reload
     await a.selectOption(opts[2]!);

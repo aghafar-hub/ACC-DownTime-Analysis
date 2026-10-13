@@ -9,6 +9,7 @@ import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
 import ConfirmDialog from '../ConfirmDialog';
 import { useAction, type TabProps } from '../useAction';
+import StickyTableWrap from '../../components/StickyTableWrap';
 
 const CRITICALITY_HINTS = ['High', 'Medium', 'Low'];
 
@@ -260,7 +261,7 @@ export default function EquipmentTab({ startup, canEdit, reload, toast, reviewOn
       {list.length === 0 ? (
         <div className="callout" role="status" data-testid="equipment-empty"><Icon name="info" size={16} /><span>{t('No codes match these filters.')}</span></div>
       ) : !mobile ? (
-        <div className="table-wrap" data-testid="equipment-table">
+        <StickyTableWrap testid="equipment-table">
           <table className="data-table">
             <thead><tr><th scope="col">{t('Code')}</th><th scope="col">{t('Description')}</th><th scope="col">{t('Type')}</th><th scope="col">{t('Criticality')}</th><th scope="col">{t('Areas')}</th><th scope="col">{t('Status')}</th></tr></thead>
             <tbody>
@@ -276,7 +277,7 @@ export default function EquipmentTab({ startup, canEdit, reload, toast, reviewOn
               ))}
             </tbody>
           </table>
-        </div>
+        </StickyTableWrap>
       ) : (
         <div className="adm-cards" data-testid="equipment-cards">
           {visible.map((e) => (

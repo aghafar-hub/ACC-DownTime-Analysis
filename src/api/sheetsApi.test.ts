@@ -125,3 +125,51 @@ describe('sheetsApi', () => {
     expect(await createSheetsApi(URL).getStartup('t').catch((e) => e)).toMatchObject({ code: 'server' });
   });
 });
+
+describe('sheetsApi timeout', () => {
+  /** a fetch that never answers until its signal aborts */
+  function hangingFetch() {
+    const fn = vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
+      init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    }));
+    vi.stubGlobal('fetch', fn);
+    return fn;
+  }
+  afterEach(() => vi.useRealTimers());
+
+  it('gives up after 45 s with a network error that says to try again', async () => {
+    vi.useFakeTimers();
+    hangingFetch();
+    const p = createSheetsApi(URL).getStartup('tok');
+    const seen = p.catch((e: unknown) => e);
+    await vi.advanceTimersByTimeAsync(44_000);
+    let settled = false;
+    void seen.then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_500);
+    const e = await seen;
+    expect(e).toBeInstanceOf(ApiError);
+    expect(e).toMatchObject({ code: 'network' });
+    expect((e as ApiError).message).toMatch(/took too long.*try again/);
+  });
+
+  it('upload steps get 180 s', async () => {
+    vi.useFakeTimers();
+    hangingFetch();
+    const seen = createSheetsApi(URL).uploadChunk('tok', 'B-1', []).catch((e: unknown) => e);
+    let settled = false;
+    void seen.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(170_000);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(await seen).toMatchObject({ code: 'network' });
+  });
+
+  it('a quick answer clears the timer', async () => {
+    vi.useFakeTimers();
+    stubFetch({ status: 'ok', data: 1 });
+    await expect(createSheetsApi(URL).getStartup('tok')).resolves.toBe(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
