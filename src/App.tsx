@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import RequireAuth from './auth/RequireAuth';
@@ -47,7 +47,9 @@ function ShellLayout() {
   const [moreOpen, setMoreOpen] = useState(false);
   const { pinned } = useRail();
   // the page's scope bar is drawn into this slot (sticky under the top bar); the data status strip follows it
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [slotBar, setSlotBar] = useState<HTMLElement | null>(null);
+  const [slotInfo, setSlotInfo] = useState<HTMLElement | null>(null);
+  const slots = useMemo(() => ({ bar: slotBar, info: slotInfo }), [slotBar, slotInfo]);
   const page = pageForPath(location.pathname);
   const scoped = !!page && (page.group === 'analyze' || page.id === 'events');
 
@@ -75,13 +77,14 @@ function ShellLayout() {
   return (
     <ValidationProvider>
     <NotificationsProvider>
-    <ScopeSlotContext.Provider value={slot}>
+    <ScopeSlotContext.Provider value={slots}>
     <div className={pinned && !mobile ? 'app-shell app-shell--rail-pinned' : 'app-shell'}>
       {!mobile && <Sidebar />}
       <div className="app-shell-right">
         <TopBar />
         <PageTabs />
-        <div className="scope-slot" ref={setSlot} />
+        <div className="scope-slot" ref={setSlotBar} />
+        <div className="scope-info-slot" ref={setSlotInfo} />
         {scoped && <DataStatusStrip />}
         <OfflineBanner />
         <main className="shell-page-content" id="main">

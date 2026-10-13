@@ -310,6 +310,7 @@ function DesktopBar({ src, m, eventCount, hideCompare, views, exportMenu, extra 
   const range = src.range;
   const eff = src.effective ?? null;
   return (
+    <>
     <section className="scope-bar" aria-label={t('Scope')} data-testid="filter-bar">
       <div className="sb-row">
         <Chip label={t('Period')} value={periodText(f, range)} set={f.preset !== DEFAULT_PRESET} testid="scope-period" wide>
@@ -343,10 +344,14 @@ function DesktopBar({ src, m, eventCount, hideCompare, views, exportMenu, extra 
           )}
         </Chip>
         <button type="button" className="sb-reset" onClick={src.reset} data-testid="fb-reset"><Icon name="reset" size={15} /> {t('Reset')}</button>
-        <span className="sb-spacer" />
-        {views ?? <DashViews src={src} />}
-        {exportMenu}
+        <span className="sb-end">
+          {views ?? <DashViews src={src} />}
+          {exportMenu}
+        </span>
       </div>
+    </section>
+    <InScopeSlot info>
+    <div className="scope-info" data-testid="scope-info">
       <div className="sb-info">
         <p className="sb-note" data-testid="scope-note"><Icon name="link" size={14} /> {t(SCOPE_NOTE)}</p>
         <p className="sb-scope" data-testid="fb-scope">
@@ -359,7 +364,9 @@ function DesktopBar({ src, m, eventCount, hideCompare, views, exportMenu, extra 
       </div>
       <ActiveChips src={src} m={m} />
       {clash && <div className="callout callout--warning fb-clash" role="status" data-testid="fb-clash"><Icon name="alert" size={16} /><span>{t(clash)}</span></div>}
-    </section>
+    </div>
+    </InScopeSlot>
+    </>
   );
 }
 

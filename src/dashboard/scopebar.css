@@ -21,7 +21,7 @@
 }
 
 .scope-bar {
-  padding: 10px 24px 8px;
+  padding: 10px 24px 6px;
   max-width: 1440px;
   box-sizing: border-box;
 }
@@ -31,9 +31,30 @@
   align-items: center;
   gap: 6px;
 }
-.sb-spacer {
-  flex: 1 1 0;
-  min-width: 0;
+.sb-end {
+  margin-inline-start: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* under the sticky row: the note, the range and the active filters (they scroll with the page) */
+.scope-info-slot {
+  background: var(--tk-card-bg);
+  font-family: var(--sans);
+}
+.scope-info-slot:empty {
+  display: none;
+}
+.scope-info {
+  padding: 0 24px 8px;
+  max-width: 1440px;
+  box-sizing: border-box;
+}
+.scope-info-slot:not(:empty) {
+  border-bottom: 1px solid var(--tk-border);
+}
+.app-shell-right:has(.scope-info-slot:not(:empty)) .scope-slot {
+  border-bottom-color: var(--tk-border2);
 }
 .sb-chip {
   display: inline-flex;
@@ -41,13 +62,13 @@
   gap: 4px;
   min-height: 40px;
   max-width: 280px;
-  padding: 0 8px 0 11px;
+  padding: 0 7px 0 10px;
   box-sizing: border-box;
   border: 1px solid var(--tk-border);
   border-radius: 8px;
   background: var(--tk-card-bg);
   color: var(--tk-text-primary);
-  font: 500 13.5px var(--sans);
+  font: 500 13px var(--sans);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -107,7 +128,7 @@
   flex-wrap: wrap;
   justify-content: space-between;
   gap: 2px 16px;
-  margin-top: 6px;
+  margin-top: 0;
   font-size: 12.5px;
   color: var(--tk-text-muted);
 }
@@ -521,4 +542,20 @@
 }
 .bottom-sheet .mp-list {
   max-height: none;
+}
+/* 1280-1439 px with the pinned rail: a little tighter so the row (with Views) stays on one line */
+@media (min-width: 861px) and (max-width: 1439px) {
+  .scope-bar,
+  .scope-info {
+    padding-inline: 18px;
+  }
+  .sb-chip {
+    padding: 0 6px 0 9px;
+  }
+  .sb-reset {
+    padding: 0 8px;
+  }
+  .scope-bar .pm > .btn {
+    padding-inline: 10px;
+  }
 }

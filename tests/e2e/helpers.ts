@@ -79,3 +79,19 @@ export async function smallText(page: Page): Promise<string[]> {
     return out;
   });
 }
+
+/** Desktop scope bar: open the Period panel and pick a preset (the panel stays open for the year, month or dates). */
+export async function pickPeriod(page: Page, preset: string) {
+  if ((await page.getByTestId(`fb-preset-${preset}`).count()) === 0) await page.getByTestId('scope-period').click();
+  await page.getByTestId(`fb-preset-${preset}`).click();
+}
+
+/** Desktop scope bar: open the Type panel (types and the "More filters": classification, criticality, failures, duration ...). */
+export async function openType(page: Page) {
+  if ((await page.getByTestId('fb-fail').count()) === 0) await page.getByTestId('scope-type').click();
+}
+
+/** Close the open scope panel. */
+export async function closePanel(page: Page) {
+  await page.keyboard.press('Escape');
+}

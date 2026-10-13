@@ -37,9 +37,9 @@
   transition: width 0.16s ease, box-shadow 0.16s ease;
   z-index: 100;
 }
-/* icon rail: hover or focus opens the labels over the page */
+/* icon rail: hover or keyboard focus opens the labels over the page (a mouse click that leaves focus on a link does not keep it open) */
 .sidebar-rail--icons .sidebar-panel:hover,
-.sidebar-rail--icons .sidebar-panel:focus-within {
+.sidebar-rail--icons .sidebar-panel:has(:focus-visible) {
   width: var(--rail-open-w);
   box-shadow: 6px 0 28px rgba(0, 0, 0, 0.35);
 }
@@ -94,13 +94,13 @@
 }
 .sidebar-rail--pinned .sidebar-logo-mark,
 .sidebar-rail--icons .sidebar-panel:hover .sidebar-logo-mark,
-.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-logo-mark {
+.sidebar-rail--icons .sidebar-panel:has(:focus-visible) .sidebar-logo-mark {
   display: none;
 }
 .sidebar-rail--pinned .sidebar-logo-crop,
 .sidebar-rail--pinned .sidebar-logo-sub,
 .sidebar-rail--icons .sidebar-panel:hover :is(.sidebar-logo-crop, .sidebar-logo-sub),
-.sidebar-rail--icons .sidebar-panel:focus-within :is(.sidebar-logo-crop, .sidebar-logo-sub) {
+.sidebar-rail--icons .sidebar-panel:has(:focus-visible) :is(.sidebar-logo-crop, .sidebar-logo-sub) {
   display: block;
 }
 
@@ -142,11 +142,11 @@
   padding-top: 8px;
 }
 .sidebar-rail--icons .sidebar-panel:hover .sidebar-section-title,
-.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-section-title {
+.sidebar-rail--icons .sidebar-panel:has(:focus-visible) .sidebar-section-title {
   display: block;
 }
 .sidebar-rail--icons .sidebar-panel:hover .sidebar-section + .sidebar-section,
-.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-section + .sidebar-section {
+.sidebar-rail--icons .sidebar-panel:has(:focus-visible) .sidebar-section + .sidebar-section {
   border-top-color: transparent;
   padding-top: 0;
 }
@@ -217,7 +217,7 @@
   opacity: 0;
 }
 .sidebar-rail--icons .sidebar-panel:hover .sidebar-link-label,
-.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-link-label {
+.sidebar-rail--icons .sidebar-panel:has(:focus-visible) .sidebar-link-label {
   opacity: 1;
 }
 
@@ -238,13 +238,13 @@
   display: none;
 }
 .sidebar-rail--icons .sidebar-panel:hover .sidebar-link .vbadge,
-.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-link .vbadge {
+.sidebar-rail--icons .sidebar-panel:has(:focus-visible) .sidebar-link .vbadge {
   position: static;
   margin-inline-start: auto;
   padding: 1px 8px;
 }
 .sidebar-rail--icons .sidebar-panel:hover .sidebar-link .vbadge .vbadge-sym,
-.sidebar-rail--icons .sidebar-panel:focus-within .sidebar-link .vbadge .vbadge-sym {
+.sidebar-rail--icons .sidebar-panel:has(:focus-visible) .sidebar-link .vbadge .vbadge-sym {
   display: inline;
 }
 

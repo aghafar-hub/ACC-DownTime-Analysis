@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { noSidewaysScroll, PASSWORD, signIn, signInAndWait, smallTargets, stubFonts, watchConsole, type Role } from './helpers';
+import { closePanel, noSidewaysScroll, openType, PASSWORD, pickPeriod, signIn, signInAndWait, smallTargets, stubFonts, watchConsole, type Role } from './helpers';
 
 // Runs against `vite preview` of a production build in mock mode (made-up data).
 
-const ANALYZE = ['Overview', 'Pareto', 'Repeated Failures', 'Reliability'];
-const ANALYZE_RAIL = ['Overview', 'Pareto & Contributors', 'Repeated Failures', 'Reliability Trends'];
+const ANALYZE = ['Dashboard', 'Pareto', 'Repeated Failures', 'Reliability'];
+const ANALYZE_RAIL = ['Dashboard', 'Pareto & Contributors', 'Repeated Failures', 'Reliability Trends'];
 const DATA_VIEW = ['Event Explorer', 'Validate'];
 // the left rail: every page the role may open, grouped under Analyze / Data / Setup
 const RAIL: Record<Role, Record<string, string[]>> = {
@@ -38,14 +38,15 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('login-error')).toHaveText('Email or password is not correct.');
     await page.getByTestId('login-password').fill(PASSWORD);
     await page.getByTestId('login-submit').click();
-    await expect(page.getByTestId('page-title')).toHaveText('Overview');
+    await expect(page.getByTestId('page-title')).toHaveText('Dashboard');
   });
 
   for (const role of Object.keys(RAIL) as Role[]) {
     test(`${role}: sees exactly the pages the role allows, under the right sections`, async ({ page }) => {
       await signInAndWait(page, role);
       await expect(page.getByTestId('user-name')).toContainText(`Demo ${role[0].toUpperCase()}${role.slice(1)}`);
-      await expect(page.getByTestId('breadcrumb')).toHaveText('ACC Downtime›Analyze›Overview');
+      await expect(page.getByTestId('breadcrumb')).toHaveText('Analyze›Dashboard');
+      await expect(page.getByTestId('topbar-title')).toHaveText('Dashboard');
       await expect(page.getByTestId('online-dot')).toBeVisible();
       // the left rail: section headings in order, each with its pages; empty sections are gone
       const rail = page.getByRole('navigation', { name: 'Primary' });
@@ -61,19 +62,25 @@ test.describe('desktop', () => {
     });
   }
 
-  test('page tabs show only the siblings of the open page, and none for Setup', async ({ page }) => {
+  test('page tabs show only the siblings of the open page, and none for Setup (icon rail); none beside the pinned rail', async ({ page }) => {
     await signInAndWait(page, 'admin');
+    // 1280 px: the labelled rail is pinned and lists every page, so there is no second row of tabs
+    await expect(page.getByTestId('rail')).toHaveAttribute('data-mode', 'pinned');
+    await expect(page.getByTestId('page-tabs')).toHaveCount(0);
+    // with the icon rail (a narrower screen) the tabs come back
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await expect(page.getByTestId('rail')).toHaveAttribute('data-mode', 'icons');
     const tabNames = () => page.getByRole('navigation', { name: 'Pages' }).getByRole('link').evaluateAll((els) => els.map((el) => (el.firstChild?.textContent ?? '').trim()));
     expect(await tabNames()).toEqual(ANALYZE);
     await page.goto('/#/events');
     await expect(page.getByTestId('page-events')).toBeVisible();
     expect(await tabNames()).toEqual(['Event Explorer', 'Validate', 'Upload']);
-    await expect(page.getByTestId('breadcrumb')).toHaveText('ACC Downtime›Data›Event Explorer');
+    await expect(page.getByTestId('breadcrumb')).toHaveText('Data›Event Explorer');
     await page.goto('/#/master');
     await expect(page.getByTestId('page-master')).toBeVisible();
     await expect(page.getByTestId('page-tabs')).toHaveCount(0);
     await expect(page.getByRole('navigation', { name: 'Pages' })).toHaveCount(0);
-    await expect(page.getByTestId('breadcrumb')).toHaveText('ACC Downtime›Setup›Master Data');
+    await expect(page.getByTestId('breadcrumb')).toHaveText('Setup›Master Data');
     // Settings sits behind the gear: no section, no tabs
     await page.getByTestId('settings-btn').click();
     await expect(page.getByTestId('page-tabs')).toHaveCount(0);
@@ -81,12 +88,15 @@ test.describe('desktop', () => {
 
   test('the rail shows section headings when open and a thin divider when narrow', async ({ page }) => {
     await signInAndWait(page, 'admin');
-    const rail = page.locator('.sidebar-rail');
     const title = page.getByTestId('rail-section-data');
+    // pinned at 1280: headings show
+    await expect(title).toBeVisible();
+    await page.getByTestId('rail-toggle').click();
+    await page.mouse.move(800, 500);
     await expect(title).toBeHidden();
     const border = await page.locator('[data-section="data"]').evaluate((el) => getComputedStyle(el).borderTopWidth);
     expect(border).toBe('1px');
-    await rail.hover();
+    await page.getByTestId('rail-panel').hover();
     await expect(title).toBeVisible();
     await expect(page.getByTestId('rail-section-analyze')).toHaveText('Analyze');
     await expect(title).toHaveText('Data');
@@ -107,7 +117,7 @@ test.describe('desktop', () => {
     await signInAndWait(page, 'admin');
     const nav = page.getByRole('navigation', { name: 'Primary' });
     const pages: [string, string][] = [
-      ['Overview', 'page-overview'],
+      ['Dashboard', 'page-overview'],
       ['Pareto', 'page-pareto'],
       ['Repeated Failures', 'page-repeats'],
       ['Reliability', 'page-reliability'],
@@ -129,7 +139,7 @@ test.describe('desktop', () => {
     for (const [label, id] of subs) {
       await page.getByTestId('settings-tabs').getByRole('link', { name: label }).click();
       await expect(page.getByTestId(id)).toBeVisible({ timeout: 20000 });
-      await expect(page.getByTestId('breadcrumb')).toHaveText(`ACC Downtime›Settings›${label}`);
+      await expect(page.getByTestId('breadcrumb')).toHaveText(`Settings›${label}`);
     }
   });
 
@@ -146,7 +156,10 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('event-row').first()).toContainText('Failure');
     const failures = await page.getByTestId('list-count').textContent();
     await page.getByTestId('failure-only').click();
-    await page.getByTestId('class-PL').click();
+    // the type filters are the shared scope bar's
+    await openType(page);
+    await page.getByTestId('fb-cls-PL').click();
+    await closePanel(page);
     await expect(page.getByTestId('event-row').first().locator('.badge--class')).toHaveText('PL');
     await page.getByTestId('reset-filters').click();
 
@@ -156,6 +169,8 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('no-results')).toBeVisible();
     await page.getByTestId('event-search').fill('');
 
+    // voided and edited rows of the whole year
+    await page.getByTestId('year-2026').click();
     await page.getByTestId('filter-show').selectOption('void');
     await expect(page.getByTestId('event-row').first()).toContainText('Void');
     await page.getByTestId('filter-show').selectOption('edited');
@@ -164,20 +179,30 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('event-row').first().getByTestId('badge-flag').first()).toBeVisible();
     await page.getByTestId('reset-filters').click();
 
-    await page.getByTestId('filter-from').fill('2026-03-01');
-    await page.getByTestId('filter-to').fill('2026-03-31');
-    await page.getByTestId('filter-area').selectOption('K.1');
+    await pickPeriod(page, 'custom');
+    await page.getByTestId('fb-from').fill('2026-03-01');
+    await page.getByTestId('fb-to').fill('2026-03-31');
+    await closePanel(page);
+    await page.getByTestId('fb-area').click();
+    await page.locator('[data-testid="fb-area-opt"][data-value="K.1"]').click();
+    await expect(page.locator('[data-testid="fb-area-opt"][data-value="K.1"]')).toBeChecked();
+    await closePanel(page);
     await expect(page.getByTestId('event-row').first()).toContainText('K.1');
+    await expect(page.getByTestId('event-row').first()).toContainText('Mar 2026');
     expect(failures).toContain('matching');
 
-    await page.getByTestId('year-2025').click();
+    // the year chips set the shared period to that year
     await page.getByTestId('reset-filters').click();
-    await expect(page.getByTestId('page-subtitle')).toContainText('in 2025');
+    await page.getByTestId('year-2025').click();
+    await expect(page.getByTestId('page-subtitle')).toContainText('in 1 Jan – 31 Dec 2025');
+    await expect(page.getByTestId('scope-period')).toContainText('2025');
+    await page.getByTestId('reset-filters').click();
+    await expect(page.getByTestId('scope-period')).toContainText('Last 90 days');
   });
 
   test('viewer cannot see Edit or Void buttons but can read the history', async ({ page }) => {
     await signInAndWait(page, 'viewer');
-    await page.goto('/#/events');
+    await page.goto('/#/events?r=year&y=2026');
     await page.getByTestId('filter-show').selectOption('edited');
     await page.getByTestId('event-row').first().getByRole('button').click();
     await expect(page.getByTestId('event-detail')).toBeVisible();
@@ -269,7 +294,7 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('cp-error')).toContainText('do not match');
     await page.getByTestId('cp-confirm').fill('My-Own-Password-1');
     await page.getByTestId('cp-submit').click();
-    await expect(page.getByTestId('page-title')).toHaveText('Overview');
+    await expect(page.getByTestId('page-title')).toHaveText('Dashboard');
   });
 
   test('theme choice is kept, and sign-out returns to the login screen', async ({ page }) => {
@@ -293,18 +318,69 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('offline-banner')).toHaveCount(0);
   });
 
-  test('the left rail is 68px with the leaf mark and opens to 248px with the full logo', async ({ page }) => {
+  test('at 1280 the labelled rail is pinned (232 px, logo on the navy); Collapse menu keeps the 68 px icon rail across a reload', async ({ page }) => {
     await signInAndWait(page, 'viewer');
-    const rail = page.locator('.sidebar-rail');
+    const rail = page.getByTestId('rail');
+    const panel = page.getByTestId('rail-panel');
+    await expect(rail).toHaveAttribute('data-mode', 'pinned');
+    expect((await rail.boundingBox())!.width).toBe(232);
+    await expect(page.locator('.sidebar-logo-full')).toBeVisible();
+    await expect(page.locator('.sidebar-logo-mark')).toBeHidden();
+    await expect(page.getByTestId('rail-link-overview')).toContainText('Dashboard');
+    await expect(page.getByTestId('rail-link-overview')).toHaveClass(/sidebar-link--active/);
+    // the logo sits straight on the navy rail (no plate behind it), dark in a light theme
+    expect(await rail.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(11, 27, 46)');
+    expect(await page.locator('.sidebar-logo-crop').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+    // the main content starts after the rail
+    const mainLeft = async () => (await page.locator('#main').boundingBox())!.x;
+    expect(await mainLeft()).toBe(232);
+
+    await page.getByTestId('rail-toggle').click();
+    await page.mouse.move(900, 500);
+    await expect(rail).toHaveAttribute('data-mode', 'icons');
     expect((await rail.boundingBox())!.width).toBe(68);
     await expect(page.locator('.sidebar-logo-mark')).toBeVisible();
     await expect(page.locator('.sidebar-logo-full')).toBeHidden();
-    await rail.hover();
-    await expect.poll(async () => (await rail.boundingBox())!.width).toBe(248);
+    expect(await mainLeft()).toBe(68);
+    // hover opens the labels OVER the page: the page does not move
+    await panel.hover();
+    await expect.poll(async () => (await panel.boundingBox())!.width).toBe(232);
     await expect(page.locator('.sidebar-logo-full')).toBeVisible();
-    // dark in a light theme
-    const bg = await rail.evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(bg).toBe('rgb(11, 27, 46)');
+    expect(await mainLeft()).toBe(68);
+    // the choice is kept on this device
+    await page.reload();
+    await expect(page.getByTestId('rail')).toHaveAttribute('data-mode', 'icons');
+    await page.getByTestId('rail-toggle').click();
+    await expect(page.getByTestId('rail')).toHaveAttribute('data-mode', 'pinned');
+  });
+
+  test('between 861 and 1279 px the icon rail opens over the page on hover and on keyboard focus; hover keeps the text readable', async ({ page }) => {
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await signInAndWait(page, 'viewer');
+    const rail = page.getByTestId('rail');
+    const panel = page.getByTestId('rail-panel');
+    await expect(rail).toHaveAttribute('data-mode', 'icons');
+    await expect(page.getByTestId('rail-toggle')).toHaveCount(0); // nothing to pin at this width
+    const mainLeft = async () => (await page.locator('#main').boundingBox())!.x;
+    expect(await mainLeft()).toBe(68);
+    // keyboard: tabbing onto a link opens the labels
+    await page.getByTestId('rail-link-overview').focus();
+    await page.keyboard.press('Tab');
+    await expect(page.getByTestId('rail-link-pareto')).toBeFocused();
+    await expect.poll(async () => (await panel.boundingBox())!.width).toBe(232);
+    await expect(page.getByTestId('rail-link-pareto').locator('.sidebar-link-label')).toBeVisible();
+    expect(await mainLeft()).toBe(68);
+    await page.getByTestId('rail-link-pareto').blur();
+    // hover: light text on a lighter navy, never on a light grey
+    const link = page.getByTestId('rail-link-reliability');
+    await link.hover();
+    await expect.poll(async () => (await panel.boundingBox())!.width).toBe(232);
+    // the hover tint is a see-through light over the navy, and the text stays the light rail ink
+    await expect.poll(() => link.evaluate((el) => getComputedStyle(el).backgroundColor)).not.toMatch(/\/ 0\)$|^rgba\(0, 0, 0, 0\)$|transparent/);
+    const color = await link.evaluate((el) => getComputedStyle(el).color);
+    const [r, g, b] = (color.match(/[\d.]+/g) ?? []).map(Number);
+    expect(0.2126 * r! + 0.7152 * g! + 0.0722 * b!).toBeGreaterThan(200);
+    expect(await mainLeft()).toBe(68);
   });
 
   test('every page has no sideways scroll at 1280', async ({ page }) => {
@@ -331,10 +407,12 @@ test.describe('phone', () => {
   test('bottom bar, page chips and the More sheet follow the role', async ({ page }) => {
     await signInAndWait(page, 'viewer');
     await expect(page.getByTestId('bottom-nav')).toBeVisible();
-    // exactly four slots: Overview, Causes (Pareto), Events, More
+    // exactly four slots: Dashboard, Causes (Pareto), Events, More
     const bar = page.getByTestId('bottom-nav');
     await expect(bar.locator('a, button')).toHaveCount(4);
-    await expect(bar.locator('a, button')).toHaveText([/^Overview$/, /^Causes$/, /^Events$/, /More$/]);
+    await expect(bar.locator('a, button')).toHaveText([/^Dashboard$/, /^Causes$/, /^Events$/, /More$/]);
+    await expect(page.getByTestId('bottom-overview')).toHaveAttribute('href', /#\/dashboard$/);
+    await expect(page.getByTestId('topbar-title')).toHaveText('Dashboard');
     await expect(page.getByTestId('bottom-pareto')).toHaveAttribute('href', /#\/pareto$/);
     await expect(page.getByTestId('bottom-upload')).toHaveCount(0);
     // a viewer has no action items, so More carries no count (Validate keeps its own badge in the sheet)
@@ -351,9 +429,10 @@ test.describe('phone', () => {
     await expect(sheet.getByTestId('more-appearance')).toHaveCount(0);
     await expect(sheet.getByTestId('more-role')).toHaveText('Viewer');
     // Back closes the sheet
+    await expect(sheet.getByTestId('more-tile-overview')).toContainText('Dashboard');
     await page.goBack();
     await expect(sheet).toHaveCount(0);
-    await expect(page.getByTestId('page-title')).toHaveText('Overview');
+    await expect(page.getByTestId('page-title')).toHaveText('Dashboard');
     await page.getByTestId('bottom-more').click();
     await sheet.getByTestId('more-tile-events').click();
     await expect(page.getByTestId('page-title')).toHaveText('Event Explorer');
@@ -362,9 +441,9 @@ test.describe('phone', () => {
     await expect(page.getByTestId('login-form')).toBeVisible();
   });
 
-  test('the bar always has Overview, Causes, Events and More, whatever the role; admin sees every page in More', async ({ page }) => {
+  test('the bar always has Dashboard, Causes, Events and More, whatever the role; admin sees every page in More', async ({ page }) => {
     await signInAndWait(page, 'engineer');
-    await expect(page.getByTestId('bottom-nav').locator('a, button')).toHaveText([/^Overview$/, /^Causes$/, /^Events$/, /More$/]);
+    await expect(page.getByTestId('bottom-nav').locator('a, button')).toHaveText([/^Dashboard$/, /^Causes$/, /^Events$/, /More$/]);
     await expect(page.getByTestId('bottom-upload')).toHaveCount(0);
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await page.goto('/');
@@ -384,7 +463,7 @@ test.describe('phone', () => {
   test('the phone chip strip shows the siblings of the open section only', async ({ page }) => {
     await signInAndWait(page, 'admin');
     const chips = () => page.getByTestId('page-strip').locator('a').allTextContents();
-    expect((await chips()).map((c) => c.trim())).toEqual(['Overview', 'Causes', 'Repeats', 'Reliability']);
+    expect((await chips()).map((c) => c.trim())).toEqual(['Dashboard', 'Causes', 'Repeats', 'Reliability']);
     await page.goto('/#/events');
     await expect(page.getByTestId('page-events')).toBeVisible();
     expect((await chips()).map((c) => c.replace(/[^A-Za-z ]/g, '').trim())).toEqual(['Events', 'Validate', 'Upload']);
@@ -401,13 +480,22 @@ test.describe('phone', () => {
     await expect(page.getByTestId('event-table')).toHaveCount(0);
     await page.getByTestId('show-more').click();
     await expect(page.getByTestId('event-card')).toHaveCount(100);
+    // the page's own sheet: which rows and their order
     await page.getByTestId('filters-pill').click();
     await expect(page.getByTestId('filters-sheet')).toBeVisible();
-    await page.getByTestId('class-ELE').click();
-    await page.getByTestId('filter-area').selectOption('K.1');
-    await expect(page.getByTestId('sheet-apply')).toContainText('Show');
+    await page.getByTestId('filter-sort').selectOption('dur_desc');
     await page.getByTestId('sheet-apply').click();
     await expect(page.getByTestId('filters-sheet')).toHaveCount(0);
+    // the shared scope: the orange Filters pill and its sheet
+    await page.getByTestId('fb-filters-pill').click();
+    await expect(page.getByTestId('fb-sheet')).toBeVisible();
+    await page.getByTestId('fb-more').click();
+    await page.getByTestId('fb-cls-ELE').click();
+    await page.locator('[data-testid="fb-area-opt"][data-value="K.1"]').click();
+    await expect(page.getByTestId('fb-sheet-apply')).toContainText('Show');
+    await page.getByTestId('fb-sheet-apply').click();
+    await expect(page.getByTestId('fb-sheet')).toHaveCount(0);
+    await expect(page.getByTestId('fb-filters-pill')).toContainText('2');
     await expect(page.getByTestId('event-card').first()).toContainText('K.1');
     await page.getByTestId('event-card').first().click();
     await expect(page.getByTestId('event-detail')).toBeVisible();
@@ -427,6 +515,10 @@ test.describe('phone', () => {
     await page.goto('/#/events');
     await page.getByTestId('filters-pill').click();
     expect(await smallTargets(page), 'filters sheet').toEqual([]);
+    await page.goBack();
+    await page.getByTestId('fb-filters-pill').click();
+    await page.getByTestId('fb-more').click();
+    expect(await smallTargets(page), 'scope sheet').toEqual([]);
     await page.goBack();
     await page.getByTestId('event-card').first().click();
     expect(await smallTargets(page), 'detail').toEqual([]);
@@ -455,6 +547,10 @@ test.describe('phone', () => {
       await page.goBack();
       await page.getByTestId('filters-pill').click();
       expect((await noSidewaysScroll(page)).ok, 'filter sheet').toBe(true);
+      await page.goBack();
+      await page.getByTestId('fb-filters-pill').click();
+      await page.getByTestId('fb-more').click();
+      expect((await noSidewaysScroll(page)).ok, 'scope sheet').toBe(true);
       await page.goBack();
       await page.getByTestId('event-card').first().click();
       expect((await noSidewaysScroll(page)).ok, 'detail').toBe(true);
