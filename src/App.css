@@ -14,7 +14,8 @@
 }
 @media (max-width: 860px) {
   .app-shell-right {
-    padding-bottom: calc(var(--bottom-nav-h) + 4px);
+    /* --install-banner-h: room for the install card while it shows (set by InstallBanner), so it covers nothing */
+    padding-bottom: calc(var(--bottom-nav-h) + 4px + var(--install-banner-h, 0px));
   }
 }
 .shell-page-content {
@@ -86,7 +87,7 @@ body.has-env-ribbon .app-shell-right {
 @media (max-width: 860px) {
   /* phone: the ribbon sits just above the bottom bar and the page keeps room for both */
   body.has-env-ribbon .app-shell-right {
-    padding-bottom: calc(var(--bottom-nav-h) + 4px + var(--env-ribbon-h));
+    padding-bottom: calc(var(--bottom-nav-h) + 4px + var(--env-ribbon-h) + var(--install-banner-h, 0px));
   }
   .env-ribbon {
     font-size: 12px;

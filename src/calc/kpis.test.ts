@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRowFactory, fixtureIndex } from './fixtures';
-import { availabilityByArea, compareValues, composeKpis, computeKpis, computeKpisWithComparison, emptySums, type KpiOk } from './kpis';
+import { availabilityByArea, compareValues, composeKpis, computeKpis, computeKpisWithComparison, dataRangeOf, emptySums, lastDayOf, type KpiOk } from './kpis';
 import { avail, unavail, type Metric } from './metric';
 import { DEFAULT_SETTINGS, parseSettings } from './settings';
 
@@ -108,6 +108,16 @@ describe('zero failures, empty windows, partial months', () => {
     expect(k.partial).toBe(true);
     expect(k.total.scheduledHours).toBe(360); // 15 d x 24 h
     expect(val(k.total.mtbfHours)).toBe(348); // (360 - 12) / 1
+  });
+  it("'This month' to the last day with data is partial; the same window inside the data is not", () => {
+    const row = createRowFactory();
+    const rows = [row({ stop: '2026-03-05 00:00', start: '2026-03-05 12:00' }), row({ stop: '2026-03-20 08:00', start: '2026-03-20 09:00' })];
+    const data = { from: '2026-03-01', to: '2026-03-20' };
+    expect(ok(computeKpis({ rows, window: { from: '2026-03-01', to: '2026-03-20' }, dataRange: data, settings })).partial).toBe(true);
+    // the whole month covered: not partial
+    expect(ok(computeKpis({ rows, window: MARCH, dataRange: MARCH, settings })).partial).toBe(false);
+    // the first ten days while the data goes on: a plain custom range, not a month in progress
+    expect(ok(computeKpis({ rows, window: FIRST10, dataRange: data, settings })).partial).toBe(false);
   });
   it('honours scheduled days per week', () => {
     const row = createRowFactory();
@@ -291,5 +301,38 @@ describe('availabilityByArea', () => {
     const none = availabilityByArea({ areas: [{ ...k.areas[0]!, availabilityHeadline: unavail('no_scheduled_time', 'x') }, k.areas[1]!], total: k.total });
     expect(none.areas.map((x) => x.area_id)).toEqual(['RM.1', 'K.1']);
     expect(none.areas[1]!.availability.available).toBe(false);
+  });
+});
+
+describe('data range end (dataRangeOf)', () => {
+  it('a restart at exactly 00:00:00.000 does not add the next day to the coverage', () => {
+    const row = createRowFactory();
+    const rows = [
+      row({ stop: '2026-06-01 08:00', start: '2026-06-01 09:00' }),
+      row({ stop: '2026-07-31 22:00', start: '2026-08-01 00:00' }), // ends at midnight: the data stops on 31 July
+    ];
+    expect(dataRangeOf(rows)).toEqual({ from: '2026-06-01', to: '2026-07-31' });
+    expect(lastDayOf(rows[1]!)).toBe('2026-07-31');
+    // one millisecond later, 1 August is really covered
+    const later = [...rows, row({ stop: '2026-07-31 23:00', start: '2026-08-01 00:00:00.001' })];
+    expect(dataRangeOf(later)!.to).toBe('2026-08-01');
+  });
+  it('year end: a restart at 1 Jan 00:00 keeps the coverage in December', () => {
+    const row = createRowFactory();
+    const rows = [row({ stop: '2026-12-31 20:00', start: '2027-01-01 00:00' })];
+    expect(dataRangeOf(rows)).toEqual({ from: '2026-12-31', to: '2026-12-31' });
+  });
+  it('a zero-length stop at midnight still counts its own day', () => {
+    const row = createRowFactory();
+    expect(dataRangeOf([row({ stop: '2026-05-10 00:00', start: '2026-05-10 00:00' })])).toEqual({ from: '2026-05-10', to: '2026-05-10' });
+  });
+  it("'This month' after a June-July load is July, not an empty 1 August", () => {
+    const row = createRowFactory();
+    const rows = [row({ stop: '2026-06-03 08:00', start: '2026-06-03 10:00' }), row({ stop: '2026-07-31 20:00', start: '2026-08-01 00:00' })];
+    const range = dataRangeOf(rows)!;
+    const k = ok(computeKpis({ rows, window: { from: '2026-07-01', to: range.to }, settings }));
+    expect(k.window).toEqual({ from: '2026-07-01', to: '2026-07-31' });
+    expect(k.partial).toBe(false);
+    expect(k.total.failureHours).toBe(4);
   });
 });

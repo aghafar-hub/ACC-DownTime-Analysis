@@ -43,15 +43,20 @@ export interface ParetoResult {
   referenceIndex: number | null;
 }
 
-/** Sum entries with the same key. Zero and negative values are dropped. */
+/**
+ * Sum entries with the same key. Zero and negative values are dropped. A bar only carries the event ids of the
+ * entries that contribute to it (value > 0): an event worth 0 in the window (no hours inside it, or a count event
+ * that started outside it) is not part of the bar, so opening the bar shows exactly the events it counts.
+ */
 export function mergeEntries(entries: ParetoEntry[]): ParetoEntry[] {
   const m = new Map<string, ParetoEntry>();
   for (const e of entries) {
+    const ids = e.value > 0 ? e.eventIds : [];
     const cur = m.get(e.key);
     if (cur) {
       cur.value += e.value;
-      cur.eventIds.push(...e.eventIds);
-    } else m.set(e.key, { key: e.key, label: e.label, value: e.value, eventIds: [...e.eventIds] });
+      cur.eventIds.push(...ids);
+    } else m.set(e.key, { key: e.key, label: e.label, value: e.value, eventIds: [...ids] });
   }
   return [...m.values()].filter((e) => e.value > 0);
 }

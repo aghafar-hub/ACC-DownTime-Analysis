@@ -404,7 +404,7 @@ test.describe('desktop', () => {
     await expect(page).not.toHaveURL(/r=last7/);
   });
 
-  test('saved views on Event Explorer: filters go into the view and come back; the address is cleaned', async ({ page }) => {
+  test('saved views on Event Explorer: filters go into the view and come back; the address holds them', async ({ page }) => {
     await signInAndWait(page, 'manager');
     await page.goto('/#/events');
     await expect(page.getByTestId('event-table')).toBeVisible();
@@ -426,7 +426,8 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('filter-crit')).toHaveValue('INC');
     await expect(page.getByTestId('event-search')).toHaveValue('belt');
     await expect(page.getByTestId('tile-shown')).toContainText(shown);
-    await expect(page).not.toHaveURL(/fail=1/);
+    // the filters live in the address (so Back and a reload keep them)
+    await expect(page).toHaveURL(/#\/events\?.*fail=1/);
     // export of the applied view equals the list
     const csv = await grab(page, async () => {
       await page.getByTestId('export-btn').click();

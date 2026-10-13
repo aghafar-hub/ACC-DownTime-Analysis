@@ -55,10 +55,21 @@ describe('monthlySeries', () => {
     expect(s[0]!.mtbfHours).toMatchObject({ available: false, code: 'no_data' });
     expect(s[0]!.availability.available).toBe(false);
   });
-  it('a range starting mid-month is not partial for that reason', () => {
+  it('a range starting or ending mid-month makes that month partial (fewer days than the calendar month)', () => {
     const s = monthlySeries({ rows, range: { from: '2026-01-15', to: '2026-02-28' }, dataRange: { from: '2026-01-01', to: '2026-02-28' }, settings });
-    expect(s[0]).toMatchObject({ partial: false, requested: { from: '2026-01-15', to: '2026-01-31' } });
+    expect(s[0]).toMatchObject({ partial: true, requested: { from: '2026-01-15', to: '2026-01-31' }, window: { from: '2026-01-15', to: '2026-01-31' } });
     expect(s[0]!.kpis!.scheduledHours).toBe(17 * 24);
+    expect(s[1]!.partial).toBe(false); // February is whole
+    const cut = monthlySeries({ rows, range: { from: '2026-01-01', to: '2026-02-20' }, dataRange: { from: '2026-01-01', to: '2026-02-28' }, settings });
+    expect(cut.map((m) => m.partial)).toEqual([false, true]);
+  });
+  it('the current month (range to the last day with data) is partial', () => {
+    const s = monthlySeries({ rows, range: { from: '2026-01-01', to: '2026-02-10' }, dataRange: { from: '2026-01-01', to: '2026-02-10' }, settings });
+    expect(s.map((m) => m.partial)).toEqual([false, true]);
+  });
+  it('classification months use the same partial rule', () => {
+    const s = monthlyHoursByClassification({ rows, range: { from: '2026-01-15', to: '2026-02-28' }, dataRange: { from: '2026-01-01', to: '2026-02-28' } });
+    expect(s.map((m) => m.partial)).toEqual([true, false]);
   });
 });
 

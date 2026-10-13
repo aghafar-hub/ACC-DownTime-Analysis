@@ -8,7 +8,7 @@ import HBars, { type HRow } from '../charts/HBars';
 import QuadrantChart from '../charts/QuadrantChart';
 import ScaleHeatmap, { type ScaleRow } from '../charts/ScaleHeatmap';
 import { t } from '../i18n/t';
-import { dayLabel, fh, fh2, fint, fpct, monthLabel } from './format';
+import { fh, fh2, fint, fpct, monthLabel, partialNote } from './format';
 import { areaReliabilityModel } from './models';
 import { targetNumber, type TargetStatus } from './targets';
 import { stateWords } from './targets';
@@ -158,7 +158,7 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
         title={t('Availability by area and month (basis {b})', { b: basis })} subtitle={t('Each cell is the availability of one area in one month. Fixed scale {a} to {b} %; the last column is the whole range.', { a: AVAIL_MIN, b: AVAIL_MAX })} testid="chart-area-month-heat"
         summary={avSummary}
         table={{ head: [t('Area'), ...av.months.map((_x, i) => colLabel(i)), t('Range')], rows: av.areas.map((a) => [a.area_id, ...a.values.map(fmtAv), fmtAv(m.overallAvailability.get(a.area_id) ?? { available: false, code: 'no_data', reason: '' })]) }}
-        footnote={partialAny ? t('* Partial month: data only up to {d}.', { d: dayLabel(av.months.find((x) => x.partial)?.window?.to ?? '') }) : undefined}
+        footnote={partialAny ? av.months.filter((x) => x.partial).map((x) => `* ${partialNote(x)}.`).join(' ') : undefined}
       >
         {() => (
           <ScaleHeatmap

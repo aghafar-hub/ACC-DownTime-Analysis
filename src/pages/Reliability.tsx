@@ -8,12 +8,12 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import AreasBlock from '../dashboard/AreasBlock';
 import MonthCompare from '../dashboard/MonthCompare';
 import DashTop from '../dashboard/DashTop';
-import { dayLabel, fh, fh2, fint, monthLabel } from '../dashboard/format';
+import { fh, fh2, fint, monthLabel, partialNote } from '../dashboard/format';
 import { reliabilityTakeaway } from '../dashboard/takeaways';
 import { reliabilityModel, whenFailuresStart } from '../dashboard/models';
 import HeatmapTable from '../charts/HeatmapTable';
 import { ACCENT } from '../charts/palette';
-import { NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
+import { EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
@@ -41,7 +41,7 @@ export default function Reliability() {
   const win = ctx?.win.effective ?? null;
 
   const months = model?.monthly ?? [];
-  const cats: CartCategory[] = months.map((m) => ({ key: m.month, label: monthLabel(m.month), partial: m.partial, note: m.partial && m.window ? t('Partial month: data to {d}', { d: dayLabel(m.window.to) }) : undefined }));
+  const cats: CartCategory[] = months.map((m) => ({ key: m.month, label: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));
   const line = (key: string, label: string, pick: (m: (typeof months)[number]) => Metric, fmt: (n: number) => string, slot: number): CartSeries => ({
     key, label, color: seriesColor(dark, slot), type: 'line', values: months.map((m) => num(pick(m))), missing: months.map((m) => why(pick(m))), format: fmt,
   });
@@ -112,7 +112,8 @@ export default function Reliability() {
   const areaKpi = areaId && ctx && ctx.kpis.current.status === 'ok' ? ctx.kpis.current.areas.find((a) => a.area_id === areaId) ?? null : null;
   const k = areaKpi ?? total;
   const lastMonths = months.flatMap((m) => (m.mtbfHours.available ? [{ month: m.month, mtbf: m.mtbfHours.value }] : [])).slice(-2);
-  const takeaway = !ctx ? t('Loading…') : model && win && k
+  const empty = !!model && rows !== null && rows.length === 0;
+  const takeaway = !ctx ? t('Loading…') : empty ? t(EMPTY_SCOPE_TAKEAWAY) : model && win && k
     ? reliabilityTakeaway({ mtbf: k.mtbfHours, mttr: k.mttrHours, failureEvents: k.failureEventCount, lastMonths, areaId: areaId || null })
     : reliabilityTakeaway(null);
   const mt = (m: Metric, f: (n: number) => string) => (m.available ? `${f(m.value)} h` : m.code === 'no_failures' ? t('None recorded') : t('Unavailable'));
@@ -123,7 +124,8 @@ export default function Reliability() {
         title={t('Reliability Trends')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} hideCompare
         right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>}
       />
-      {k && (
+      {empty && <EmptyScope dash={dash} />}
+      {k && !empty && (
         <div className="kpi-grid" data-testid="reliability-tiles">
           <Tile compact={mobile} icon="trend" label={t('MTBF ({a})', { a: areaId || t('aggregate over areas') })} value={<span data-testid="rt-mtbf">{mt(k.mtbfHours, fh)}</span>} sub={k.mtbfHours.available ? t('operating hours per failure') : (k.mtbfHours.reason)} />
           <Tile compact={mobile} icon="repeat" label={t('Mean restoration time')} value={<span data-testid="rt-mttr">{mt(k.mttrHours, fh2)}</span>} sub={t('failure events that started in the range')} />
@@ -133,7 +135,7 @@ export default function Reliability() {
       )}
       {ctx && <MonthCompare dash={dash} page="reliability" />}
       {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}
-      {model && ctx && (
+      {model && ctx && !empty && (
         <>
           <AreasBlock ctx={ctx} onOpen={(label, ids) => drill(label, { eventIds: ids })} />
           <section aria-labelledby="when-heading" data-testid="when-block">

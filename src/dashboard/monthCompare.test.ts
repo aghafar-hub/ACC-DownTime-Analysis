@@ -3,7 +3,7 @@ import type { Startup } from '../api/types';
 import { computeKpis, buildIndex, dataRangeOf, monthRange, parseSettings, type Metric } from '../calc';
 import { buildSyntheticDb } from '../mock/synthetic';
 import { defaultFilters } from './filters';
-import { defaultMonthPair, monthCompareModel, monthPairText, monthsWithData, parseMonthPair, type CompareId } from './monthCompare';
+import { defaultMonthPair, isCompleteMonth, monthCompareModel, monthPairText, monthsWithData, parseMonthPair, type CompareId } from './monthCompare';
 import { overviewModel } from './models';
 import { buildCtx } from './scope';
 
@@ -14,7 +14,8 @@ const startup: Startup = {
 };
 const rows = db.events;
 const months = monthsWithData(rows);
-const pair = defaultMonthPair(months)!;
+const coverage = dataRangeOf(rows.filter((r) => !r.is_void))!;
+const pair = defaultMonthPair(months, coverage)!;
 const val = (m: Metric): number | null => (m.available ? m.value : null);
 
 /** What the Overview shows with its range set to one month. */
@@ -24,12 +25,28 @@ function dashboardFor(month: string, patch = {}) {
 }
 
 describe('months and the pair in the address', () => {
-  it('lists the months with counted records, oldest first, and defaults to the latest and the one before', () => {
+  it('lists the months with counted records, oldest first, and defaults to the last two COMPLETE months', () => {
     expect(months.length).toBeGreaterThan(2);
     expect([...months].sort()).toEqual(months);
-    expect(pair).toEqual({ a: months[months.length - 1], b: months[months.length - 2] });
+    // the mock data ends inside its last month: that month is skipped by default
+    const last = months[months.length - 1]!;
+    expect(isCompleteMonth(last, coverage)).toBe(false);
+    expect(pair).toEqual({ a: months[months.length - 2], b: months[months.length - 3] });
+    expect(isCompleteMonth(pair.a, coverage) && isCompleteMonth(pair.b, coverage)).toBe(true);
     expect(defaultMonthPair([])).toBeNull();
     expect(defaultMonthPair(['2026-03'])).toEqual({ a: '2026-03', b: '2026-03' });
+    // without coverage every month counts: the latest and the one before
+    expect(defaultMonthPair(months)).toEqual({ a: last, b: months[months.length - 2] });
+  });
+  it('complete months: Sep and Aug while October is in progress; fallbacks with fewer complete months', () => {
+    const ms = ['2026-08', '2026-09', '2026-10'];
+    expect(defaultMonthPair(ms, { from: '2026-08-01', to: '2026-10-13' })).toEqual({ a: '2026-09', b: '2026-08' });
+    expect(defaultMonthPair(ms, { from: '2026-08-01', to: '2026-10-31' })).toEqual({ a: '2026-10', b: '2026-09' });
+    // data starts on 5 Aug: only September is complete -> September against August
+    expect(defaultMonthPair(ms, { from: '2026-08-05', to: '2026-10-13' })).toEqual({ a: '2026-09', b: '2026-08' });
+    // no complete month at all: the latest and the one before
+    expect(defaultMonthPair(['2026-10'], { from: '2026-10-01', to: '2026-10-13' })).toEqual({ a: '2026-10', b: '2026-10' });
+    expect(defaultMonthPair(ms, null)).toEqual({ a: '2026-10', b: '2026-09' });
   });
   it('reads mvm=A,B and also cmp=A,B; the comparison mode in cmp is not a pair', () => {
     expect(parseMonthPair(new URLSearchParams('mvm=2026-02,2026-01'))).toEqual({ a: '2026-02', b: '2026-01' });
@@ -116,5 +133,23 @@ describe('monthCompareModel', () => {
   it('same month on both sides gives no change', () => {
     const s = monthCompareModel(rows, startup, defaultFilters(), { a: pair.a, b: pair.a });
     for (const r of s.rows) if (r.change.available) expect(r.change.direction).toBe('flat');
+  });
+
+  it('a partial month shows hours and counts per day with data and no better / worse verdict', () => {
+    const last = months[months.length - 1]!;
+    const p = monthCompareModel(rows, startup, defaultFilters(), { a: last, b: pair.a });
+    expect(p.partialA).toBe(true);
+    expect(p.partialB).toBe(false);
+    expect(p.perDay).toBe(true);
+    const st = p.rows.find((r) => r.id === 'stoppage')!;
+    expect(st.perDay).toBe(true);
+    expect(p.daysA).toBeGreaterThan(0);
+    expect(p.daysA).toBeLessThan(31);
+    expect(val(st.a)).toBeCloseTo(dashboardFor(last).kpi!.total.downtimeHours / p.daysA, 9);
+    expect(val(st.b)).toBeCloseTo(val(row('stoppage').a)! / p.daysB, 9);
+    for (const r of p.rows) if (r.change.available) expect(r.change.assessment).toBe('neutral');
+    // rates (availability, MTTR, MTBF) stay as they are
+    expect(p.rows.find((r) => r.id === 'availability')!.perDay).toBe(false);
+    expect(m.perDay).toBe(false);
   });
 });

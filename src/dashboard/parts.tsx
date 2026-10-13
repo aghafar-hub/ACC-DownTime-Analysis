@@ -5,6 +5,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import type { DrillState } from './drill';
+import { conflictingFilters } from './filters';
 import type { Dash } from './useDash';
 
 /** Loading, error and offline notes for the master data and every year the filters need. */
@@ -38,6 +39,27 @@ export function NoData({ reason }: { reason: string }) {
     </div>
   );
 }
+
+/**
+ * The filters leave no record in the range: say so plainly, with Reset, instead of showing figures computed from
+ * nothing (100% availability, 'no failures'). Names the clash when two chips exclude each other.
+ */
+export function EmptyScope({ dash }: { dash: Dash }) {
+  const clash = conflictingFilters(dash.filters);
+  return (
+    <div className="card empty-scope" role="status" data-testid="empty-scope">
+      <Icon name="filter" size={20} />
+      <div>
+        <b>{t('No records match these filters')}</b>
+        <p className="muted">{clash ? t(clash) : t('Nothing in this range passes every filter. Widen the range or remove a filter.')}</p>
+      </div>
+      <button type="button" className="btn-primary" onClick={dash.reset} data-testid="empty-scope-reset">{t('Reset filters')}</button>
+    </div>
+  );
+}
+
+/** The one-line takeaway when the filters leave nothing. */
+export const EMPTY_SCOPE_TAKEAWAY = 'No records match these filters.';
 
 /** Opens the Event Explorer with these events. */
 export function useDrill(dash: Dash, source: string) {

@@ -20,7 +20,7 @@ import EventBadges from './events/EventBadges';
 import { buildOwnerLookup } from './events/crossArea';
 import { hasOpenProblemFlags } from '../calc/flags';
 import {
-  activeCount, applyFilters, describeExplorerFilters, EMPTY, hasExplorerParams, parseExplorerFilters, serializeExplorerFilters, EXPLORER_KEYS,
+  activeCount, applyFilters, describeExplorerFilters, EMPTY, parseExplorerFilters, serializeExplorerFilters, EXPLORER_KEYS, SHOWN_PARAM,
   type Filters, type Show, type Sort,
 } from './events/explorerFilters';
 import ExportMenu from '../components/ExportMenu';
@@ -137,25 +137,32 @@ export default function EventExplorer() {
     return multi.rows.filter((r) => want.has(r.event_id));
   }, [drill, multi.ready, multi.rows]);
   const sourceRows = drill ? drillRows ?? [] : ev.events;
-  const [f, setF] = useState<Filters>(EMPTY);
-  // a saved view (or a pasted link) arrives as a query: its filters replace the ones on screen, then the query is dropped from the address
+  // The filters, the search and the shown count live in the address (?fail=1&q=belt&n=100), so Back, a tab switch or a
+  // reload brings the same list back and ScrollKeeper can restore the scroll into it. A saved view or a pasted link
+  // is simply such an address. Every change replaces the entry (typing does not fill the history).
   const classCodes = startup?.classifications.map((c) => c.code) ?? null;
   const classKey = classCodes?.join(',') ?? '';
-  useEffect(() => {
-    if (!hasExplorerParams(params)) return;
-    setF(parseExplorerFilters(params, classCodes));
+  const filterKey = serializeExplorerFilters(parseExplorerFilters(params, classCodes)).toString();
+  const f = useMemo(() => parseExplorerFilters(new URLSearchParams(filterKey), classCodes), [filterKey, classKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const writeParams = (edit: (p: URLSearchParams) => void) =>
     setParams((cur) => {
       const p = new URLSearchParams(cur);
-      EXPLORER_KEYS.forEach((k) => p.delete(k));
+      edit(p);
       return p;
     }, { replace: true, state: location.state });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.key, classKey]);
+  const setF = (next: Filters) =>
+    writeParams((p) => {
+      EXPLORER_KEYS.forEach((k) => p.delete(k));
+      p.delete(SHOWN_PARAM); // a new filter starts at the first page again
+      serializeExplorerFilters(next).forEach((v, k) => p.append(k, v));
+    });
   const [sheet, setSheet] = useState(false);
-  const [shown, setShown] = useState(PAGE_SIZE);
+  const shownParam = Number(params.get(SHOWN_PARAM));
+  const shown = Number.isInteger(shownParam) && shownParam > PAGE_SIZE ? shownParam : PAGE_SIZE;
+  const setShown = (n: number) => writeParams((p) => { if (n > PAGE_SIZE) p.set(SHOWN_PARAM, String(n)); else p.delete(SHOWN_PARAM); });
   const [openId, setOpenId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const set = (p: Partial<Filters>) => setF((cur) => ({ ...cur, ...p }));
+  const set = (p: Partial<Filters>) => setF({ ...f, ...p });
   const q = useDeferredValue(f.q);
 
   // the top bar's search shortcut lands here with the box focused
@@ -165,7 +172,14 @@ export default function EventExplorer() {
   }, [focusKey]);
 
   const filtered = useMemo(() => applyFilters(sourceRows, f, startup, q), [sourceRows, f, startup, q]);
-  useEffect(() => setShown(PAGE_SIZE), [f, q, year, drill?.label]);
+  // another year or another drill-through starts at the first page again (not on the first render: the address may hold n)
+  const pageKey = `${year ?? ''}|${drill?.label ?? ''}`;
+  const lastPageKey = useRef(pageKey);
+  useEffect(() => {
+    if (lastPageKey.current === pageKey) return;
+    lastPageKey.current = pageKey;
+    if (params.has(SHOWN_PARAM)) setShown(PAGE_SIZE);
+  }, [pageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
     let sec = 0, failures = 0, issues = 0;
@@ -393,7 +407,7 @@ export default function EventExplorer() {
               ))}
             </div>
           )}
-          <ShowMore shown={visible.length} total={filtered.length} onMore={() => setShown((n) => n + PAGE_SIZE)} />
+          <ShowMore shown={visible.length} total={filtered.length} onMore={() => setShown(shown + PAGE_SIZE)} />
           {filtered.length > 0 && (
             <p className="status-line" style={{ marginTop: 8 }} data-testid="list-count">
               {t('Showing {a} of {b} matching events.', { a: num(visible.length), b: num(filtered.length) })}

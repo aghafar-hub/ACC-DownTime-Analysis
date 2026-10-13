@@ -23,7 +23,7 @@ export interface MonthPoint {
   /** days with data; shorter than `requested` for a month still in progress */
   window: DateRange | null;
   hasData: boolean;
-  /** the month is only partly covered by data: compare with an elapsed-equivalent period, not a full month */
+  /** the month shows fewer days than the calendar month (range cut or data ends inside it): not a full month */
   partial: boolean;
   plannedHours: number;
   failureHours: number;
@@ -57,6 +57,15 @@ function noDataPoint(month: string, requested: DateRange): MonthPoint {
 
 function monthNumber(key: string): number {
   return Number(key.slice(0, 4)) * 12 + Number(key.slice(5, 7));
+}
+
+/**
+ * A month is partial when the days it shows are fewer than the calendar month: the range starts or ends inside it
+ * (e.g. the last 30 days), or the data ends inside it (the current month). Its figures are then not those of a full
+ * month and must not be read as one.
+ */
+export function isPartialWindow(month: string, window: DateRange | null): boolean {
+  return !!window && !sameRange(window, monthRange(month));
 }
 
 interface MonthSlot { month: string; requested: DateRange; window: DateRange | null; interval: Interval | null; sums: HourSums }
@@ -106,7 +115,7 @@ export function monthlySeries(input: MonthlyInput): MonthPoint[] {
     if (!s.window) return noDataPoint(s.month, s.requested);
     const t = composeKpis('ALL', scheduledHours(s.window, input.settings) * areaIds.length, s.sums, input.settings);
     return {
-      month: s.month, requested: s.requested, window: s.window, hasData: true, partial: !sameRange(s.window, s.requested),
+      month: s.month, requested: s.requested, window: s.window, hasData: true, partial: isPartialWindow(s.month, s.window),
       plannedHours: t.plannedHours, failureHours: t.failureHours, otherHours: t.otherHours, failureCount: t.failureCount,
       operatingHours: t.operatingHours, mtbfHours: t.mtbfHours, mttrHours: t.mttrHours, failureRatePer1000h: t.failureRatePer1000h,
       availability: t.availabilityHeadline, kpis: t,
@@ -239,7 +248,7 @@ export function monthlyHoursByClassification(input: Omit<MonthlyInput, 'chains' 
     }
   }
   return slots.map((s) => ({
-    month: s.month, hasData: !!s.window, partial: !!s.window && !sameRange(s.window, s.requested), window: s.window,
+    month: s.month, hasData: !!s.window, partial: !!s.window && isPartialWindow(s.month, s.window), window: s.window,
     hours: s.hours, total: CLASSIFICATION_CODES.reduce((sum, c) => sum + s.hours[c], 0),
   }));
 }

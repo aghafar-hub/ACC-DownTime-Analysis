@@ -15,9 +15,10 @@ export function changeClause(change: Change | null, compare: CompareMode): strin
   const label = compare === 'same_period_last_year' ? t('same period last year') : t('previous period');
   if (!change) return `, ${lower(noChangeText(compare))}`;
   if (!change.available) return `, ${t('no comparison available')}`;
-  if (change.direction === 'flat') return `, ${t('unchanged vs {label}', { label })}`;
-  const sign = change.abs > 0 ? '+' : MINUS;
   const amount = change.pct === null ? `${fh(Math.abs(change.abs))} h` : fpct0(Math.abs(change.pct));
+  // a change that rounds to zero as written reads 'unchanged', never '+0.0%'
+  if (change.direction === 'flat' || amount === (change.pct === null ? `${fh(0)} h` : fpct0(0))) return `, ${t('unchanged vs {label}', { label })}`;
+  const sign = change.abs > 0 ? '+' : MINUS;
   return `, ${sign}${amount} ${t('vs {label}', { label })}`;
 }
 
@@ -34,7 +35,7 @@ export function overviewTakeaway(f: OverviewFacts): string {
   const head = t('{h} area-hours stopped', { h: fh(f.kpi.downtimeHours) }) + changeClause(f.downtimeChange, f.compare);
   const top = f.kpi.topArea;
   if (top.available && top.areaId) {
-    return `${head}; ${t('{a} is the largest contributor ({p} of failure hours).', { a: top.areaId, p: fpct0(top.sharePct ?? 0) })}`;
+    return `${head}; ${t('{a} is the largest contributor by failure hours ({p} of them).', { a: top.areaId, p: fpct0(top.sharePct ?? 0) })}`;
   }
   return `${head}; ${t('no failures were recorded.')}`;
 }
@@ -175,7 +176,7 @@ export function summaryBullets(f: SummaryFacts): string[] {
     out.push(`${s}.`);
   }
   if (f.topArea.available && f.topArea.areaId) {
-    let s = t('{a} is the largest contributor ({p} of failure hours)', { a: f.topArea.areaId, p: fpct0(f.topArea.sharePct ?? 0) });
+    let s = t('{a} is the largest contributor by failure hours ({p} of them)', { a: f.topArea.areaId, p: fpct0(f.topArea.sharePct ?? 0) });
     if (f.topEquipment) s += `; ${t('{c} is the top equipment with {v} h', { c: f.topEquipment.code, v: fh(f.topEquipment.hours) })}`;
     out.push(`${s}.`);
   }

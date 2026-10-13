@@ -6,7 +6,7 @@
   .install-banner {
     position: fixed;
     inset-inline: 10px;
-    bottom: calc(var(--bottom-nav-h) + 14px);
+    bottom: calc(var(--bottom-nav-h) + 14px + var(--env-ribbon-h, 0px));
     z-index: 450;
     display: flex;
     flex-wrap: wrap;

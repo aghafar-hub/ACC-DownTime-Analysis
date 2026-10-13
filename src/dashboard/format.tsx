@@ -47,6 +47,17 @@ export function dayShort(d: string): string {
   return `${Number(day)} ${names[Number(m) - 1] ?? m}`;
 }
 
+/** Tooltip note of a partial month: the days it shows ("Partial month: 15 Jan 2026 to 31 Jan 2026" or "...: data to 10 Feb 2026"). */
+export function partialNote(m: { month: string; partial: boolean; window: { from: string; to: string } | null }): string | undefined {
+  if (!m.partial || !m.window) return undefined;
+  return m.window.from.endsWith('-01')
+    ? t('Partial month: data to {d}', { d: dayLabel(m.window.to) })
+    : t('Partial month: {a} to {b}', { a: dayLabel(m.window.from), b: dayLabel(m.window.to) });
+}
+
+/** Footnote under a monthly chart that has partial months. */
+export const PARTIAL_FOOT = 'Months with * show only part of the month (the range or the data starts or ends inside it); they are outlined with a dashed line.';
+
 export function rangeLabel(r: { from: string; to: string }): string {
   return r.from === r.to ? dayLabel(r.from) : `${dayLabel(r.from)} – ${dayLabel(r.to)}`;
 }
@@ -61,13 +72,24 @@ export function noChangeText(compare: CompareMode): string {
 export function ChangeLine({ change, fmt, unit = '', label, testid, compare = 'none' }: { change: Change | null; fmt: (n: number) => string; unit?: string; label: string; testid?: string; compare?: CompareMode }): ReactNode {
   if (!change) return <span className="kpi-change kpi-change--none" data-testid={testid}>{noChangeText(compare)}</span>;
   if (!change.available) return <span className="kpi-change kpi-change--none" data-testid={testid}>{t('No comparison: {reason}', { reason: change.reason })}</span>;
-  const sign = change.abs > 0 ? '+' : change.abs < 0 ? '−' : '';
-  const arrow = change.direction === 'up' ? '▲' : change.direction === 'down' ? '▼' : '■';
-  const pct = change.pct === null ? '' : ` (${change.pct > 0 ? '+' : change.pct < 0 ? '−' : ''}${nf1.format(Math.abs(change.pct))}%)`;
-  const word = change.assessment === 'good' ? t('better') : change.assessment === 'bad' ? t('worse') : change.direction === 'flat' ? t('no change') : '';
+  const c = asShown(change, fmt);
+  const sign = c.abs > 0 ? '+' : c.abs < 0 ? '−' : '';
+  const arrow = c.direction === 'up' ? '▲' : c.direction === 'down' ? '▼' : '■';
+  const pct = c.pct === null || c.direction === 'flat' ? '' : ` (${c.pct > 0 ? '+' : c.pct < 0 ? '−' : ''}${nf1.format(Math.abs(c.pct))}%)`;
+  const word = c.assessment === 'good' ? t('better') : c.assessment === 'bad' ? t('worse') : c.direction === 'flat' ? t('no change') : '';
   return (
-    <span className={`kpi-change kpi-change--${change.assessment}`} data-testid={testid}>
-      <span aria-hidden="true">{arrow}</span> {sign}{fmt(Math.abs(change.abs))}{unit}{pct}{word ? ` · ${word}` : ''} <span className="kpi-change-label">{label}</span>
+    <span className={`kpi-change kpi-change--${c.assessment}`} data-testid={testid}>
+      <span aria-hidden="true">{arrow}</span> {sign}{fmt(Math.abs(c.abs))}{unit}{pct}{word ? ` · ${word}` : ''} <span className="kpi-change-label">{label}</span>
     </span>
   );
+}
+
+/**
+ * The change as the reader sees it: a difference that rounds to zero in the shown format ("0.0 pts", "0.0 h") is
+ * no change, neutral, never 'better' or 'worse'.
+ */
+export function asShown<C extends Change>(change: C, fmt: (n: number) => string): C {
+  if (!change.available || change.direction === 'flat') return change;
+  if (fmt(Math.abs(change.abs)) !== fmt(0)) return change;
+  return { ...change, abs: 0, pct: change.pct === null ? null : 0, direction: 'flat', assessment: 'neutral' };
 }

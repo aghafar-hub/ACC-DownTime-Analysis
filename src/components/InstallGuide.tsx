@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../icons';
 import { t } from '../i18n/t';
 import { useInstall } from '../installPrompt';
@@ -18,17 +18,37 @@ function IosSteps() {
 }
 
 // Phone only, shown once until dismissed: a small card above the bottom bar.
+// While it shows, its height is kept in --install-banner-h so the page reserves that room at the bottom and the
+// banner never covers content (the last row, Show more, a form button).
 export function InstallBanner() {
   const { installed, canPrompt, ios, install } = useInstall();
   const [dismissed, setDismissed] = useState(() => store.get(DISMISS_KEY) === '1');
   const [showSteps, setShowSteps] = useState(false);
-  if (installed || dismissed || (!canPrompt && !ios)) return null;
+  const ref = useRef<HTMLDivElement>(null);
+  const shown = !(installed || dismissed || (!canPrompt && !ios));
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const root = document.documentElement;
+    if (!shown || !el) return;
+    // the banner sits 14 px above the bottom bar; keep 10 px of air above it
+    const set = () => root.style.setProperty('--install-banner-h', `${el.offsetHeight ? el.offsetHeight + 24 : 0}px`);
+    set();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(set);
+    ro?.observe(el);
+    window.addEventListener('resize', set);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', set);
+      root.style.removeProperty('--install-banner-h');
+    };
+  }, [shown, showSteps]);
+  if (!shown) return null;
   const dismiss = () => {
     setDismissed(true);
     store.set(DISMISS_KEY, '1');
   };
   return (
-    <div className="install-banner" role="dialog" aria-label={t('Install the app')} data-testid="install-banner">
+    <div ref={ref} className="install-banner" role="dialog" aria-label={t('Install the app')} data-testid="install-banner">
       <img src={`${import.meta.env.BASE_URL}icons/pwa-192.png`} alt="" width={40} height={40} />
       <div className="install-banner-text">
         <b>{t('Install ACC Downtime')}</b>

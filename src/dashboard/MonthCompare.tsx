@@ -11,6 +11,7 @@ import { Icon } from '../icons';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useTheme } from '../theme/ThemeContext';
 import { useValidationOptional } from '../validate/ValidationContext';
+import { dataRangeOf } from '../calc';
 import { ChangeLine, fh, fh2, fint, fpct, metricText } from './format';
 import type { CompareId, CompareRow } from './monthCompare';
 import { defaultMonthPair, MONTH_PAIR_PARAM, monthCompareModel, monthPairText, monthsWithData, parseMonthPair, type MonthPair } from './monthCompare';
@@ -39,7 +40,12 @@ function rowLabel(id: CompareId, basis: string): string {
   }
 }
 
-const fmtOf = (k: CompareRow['kind']): { f: (n: number) => string; unit: string; cf: (n: number) => string; cunit: string } => {
+const fmtOf = (k: CompareRow['kind'], perDay = false): { f: (n: number) => string; unit: string; cf: (n: number) => string; cunit: string } => {
+  if (perDay) {
+    // a rate per day with data: two decimals so small daily figures stay readable
+    const day = t('/day');
+    return k === 'count' ? { f: fh2, unit: ` ${day}`, cf: fh2, cunit: ` ${day}` } : { f: fh2, unit: ` h${day}`, cf: fh2, cunit: ` h${day}` };
+  }
   switch (k) {
     case 'hours': return { f: fh, unit: ' h', cf: fh, cunit: ' h' };
     case 'hours2': return { f: fh2, unit: ' h', cf: fh2, cunit: ' h' };
@@ -67,7 +73,8 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
   const rows = v?.rows ?? [];
   const ready = !!v?.ready && !!dash.startup;
   const months = useMemo(() => (ready ? monthsWithData(rows) : []), [ready, rows]);
-  const def = useMemo(() => defaultMonthPair(months), [months]);
+  const coverage = useMemo(() => (ready ? dataRangeOf(rows.filter((r) => !r.is_void)) : null), [ready, rows]);
+  const def = useMemo(() => defaultMonthPair(months, coverage), [months, coverage]);
   const pair: MonthPair | null = urlPair ?? def;
   const options = useMemo(() => [...new Set([...months, ...(pair ? [pair.a, pair.b] : [])])].sort().reverse(), [months, pair]);
 
@@ -160,7 +167,7 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
                   {mobile ? (
                     <div className="mvm-cards" data-testid={`${id}-cards`}>
                       {model.rows.map((r) => {
-                        const f = fmtOf(r.kind);
+                        const f = fmtOf(r.kind, r.perDay);
                         return (
                           <div className="mvm-card" key={r.id} data-testid="mvm-row" data-id={r.id}>
                             <b className="mvm-card-title">{rowLabel(r.id, model.basis)}</b>
@@ -187,7 +194,7 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
                       </thead>
                       <tbody>
                         {model.rows.map((r) => {
-                          const f = fmtOf(r.kind);
+                          const f = fmtOf(r.kind, r.perDay);
                           return (
                             <tr key={r.id} data-testid="mvm-row" data-id={r.id}>
                               <th scope="row">{rowLabel(r.id, model.basis)}</th>
@@ -201,7 +208,11 @@ export default function MonthCompare({ dash, page }: { dash: Dash; page: 'overvi
                     </table>
                   </div>
                   )}
-                  {(model.partialA || model.partialB) && <p className="chart-foot">{t('* This month is only partly covered by data.')}</p>}
+                  {model.perDay && (
+                    <p className="chart-foot" data-testid="mvm-perday">
+                      {t('* Only part of this month has data ({a}: {x} days, {b}: {y} days). Hours and counts are shown per day with data, and no change is called better or worse.', { a: la, x: model.daysA, b: lb, y: model.daysB })}
+                    </p>
+                  )}
                   {(!model.hasA || !model.hasB) && <p className="chart-foot" data-testid="mvm-nodata">{t('A month without data shows no figures and no change.')}</p>}
                   <div className="chart-grid" style={{ marginTop: 12 }}>
                     <ChartCard

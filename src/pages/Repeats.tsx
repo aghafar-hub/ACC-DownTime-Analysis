@@ -13,7 +13,7 @@ import DashTop from '../dashboard/DashTop';
 import { dayLabel, fh, fh2, fint } from '../dashboard/format';
 import { repeatsTakeaway } from '../dashboard/takeaways';
 import { eventsOfEquipment, repeatsModel, rolling } from '../dashboard/models';
-import { NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
+import { EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import { useDash } from '../dashboard/useDash';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
@@ -67,8 +67,11 @@ export default function Repeats() {
       const y = sortVal(b, sort.key);
       return (x < y ? -1 : x > y ? 1 : 0) * sort.dir || (a.key < b.key ? -1 : 1);
     });
-    return gs;
+    // the list shows groups with at least two occurrences in the range; a group whose earlier events fall before
+    // the range still counts in the tiles (its recurrence is in the range) and is named in the note under the table
+    return gs.filter((g) => g.occurrences >= 2);
   }, [model, sort]);
+  const singles = (model?.result.groups.length ?? 0) - groups.length;
   const selCode = sel ?? groups[0]?.equipmentId ?? model?.scatter[0]?.code ?? '';
   const events = useMemo(() => (ctx && selCode ? eventsOfEquipment(ctx, selCode) : []), [ctx, selCode]);
   const rollPts = useMemo(() => (ctx ? rolling(ctx, roll === '30' ? 30 : 90) : []), [ctx, roll]);
@@ -79,7 +82,8 @@ export default function Repeats() {
   const win = model?.window;
   const settings = ctx?.master.settings;
   const topGroup = res?.groups.reduce<RepeatGroup | null>((b, g) => (!b || g.occurrences > b.occurrences || (g.occurrences === b.occurrences && g.totalHours > b.totalHours) ? g : b), null) ?? null;
-  const takeaway = !ctx ? t('Loading…') : res && settings
+  const empty = !!model && rows !== null && rows.length === 0;
+  const takeaway = !ctx ? t('Loading…') : empty ? t(EMPTY_SCOPE_TAKEAWAY) : res && settings
     ? repeatsTakeaway({
       groups: res.groups.length, recurrences: res.recurrences.length, equipmentCount: equipCount,
       top: topGroup && { equipmentId: topGroup.equipmentId, occurrences: topGroup.occurrences, totalHours: topGroup.totalHours, reason: topGroup.reasonLabel },
@@ -131,7 +135,8 @@ export default function Repeats() {
         title={t('Repeated Failures')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null}
         right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>}
       />
-      {res && settings && (
+      {empty && <EmptyScope dash={dash} />}
+      {res && settings && !empty && (
         <div className="kpi-grid" data-testid="repeat-tiles">
           <Tile compact={mobile} icon="repeat" label={t('Qualifying groups')} value={<span data-testid="rt-groups">{fint(res.groups.length)}</span>} sub={t('same code and reason, at least {n} events within {d} days', { n: settings.repeatMinEvents, d: settings.repeatWindowDays })} />
           <Tile compact={mobile} icon="alert" label={t('Recurrence events')} value={<span data-testid="rt-recurrences">{fint(res.recurrences.length)}</span>} sub={t('occurrences after the first of each cluster')} />
@@ -140,7 +145,7 @@ export default function Repeats() {
         </div>
       )}
       {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}
-      {model && res && (
+      {model && res && !empty && (
         <>
           <section className="card" data-testid="repeat-table-card">
             <h2>{t('Investigation table')}</h2>
@@ -186,6 +191,7 @@ export default function Repeats() {
               </div>
             )}
             <ShowMore shown={visible.length} total={groups.length} onMore={() => setShown((n) => n + PAGE_SIZE)} />
+            {singles > 0 && <p className="chart-foot" data-testid="repeat-singles">{t('{n} more groups have only one occurrence in this range (the earlier ones are before it); they count in the tiles above but are not listed.', { n: fint(singles) })}</p>}
           </section>
 
           <div ref={timelineRef}>{!mobile && timeline}</div>
@@ -194,7 +200,7 @@ export default function Repeats() {
 
           <div className="chart-grid">
             <ChartCard
-              title={t('Equipment by month')} subtitle={t('Failure events by the equipment code of the cause; the largest 15 codes')} testid="chart-heat-month"
+              title={t('Equipment by month')} subtitle={t('Failure events by the equipment code of the cause; the largest 15 codes. N/A (area-level) is excluded.')} testid="chart-heat-month"
               summary={heat ? t('{n} codes shown, {t} {u} in total.', { n: heat.rows.length, t: fmtM(heatMeasure)(heat.total), u: heatMeasure === 'hours' ? 'h' : t('events') }) : ''}
               controls={<Toggle value={heatMeasure} options={[{ value: 'hours', label: t('Hours') }, { value: 'count', label: t('Count') }]} onChange={setHeatMeasure} label={t('Measure')} testid="heat-month-measure" />}
               legend={[{ label: t('Darker = more'), color: ACCENT }]}
@@ -202,7 +208,7 @@ export default function Repeats() {
               {() => heat ? <HeatmapTable map={heat} full={heatFull} format={fmtM(heatMeasure)} caption={t('Equipment by month')} rowHead={t('Code')} shortCol={(l) => l.slice(2).replace('-', '/')} /> : null}
             </ChartCard>
             <ChartCard
-              title={t('Equipment by reason')} subtitle={t('Top codes against top reasons')} testid="chart-heat-reason"
+              title={t('Equipment by reason')} subtitle={t('Top codes against top reasons. N/A (area-level) is excluded.')} testid="chart-heat-reason"
               summary={heat2 ? t('{n} codes and {c} reasons shown.', { n: heat2.rows.length, c: heat2.cols.length }) : ''}
               controls={<Toggle value={heat2Measure} options={[{ value: 'hours', label: t('Hours') }, { value: 'count', label: t('Count') }]} onChange={setHeat2Measure} label={t('Measure')} testid="heat-reason-measure" />}
               legend={[{ label: t('Darker = more'), color: ACCENT }]}

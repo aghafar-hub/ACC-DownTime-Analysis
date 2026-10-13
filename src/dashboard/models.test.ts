@@ -338,3 +338,27 @@ describe('targets in the page adapters', () => {
     if (k.available) expect(m.status.mtbf!.target).toBe(50);
   });
 });
+
+describe('R0: drill ids, repeats heat maps', () => {
+  it('every Pareto bar and scatter point opens exactly the events it counts', () => {
+    const m = equipmentModel(ctx)!;
+    for (const b of m.count.own.bars) expect(b.eventIds).toHaveLength(b.value);
+    const w = ctx.win.effective!;
+    const byId = new Map(failures.map((c) => [c.id, c]));
+    for (const b of m.hours.own.bars) {
+      // each id carries hours inside the window; together they make the bar
+      const sum = b.eventIds.reduce((s, id) => s + (byId.get(id) ? equipmentPareto([byId.get(id)!], index, { measure: 'hours', window: w }).own.total : 0), 0);
+      expect(sum).toBeCloseTo(b.value, 6);
+    }
+    const r = repeatsModel(ctx)!;
+    for (const p of r.scatter) expect(p.eventIds).toHaveLength(p.count);
+    const o = overviewModel(ctx);
+    expect(o.topEquipment.bars.every((b) => b.eventIds.length > 0)).toBe(true);
+  });
+  it('the repeats heat maps leave out N/A, as the page says', () => {
+    const r = repeatsModel(ctx)!;
+    for (const h of [r.heatMonthHours, r.heatMonthCount, r.heatReasonHours, r.heatReasonCount, r.heatAll.monthHours, r.heatAll.reasonCount]) {
+      expect(h.rows.map((x) => x.key)).not.toContain('N/A');
+    }
+  });
+});

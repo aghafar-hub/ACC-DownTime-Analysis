@@ -6,7 +6,7 @@ import { avail, ratio, unavail, type Metric } from './metric';
 import { equipmentPareto } from './pareto';
 import { findRepeatedFailures } from './repeats';
 import type { CalcSettings, ComparisonKind } from './settings';
-import { clippedHours, comparisonRange, dateOf, intersectRanges, rangeToInterval, sameRange, scheduledHours, type DateRange } from './time';
+import { clippedHours, comparisonRange, dateOf, formatDate, intersectRanges, lastDayOfMonth, parseTs, rangeToInterval, sameRange, scheduledHours, type DateRange } from './time';
 
 export interface AvailabilitySet { A: Metric; B: Metric; C: Metric }
 
@@ -43,7 +43,7 @@ export interface KpiOk {
   requestedWindow: DateRange;
   /** requested window clipped to the data range */
   window: DateRange;
-  /** true when the window was shortened to the data range (e.g. the current month is not over) */
+  /** true when the window was shortened to the data range, or is a month to date that ends with the data (the current month is not over) */
   partial: boolean;
   areas: AreaKpis[];
   total: AreaKpis;
@@ -78,13 +78,25 @@ export interface HourSums { pl: number; inc: number; cir: number; failures: numb
 const NO_FAIL = 'No failures recorded in the window';
 const NO_TIME = 'No scheduled time in the window';
 
+/**
+ * The last day a row covers: the date of its restart minus 1 ms (a restart at exactly 00:00:00.000 ends on the day
+ * before, so it does not add an empty day to the coverage), never before its stop date.
+ */
+export function lastDayOf(r: Pick<EventRow, 'stop_ts' | 'start_ts'>): string {
+  const a = dateOf(r.stop_ts);
+  const ms = parseTs(r.start_ts);
+  const b = ms === null ? dateOf(r.start_ts) : formatDate(ms - 1);
+  return b > a ? b : a;
+}
+
+/** First stop date to the last day a restart covers (see lastDayOf). */
 export function dataRangeOf(rows: EventRow[]): DateRange | null {
   let lo = '';
   let hi = '';
   for (const r of rows) {
     if (!isAnalysable(r)) continue;
     const a = dateOf(r.stop_ts);
-    const b = dateOf(r.start_ts) > a ? dateOf(r.start_ts) : a;
+    const b = lastDayOf(r);
     if (lo === '' || a < lo) lo = a;
     if (b > hi) hi = b;
   }
@@ -130,6 +142,14 @@ export function addRowHours(acc: HourSums, row: Pick<EventRow, 'classification'>
 }
 
 /**
+ * The window is a month to date that ends on the last day with data (e.g. 'This month' while the month is not over):
+ * the figures cover only the elapsed days.
+ */
+function isMonthInProgress(eff: DateRange, data: DateRange): boolean {
+  return eff.from.slice(8) === '01' && eff.from.slice(0, 7) === eff.to.slice(0, 7) && eff.to === data.to && eff.to < lastDayOfMonth(eff.to.slice(0, 7));
+}
+
+/**
  * KPIs for a window. The window is clipped to the data range (a month still in progress is "partial" and T
  * covers only the elapsed days). With no data covering the window the result is `no_data`, never zeros.
  */
@@ -168,7 +188,7 @@ export function computeKpis(input: KpiInput): KpiResult {
   const total = composeKpis('ALL', t * areaIds.length, sum, input.settings);
   const repeats = findRepeatedFailures(failureChains, { settings: input.settings, window: eff, lookup: input.index });
   return {
-    status: 'ok', requestedWindow: input.window, window: eff, partial: !sameRange(eff, input.window),
+    status: 'ok', requestedWindow: input.window, window: eff, partial: !sameRange(eff, input.window) || isMonthInProgress(eff, range),
     areas, total, ...contributors(areas, total, failureChains, eff, input.index),
     repeatGroups: repeats.groups.length, repeatedFailureCount: repeats.recurrences.length,
     orphanCount: chains.filter((c) => c.orphan && c.startMs >= w.fromMs && c.startMs < w.toMs).length,

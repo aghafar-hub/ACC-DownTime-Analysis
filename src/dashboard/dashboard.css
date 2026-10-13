@@ -651,3 +651,20 @@
   color: var(--tk-text-primary);
   overflow-wrap: anywhere;
 }
+
+/* filters that leave nothing: one clear state with Reset, never figures computed from nothing */
+.empty-scope {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  color: var(--tk-text-primary);
+}
+.empty-scope > svg { flex: 0 0 auto; color: var(--tk-text-secondary); }
+.empty-scope > div { flex: 1 1 220px; min-width: 0; }
+.empty-scope b { font-size: 15px; }
+.empty-scope p { margin: 4px 0 0; font-size: 13px; }
+.empty-scope .btn-primary { min-height: 44px; }
+.fb-clash { margin: 8px 0 0; }

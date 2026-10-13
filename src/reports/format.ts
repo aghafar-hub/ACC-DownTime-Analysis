@@ -2,7 +2,7 @@
 // never rests on colour alone. Pure.
 import type { Change } from '../calc';
 import type { CompareMode } from '../dashboard/filters';
-import { fh, fh2, fint, noChangeText } from '../dashboard/format';
+import { asShown, fh, fh2, fint, noChangeText } from '../dashboard/format';
 import { t } from '../i18n/t';
 import type { KpiCard } from './model';
 
@@ -25,9 +25,11 @@ export function changeText(change: Change | null, unit: KpiCard['changeUnit'], c
   if (compare === 'none') return null;
   if (!change) return NONE(noChangeText(compare));
   if (!change.available) return NONE(t('No comparison: {reason}', { reason: change.reason }));
+  const amountOf = (a: number): string => (unit === 'pts' ? `${nf1.format(a * 100)} ${t('pts')}` : unit === 'count' ? fint(a) : unit === 'h2' ? `${fh2(a)} h` : `${fh(a)} h`);
+  change = asShown(change, amountOf);
   const sign = change.abs > 0 ? '+' : change.abs < 0 ? MINUS : '';
   const a = Math.abs(change.abs);
-  const amount = unit === 'pts' ? `${nf1.format(a * 100)} ${t('pts')}` : unit === 'count' ? fint(a) : unit === 'h2' ? `${fh2(a)} h` : `${fh(a)} h`;
+  const amount = amountOf(a);
   const pct = change.pct === null || unit === 'pts' ? '' : ` (${change.pct > 0 ? '+' : change.pct < 0 ? MINUS : ''}${nf1.format(Math.abs(change.pct))}%)`;
   const words = change.assessment === 'good' ? t('better') : change.assessment === 'bad' ? t('worse') : change.direction === 'flat' ? t('no change') : '';
   return {

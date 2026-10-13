@@ -1,6 +1,6 @@
 // Event Explorer's filters as plain data: the filter shape, the rules that pick and order the rows, a count of active
-// filters, a sentence that describes them, and the query used by saved views (the filters live in component state; a
-// saved view stores them as a query and applying it puts them back). Pure.
+// filters, a sentence that describes them, and their query. The filters live in the address as that query (so Back
+// and a reload restore them); a saved view stores the same query. Pure.
 import type { ClassificationCode, EventRow, Startup } from '../../api/types';
 import { hasOpenProblemFlags } from '../../calc/flags';
 import { t } from '../../i18n/t';
@@ -68,6 +68,9 @@ export function describeExplorerFilters(f: Filters, startup: Startup | null): st
 /** Query keys of the explorer's filters (the view switch `view` is kept apart: it is not a filter). */
 export const EXPLORER_KEYS = ['q', 'line', 'area', 'cls', 'crit', 'fail', 'from', 'to', 'show', 'sort'] as const;
 
+/** Query key of how many rows the list shows (Show more); not a filter, so it is not part of a saved view. */
+export const SHOWN_PARAM = 'n';
+
 export const hasExplorerParams = (sp: URLSearchParams): boolean => EXPLORER_KEYS.some((k) => sp.has(k));
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -77,7 +80,8 @@ const SORTS: Sort[] = ['stop_desc', 'stop_asc', 'dur_desc'];
 /** Only non-default values are written, so an empty filter set is an empty query. */
 export function serializeExplorerFilters(f: Filters): URLSearchParams {
   const sp = new URLSearchParams();
-  if (f.q.trim()) sp.set('q', f.q.trim());
+  // written as typed (a trailing space is kept while typing 'belt c'); a blank search is not written
+  if (f.q.trim()) sp.set('q', f.q);
   if (f.line) sp.set('line', f.line);
   if (f.area) sp.set('area', f.area);
   f.classes.forEach((c) => sp.append('cls', c));

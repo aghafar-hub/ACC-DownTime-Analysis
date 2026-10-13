@@ -287,20 +287,22 @@ export function repeatsModel(ctx: DashCtx): RepeatsModel | null {
   const hours = equipmentPareto(chains, index, { measure: 'hours', window }).own;
   const count = equipmentPareto(chains, index, { measure: 'count', window }).own;
   const h = new Map(hours.bars.map((b) => [b.key, b]));
+  // the heat maps follow the page's rule: N/A (the whole area stopped, no equipment) is not a repeated equipment cause
+  const coded = chains.filter((c) => rowCode(c.head, index).kind !== 'area_level');
   const scatter: ScatterPoint[] = count.bars
     .map((c) => ({ code: c.key, count: c.value, totalHours: h.get(c.key)?.value ?? 0, avgHours: (h.get(c.key)?.value ?? 0) / c.value, eventIds: c.eventIds }))
     .filter((p) => p.count > 0);
   return {
     result, window, scatter,
-    heatMonthHours: equipmentMonthHeatmap(chains, index, window, { measure: 'hours', maxRows: 15 }),
-    heatMonthCount: equipmentMonthHeatmap(chains, index, window, { measure: 'count', maxRows: 15 }),
-    heatReasonHours: equipmentReasonHeatmap(chains, index, window, { measure: 'hours', maxRows: 12, maxCols: 8 }),
-    heatReasonCount: equipmentReasonHeatmap(chains, index, window, { measure: 'count', maxRows: 12, maxCols: 8 }),
+    heatMonthHours: equipmentMonthHeatmap(coded, index, window, { measure: 'hours', maxRows: 15 }),
+    heatMonthCount: equipmentMonthHeatmap(coded, index, window, { measure: 'count', maxRows: 15 }),
+    heatReasonHours: equipmentReasonHeatmap(coded, index, window, { measure: 'hours', maxRows: 12, maxCols: 8 }),
+    heatReasonCount: equipmentReasonHeatmap(coded, index, window, { measure: 'count', maxRows: 12, maxCols: 8 }),
     heatAll: {
-      monthHours: equipmentMonthHeatmap(chains, index, window, { measure: 'hours' }),
-      monthCount: equipmentMonthHeatmap(chains, index, window, { measure: 'count' }),
-      reasonHours: equipmentReasonHeatmap(chains, index, window, { measure: 'hours', maxCols: 8 }),
-      reasonCount: equipmentReasonHeatmap(chains, index, window, { measure: 'count', maxCols: 8 }),
+      monthHours: equipmentMonthHeatmap(coded, index, window, { measure: 'hours' }),
+      monthCount: equipmentMonthHeatmap(coded, index, window, { measure: 'count' }),
+      reasonHours: equipmentReasonHeatmap(coded, index, window, { measure: 'hours', maxCols: 8 }),
+      reasonCount: equipmentReasonHeatmap(coded, index, window, { measure: 'count', maxCols: 8 }),
     },
   };
 }

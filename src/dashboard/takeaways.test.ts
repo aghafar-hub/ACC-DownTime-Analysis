@@ -8,7 +8,7 @@ const top = { available: true as const, areaId: 'K.2', sharePct: 13.3 };
 describe('overviewTakeaway', () => {
   it('reads hours, the change against the previous period and the largest contributor', () => {
     const s = overviewTakeaway({ kpi: { downtimeHours: 1157.5, topArea: top }, downtimeChange: up, compare: 'previous_period' });
-    expect(s).toBe('1,157.5 area-hours stopped, +5.6% vs previous period; K.2 is the largest contributor (13.3% of failure hours).');
+    expect(s).toBe('1,157.5 area-hours stopped, +5.6% vs previous period; K.2 is the largest contributor by failure hours (13.3% of them).');
   });
   it('uses a minus sign for a decrease and names the comparison of last year', () => {
     const down = compareValues(avail(90), avail(100), 'lower');
@@ -20,7 +20,7 @@ describe('overviewTakeaway', () => {
     expect(changeClause(null, 'none')).toBe('');
     expect(changeClause({ available: false, reason: 'x' }, 'previous_period')).toBe(', no comparison available');
     expect(overviewTakeaway({ kpi: { downtimeHours: 12, topArea: top }, downtimeChange: null, compare: 'none' }))
-      .toBe('12.0 area-hours stopped; K.2 is the largest contributor (13.3% of failure hours).');
+      .toBe('12.0 area-hours stopped; K.2 is the largest contributor by failure hours (13.3% of them).');
   });
   it('a previous value of 0 gives hours instead of a percentage; equal values read unchanged', () => {
     expect(changeClause(compareValues(avail(5), avail(0), 'lower'), 'previous_period')).toBe(', +5.0 h vs previous period');
@@ -80,7 +80,7 @@ describe('report takeaways (real numbers only)', () => {
     expect(b[0]).toBe('428.3 area-hours stopped (168.0 h failures, 187.2 h planned, 73.1 h other), +14.4% vs previous period.');
     expect(b[1]).toBe('Availability (basis B) was 97.7%, −0.1 pts vs previous period.');
     expect(b[2]).toBe('233 failures; mean restoration time 0.87 h.');
-    expect(b[3]).toBe('K.2 is the largest contributor (13.1% of failure hours); 141.VL170 is the top equipment with 12.6 h.');
+    expect(b[3]).toBe('K.2 is the largest contributor by failure hours (13.1% of them); 141.VL170 is the top equipment with 12.6 h.');
     expect(b[4]).toBe('10 repeated-failure groups with 10 recurrence events.');
   });
   it('says what is missing instead of inventing it', () => {

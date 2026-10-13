@@ -10,7 +10,7 @@ import OccurrenceStrip from '../charts/OccurrenceStrip';
 import ParetoChart from '../charts/ParetoChart';
 import { CLASS_ORDER, STACK_COLORS, classColor } from '../charts/palette';
 import QuadrantChart from '../charts/QuadrantChart';
-import { dayLabel, dayShort, fh, fh2, fint, fpct, fpct0, monthLabel } from '../dashboard/format';
+import { dayLabel, dayShort, fh, fh2, fint, fpct, fpct0, monthLabel, PARTIAL_FOOT } from '../dashboard/format';
 import { statusSymbol } from '../dashboard/TargetStatus';
 import { statusLine, targetNumber, type TargetStatus } from '../dashboard/targets';
 import { t } from '../i18n/t';
@@ -189,7 +189,7 @@ function monthlyBlocks(s: MonthlySection): Block[] {
     { key: 'other', label: t('Other (CIR)'), color: STACK_COLORS.other, type: 'bar', stack: 's', values: months.map((m) => (m.hasData ? m.otherHours : null)), missing: miss },
   ];
   out.push(node('monthly:chart', (
-    <ChartBox title={t('Stopped hours per month')} subtitle={t('Area-hours, stacked by type')} testid="rpt-chart-monthly" legend={statLegend()} foot={months.some((m) => m.partial) ? t('Months with * are only partly covered by data; they are outlined with a dashed line.') : undefined}>
+    <ChartBox title={t('Stopped hours per month')} subtitle={t('Area-hours, stacked by type')} testid="rpt-chart-monthly" legend={statLegend()} foot={months.some((m) => m.partial) ? t(PARTIAL_FOOT) : undefined}>
       <CartesianChart static categories={cats} series={series} width={CONTENT_W} height={250} maxBarWidth={64} ariaLabel={t('Stacked bar chart of monthly stoppage hours. {s}', { s: s.takeaway })} yFormat={(n) => `${n}`} />
     </ChartBox>
   ), true));

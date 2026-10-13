@@ -6,7 +6,7 @@ import { areaModel, classModel, equipmentModel, lineModel, reasonForEquipmentMod
 import { ChartCard } from '../charts/ChartKit';
 import HeatmapTable from '../charts/HeatmapTable';
 import { ACCENT } from '../charts/palette';
-import { NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
+import { EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import ParetoCard from '../dashboard/ParetoCard';
 import DashTop from '../dashboard/DashTop';
 import { fh, fint } from '../dashboard/format';
@@ -84,7 +84,8 @@ export default function Pareto() {
   const open = (prefix: string) => (label: string, ids: string[]) => drill(`${prefix} ${label}`, { eventIds: ids });
   const win = ctx?.win.effective;
   const hoursTot = eq?.hours.own.total ?? 0;
-  const takeaway = !ctx ? t('Loading…') : eq && win
+  const empty = !!eq && rows !== null && rows.length === 0;
+  const takeaway = !ctx ? t('Loading…') : empty ? t(EMPTY_SCOPE_TAKEAWAY) : eq && win
     ? paretoTakeaway({
       totalHours: hoursTot, codeCount: eq.hours.own.entryCount,
       top: eq.hours.own.bars.filter((b) => !b.isOthers).slice(0, 3).map((b) => ({ label: b.label, value: b.value, sharePct: b.sharePct })),
@@ -100,7 +101,8 @@ export default function Pareto() {
         title={t('Pareto & Contributors')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} hideCompare
         right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>}
       />
-      {eq && (
+      {empty && <EmptyScope dash={dash} />}
+      {eq && !empty && (
         <div className="kpi-grid" data-testid="pareto-tiles">
           <Tile compact={mobile} icon="clock" label={t('Failure hours (own equipment)')} value={<span data-testid="pt-hours">{fh(eq.hours.own.total)} h</span>} sub={t('equipment code belongs to the stopped area')} />
           <Tile compact={mobile} icon="alert" label={t('Failure events (own equipment)')} value={<span data-testid="pt-count">{fint(eq.count.own.total)}</span>} sub={t('{n} different codes', { n: fint(eq.count.own.entryCount) })} />
@@ -109,7 +111,7 @@ export default function Pareto() {
         </div>
       )}
       {ctx && !eq && <NoData reason={t('No data covers the selected period.')} />}
-      {eq && (
+      {eq && !empty && (
         <>
           <div role="group" className="chip-row" aria-label={t('Pareto view')} style={{ marginBottom: 12 }}>
             {tabs.map((x) => <button key={x.id} type="button" className={sub === x.id ? 'chip chip--on' : 'chip'} aria-pressed={sub === x.id} onClick={() => setSub(x.id)} data-testid={`sub-${x.id}`}>{x.label}</button>)}

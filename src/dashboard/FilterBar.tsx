@@ -12,7 +12,7 @@ import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { VIEW_PAGE_PATH, viewPageOfPath, type SavedView } from '../views/savedViews';
 import ViewsMenu from '../views/ViewsMenu';
-import { areasInScope, activeCount, DEFAULT_PRESET, parseFilters, PRESET_LABELS, RANGE_PRESETS, serializeFilters, type CompareMode, type RangePreset } from './filters';
+import { areasInScope, activeCount, conflictingFilters, DEFAULT_PRESET, parseFilters, PRESET_LABELS, RANGE_PRESETS, serializeFilters, type CompareMode, type RangePreset } from './filters';
 import { dayLabel, fint, rangeLabel } from './format';
 import { rememberQuery } from './sharedFilters';
 import type { Dash } from './useDash';
@@ -285,6 +285,7 @@ export default function FilterBar({ dash, eventCount, hideCompare }: { dash: Das
   const panelId = useId().replace(/:/g, '');
   const { filters: f, range, ctx } = dash;
   const n = activeCount(f);
+  const clash = conflictingFilters(f);
   const effective = ctx?.win.effective ?? null;
   const cov = ctx?.coverage ?? null;
   const rangeText = range ? rangeLabel(range) : '…';
@@ -314,6 +315,7 @@ export default function FilterBar({ dash, eventCount, hideCompare }: { dash: Das
         </div>
       )}
       <ActiveChips dash={dash} />
+      {clash && <div className="callout callout--warning fb-clash" role="status" data-testid="fb-clash"><Icon name="alert" size={16} /><span>{t(clash)}</span></div>}
       <div className="fb-scope" data-testid="fb-scope">
         <span data-testid="fb-range">{t('Range')}: <b>{rangeText}</b>{range && ` (${t('{n} days', { n: days })})`}</span>
         <span data-testid="fb-count"><b>{eventCount === null ? '…' : fint(eventCount)}</b> {t('events in scope')}</span>

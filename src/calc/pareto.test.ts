@@ -117,6 +117,29 @@ describe('equipmentPareto: own-stop rule', () => {
     expect(equipmentPareto(c, idx, { measure: 'hours', window: april }).own.bars[0]!.value).toBe(3); // 2 + 1
     expect(equipmentPareto(c, idx, { measure: 'count', window: april }).own.bars[0]!.value).toBe(1); // the March event started in March
   });
+  it('drill ids match the bar: only events that contribute inside the window (hours > 0, counts started in it)', () => {
+    const c = chainsOf([
+      { area: 'K.1', code: '100.A1', stop: '2026-03-31 22:00', start: '2026-04-01 02:00' }, // 2 h in April, started in March
+      { area: 'K.1', code: '100.A1', stop: '2026-04-10 08:00', start: '2026-04-10 09:00' }, // April
+      { area: 'K.1', code: '100.A1', stop: '2026-03-10 08:00', start: '2026-03-10 09:00' }, // March only: 0 in April
+      { area: 'K.1', code: '100.A1', stop: '2026-05-02 08:00', start: '2026-05-02 09:00' }, // May only: 0 in April
+      { area: 'K.1', code: '100.A2', stop: '2026-05-03 08:00', start: '2026-05-03 09:00' }, // May only, a different code
+    ]);
+    const april = { from: '2026-04-01', to: '2026-04-30' };
+    const h = equipmentPareto(c, idx, { measure: 'hours', window: april }).own;
+    expect(h.bars.map((b) => b.key)).toEqual(['100.A1']); // 100.A2 has nothing in April
+    expect(h.bars[0]!.eventIds).toHaveLength(2); // the March-to-April event and the April one
+    const n = equipmentPareto(c, idx, { measure: 'count', window: april }).own;
+    expect(n.bars[0]!.value).toBe(1);
+    expect(n.bars[0]!.eventIds).toHaveLength(n.bars[0]!.value); // drill count == bar count
+    // Others carries only contributing ids as well
+    const top1 = equipmentPareto([...c, ...chainsOf([{ id: 'X1', area: 'K.1', code: '100.A2', stop: '2026-04-20 08:00', start: '2026-04-20 08:30' }])], idx, { measure: 'count', window: april, topN: 5 }).own;
+    for (const b of top1.bars) expect(b.eventIds).toHaveLength(b.value);
+  });
+  it('a zero-valued entry adds no drill ids when merged with a positive one', () => {
+    const r = buildPareto([entry('a', 2), { key: 'a', label: 'a', value: 0, eventIds: ['outside'] }]);
+    expect(r.bars[0]!.eventIds).toEqual(['id-a']);
+  });
   it('top N produces Others inside the own bucket', () => {
     const r = equipmentPareto(chains, idx, { measure: 'hours', topN: 5 });
     expect(r.own.bars.some((b) => b.isOthers)).toBe(false); // only two own codes

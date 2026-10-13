@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activeCount, areasInScope, defaultFilters, hasFilterParams, parseFilters, resolveRange, serializeFilters } from './filters';
+import { activeCount, areasInScope, conflictingFilters, defaultFilters, hasFilterParams, parseFilters, resolveRange, serializeFilters } from './filters';
 
 describe('dashboard filters in the URL', () => {
   it('a default view has an empty query and round-trips', () => {
@@ -44,5 +44,18 @@ describe('dashboard filters in the URL', () => {
     expect(areasInScope(areas, { ...defaultFilters(), lineIds: ['L1'] })).toEqual(['A']);
     expect(areasInScope(areas, { ...defaultFilters(), areaIds: ['B'] })).toEqual(['B']);
     expect(activeCount({ ...defaultFilters(), lineIds: ['L1'], failureOnly: true })).toBe(2);
+  });
+});
+
+describe('conflictingFilters', () => {
+  it('names chips that exclude each other and stays quiet otherwise', () => {
+    const base = defaultFilters();
+    expect(conflictingFilters(base)).toBeNull();
+    expect(conflictingFilters({ ...base, failureOnly: true, classifications: ['PL'] })).toMatch(/exclude each other/);
+    expect(conflictingFilters({ ...base, failureOnly: true, classifications: ['PL', 'CIR'] })).toMatch(/PL or CIR/);
+    expect(conflictingFilters({ ...base, failureOnly: true, classifications: ['PL', 'MEC'] })).toBeNull();
+    expect(conflictingFilters({ ...base, failureOnly: true, criticality: ['NO_INC'] })).toMatch(/NO_INC/);
+    expect(conflictingFilters({ ...base, classifications: ['CIR'], criticality: ['INC'] })).toMatch(/exclude each other/);
+    expect(conflictingFilters({ ...base, classifications: ['CIR'], criticality: ['INC', 'NO_INC'] })).toBeNull();
   });
 });

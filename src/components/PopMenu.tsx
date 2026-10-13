@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
+import { useBackClose } from '../mobile/useBackClose';
 import './PopMenu.css';
 
 // A button that opens a small panel under it (a menu of actions, or a panel with a list and a field). The panel stays inside
-// the screen (it is shifted sideways when it would stick out, so it fits a 360 px phone), closes with Escape, with a tap
+// the screen (it is shifted sideways when it would stick out, so it fits a 360 px phone), closes with Escape, with Back, with a tap
 // outside and when an item is chosen (for a menu), and gives focus back to the button. Items are 44 px high.
 export interface PopMenuProps {
   label: string;
@@ -34,6 +35,8 @@ export default function PopMenu({ label, icon, testid, kind = 'menu', disabled, 
     setOpen(false);
     btn.current?.focus({ preventScroll: true });
   }, []);
+  // the phone's Back closes the open panel instead of leaving the page
+  useBackClose(open, close);
 
   useEffect(() => {
     if (!open) return undefined;
