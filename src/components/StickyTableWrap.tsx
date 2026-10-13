@@ -4,10 +4,10 @@
 // Here the heading cells are moved down by the part of the box that has gone under the top bar, never past the box.
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
-/** The bottom edge of the bars that stay on top of the page (top bar, update banner, phone page tabs). */
+/** The bottom edge of the bars that stay on top of the page (top bar, scope bar, update banner, phone page tabs). */
 function stuckTop(): number {
   let top = 0;
-  for (const el of document.querySelectorAll<HTMLElement>('.shell-topbar, .module-tabs, .update-banner')) {
+  for (const el of document.querySelectorAll<HTMLElement>('.shell-topbar, .scope-slot, .module-tabs, .update-banner')) {
     const pos = getComputedStyle(el).position;
     if (pos !== 'sticky' && pos !== 'fixed') continue;
     const r = el.getBoundingClientRect();

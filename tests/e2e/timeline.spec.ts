@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { noSidewaysScroll, setTheme, signInAndWait, smallTargets, smallText, stubFonts, watchConsole } from './helpers';
+import { closePanel, noSidewaysScroll, openType, setTheme, signInAndWait, smallTargets, smallText, stubFonts, watchConsole } from './helpers';
 
 // Event Explorer > Timeline (a Gantt of stops per area), mock mode with the made-up demo data.
 // The demo data's latest stop day is 11 Oct 2026 (14 stops in 8 areas).
@@ -184,10 +184,12 @@ test.describe('timeline (desktop)', () => {
     await expect(bars(page)).toHaveCount(14);
   });
 
-  test('the Explorer filters narrow the chart', async ({ page }) => {
+  test('the shared scope filters narrow the chart', async ({ page }) => {
     await open(page);
     await ready(page);
-    await page.getByTestId('filter-area').selectOption('K.1');
+    await page.getByTestId('fb-area').click();
+    await page.locator('[data-testid="fb-area-opt"][data-value="K.1"]').click();
+    await closePanel(page);
     await expect(page.getByTestId('tl-row')).toHaveCount(1);
     expect(await bars(page).count()).toBeLessThan(14);
     await expect(page.getByTestId('chart-summary')).toContainText('in 1 area');
@@ -196,7 +198,9 @@ test.describe('timeline (desktop)', () => {
     await page.getByTestId('event-search').fill('131.GB140');
     await expect(page.getByTestId('tl-row')).toHaveCount(1);
     await page.getByTestId('event-search').fill('');
-    await page.getByTestId('class-PL').click();
+    await openType(page);
+    await page.getByTestId('fb-cls-PL').click();
+    await closePanel(page);
     await expect(page.getByTestId('chart-summary')).toContainText('No stops');
   });
 

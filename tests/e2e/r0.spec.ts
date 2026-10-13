@@ -1,6 +1,6 @@
 // R0 of docs/redesign: correctness and safety fixes that show in the browser.
 import { expect, test, type Page } from '@playwright/test';
-import { noSidewaysScroll, signInAndWait, stubFonts, watchConsole } from './helpers';
+import { closePanel, noSidewaysScroll, openType, signInAndWait, stubFonts, watchConsole } from './helpers';
 
 const IPHONE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1';
 
@@ -48,7 +48,9 @@ test.describe('R0 (desktop)', () => {
     await page.goto('/#/events');
     await expect(page.getByTestId('event-table')).toBeVisible({ timeout: 20000 });
     await page.getByTestId('failure-only').click();
-    await page.getByTestId('filter-crit').selectOption('INC');
+    await openType(page);
+    await page.getByTestId('fb-crit-INC').click();
+    await closePanel(page);
     await page.getByTestId('event-search').fill('a ');
     await expect(page).toHaveURL(/fail=1/);
     await expect(page).toHaveURL(/crit=INC/);
@@ -66,7 +68,7 @@ test.describe('R0 (desktop)', () => {
     await page.goBack();
     await expect(page.getByTestId('page-events')).toBeVisible();
     await expect(page.getByTestId('failure-only')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('filter-crit')).toHaveValue('INC');
+    await expect(page.getByTestId('fb-chip-crit-INC')).toBeVisible();
     await expect(page.getByTestId('event-search')).toHaveValue('a');
     await expect(page.getByTestId('tile-shown')).toHaveText(shown!);
     await expect(page.getByTestId('event-table').locator('tbody tr')).toHaveCount(rowsBefore);
@@ -103,7 +105,7 @@ test.describe('R0 (desktop)', () => {
     await page.goBack();
     await expect(page.getByTestId('views-btn-panel')).toHaveCount(0);
     await expect(page.getByTestId('page-overview')).toBeVisible();
-    await expect(page).toHaveURL(/#\/overview/);
+    await expect(page).toHaveURL(/#\/dashboard/);
 
     await page.goto('/#/events');
     await expect(page.getByTestId('event-table')).toBeVisible({ timeout: 20000 });
@@ -121,7 +123,7 @@ test.describe('R0 (desktop)', () => {
     await expect(page.getByTestId('page-events')).toBeVisible();
   });
 
-  test('table headings stay in view under the top bar while the page scrolls', async ({ page }) => {
+  test('table headings stay in view under the top bar and the scope bar while the page scrolls', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await signInAndWait(page, 'engineer');
     await page.goto('/#/events');
@@ -131,13 +133,16 @@ test.describe('R0 (desktop)', () => {
     const before = await head.boundingBox();
     // scroll the page well past the table's top
     await table.evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY + 900));
+    // the scope bar sticks under the top bar on Event records; the headings stop under it
     await expect.poll(async () => {
-      const bar = await page.locator('.shell-topbar').boundingBox();
+      const bar = await page.locator('.scope-slot').boundingBox();
       const th = await head.boundingBox();
       return th && bar ? Math.round(th.y - (bar.y + bar.height)) : 999;
     }, { timeout: 5000 }).toBeLessThanOrEqual(1);
     const th = (await head.boundingBox())!;
-    const bar = (await page.locator('.shell-topbar').boundingBox())!;
+    const bar = (await page.locator('.scope-slot').boundingBox())!;
+    const top = (await page.locator('.shell-topbar').boundingBox())!;
+    expect(Math.round(bar.y)).toBe(Math.round(top.y + top.height));
     expect(th.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
     expect(th.y).not.toBe(before!.y);
     await expect(head).toBeInViewport();
@@ -189,5 +194,28 @@ test.describe('R0 (phone)', () => {
     const reset = (await page.getByTestId('empty-scope-reset').boundingBox())!;
     expect(reset.height).toBeGreaterThanOrEqual(43.5);
     expect((await noSidewaysScroll(page)).ok).toBe(true);
+  });
+});
+
+test.describe('R1: Overview is now the Dashboard', () => {
+  test.beforeEach(async ({ page }) => {
+    await stubFonts(page);
+  });
+
+  test('/overview redirects to /dashboard with its query; the page, the rail, the breadcrumb and the title say Dashboard', async ({ page }) => {
+    const errors = watchConsole(page);
+    await signInAndWait(page, 'engineer');
+    await page.goto('/#/overview?r=last30&area=K.1');
+    await expect(page).toHaveURL(/#\/dashboard\?r=last30&area=K\.1$/);
+    await expect(page.getByTestId('page-overview')).toBeVisible();
+    await expect(page.getByTestId('page-title')).toHaveText('Dashboard');
+    await expect(page.getByTestId('breadcrumb')).toHaveText('Analyze›Dashboard');
+    await expect(page.getByTestId('rail-link-overview')).toHaveAttribute('href', '#/dashboard');
+    await expect(page.getByTestId('scope-period')).toContainText('Last 30 days');
+    await expect(page.getByTestId('fb-chip-area-K.1')).toBeVisible();
+    // signing in lands on the Dashboard
+    await page.goto('/#/');
+    await expect(page).toHaveURL(/#\/dashboard/);
+    expect(errors, errors.join('\n')).toEqual([]);
   });
 });

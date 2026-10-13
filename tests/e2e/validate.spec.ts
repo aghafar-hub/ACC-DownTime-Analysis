@@ -32,19 +32,16 @@ test.describe('validate (desktop)', () => {
   for (const [role, fixes] of [['viewer', false], ['manager', false], ['engineer', true], ['admin', true]] as [Role, boolean][]) {
     test(`${role}: sees the Validate tab and ${fixes ? 'can fix records' : 'reads only'}`, async ({ page }) => {
       await signInAndWait(page, role);
-      // Validate lives in the Data section: the rail lists it, the page tabs appear once Data is open
+      // Validate lives in the Data section: the pinned rail lists it (with its count) right after Event Explorer
       const railLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Validate/ });
       await expect(railLink).toBeVisible();
-      await expect(page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Validate/ })).toHaveCount(0);
       await railLink.click();
-      const tab = page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Validate/ });
-      await expect(tab).toBeVisible();
+      await expect(railLink).toHaveClass(/sidebar-link--active/);
       await expect(page.getByTestId('page-validate')).toBeVisible();
       await expect(rows(page).first()).toBeVisible();
-      // the page tab sits right after Event Explorer and carries the count
-      const names = await page.getByRole('navigation', { name: 'Pages' }).getByRole('link').evaluateAll((els) => els.map((el) => (el.firstChild?.textContent ?? '').trim()));
+      const names = await page.locator('[data-section="data"] .sidebar-link-label').allTextContents();
       expect(names.indexOf('Validate')).toBe(names.indexOf('Event Explorer') + 1);
-      const badge = page.getByTestId('validate-badge-tab');
+      const badge = page.getByTestId('validate-badge-rail');
       await expect(badge).toBeVisible();
       await expect(badge).toContainText('◆');
       await expect(badge).toHaveAttribute('aria-label', /need checking, .* left out of the numbers/);
@@ -131,7 +128,7 @@ test.describe('validate (desktop)', () => {
     const stop = (await first.locator('.row-link').textContent())!;
     const month = stop.slice(0, 7);
     const blocked0 = await blockedCount(page);
-    const badge0 = num(await page.getByTestId('validate-badge-tab').textContent());
+    const badge0 = num(await page.getByTestId('validate-badge-rail').textContent());
 
     // the Overview total for that month and the banner, before the fix
     await page.goto(`/#/overview?r=month&m=${month}&cmp=none`);
@@ -154,7 +151,7 @@ test.describe('validate (desktop)', () => {
     await expect(page.getByTestId('event-detail')).toHaveCount(0);
     await expect(page.locator(`[data-event-id="${id}"]`)).toHaveCount(0);
     expect(await blockedCount(page)).toBe(blocked0 - 1);
-    expect(num(await page.getByTestId('validate-badge-tab').textContent())).toBe(badge0 - 1);
+    expect(num(await page.getByTestId('validate-badge-rail').textContent())).toBe(badge0 - 1);
 
     // the record is in the Event Explorer history with the note
     await page.goto('/#/events');
@@ -232,10 +229,11 @@ test.describe('validate (desktop)', () => {
     await expect(rows(page)).toHaveCount(0);
     await page.getByTestId('v-reset').click();
     const total0 = num(await page.getByTestId('page-subtitle').textContent());
-    const badge0 = num(await page.getByTestId('validate-badge-tab').textContent());
+    const badge0 = num(await page.getByTestId('validate-badge-rail').textContent());
     expect(badge0).toBe(total0);
 
-    await page.goto('/#/events');
+    // Event records follow the shared period: open the whole data range to find it
+    await page.goto('/#/events?r=custom&from=2025-01-01&to=2026-12-31');
     await page.getByTestId('event-search').fill(CROSS_ID);
     const row = page.locator(`[data-event-id="${CROSS_ID}"]`);
     await expect(row).toBeVisible();
@@ -260,12 +258,13 @@ test.describe('validate (desktop)', () => {
     // the banner and the nav badge are unchanged by it
     await page.goto('/#/validate');
     await expect(page.getByTestId('v-count-blocked')).toBeVisible();
-    expect(num(await page.getByTestId('validate-badge-tab').textContent())).toBe(badge0);
+    expect(num(await page.getByTestId('validate-badge-rail').textContent())).toBe(badge0);
   });
 
   test('equipment finder: every active code, the area\'s first, other areas with their owner; saving one raises no warning', async ({ page }) => {
     await signInAndWait(page, 'engineer');
-    await page.goto('/#/events');
+    // Event records follow the shared period: open the whole data range to find it
+    await page.goto('/#/events?r=custom&from=2025-01-01&to=2026-12-31');
     await page.getByTestId('event-search').fill(CROSS_ID);
     await page.locator(`[data-event-id="${CROSS_ID}"]`).getByRole('button').first().click();
     await page.getByTestId('edit-event').click();
@@ -446,7 +445,11 @@ test.describe('validate (desktop)', () => {
     await expect(page.getByTestId('page-validate')).toBeVisible();
     await expect(page.getByTestId('v-count-blocked')).toBeVisible({ timeout: 20000 });
     await expect(rows(page).first()).toBeVisible();
+    await expect(page.getByTestId('rail-link-validate')).toHaveClass(/sidebar-link--active/);
+    // with the icon rail the Data page tabs come back, Validate lit
+    await page.getByTestId('rail-toggle').click();
     await expect(page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Validate/ })).toHaveClass(/module-tab--active/);
+    await expect(page.getByTestId('validate-badge-tab')).toBeVisible();
   });
 
 
@@ -473,7 +476,7 @@ test.describe('validate (desktop)', () => {
     await page.getByTestId('v-reset').click();
     const review0 = await reviewCount(page);
     const blocked0 = await blockedCount(page);
-    const badge0 = num(await page.getByTestId('validate-badge-tab').textContent());
+    const badge0 = num(await page.getByTestId('validate-badge-rail').textContent());
     const kept0 = await keptCount(page);
     const hours0 = await keptHours(page);
     const subtitleTotal0 = num(await page.getByTestId('page-subtitle').textContent());
@@ -505,7 +508,7 @@ test.describe('validate (desktop)', () => {
     await expect(page.locator(`[data-event-id="${id}"]`)).toHaveCount(0);
     expect(await reviewCount(page)).toBe(review0 - 1);
     expect(await blockedCount(page)).toBe(blocked0);
-    expect(num(await page.getByTestId('validate-badge-tab').textContent())).toBe(badge0 - 1);
+    expect(num(await page.getByTestId('validate-badge-rail').textContent())).toBe(badge0 - 1);
     expect(num(await page.getByTestId('page-subtitle').textContent())).toBe(subtitleTotal0 - 1);
     expect(await keptCount(page)).toBe(kept0 + 1);
     expect(await keptHours(page)).toBe(hours0); // a warning record counts normally: no hours set aside
@@ -541,7 +544,7 @@ test.describe('validate (desktop)', () => {
     await page.getByTestId('v-reset').click();
     expect(await reviewCount(page)).toBe(review0);
     expect(await keptCount(page)).toBe(kept0);
-    expect(num(await page.getByTestId('validate-badge-tab').textContent())).toBe(badge0);
+    expect(num(await page.getByTestId('validate-badge-rail').textContent())).toBe(badge0);
   });
 
   test('keep a blocking record as entered: leaves Open, Overview numbers do not move, its hours are counted as kept and left out', async ({ page }) => {
@@ -554,7 +557,7 @@ test.describe('validate (desktop)', () => {
     const blocked0 = await blockedCount(page);
     const kept0 = await keptCount(page);
     const hours0 = await keptHours(page);
-    const badge0 = num(await page.getByTestId('validate-badge-tab').textContent());
+    const badge0 = num(await page.getByTestId('validate-badge-rail').textContent());
 
     await page.goto(`/#/overview?r=month&m=${month}&cmp=none`);
     await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
@@ -572,7 +575,7 @@ test.describe('validate (desktop)', () => {
     await page.getByTestId('v-reset').click();
     await expect(page.locator(`[data-event-id="${id}"]`)).toHaveCount(0);
     expect(await blockedCount(page)).toBe(blocked0 - 1);
-    expect(num(await page.getByTestId('validate-badge-tab').textContent())).toBe(badge0 - 1);
+    expect(num(await page.getByTestId('validate-badge-rail').textContent())).toBe(badge0 - 1);
     expect(await keptCount(page)).toBe(kept0 + 1);
     expect(await keptHours(page)).toBeGreaterThan(hours0); // set aside, not counted
 
