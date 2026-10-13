@@ -1,7 +1,8 @@
 // The notification rules for the mock API (docs/notifications-design.md). They are written with the calc library
 // (the same code the screens use), while backend/apps-script/Notifications.js has its own plain-JS port of the same
 // formulas. tests/unit/contract.test.ts runs both over the same scenarios, so the two cannot drift apart.
-import type { Area, EventRow, NotificationSeverity, NotificationType, Setting, UploadBatch } from './types';
+import { ApiError, REPORT_PRESETS, REPORT_SECTION_IDS, REPORT_TEMPLATES, SAVED_REPORTS_MAX, type Area, type EventRow, type NotificationSeverity, type NotificationType, type Setting, type UploadBatch } from './types';
+import { isValidDate } from '../util/normalize';
 import {
   addDays, buildFailureEvents, computeKpis, findClusters, lastDayOfMonth, matchKey, monthRange, parseSettings, rowCode,
   rowSpan, parseDate, MS_DAY, type CalcSettings, type ChainedEvent, type MasterIndex,
@@ -194,4 +195,75 @@ export function userEventCandidate(
     type: 'user_event', severity: 'update', dedupe_key: `user|${kind}|${target.user_id}|${nowMs}`,
     title: oneLine(title, 200), detail: oneLine(detail, 500), area_id: '', line_id: '', source_ref: target.user_id,
   };
+}
+
+// ---------------------------------------------------------------- saved report templates (preference saved_reports)
+
+const REPORT_CLASSES = ['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'];
+
+/** Same rules as cleanSavedReports_ in backend/apps-script/Notifications.js (tests/unit/contract.test.ts runs both). */
+export function cleanSavedReports(text: string): string {
+  const bad = (m: string) => new ApiError(m, 'bad_request');
+  if (text === '') return '';
+  if (text.length > 20000) throw bad('Saved reports are too long.');
+  let list: unknown;
+  try { list = JSON.parse(text); } catch { throw bad('Saved reports are not readable.'); }
+  if (!Array.isArray(list)) throw bad('Saved reports must be a list.');
+  if (list.length > SAVED_REPORTS_MAX) throw bad(`You can save at most ${SAVED_REPORTS_MAX} report templates.`);
+  const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+  const only = (o: Record<string, unknown>, keys: string[], what: string) => {
+    for (const k of Object.keys(o)) if (!keys.includes(k)) throw bad(`${what} has an unknown field: ${oneLine(k, 40)}.`);
+  };
+  const strList = (v: unknown, label: string, allowed?: readonly string[]) => {
+    if (!Array.isArray(v)) throw bad(`Report ${label} must be a list.`);
+    if (v.length > 100) throw bad(`Report ${label} has too many entries.`);
+    const seen = new Set<string>();
+    for (const x of v) {
+      if (typeof x !== 'string' || !x || x.length > 60) throw bad(`Report ${label} must be text of 1 to 60 characters.`);
+      if (allowed && !allowed.includes(x)) throw bad(`Report ${label} has an unknown value: ${oneLine(x, 40)}.`);
+      if (seen.has(x)) throw bad(`Report ${label} repeats a value.`);
+      seen.add(x);
+    }
+  };
+  const seenIds = new Set<string>();
+  for (const v of list) {
+    if (!isObj(v)) throw bad('Each saved report must be an object.');
+    only(v, ['id', 'name', 'template', 'period', 'filters', 'sections', 'options'], 'A saved report');
+    if (typeof v.id !== 'string' || !v.id || v.id.length > 40) throw bad('A saved report needs an id of 1 to 40 characters.');
+    if (typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60) throw bad('A saved report needs a name of 1 to 60 characters.');
+    if (typeof v.template !== 'string' || !(REPORT_TEMPLATES as readonly string[]).includes(v.template)) throw bad(`A saved report template must be one of: ${REPORT_TEMPLATES.join(', ')}.`);
+    const p = v.period;
+    if (!isObj(p)) throw bad('A saved report needs a period.');
+    only(p, ['preset', 'from', 'to', 'compare'], 'A saved report period');
+    if (typeof p.preset !== 'string' || !(REPORT_PRESETS as readonly string[]).includes(p.preset)) throw bad(`A saved report period preset must be one of: ${REPORT_PRESETS.join(', ')}.`);
+    for (const k of ['from', 'to'] as const) {
+      const d = p[k];
+      if (typeof d !== 'string' || (d !== '' && !isValidDate(d))) throw bad(`A saved report period ${k} must be a date like 2026-03-05 or blank.`);
+    }
+    if (p.from && p.to && (p.from as string) > (p.to as string)) throw bad('A saved report period must not end before it starts.');
+    if (typeof p.compare !== 'boolean') throw bad('A saved report period compare must be true or false.');
+    const f = v.filters;
+    if (!isObj(f)) throw bad('A saved report needs filters.');
+    only(f, ['lines', 'areas', 'equipment', 'classifications', 'criticality', 'failuresOnly'], 'A saved report filter set');
+    strList(f.lines, 'lines');
+    strList(f.areas, 'areas');
+    strList(f.equipment, 'equipment');
+    strList(f.classifications, 'classifications', REPORT_CLASSES);
+    strList(f.criticality, 'criticality', ['INC', 'NO_INC']);
+    if (typeof f.failuresOnly !== 'boolean') throw bad('A saved report failuresOnly must be true or false.');
+    strList(v.sections, 'sections', REPORT_SECTION_IDS);
+    const o = v.options;
+    if (!isObj(o)) throw bad('A saved report needs options.');
+    for (const sid of Object.keys(o)) {
+      if (!(REPORT_SECTION_IDS as readonly string[]).includes(sid)) throw bad(`A saved report has options for an unknown section: ${oneLine(sid, 40)}.`);
+      const so = o[sid];
+      if (!isObj(so)) throw bad('Report options of a section must be an object.');
+      only(so, ['top', 'measure'], 'Report options');
+      if (so.top !== undefined && so.top !== 'all' && !(typeof so.top === 'number' && Number.isInteger(so.top) && so.top >= 1 && so.top <= 1000)) throw bad('Report option top must be a whole number from 1 to 1000 or "all".');
+      if (so.measure !== undefined && so.measure !== 'hours' && so.measure !== 'count') throw bad('Report option measure must be hours or count.');
+    }
+    if (seenIds.has(v.id)) throw bad('Two saved reports have the same id.');
+    seenIds.add(v.id);
+  }
+  return text;
 }

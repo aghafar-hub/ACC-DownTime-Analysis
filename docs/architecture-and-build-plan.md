@@ -308,7 +308,7 @@ phase, not a final design.
 ### 7.3 Access
 
 - Each tab has a level per role: **Hidden / View / Edit**, with per-user overrides.
-- Tab ids: `overview`, `pareto`, `repeats`, `reliability`, `events`, `upload`,
+- Tab ids: `overview`, `pareto`, `repeats`, `reliability`, `reports`, `events`, `upload`,
   `master`, `settings`, `users`.
 - The server maps every read and write action to the tabs allowed to call it and
   refuses everything else. The frontend only hides what the server would refuse.
@@ -320,6 +320,7 @@ Proposed defaults (to confirm):
 | Tab | Admin | Manager | Engineer | Viewer |
 |---|---|---|---|---|
 | Dashboards (4) | Edit | View | View | View |
+| Reports | Edit | Edit | View | View |
 | Event Explorer (view; edit/void) | Edit | View | Edit | View |
 | Upload | Edit | Hidden | Edit | Hidden |
 | Master data | Edit | View | Edit | Hidden |

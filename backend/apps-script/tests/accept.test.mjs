@@ -292,3 +292,57 @@ test('notification_prefs: saved_views is client-writable and validated', () => {
   // the server-written key stays closed
   assert.equal(env.call('saveNotificationPrefs', admin.token, { prefs: { last_digest_at: '2026-01-01 00:00:00.000' } }).error.code, 'bad_request');
 });
+
+test('notification_prefs: saved_reports is client-writable and strictly validated', () => {
+  const { env, admin } = world();
+  const tpl = (o = {}) => ({
+    id: 't1', name: 'Monthly L.1', template: 'monthly',
+    period: { preset: 'lastmonth', from: '', to: '', compare: true },
+    filters: { lines: ['L.1'], areas: ['CR'], equipment: ['131.ST200'], classifications: ['MEC'], criticality: ['INC'], failuresOnly: true },
+    sections: ['cover', 'summary', 'events'], options: { events: { top: 25, measure: 'hours' }, top_equipment: { top: 'all' } }, ...o,
+  });
+  const put = (v) => env.call('saveNotificationPrefs', admin.token, { prefs: { saved_reports: typeof v === 'string' ? v : JSON.stringify(v) } });
+  const good = JSON.stringify([tpl(), tpl({ id: 't2', name: 'Custom', template: 'custom', period: { preset: 'custom', from: '2026-01-01', to: '2026-02-01', compare: false } })]);
+  const ok = put(good);
+  assert.equal(ok.status, 'ok');
+  assert.equal(ok.data.saved_reports, good, 'stored as given');
+  assert.equal(env.ok('getNotifications', admin.token).prefs.saved_reports, good);
+  assert.equal(put([]).status, 'ok');
+  assert.equal(put('').status, 'ok');
+  assert.equal(put(Array.from({ length: 20 }, (_, i) => tpl({ id: `t${i}` }))).status, 'ok');
+  const sections = (n) => ({ sections: n });
+  const bads = [
+    'not json', '{"a":1}', '"x"', 'null', JSON.stringify(Array.from({ length: 21 }, (_, i) => tpl({ id: `t${i}` }))),
+    [tpl({ id: '' })], [tpl({ id: 'x'.repeat(41) })], [tpl({ name: '' })], [tpl({ name: ' ' })], [tpl({ name: 'x'.repeat(61) })],
+    [tpl({ template: 'weekly' })], [tpl({ template: 5 })], [tpl({ extra: 1 })], [tpl(), tpl()], [null], [[1]], ['v'], [{ id: 'a' }],
+    [tpl({ period: null })], [tpl({ period: { preset: 'lastweek', from: '', to: '', compare: true } })],
+    [tpl({ period: { preset: 'custom', from: '2026-13-01', to: '', compare: true } })], [tpl({ period: { preset: 'custom', from: '2026-03-01', to: '2026-02-01', compare: true } })],
+    [tpl({ period: { preset: 'custom', from: '', to: '', compare: 'yes' } })], [tpl({ period: { preset: 'custom', from: '', to: '', compare: true, extra: 1 } })],
+    [tpl({ period: { preset: 'custom', from: 5, to: '', compare: true } })],
+    [tpl({ filters: null })], [tpl({ filters: { lines: [], areas: [], equipment: [], classifications: [], criticality: [] } })],
+    [tpl({ filters: { lines: 'L.1', areas: [], equipment: [], classifications: [], criticality: [], failuresOnly: false } })],
+    [tpl({ filters: { lines: [''], areas: [], equipment: [], classifications: [], criticality: [], failuresOnly: false } })],
+    [tpl({ filters: { lines: [5], areas: [], equipment: [], classifications: [], criticality: [], failuresOnly: false } })],
+    [tpl({ filters: { lines: ['L.1', 'L.1'], areas: [], equipment: [], classifications: [], criticality: [], failuresOnly: false } })],
+    [tpl({ filters: { lines: [], areas: [], equipment: Array.from({ length: 101 }, (_, i) => `E${i}`), classifications: [], criticality: [], failuresOnly: false } })],
+    [tpl({ filters: { lines: [], areas: [], equipment: ['x'.repeat(61)], classifications: [], criticality: [], failuresOnly: false } })],
+    [tpl({ filters: { lines: [], areas: [], equipment: [], classifications: ['XXX'], criticality: [], failuresOnly: false } })],
+    [tpl({ filters: { lines: [], areas: [], equipment: [], classifications: [], criticality: ['HIGH'], failuresOnly: false } })],
+    [tpl({ filters: { lines: [], areas: [], equipment: [], classifications: [], criticality: [], failuresOnly: 1 } })],
+    [tpl({ filters: { lines: [], areas: [], equipment: [], classifications: [], criticality: [], failuresOnly: false, extra: 1 } })],
+    [tpl(sections(['nope']))], [tpl(sections('cover'))], [tpl(sections(['cover', 'cover']))], [tpl(sections([1]))],
+    [tpl({ options: null })], [tpl({ options: [] })], [tpl({ options: { nope: { top: 5 } } })], [tpl({ options: { events: 5 } })],
+    [tpl({ options: { events: { top: 0 } } })], [tpl({ options: { events: { top: 1001 } } })], [tpl({ options: { events: { top: 2.5 } } })],
+    [tpl({ options: { events: { top: '5' } } })], [tpl({ options: { events: { measure: 'minutes' } } })], [tpl({ options: { events: { extra: 1 } } })],
+    JSON.stringify([tpl({ name: 'n'.repeat(60) })]).padEnd(20001, ' ') + 'x',
+  ];
+  for (const b of bads) assert.equal(put(b).error?.code, 'bad_request', typeof b === 'string' ? b.slice(0, 30) : JSON.stringify(b).slice(0, 90));
+  assert.equal(put([tpl({ id: 'x'.repeat(40), name: 'n'.repeat(60), options: { events: { top: 1000 }, daily: { top: 'all', measure: 'count' } } })]).status, 'ok');
+  assert.equal(put([tpl({ sections: [], options: {}, filters: { lines: [], areas: [], equipment: [], classifications: [], criticality: [], failuresOnly: false } })]).status, 'ok');
+  // other people's templates are their own
+  const other = makeUser(env, admin.token, 'ROLE-VIEW', 'v@example.com');
+  assert.equal(env.ok('getNotifications', other.token).prefs.saved_reports, undefined);
+  assert.equal(env.call('saveNotificationPrefs', other.token, { prefs: { saved_reports: JSON.stringify([tpl()]) } }).status, 'ok');
+  // saved_views stays separate
+  assert.equal(env.call('saveNotificationPrefs', admin.token, { prefs: { saved_reports: JSON.stringify([tpl()]), saved_views: '' } }).status, 'ok');
+});

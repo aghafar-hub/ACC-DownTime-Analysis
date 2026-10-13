@@ -7,10 +7,11 @@ import { t } from './i18n/t';
 /** A page of the app. Every id is a tab id, except Validate: it is part of the events tab (View to see, Edit to fix). */
 export type PageId = TabId | 'validate';
 
-/** The three navigation sections: the left rail headings, the page tabs' scope, the More sheet groups. */
-export type SectionId = 'analyze' | 'data' | 'setup';
+/** The navigation sections: the left rail headings, the page tabs' scope, the More sheet groups. */
+export type SectionId = 'analyze' | 'reports' | 'data' | 'setup';
 export const SECTIONS: { id: SectionId; label: string }[] = [
   { id: 'analyze', label: 'Analyze' },
+  { id: 'reports', label: 'Reports' },
   { id: 'data', label: 'Data' },
   { id: 'setup', label: 'Setup' },
 ];
@@ -36,6 +37,7 @@ export const PAGES: PageDef[] = [
   { id: 'pareto', access: 'pareto', path: '/pareto', label: 'Pareto & Contributors', tab: 'Pareto', short: 'Causes', icon: 'limits', group: 'analyze' },
   { id: 'repeats', access: 'repeats', path: '/repeats', label: 'Repeated Failures', tab: 'Repeated Failures', short: 'Repeats', icon: 'repeat', group: 'analyze' },
   { id: 'reliability', access: 'reliability', path: '/reliability', label: 'Reliability Trends', tab: 'Reliability', short: 'Reliability', icon: 'trend', group: 'analyze' },
+  { id: 'reports', access: 'reports', path: '/reports', label: 'Reports', tab: 'Reports', short: 'Reports', icon: 'registry', group: 'reports' },
   { id: 'events', access: 'events', path: '/events', label: 'Event Explorer', tab: 'Event Explorer', short: 'Events', icon: 'list', group: 'data' },
   { id: 'validate', access: 'events', path: '/validate', label: 'Validate', tab: 'Validate', short: 'Validate', icon: 'compliance', group: 'data' },
   { id: 'upload', access: 'upload', path: '/upload', label: 'Upload', tab: 'Upload', short: 'Upload', icon: 'upload', group: 'data' },

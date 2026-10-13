@@ -13,7 +13,7 @@ var ACTION_RULES = {
   changePassword: { auth: 'session', mustChangeOk: true },
   getMyAccess: { auth: 'session', mustChangeOk: true },
   getStartup: { auth: 'anyTab' },
-  getEvents: { auth: 'tabs', tabs: ['overview', 'pareto', 'repeats', 'reliability', 'events'], level: 'View' },
+  getEvents: { auth: 'tabs', tabs: ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'events'], level: 'View' },
   getEventEdits: { auth: 'tabs', tabs: ['events'], level: 'View' },
   getUploadHistory: { auth: 'tabs', tabs: ['upload'], level: 'View' },
   getUploadWarnings: { auth: 'tabs', tabs: ['upload'], level: 'View' },

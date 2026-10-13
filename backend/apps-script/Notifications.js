@@ -20,10 +20,23 @@
 var NOTIF_RESOLVABLE_ = ['long_stop', 'repeat_group', 'upload_gap'];
 // Most severe first (used by the digest).
 var NOTIF_SEVERITY_ORDER_ = ['long_stop', 'availability_low', 'failure_spike', 'repeat_group', 'upload_gap'];
-var NOTIF_PREF_KEYS_ = ['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views'];
+var NOTIF_PREF_KEYS_ = ['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views', 'saved_reports'];
 var SAVED_VIEWS_MAX_ = 20;
 var SAVED_VIEWS_TEXT_MAX_ = 20000;
 var SAVED_VIEW_PAGES_ = ['overview', 'pareto', 'repeats', 'reliability', 'events'];
+// Saved report templates (Reports page): at most 20 of {id, name, template, period, filters, sections, options}.
+// The lists below are mirrored in src/api/types.ts (REPORT_*); a unit test compares them.
+var SAVED_REPORTS_MAX_ = 20;
+var SAVED_REPORTS_TEXT_MAX_ = 20000;
+var REPORT_TEMPLATES_ = ['monthly', 'area', 'failure', 'custom'];
+var REPORT_PRESETS_ = ['lastmonth', 'thismonth', 'last3', 'ytd', 'custom'];
+var REPORT_SECTION_IDS_ = [
+  'cover', 'summary', 'daily', 'monthly', 'classes', 'area_downtime', 'availability', 'mtbf_mttr', 'failure_rate',
+  'top_equipment', 'top_reasons', 'pareto', 'repeats', 'longest', 'quadrant', 'when', 'events', 'quality', 'methodology'
+];
+var REPORT_CLASSES_ = ['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'];
+var REPORT_FILTER_LISTS_ = ['lines', 'areas', 'equipment', 'classifications', 'criticality'];
+var REPORT_LIST_MAX_ = 100;
 var NOTIF_DIGEST_MODES_ = ['none', 'daily', 'weekly'];
 var NOTIF_DIGEST_MAX_ = 10;
 var NOTIF_SPIKE_DAYS_ = 30;
@@ -598,6 +611,81 @@ function cleanSavedViews_(text) {
   return text;
 }
 
+/** One list of short strings (lines, areas, equipment ...): at most 100, each 1 to 60 characters, no repeats. */
+function cleanReportList_(list, label, allowed) {
+  if (!Array.isArray(list)) throw apiError_(ERR.BAD_REQUEST, 'Report ' + label + ' must be a list.');
+  if (list.length > REPORT_LIST_MAX_) throw apiError_(ERR.BAD_REQUEST, 'Report ' + label + ' has too many entries.');
+  var seen = {};
+  list.forEach(function (x) {
+    if (typeof x !== 'string' || !x || x.length > 60) throw apiError_(ERR.BAD_REQUEST, 'Report ' + label + ' must be text of 1 to 60 characters.');
+    if (allowed && allowed.indexOf(x) < 0) throw apiError_(ERR.BAD_REQUEST, 'Report ' + label + ' has an unknown value: ' + oneLine_(x, 40) + '.');
+    if (seen[x]) throw apiError_(ERR.BAD_REQUEST, 'Report ' + label + ' repeats a value.');
+    seen[x] = true;
+  });
+}
+
+function onlyKeys_(obj, keys, what) {
+  Object.keys(obj).forEach(function (k) {
+    if (keys.indexOf(k) < 0) throw apiError_(ERR.BAD_REQUEST, what + ' has an unknown field: ' + oneLine_(k, 40) + '.');
+  });
+}
+
+function plainObject_(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
+
+/** Saved report templates: JSON text, at most 20 of {id, name, template, period, filters, sections, options}. Returned as given; blank clears them. */
+function cleanSavedReports_(text) {
+  if (text === '') return '';
+  if (text.length > SAVED_REPORTS_TEXT_MAX_) throw apiError_(ERR.BAD_REQUEST, 'Saved reports are too long.');
+  var list;
+  try { list = JSON.parse(text); } catch (e) { throw apiError_(ERR.BAD_REQUEST, 'Saved reports are not readable.'); }
+  if (!Array.isArray(list)) throw apiError_(ERR.BAD_REQUEST, 'Saved reports must be a list.');
+  if (list.length > SAVED_REPORTS_MAX_) throw apiError_(ERR.BAD_REQUEST, 'You can save at most ' + SAVED_REPORTS_MAX_ + ' report templates.');
+  var seen = {};
+  list.forEach(function (v) {
+    if (!plainObject_(v)) throw apiError_(ERR.BAD_REQUEST, 'Each saved report must be an object.');
+    onlyKeys_(v, ['id', 'name', 'template', 'period', 'filters', 'sections', 'options'], 'A saved report');
+    if (typeof v.id !== 'string' || !v.id || v.id.length > 40) throw apiError_(ERR.BAD_REQUEST, 'A saved report needs an id of 1 to 40 characters.');
+    if (typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60) throw apiError_(ERR.BAD_REQUEST, 'A saved report needs a name of 1 to 60 characters.');
+    if (REPORT_TEMPLATES_.indexOf(v.template) < 0) throw apiError_(ERR.BAD_REQUEST, 'A saved report template must be one of: ' + REPORT_TEMPLATES_.join(', ') + '.');
+    // period
+    var p = v.period;
+    if (!plainObject_(p)) throw apiError_(ERR.BAD_REQUEST, 'A saved report needs a period.');
+    onlyKeys_(p, ['preset', 'from', 'to', 'compare'], 'A saved report period');
+    if (REPORT_PRESETS_.indexOf(p.preset) < 0) throw apiError_(ERR.BAD_REQUEST, 'A saved report period preset must be one of: ' + REPORT_PRESETS_.join(', ') + '.');
+    ['from', 'to'].forEach(function (k) {
+      if (typeof p[k] !== 'string' || (p[k] !== '' && !isValidDate_(p[k]))) throw apiError_(ERR.BAD_REQUEST, 'A saved report period ' + k + ' must be a date like 2026-03-05 or blank.');
+    });
+    if (p.from && p.to && p.from > p.to) throw apiError_(ERR.BAD_REQUEST, 'A saved report period must not end before it starts.');
+    if (typeof p.compare !== 'boolean') throw apiError_(ERR.BAD_REQUEST, 'A saved report period compare must be true or false.');
+    // filters
+    var f = v.filters;
+    if (!plainObject_(f)) throw apiError_(ERR.BAD_REQUEST, 'A saved report needs filters.');
+    onlyKeys_(f, REPORT_FILTER_LISTS_.concat(['failuresOnly']), 'A saved report filter set');
+    cleanReportList_(f.lines, 'lines');
+    cleanReportList_(f.areas, 'areas');
+    cleanReportList_(f.equipment, 'equipment');
+    cleanReportList_(f.classifications, 'classifications', REPORT_CLASSES_);
+    cleanReportList_(f.criticality, 'criticality', ['INC', 'NO_INC']);
+    if (typeof f.failuresOnly !== 'boolean') throw apiError_(ERR.BAD_REQUEST, 'A saved report failuresOnly must be true or false.');
+    // sections
+    cleanReportList_(v.sections, 'sections', REPORT_SECTION_IDS_);
+    // options: per section {top: 1..1000 or 'all', measure: 'hours' | 'count'}
+    var o = v.options;
+    if (!plainObject_(o)) throw apiError_(ERR.BAD_REQUEST, 'A saved report needs options.');
+    Object.keys(o).forEach(function (sid) {
+      if (REPORT_SECTION_IDS_.indexOf(sid) < 0) throw apiError_(ERR.BAD_REQUEST, 'A saved report has options for an unknown section: ' + oneLine_(sid, 40) + '.');
+      var so = o[sid];
+      if (!plainObject_(so)) throw apiError_(ERR.BAD_REQUEST, 'Report options of a section must be an object.');
+      onlyKeys_(so, ['top', 'measure'], 'Report options');
+      if (so.top !== undefined && so.top !== 'all' && !(typeof so.top === 'number' && so.top % 1 === 0 && so.top >= 1 && so.top <= 1000)) throw apiError_(ERR.BAD_REQUEST, 'Report option top must be a whole number from 1 to 1000 or "all".');
+      if (so.measure !== undefined && so.measure !== 'hours' && so.measure !== 'count') throw apiError_(ERR.BAD_REQUEST, 'Report option measure must be hours or count.');
+    });
+    if (seen[v.id]) throw apiError_(ERR.BAD_REQUEST, 'Two saved reports have the same id.');
+    seen[v.id] = true;
+  });
+  return text;
+}
+
 function cleanNotifPref_(key, value) {
   if (typeof value !== 'string') throw apiError_(ERR.BAD_REQUEST, 'Preference ' + key + ' must be text.');
   var v = value.trim();
@@ -625,6 +713,7 @@ function cleanNotifPref_(key, value) {
     return chosen.join(',');
   }
   if (key === 'saved_views') return cleanSavedViews_(v);
+  if (key === 'saved_reports') return cleanSavedReports_(v);
   var ts = normTs_(v);
   if (ts === null) throw apiError_(ERR.BAD_REQUEST, 'Last seen must be a time like 2026-03-05 10:00:00.000.');
   return ts;

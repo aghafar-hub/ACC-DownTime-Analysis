@@ -240,26 +240,32 @@ Good to know:
 - **Alerts expire** after `notif_retention_days` and are marked resolved when the cause is gone (event voided, newer data
   uploaded). Nothing is deleted; the `notifications` sheet is the record.
 
-## 12. Update to version 1.3.0 (Keep as entered, targets, saved views)
+## 12. Update to version 1.3.0 (Keep as entered, targets, saved views, Reports)
 
-Version 1.3.0 adds the **Keep as entered** button on the Validate page, two new target settings (MTBF and MTTR; the availability target already existed) and saved views. Nothing in your
+Version 1.3.0 adds the **Keep as entered** button on the Validate page, two new target settings (MTBF and MTTR; the availability target already existed), saved views and the **Reports** page (a new `reports` access tab and a `saved_reports` preference for report templates). Nothing in your
 data changes. Do these steps in order; all of them are safe to repeat.
 
 1. **Paste these 7 files** into the Apps Script project, replacing the old content of each (same names, same order does not matter):
    `Schema.js`, `Config.js`, `Access.js`, `Code.js`, `Events.js`, `Settings.js`, `Notifications.js`.
    `Schema.js`, `Settings.js` and `Notifications.js` are part of this 1.3.0 paste set (they carry the targets and the availability
    alert that reads `availability_target_pct`); do not skip them.
+   The Reports page changes four of these seven files: `Schema.js` (the `reports` tab in the access list and the role defaults),
+   `Config.js` (the tab list), `Access.js` (`getEvents` also accepts the `reports` tab) and `Notifications.js` (the `saved_reports`
+   preference). It adds no eighth file: the paste set stays these 7 files and the version stays 1.3.0.
    The other files (`Utils.js`, `Crypto.js`, `Audit.js`, `Auth.js`, `Users.js`, `Master.js`, `Upload.js`, `Setup.js`) and
    `appsscript.json` did not change from 1.2.0: leave them alone. With the one-file bundle (option A2), run
    `node tools/bundle-apps-script.mjs` and paste `ACC_Downtime_Backend.gs` over `Code.gs` instead.
 2. **Run `ensureSchema`.** It adds three columns at the end of the `events` sheet (`accepted_flags`, `accepted_by`,
    `accepted_at`) and never touches existing rows or columns.
-3. **Run `seedDefaults`.** It adds two settings with blank values (`target_mtbf_h`, `target_mttr_h`; blank = no target) and never overwrites a value
+3. **Run `seedDefaults`.** It adds the four role rows of the new `reports` tab (Admin Edit, Manager Edit, Engineer View, Viewer View;
+   change a person with the Users page as for any tab) and two settings with blank values (`target_mtbf_h`, `target_mttr_h`; blank = no target) and never overwrites a value
    you changed. The availability target is the existing `availability_target_pct`, and the availability alert now uses it too:
    an old `notif_availability_target_pct` row in your sheet is ignored (you can delete it).
 4. **Deploy a new version** as in section 10 (**Manage deployments**, pencil, **Version: New version**, **Deploy**). The web app
    address stays the same, and no new permission is asked.
 5. **Check.** Open the web app address with `?action=ping`: it must answer version `1.3.0`. Run **installCheck**.
+
+Until `seedDefaults` has run, nobody (not even an Admin) sees the Reports page, because a missing access row means Hidden.
 
 Good to know: an old app build keeps working against 1.3.0 (it just does not show the button). The new app build needs 1.3.0,
 otherwise **Keep as entered** answers "Unknown action".

@@ -47,7 +47,7 @@ wins over the role row. Missing row = Hidden.
 | `login` | none |
 | `changePassword`, `getMyAccess` | any valid session |
 | `getStartup` | any valid session with at least one non-Hidden tab |
-| `getEvents` | `overview`, `pareto`, `repeats`, `reliability` or `events` at View or Edit |
+| `getEvents` | `overview`, `pareto`, `repeats`, `reliability`, `reports` or `events` at View or Edit |
 | `getEventEdits` | `events` View |
 | `getUploadHistory`, `getUploadWarnings` | `upload` View |
 | `uploadStart`, `uploadChunk`, `uploadFinish` | `upload` Edit |
@@ -242,7 +242,15 @@ derived by the app from live data and are never stored.
   `digest` (`none` / `daily` / `weekly`), `last_seen_at` (timestamp, stored as `YYYY-MM-DD HH:MM:SS.mmm`), `saved_views`
   (JSON text up to 20000 characters: a list of at most 20 objects `{ id: text 1-40, name: text 1-60, page: overview | pareto |
   repeats | reliability | events, query: text up to 1500 }`, no other fields, unique ids; checked on the server and stored as
-  given; blank clears them). `last_digest_at`
+  given; blank clears them), `saved_reports` (JSON text up to 20000 characters: a list of at most 20 report templates
+  `{ id: text 1-40, name: text 1-60, template: monthly | area | failure | custom, period: { preset: lastmonth | thismonth | last3 |
+  ytd | custom, from: date or blank, to: date or blank (not before from), compare: true | false }, filters: { lines, areas,
+  equipment: lists of text 1-60; classifications: list of PRO | MEC | ELE | AUT | PL | CIR; criticality: list of INC | NO_INC;
+  failuresOnly: true | false }, sections: list of section ids (cover, summary, daily, monthly, classes, area_downtime,
+  availability, mtbf_mttr, failure_rate, top_equipment, top_reasons, pareto, repeats, longest, quadrant, when, events, quality,
+  methodology), options: { <section id>: { top: whole number 1-1000 or "all", measure: hours | count } } }`; every list at most
+  100 entries without repeats, no other fields, unique ids; checked on the server and stored as given; blank clears them).
+  `last_digest_at`
   is written by the server when it sends a digest; it is returned by `getNotifications` but cannot be saved.
 - `runNotificationChecks`: runs every rule now, audited as `notification_check`.
 

@@ -13,10 +13,10 @@
  */
 
 export type TabId =
-  | 'overview' | 'pareto' | 'repeats' | 'reliability' | 'events'
+  | 'overview' | 'pareto' | 'repeats' | 'reliability' | 'reports' | 'events'
   | 'upload' | 'master' | 'settings' | 'users';
 export const TAB_IDS: TabId[] = [
-  'overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users',
+  'overview', 'pareto', 'repeats', 'reliability', 'reports', 'events', 'upload', 'master', 'settings', 'users',
 ];
 export type AccessLevel = 'Hidden' | 'View' | 'Edit';
 export type Access = Record<TabId, AccessLevel>;
@@ -145,11 +145,32 @@ export interface NotificationState {
 /**
  * The caller's own preferences. Keys: alert_types (csv of NotificationType, blank = all), watch_areas (csv of
  * area ids, blank = all), digest ('none' | 'daily' | 'weekly'), last_seen_at (timestamp), and last_digest_at
- * (read only, written by the server), and saved_views (JSON text: at most 20 of {id, name, page, query}, see
- * docs/wire-protocol.md). A key that was never saved is absent.
+ * (read only, written by the server), saved_views (JSON text: at most 20 of {id, name, page, query}) and saved_reports
+ * (JSON text: at most 20 report templates, see SavedReportTemplate; docs/wire-protocol.md). A key that was never saved is absent.
  */
 export type NotificationPrefs = Record<string, string>;
-export type NotificationPrefKey = 'alert_types' | 'watch_areas' | 'digest' | 'last_seen_at' | 'saved_views';
+export type NotificationPrefKey = 'alert_types' | 'watch_areas' | 'digest' | 'last_seen_at' | 'saved_views' | 'saved_reports';
+
+/** The report templates the Reports page can start from, and the saved-template shape (preference `saved_reports`). */
+export const REPORT_TEMPLATES = ['monthly', 'area', 'failure', 'custom'] as const;
+export type ReportTemplateId = (typeof REPORT_TEMPLATES)[number];
+export const REPORT_PRESETS = ['lastmonth', 'thismonth', 'last3', 'ytd', 'custom'] as const;
+export type ReportPreset = (typeof REPORT_PRESETS)[number];
+/** Every section a report can contain, in report order. The backend (Notifications.js REPORT_SECTION_IDS_) mirrors this list. */
+export const REPORT_SECTION_IDS = [
+  'cover', 'summary', 'daily', 'monthly', 'classes', 'area_downtime', 'availability', 'mtbf_mttr', 'failure_rate',
+  'top_equipment', 'top_reasons', 'pareto', 'repeats', 'longest', 'quadrant', 'when', 'events', 'quality', 'methodology',
+] as const;
+export type ReportSectionId = (typeof REPORT_SECTION_IDS)[number];
+export interface ReportSectionOptions { top?: number | 'all'; measure?: 'hours' | 'count' }
+export interface SavedReportTemplate {
+  id: string; name: string; template: ReportTemplateId;
+  period: { preset: ReportPreset; from: string; to: string; compare: boolean };
+  filters: { lines: string[]; areas: string[]; equipment: string[]; classifications: string[]; criticality: string[]; failuresOnly: boolean };
+  sections: ReportSectionId[];
+  options: Partial<Record<ReportSectionId, ReportSectionOptions>>;
+}
+export const SAVED_REPORTS_MAX = 20;
 
 export interface NotificationsPayload {
   items: Notification[]; state: NotificationState[]; prefs: NotificationPrefs;

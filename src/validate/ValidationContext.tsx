@@ -35,7 +35,7 @@ const yearOf = (e: Pick<EventRow, 'event_date'>): number => Number(String(e.even
 export function ValidationProvider({ children }: { children: ReactNode }) {
   const { canView } = useAuth();
   const st = useStartup();
-  const enabled = (['overview', 'pareto', 'repeats', 'reliability', 'events'] as const).some((t) => canView(t));
+  const enabled = (['overview', 'pareto', 'repeats', 'reliability', 'reports', 'events'] as const).some((t) => canView(t));
   const years = useMemo(() => (enabled && st.startup ? st.startup.years : []), [enabled, st.startup]);
   const data = useEventsForYears(years);
   const rows = data.rows;

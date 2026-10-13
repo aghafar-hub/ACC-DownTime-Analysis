@@ -485,6 +485,30 @@ describe.each([
     expect((await s.api.getNotifications(token)).prefs.saved_views).toBe(views);
   });
 
+  it('saved report templates: the backend and the mock accept and refuse the same lists', async () => {
+    const tpl = (o: Record<string, unknown> = {}) => ({
+      id: 't1', name: 'Monthly L.1', template: 'monthly', period: { preset: 'lastmonth', from: '', to: '', compare: true },
+      filters: { lines: ['L.1'], areas: ['CR'], equipment: ['131.ST200'], classifications: ['MEC'], criticality: ['INC'], failuresOnly: true },
+      sections: ['cover', 'summary', 'events'], options: { events: { top: 25, measure: 'hours' }, top_equipment: { top: 'all' } }, ...o,
+    });
+    const good = JSON.stringify([tpl(), tpl({ id: 't2', template: 'custom', period: { preset: 'custom', from: '2026-01-01', to: '2026-02-01', compare: false } })]);
+    expect(await s.api.saveNotificationPrefs(token, { saved_reports: good })).toMatchObject({ saved_reports: good });
+    expect((await s.api.getNotifications(token)).prefs.saved_reports).toBe(good);
+    const bads = [
+      'nope', '{}', JSON.stringify(Array.from({ length: 21 }, (_, i) => tpl({ id: `t${i}` }))),
+      JSON.stringify([tpl({ template: 'weekly' })]), JSON.stringify([tpl({ name: '' })]), JSON.stringify([tpl({ extra: 1 })]),
+      JSON.stringify([tpl({ period: { preset: 'custom', from: '2026-03-01', to: '2026-02-01', compare: true } })]),
+      JSON.stringify([tpl({ period: { preset: 'custom', from: '2026-02-30', to: '', compare: true } })]),
+      JSON.stringify([tpl({ filters: { lines: [], areas: [], equipment: [], classifications: ['XXX'], criticality: [], failuresOnly: false } })]),
+      JSON.stringify([tpl({ sections: ['cover', 'cover'] })]), JSON.stringify([tpl({ sections: ['nope'] })]),
+      JSON.stringify([tpl({ options: { events: { top: 0 } } })]), JSON.stringify([tpl({ options: { nope: {} } })]), JSON.stringify([tpl({ options: { events: { measure: 'x' } } })]),
+      JSON.stringify([tpl(), tpl()]),
+    ];
+    for (const bad of bads) expect((await rejection(s.api.saveNotificationPrefs(token, { saved_reports: bad }))).code, bad.slice(0, 40)).toBe('bad_request');
+    expect((await s.api.getNotifications(token)).prefs.saved_reports).toBe(good);
+    expect(await s.api.saveNotificationPrefs(token, { saved_reports: '' })).toMatchObject({ saved_reports: '' });
+  });
+
   // ------------------------------------------------------------------ notifications
   // One scenario in 2041, run against both implementations. The expectations are written out once, so the
   // plain-JS port in the backend and the calc-based rules in the mock must both produce exactly this.

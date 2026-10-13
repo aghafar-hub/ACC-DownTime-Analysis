@@ -219,7 +219,7 @@
       "columns": [
         {"name": "subject_type", "type": "enum", "required": true, "enum": ["role", "user"], "description": ""},
         {"name": "subject_id", "type": "text", "required": true, "description": "role_id or user_id"},
-        {"name": "tab_id", "type": "enum", "required": true, "enum": ["overview", "pareto", "repeats", "reliability", "events", "upload", "master", "settings", "users"], "description": ""},
+        {"name": "tab_id", "type": "enum", "required": true, "enum": ["overview", "pareto", "repeats", "reliability", "reports", "events", "upload", "master", "settings", "users"], "description": ""},
         {"name": "level", "type": "enum", "required": true, "enum": ["Hidden", "View", "Edit"], "description": ""}
       ]
     },
@@ -323,10 +323,10 @@
     {"role_id": "ROLE-VIEW", "name": "Viewer", "description": "Views dashboards; never edits"}
   ],
   "tabAccessDefaults": {
-    "ROLE-ADMIN": {"overview": "Edit", "pareto": "Edit", "repeats": "Edit", "reliability": "Edit", "events": "Edit", "upload": "Edit", "master": "Edit", "settings": "Edit", "users": "Edit"},
-    "ROLE-MGR":   {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "events": "View", "upload": "Hidden", "master": "View", "settings": "Hidden", "users": "Hidden"},
-    "ROLE-ENG":   {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "events": "Edit", "upload": "Edit", "master": "Edit", "settings": "Hidden", "users": "Hidden"},
-    "ROLE-VIEW":  {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "events": "View", "upload": "Hidden", "master": "Hidden", "settings": "Hidden", "users": "Hidden"}
+    "ROLE-ADMIN": {"overview": "Edit", "pareto": "Edit", "repeats": "Edit", "reliability": "Edit", "reports": "Edit", "events": "Edit", "upload": "Edit", "master": "Edit", "settings": "Edit", "users": "Edit"},
+    "ROLE-MGR":   {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "reports": "Edit", "events": "View", "upload": "Hidden", "master": "View", "settings": "Hidden", "users": "Hidden"},
+    "ROLE-ENG":   {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "reports": "View", "events": "Edit", "upload": "Edit", "master": "Edit", "settings": "Hidden", "users": "Hidden"},
+    "ROLE-VIEW":  {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "reports": "View", "events": "View", "upload": "Hidden", "master": "Hidden", "settings": "Hidden", "users": "Hidden"}
   },
   "classificationSeeds": [
     {"code": "PRO", "name": "Production", "is_incident": true, "sort_order": 1},

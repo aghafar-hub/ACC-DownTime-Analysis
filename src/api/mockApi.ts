@@ -8,7 +8,7 @@ import type {
   TabId, UploadBatch, UploadRow,
 } from './types';
 import {
-  notificationCandidates, oneLine, parseNotifSettings, uploadDoneCandidate, userEventCandidate, type Candidate,
+  cleanSavedReports, notificationCandidates, oneLine, parseNotifSettings, uploadDoneCandidate, userEventCandidate, type Candidate,
 } from './mockNotifications';
 import { buildIndex, canonicalFlags, deriveEventFields, findArea, isKnownFlag, pruneAcceptedFlags, splitFlags, DERIVED_FLAGS, type MasterIndex } from '../calc';
 import { ApiError, NOTIFICATION_TYPES, TAB_IDS } from './types';
@@ -25,7 +25,7 @@ const FINGERPRINT_HINT_MAX = 20;
 const EDITABLE: string[] = [
   'event_date', 'line_id', 'area_id', 'code_raw', 'stop_ts', 'start_ts', 'freq', 'classification', 'criticality', 'is_failure', 'reason_raw', 'description',
 ];
-const DASHBOARD_TABS: TabId[] = ['overview', 'pareto', 'repeats', 'reliability', 'events'];
+const DASHBOARD_TABS: TabId[] = ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'events'];
 
 const BAD_LOGIN = 'Email or password is not correct.';
 
@@ -903,7 +903,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       const clean: Record<string, string> = {};
       for (const k of keys) {
         const raw = (prefs as Record<string, unknown>)[k];
-        if (!['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views'].includes(k)) throw new ApiError(`Unknown preference: ${oneLine(k, 40)}.`, 'bad_request');
+        if (!['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views', 'saved_reports'].includes(k)) throw new ApiError(`Unknown preference: ${oneLine(k, 40)}.`, 'bad_request');
         if (typeof raw !== 'string') throw new ApiError(`Preference ${k} must be text.`, 'bad_request');
         const v = raw.trim();
         if (k === 'digest') {
@@ -926,6 +926,8 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
           clean[k] = chosen.join(',');
         } else if (k === 'saved_views') {
           clean[k] = cleanSavedViews(v);
+        } else if (k === 'saved_reports') {
+          clean[k] = cleanSavedReports(v);
         } else {
           const ms = parseTs(v);
           if (ms === null) throw new ApiError('Last seen must be a time like 2026-03-05 10:00:00.000.', 'bad_request');

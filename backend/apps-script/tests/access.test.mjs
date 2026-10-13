@@ -6,7 +6,7 @@ import { createEnv, bootstrapAdmin, makeUser, BACKEND_DIR } from './harness.mjs'
 
 const ROOT = resolve(BACKEND_DIR, '../..');
 const schema = JSON.parse(readFileSync(resolve(ROOT, 'schema/tables.json'), 'utf8'));
-const DASH = ['overview', 'pareto', 'repeats', 'reliability', 'events'];
+const DASH = ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'events'];
 
 // Independent copy of docs/wire-protocol.md section 3.
 const REQ = {
@@ -117,7 +117,8 @@ test('a missing row means Hidden', () => {
   const user = { user_id: 'U-x', role_id: 'ROLE-NONE' };
   const access = env.json(env.ctx.computeAccess_(user, []));
   assert.ok(Object.values(access).every((l) => l === 'Hidden'));
-  assert.equal(Object.keys(access).length, 9);
+  assert.equal(Object.keys(access).length, 10);
+  assert.equal(access.reports, 'Hidden');
 });
 
 test('removing overrides (empty set) returns the user to the role defaults', () => {
@@ -144,4 +145,28 @@ test('unknown actions are refused without leaking anything', () => {
   assert.equal(r.error.code, 'bad_request');
   assert.equal(env.call('toString', admin.token, {}).error.code, 'bad_request');
   assert.equal(env.call('__proto__', admin.token, {}).error.code, 'bad_request');
+});
+
+test('reports tab: seeded Admin Edit, Manager Edit, Engineer View, Viewer View; per-user overrides work', () => {
+  const { env, admin, users } = setup();
+  const want = { 'ROLE-ADMIN': 'Edit', 'ROLE-MGR': 'Edit', 'ROLE-ENG': 'View', 'ROLE-VIEW': 'View' };
+  for (const [role, level] of Object.entries(want)) {
+    assert.equal(schema.tabAccessDefaults[role].reports, level, `schema ${role}`);
+    assert.equal(env.ok('getMyAccess', users[role].token).access.reports, level, `server ${role}`);
+  }
+  assert.ok(schema.tabAccessDefaults['ROLE-ADMIN'] && Object.keys(schema.tabAccessDefaults['ROLE-ADMIN']).includes('reports'));
+  assert.ok(env.json(env.run('TAB_IDS')).includes('reports'));
+  // the events a report is built from are readable with the Reports tab alone
+  const v = users['ROLE-VIEW'];
+  const onlyReports = Object.fromEntries(['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users'].map((t) => [t, 'Hidden']));
+  env.ok('setUserTabAccess', admin.token, { userId: v.user_id, overrides: { ...onlyReports, reports: 'View' } });
+  assert.equal(env.call('getStartup', v.token).status, 'ok');
+  assert.equal(env.call('getEvents', v.token, { year: 2026 }).error?.code === 'forbidden', false);
+  // Hidden removes it: with every tab Hidden the events are refused
+  env.ok('setUserTabAccess', admin.token, { userId: v.user_id, overrides: { ...onlyReports, reports: 'Hidden' } });
+  assert.equal(env.call('getEvents', v.token, { year: 2026 }).error.code, 'forbidden');
+  assert.equal(env.call('getStartup', v.token).error.code, 'forbidden');
+  // an override can raise the Viewer to Edit and the Manager down to Hidden
+  env.ok('setUserTabAccess', admin.token, { userId: users['ROLE-MGR'].user_id, overrides: { reports: 'Hidden' } });
+  assert.equal(env.ok('getMyAccess', users['ROLE-MGR'].token).access.reports, 'Hidden');
 });
