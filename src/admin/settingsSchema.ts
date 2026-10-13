@@ -63,6 +63,15 @@ export function groups(): Group[] {
       ],
     },
     {
+      id: 'targets', title: t('Targets'), icon: 'limits', when: 'now',
+      intro: t('Goals for availability, MTBF and MTTR. Leave a box blank for no target. They are saved now; the dashboards will show them in a coming update.'),
+      fields: [
+        { key: 'target_availability_pct', kind: 'number_or_blank', min: 0, max: 100, label: t('Target availability'), unit: '%', fallback: '', help: t('A number from 0 to 100, or blank.') },
+        { key: 'target_mtbf_h', kind: 'number_or_blank', min: 0.01, max: 100000, label: t('Target MTBF'), unit: t('hours'), fallback: '', help: t('Mean time between failures you aim for: more than 0, up to 100,000 hours, or blank.') },
+        { key: 'target_mttr_h', kind: 'number_or_blank', min: 0.01, max: 100000, label: t('Target MTTR'), unit: t('hours'), fallback: '', help: t('Mean time to repair you aim for: more than 0, up to 100,000 hours, or blank.') },
+      ],
+    },
+    {
       id: 'alert-rules', title: t('Alert rules'), icon: 'bell', when: 'checks',
       intro: t('When the system raises an alert or an update for everyone who follows the area. Checks run after every upload and once a day.'),
       fields: [

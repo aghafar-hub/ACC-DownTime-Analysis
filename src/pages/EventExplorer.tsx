@@ -18,7 +18,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { duration, hours, num, shortTs } from '../util/format';
 import EventBadges from './events/EventBadges';
 import { buildOwnerLookup } from './events/crossArea';
-import { hasProblemFlags } from '../calc/flags';
+import { hasOpenProblemFlags } from '../calc/flags';
 import EventDetail from './events/EventDetail';
 import TimelineView from './events/TimelineView';
 import './events/timeline.css';
@@ -50,7 +50,7 @@ function applyFilters(rows: EventRow[], f: Filters, startup: Startup | null, q: 
     if (f.failureOnly && !(e.is_failure && !e.is_void)) return false;
     if (f.from && e.event_date < f.from) return false;
     if (f.to && e.event_date > f.to) return false;
-    if (f.show === 'issues' && !hasProblemFlags(e)) return false;
+    if (f.show === 'issues' && !hasOpenProblemFlags(e)) return false;
     if (f.show === 'edited' && !e.edited) return false;
     if (f.show === 'void' && !e.is_void) return false;
     if (needle) {
@@ -187,7 +187,7 @@ export default function EventExplorer() {
   const stats = useMemo(() => {
     let sec = 0, failures = 0, issues = 0;
     for (const e of filtered) {
-      if (hasProblemFlags(e)) issues++;
+      if (hasOpenProblemFlags(e)) issues++;
       if (e.is_void || isBlocked(e)) continue; // left out of the numbers like everywhere else, but still listed below
       if (e.duration_s > 0) sec += e.duration_s;
       if (e.is_failure) failures++;

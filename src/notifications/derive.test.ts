@@ -36,6 +36,25 @@ describe('groupProblemCodes', () => {
   });
 });
 
+describe('kept as entered in the action items', () => {
+  it('flags kept as entered do not group a code and do not count as records to validate', () => {
+    const kept: EventRow[] = [
+      ev('k1', { code_raw: 'AFR2', flags: 'unknown_code,placeholder', accepted_flags: 'unknown_code,placeholder' }),
+      ev('k2', { code_raw: '999.ZZ', flags: 'unknown_code', accepted_flags: 'unknown_code' }),
+      ev('k3', { code_raw: '999.YY', flags: 'unknown_code,blank_reason', accepted_flags: 'unknown_code' }),
+      ev('k4', { code_raw: '', flags: 'missing_classification', accepted_flags: 'missing_classification' }),
+    ];
+    expect(groupProblemCodes(kept)).toEqual([]);
+    const list = buildValidation(kept);
+    expect(list.summary.total).toBe(1); // only k3, for its blank reason
+    expect(list.summary.blocked.count).toBe(0);
+    const items = deriveActionItems({ validation: { total: list.summary.total, blocked: list.summary.blocked.count }, events: kept, needsReview: 0, access: EDIT_EVENTS });
+    expect(items.map((i) => i.title)).toEqual(['1 record needs checking']);
+    const none = buildValidation(kept.slice(0, 2));
+    expect(deriveActionItems({ validation: { total: none.summary.total, blocked: 0 }, events: kept.slice(0, 2), needsReview: 0, access: EDIT_ALL })).toEqual([]);
+  });
+});
+
 describe('deriveActionItems', () => {
   const list = buildValidation(rows);
   const validation = { total: list.summary.total, blocked: list.summary.blocked.count };

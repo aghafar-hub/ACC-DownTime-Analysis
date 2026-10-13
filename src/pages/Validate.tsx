@@ -16,10 +16,12 @@ import { useTheme } from '../theme/ThemeContext';
 import { useOnlineStatus } from '../useOnlineStatus';
 import { duration, hours, num, shortTs } from '../util/format';
 import BulkModal, { BULK_NOTE } from '../validate/BulkModal';
+import KeepModal, { type KeepTarget } from '../validate/KeepModal';
 import {
-  applyValidateFilter, areasOf, BULK_CAP, EMPTY_FILTER, filterCount, filterFromParams, firstFixHint, flagCounts, monthsOf,
-  type BulkResult, type ValidateFilter, type ValidationRecord,
+  applyKeptFilter, applyValidateFilter, areasOf, BULK_CAP, EMPTY_FILTER, filterCount, filterFromParams, firstFixHint, flagCounts, monthsOf,
+  type BulkResult, type KeptRecord, type ValidateFilter, type ValidationRecord,
 } from '../validate/model';
+import { useKeepNotes, useUserNames } from '../validate/useKeepInfo';
 import { useValidation } from '../validate/ValidationContext';
 import { flagLabel } from './events/eventLabels';
 import EventDetail from './events/EventDetail';
@@ -33,6 +35,8 @@ const monthName = (key: string): string => {
 };
 
 type OpenState = { id: string; mode: 'view' | 'edit' | 'void' } | null;
+type View = 'open' | 'kept';
+type KeepState = { mode: 'keep' | 'undo'; targets: KeepTarget[] } | null;
 
 /** One problem as a badge: ◆ for a problem that leaves the record out of the numbers, ▲ for one that is only to review. */
 function ProblemBadge({ flag }: { flag: string }) {
@@ -50,6 +54,26 @@ function Problems({ r }: { r: ValidationRecord }) {
     <>
       <div className="v-problems">{r.problems.map((f) => <ProblemBadge key={f} flag={f} />)}</div>
       {hint && <p className="v-fix" data-testid="v-fix">{t(hint)}</p>}
+      {r.kept.length > 0 && <p className="v-kept-also" data-testid="v-also-kept">{t('Also kept as entered: {list}', { list: r.kept.map(flagLabel).join(', ') })}</p>}
+    </>
+  );
+}
+
+/** Who kept a kept-as-entered record, when and why, and which problems it covers. */
+function KeptInfo({ k, userName, note }: { k: KeptRecord; userName: (id: string | undefined) => string; note: string | undefined }) {
+  const e = k.event;
+  return (
+    <>
+      <div className="v-problems">
+        {k.flags.map((f) => (
+          <span key={f} className="badge" data-testid="v-kept-flag" data-flag={f}><span aria-hidden="true">✓</span> {flagLabel(f)}</span>
+        ))}
+      </div>
+      <p className="v-kept-note" data-testid="v-kept-by">
+        {t('Kept as entered by {name} on {date}', { name: userName(e.accepted_by), date: (e.accepted_at ?? '').slice(0, 16) })}
+        {note ? <>{': '}<span data-testid="v-kept-note">{note}</span></> : null}
+      </p>
+      {k.leftOut && <p className="v-kept-also" data-testid="v-kept-leftout">{t('Still left out of the numbers: it cannot be calculated.')}</p>}
     </>
   );
 }
@@ -77,6 +101,8 @@ export default function Validate() {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [open, setOpen] = useState<OpenState>(null);
   const [bulkIds, setBulkIds] = useState<string[] | null>(null);
+  const [view, setView] = useState<View>('open');
+  const [keep, setKeep] = useState<KeepState>(null);
   const [fixed, setFixed] = useState<{ n: number; text: string } | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkMsg, setCheckMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -85,11 +111,16 @@ export default function Validate() {
   const reset = () => setF(EMPTY_FILTER);
 
   const filtered = useMemo(() => applyValidateFilter(list.records, { ...f, q }), [list.records, f, q]);
-  useEffect(() => setShown(PAGE_SIZE), [f, q]);
+  const filteredKept = useMemo(() => applyKeptFilter(list.keptRecords, { ...f, q }), [list.keptRecords, f, q]);
+  useEffect(() => setShown(PAGE_SIZE), [f, q, view]);
   const visible = filtered.slice(0, shown);
+  const visibleKept = filteredKept.slice(0, shown);
+  const userName = useUserNames();
+  const keptNote = useKeepNotes(useMemo(() => (view === 'kept' ? visibleKept.map((k) => k.event) : []), [view, visibleKept]));
   const flags = useMemo(() => flagCounts(list.records), [list.records]);
-  const areas = useMemo(() => areasOf(list.records), [list.records]);
-  const months = useMemo(() => monthsOf(list.records), [list.records]);
+  const both = useMemo(() => [...list.records, ...list.keptRecords], [list.records, list.keptRecords]);
+  const areas = useMemo(() => areasOf(both), [both]);
+  const months = useMemo(() => monthsOf(both), [both]);
   const areaName = useMemo(() => new Map(startup?.areas.map((a) => [a.area_id, a.name]) ?? []), [startup]);
   const recordById = useMemo(() => new Map(list.records.map((r) => [r.event.event_id, r])), [list.records]);
 
@@ -111,6 +142,19 @@ export default function Validate() {
     return next;
   });
   const selectAllMatching = () => setSel(new Set(filtered.slice(0, BULK_CAP).map((r) => r.event.event_id)));
+
+  const keepFor = (ids: string[]) => {
+    const targets = ids.map((id) => recordById.get(id)).filter((r): r is ValidationRecord => !!r).map((r) => ({ event: r.event, problems: r.problems, kept: r.kept }));
+    if (targets.length) setKeep({ mode: 'keep', targets });
+  };
+  const undoFor = (k: KeptRecord) => setKeep({ mode: 'undo', targets: [{ event: k.event, problems: [], kept: k.flags }] });
+  const onKeepFinished = (res: BulkResult) => {
+    // records that were kept leave the selection; refused ones stay ticked
+    setSel(new Set(res.failed.map((x) => x.id)));
+    if (res.done.length) {
+      setFixed({ n: Date.now(), text: keep?.mode === 'undo' ? tn(res.done.length, 'Undone: {n} record is listed under Open again.', 'Undone: {n} records are listed under Open again.').replace('{n}', num(res.done.length)) : tn(res.done.length, 'Kept as entered: {n} record. It is no longer listed under Open.', 'Kept as entered: {n} records. They are no longer listed under Open.').replace('{n}', num(res.done.length)) });
+    }
+  };
 
   const openEvent = useMemo(() => (open ? rows.find((e) => e.event_id === open.id) ?? null : null), [open, rows]);
   const openRecord = open ? recordById.get(open.id) : undefined;
@@ -149,15 +193,16 @@ export default function Validate() {
 
   const where = (e: EventRow) => `${e.area_id} · ${e.code_raw || 'N/A'}`;
   const dataReady = ready;
+  const keptNote0 = summary.kept.count > 0 ? ` · ${t('{n} kept as entered', { n: num(summary.kept.count) })}` : '';
   const subtitle = !dataReady
     ? t('Loading…')
     : summary.total === 0
-      ? t('Nothing needs checking.')
-      : `${tn(summary.total, '{n} record needs checking', '{n} records need checking')}, ${t('{m} of them left out of the numbers ({h} h)', { m: num(summary.blocked.count), h: hours(summary.blocked.hours * 3600) })}`;
+      ? `${t('Nothing needs checking.')}${keptNote0}`
+      : `${tn(summary.total, '{n} record needs checking', '{n} records need checking')}, ${t('{m} of them left out of the numbers ({h} h)', { m: num(summary.blocked.count), h: hours(summary.blocked.hours * 3600) })}${keptNote0}`;
 
   const hintText = `${t('Records marked ◆ are left out of every chart and total until they are fixed. Records marked ▲ are counted as they are; check them when you can.')} ${
     editor
-      ? t('Use Re-check after you add equipment codes, aliases or reasons in Master Data: it checks every record again.')
+      ? `${t('If a record is correct as entered, use Keep as entered: nothing in it changes and it stops being listed.')} ${t('Use Re-check after you add equipment codes, aliases or reasons in Master Data: it checks every record again.')}`
       : t('You can read this list. Someone with Edit access to Event Explorer fixes the records.')
   }`;
   const filtersOn = filterCount(f);
@@ -209,6 +254,9 @@ export default function Validate() {
     <div className={cls}>
       <button type="button" className="btn-primary" onClick={() => openFor(r.event.event_id, 'edit')} data-testid="v-fix-btn" aria-label={t('Fix {what}', { what: where(r.event) })}>
         <Icon name="edit" size={15} /> {t('Fix')}
+      </button>
+      <button type="button" className="btn" onClick={() => (online ? keepFor([r.event.event_id]) : editBlocked())} data-testid="v-keep-btn" aria-label={t('Keep {what} as entered', { what: where(r.event) })}>
+        <Icon name="check" size={15} /> {t('Keep as entered')}
       </button>
       <button type="button" className="btn-danger" onClick={() => openFor(r.event.event_id, 'void')} data-testid="v-void-btn" aria-label={t('Void {what}', { what: where(r.event) })}>
         <Icon name="ban" size={15} /> {t('Void')}
@@ -268,16 +316,30 @@ export default function Validate() {
             sub={t('counted as they are')} tone={summary.review.count ? T.warning : undefined} testid="tile-review" />
           <Tile icon="clock" label={`▲ ${t('Overlapping')}`} value={<span data-testid="v-count-overlap">{num(summary.overlapping)}</span>}
             sub={t('hours may be counted twice')} tone={summary.overlapping ? T.warning : undefined} testid="tile-overlap" />
+          <Tile icon="check" label={`✓ ${t('Kept as entered')}`} value={<span data-testid="v-count-kept">{num(summary.kept.count)}</span>}
+            sub={<><span data-testid="v-kept-hours">{hours(summary.kept.leftOut.hours * 3600)}</span> {t('h kept as entered, left out of the numbers')}</>} testid="tile-kept" />
         </div>
       ) : (
         <div className="phone-summary" data-testid="v-phone-summary">
           <span><span className="v-sym v-sym--blocking" aria-hidden="true">◆</span> <b data-testid="v-count-blocked">{num(summary.blocked.count)}</b> {t('left out')} ({hours(summary.blocked.hours * 3600)} h)</span>
           <span><span className="v-sym v-sym--warning" aria-hidden="true">▲</span> <b data-testid="v-count-review">{num(summary.review.count)}</b> {t('to review')}</span>
           <span><span className="v-sym v-sym--warning" aria-hidden="true">▲</span> <b data-testid="v-count-overlap">{num(summary.overlapping)}</b> {t('overlapping')}</span>
+          <span><span aria-hidden="true">✓</span> <b data-testid="v-count-kept">{num(summary.kept.count)}</b> {t('kept as entered')} (<span data-testid="v-kept-hours">{hours(summary.kept.leftOut.hours * 3600)}</span> h {t('left out')})</span>
         </div>
       ))}
 
-      {dataReady && summary.total > 0 && (!mobile ? (
+      {dataReady && (summary.total > 0 || summary.kept.count > 0) && (
+        <div className="v-seg" role="group" aria-label={t('Which records')} data-testid="v-view">
+          <button type="button" className="v-seg-btn" aria-pressed={view === 'open'} onClick={() => setView('open')} data-testid="v-view-open">
+            {t('Open')} <b>{num(summary.total)}</b>
+          </button>
+          <button type="button" className="v-seg-btn" aria-pressed={view === 'kept'} onClick={() => setView('kept')} data-testid="v-view-kept">
+            {t('Kept as entered')} <b>{num(summary.kept.count)}</b>
+          </button>
+        </div>
+      )}
+
+      {dataReady && (view === 'open' ? summary.total > 0 : summary.kept.count > 0) && (!mobile ? (
         <section className="card" aria-label={t('Filters')} data-testid="v-filters">
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
             {searchBox}
@@ -285,12 +347,14 @@ export default function Validate() {
             {monthSelect('d')}
             <button type="button" className="btn" onClick={reset} disabled={filtersOn === 0} data-testid="v-reset" style={{ minHeight: 40 }}>{t('Reset filters')}</button>
           </div>
-          <div className="v-chip-row">
-            <ChipRow label={t('Problems')}>
-              {blockingChip}
-              {flagChips}
-            </ChipRow>
-          </div>
+          {view === 'open' && (
+            <div className="v-chip-row">
+              <ChipRow label={t('Problems')}>
+                {blockingChip}
+                {flagChips}
+              </ChipRow>
+            </div>
+          )}
         </section>
       ) : (
         <>
@@ -299,8 +363,8 @@ export default function Validate() {
             <input id="v-search" className="input" type="search" value={f.q} onChange={(e) => set({ q: e.target.value })} placeholder={t('Code, reason or description')} autoComplete="off" data-testid="v-search" />
           </div>
           <ChipRow label={t('Problems')}>
-            {blockingChip}
-            {flagChips}
+            {view === 'open' && blockingChip}
+            {view === 'open' && flagChips}
             <FiltersPill count={sheetCount} onClick={() => setSheet(true)} testid="v-filters-pill" />
             {filtersOn > 0 && <button type="button" className="chip" onClick={reset} data-testid="v-reset">{t('Reset')}</button>}
           </ChipRow>
@@ -310,13 +374,13 @@ export default function Validate() {
               footer={
                 <>
                   <button type="button" className="btn" onClick={reset}>{t('Reset')}</button>
-                  <button type="button" className="btn-primary" onClick={() => setSheet(false)} data-testid="v-sheet-apply">{t('Show {n} records', { n: num(filtered.length) })}</button>
+                  <button type="button" className="btn-primary" onClick={() => setSheet(false)} data-testid="v-sheet-apply">{t('Show {n} records', { n: num(view === 'open' ? filtered.length : filteredKept.length) })}</button>
                 </>
               }
             >
               {areaSelect('s')}
               {monthSelect('s')}
-              <div className="field">
+              {view === 'open' && <div className="field">
                 <span className="field-label">{t('Problems')}</span>
                 <div className="chip-row" role="group" aria-label={t('Problems')}>
                   {flags.map(({ flag, count, blocking }) => {
@@ -332,20 +396,108 @@ export default function Validate() {
                     );
                   })}
                 </div>
-              </div>
+              </div>}
             </BottomSheet>
           )}
         </>
       ))}
 
-      {dataReady && summary.total === 0 && (
+      {dataReady && view === 'open' && summary.total === 0 && (
         <div className="callout callout--success" role="status" data-testid="v-empty">
           <Icon name="check" size={16} />
           <span>{t('Nothing needs checking. Every record passes the data checks.')}</span>
         </div>
       )}
 
-      {dataReady && summary.total > 0 && (
+      {dataReady && view === 'kept' && summary.kept.count > 0 && (
+        <div style={{ marginTop: 12 }} data-testid="v-kept-list">
+          <p className="v-hint" data-testid="v-kept-hint">
+            {t('These records were checked and kept exactly as entered. Nothing in them was changed. Records marked ◆ before are still left out of the numbers because they cannot be calculated.')}
+          </p>
+          {filteredKept.length === 0 ? (
+            <div className="callout" role="status" data-testid="v-no-results">
+              <Icon name="info" size={16} />
+              <span>{t('No records match these filters.')}</span>
+              <button type="button" className="btn btn-sm" onClick={reset}>{t('Reset filters')}</button>
+            </div>
+          ) : !mobile ? (
+            <div className="table-wrap v-table" data-testid="v-kept-table">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{t('Stopped at')}</th>
+                    <th scope="col">{t('Area')}</th>
+                    <th scope="col">{t('Code')}</th>
+                    <th scope="col">{t('Class')}</th>
+                    <th scope="col" className="num">{t('Duration')}</th>
+                    <th scope="col">{t('Kept as entered')}</th>
+                    {editor && <th scope="col">{t('Actions')}</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleKept.map((k) => {
+                    const e = k.event;
+                    return (
+                      <tr key={e.event_id} data-testid="v-kept-row" data-event-id={e.event_id} data-left-out={k.leftOut ? 'yes' : 'no'}>
+                        <td className="nowrap">
+                          <button type="button" className="row-link" onClick={() => openFor(e.event_id, 'view')} aria-label={t('Open record {id}', { id: e.event_id })}>{shortTs(e.stop_ts)}</button>
+                        </td>
+                        <td className="nowrap">{e.area_id}<div className="muted" style={{ fontSize: 12 }}>{areaName.get(e.area_id)}</div></td>
+                        <td className="mono nowrap">{e.code_raw || '-'}</td>
+                        <td>{e.classification ? <span className="badge badge--class">{e.classification}</span> : <span className="muted">{t('(none)')}</span>}</td>
+                        <td className="num">{duration(e.duration_s)}</td>
+                        <td><KeptInfo k={k} userName={userName} note={keptNote(e)} /></td>
+                        {editor && (
+                          <td className="v-actions">
+                            <div className="v-actions-in">
+                              <button type="button" className="btn" onClick={() => (online ? undoFor(k) : editBlocked())} data-testid="v-undo-btn" aria-label={t('Undo keep as entered for {what}', { what: where(e) })}>
+                                <Icon name="history" size={15} /> {t('Undo')}
+                              </button>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="event-cards" data-testid="v-kept-cards">
+              {visibleKept.map((k) => {
+                const e = k.event;
+                return (
+                  <div key={e.event_id} className="v-card v-card--kept" data-testid="v-kept-card" data-event-id={e.event_id} data-left-out={k.leftOut ? 'yes' : 'no'}>
+                    <button type="button" className="v-card-main" onClick={() => openFor(e.event_id, 'view')} aria-label={t('Open record {id}', { id: e.event_id })}>
+                      <span className="v-card-top">
+                        <span className="v-card-code">{where(e)}</span>
+                        {e.classification ? <span className="badge badge--class">{e.classification}</span> : <span className="muted">{t('(none)')}</span>}
+                      </span>
+                      <span className="event-card-line mono" style={{ display: 'block' }}>{shortTs(e.stop_ts)} · {duration(e.duration_s)}</span>
+                    </button>
+                    <div style={{ marginTop: 6 }}><KeptInfo k={k} userName={userName} note={keptNote(e)} /></div>
+                    {editor && (
+                      <div className="v-card-actions">
+                        <button type="button" className="btn" onClick={() => (online ? undoFor(k) : editBlocked())} data-testid="v-undo-btn" aria-label={t('Undo keep as entered for {what}', { what: where(e) })}>
+                          <Icon name="history" size={15} /> {t('Undo')}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <ShowMore shown={visibleKept.length} total={filteredKept.length} onMore={() => setShown((n) => n + PAGE_SIZE)} />
+          {filteredKept.length > 0 && (
+            <p className="status-line" style={{ marginTop: 8 }} data-testid="v-list-count">
+              {t('Showing {a} of {b} matching records.', { a: num(visibleKept.length), b: num(filteredKept.length) })}
+            </p>
+          )}
+        </div>
+      )}
+
+      {dataReady && view === 'open' && summary.total > 0 && (
         <div style={{ marginTop: 12 }}>
           {editor && filtered.length > 0 && (
             <div className="v-toolbar" data-testid="v-toolbar">
@@ -448,10 +600,13 @@ export default function Validate() {
         </div>
       )}
 
-      {editor && selIds.length > 0 && (
+      {editor && view === 'open' && selIds.length > 0 && (
         <div className="v-bulkbar" role="region" aria-label={t('Selected records')} data-testid="v-bulkbar">
           <b data-testid="v-selected">{tn(selIds.length, '{n} record ticked', '{n} records ticked')}</b>
           <button type="button" className="btn" onClick={() => setSel(new Set())}>{t('Clear')}</button>
+          <button type="button" className="btn" onClick={() => (online ? keepFor(selIds.slice(0, BULK_CAP)) : editBlocked())} data-testid="v-keep-open">
+            <Icon name="check" size={15} /> {t('Keep as entered')}
+          </button>
           <button type="button" className="btn-primary" onClick={() => (online ? setBulkIds(selIds) : editBlocked())} data-testid="v-bulk-open">
             <Icon name="edit" size={15} /> {t('Set for {n} records', { n: num(Math.min(selIds.length, BULK_CAP)) })}
           </button>
@@ -474,6 +629,16 @@ export default function Validate() {
               : null,
             defaultNote: t(BULK_NOTE),
             initialMode: open.mode,
+            afterKeep: (updated) => {
+              if (v.recheck(updated) !== null) return false;
+              setSel((cur) => {
+                const next = new Set(cur);
+                next.delete(updated.event_id);
+                return next;
+              });
+              setFixed({ n: Date.now(), text: t('Kept as entered: {what}. It is no longer listed under Open.', { what: where(updated) }) });
+              return true;
+            },
             autoClose: (updated) => {
               if (v.recheck(updated) !== null) return false;
               setSel((cur) => {
@@ -490,6 +655,16 @@ export default function Validate() {
               return true;
             },
           }}
+        />
+      )}
+
+      {keep && (
+        <KeepModal
+          mode={keep.mode}
+          targets={keep.targets}
+          onClose={() => setKeep(null)}
+          onSaved={v.replaceEvent}
+          onFinished={onKeepFinished}
         />
       )}
 

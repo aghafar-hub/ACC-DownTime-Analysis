@@ -160,7 +160,7 @@ Ping (no login needed):
 curl -L "YOUR_WEB_APP_URL?action=ping"
 ```
 
-Expected: `{"status":"ok","data":{"version":"1.2.0"}}`
+Expected: `{"status":"ok","data":{"version":"1.3.0"}}`
 
 Sign in:
 
@@ -239,6 +239,27 @@ Good to know:
   needs Edit on Settings). An upload never fails because of them; a problem is written to `audit_log` (`notification_failed`).
 - **Alerts expire** after `notif_retention_days` and are marked resolved when the cause is gone (event voided, newer data
   uploaded). Nothing is deleted; the `notifications` sheet is the record.
+
+## 12. Update to version 1.3.0 (Keep as entered, targets, saved views)
+
+Version 1.3.0 adds the **Keep as entered** button on the Validate page, three target settings and saved views. Nothing in your
+data changes. Do these steps in order; all of them are safe to repeat.
+
+1. **Paste these 7 files** into the Apps Script project, replacing the old content of each (same names, same order does not matter):
+   `Schema.js`, `Config.js`, `Access.js`, `Code.js`, `Events.js`, `Settings.js`, `Notifications.js`.
+   The other files (`Utils.js`, `Crypto.js`, `Audit.js`, `Auth.js`, `Users.js`, `Master.js`, `Upload.js`, `Setup.js`) and
+   `appsscript.json` did not change from 1.2.0: leave them alone. With the one-file bundle (option A2), run
+   `node tools/bundle-apps-script.mjs` and paste `ACC_Downtime_Backend.gs` over `Code.gs` instead.
+2. **Run `ensureSchema`.** It adds three columns at the end of the `events` sheet (`accepted_flags`, `accepted_by`,
+   `accepted_at`) and never touches existing rows or columns.
+3. **Run `seedDefaults`.** It adds three settings with blank values (`target_availability_pct`, `target_mtbf_h`,
+   `target_mttr_h`; blank = no target) and never overwrites a value you changed.
+4. **Deploy a new version** as in section 10 (**Manage deployments**, pencil, **Version: New version**, **Deploy**). The web app
+   address stays the same, and no new permission is asked.
+5. **Check.** Open the web app address with `?action=ping`: it must answer version `1.3.0`. Run **installCheck**.
+
+Good to know: an old app build keeps working against 1.3.0 (it just does not show the button). The new app build needs 1.3.0,
+otherwise **Keep as entered** answers "Unknown action".
 
 ## Good to know
 

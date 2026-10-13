@@ -336,6 +336,155 @@ describe.each([
     expect((await s.api.getStartup(token)).settings.find((x) => x.key === 'availability_basis')?.value).toBe('C');
   });
 
+  // ------------------------------------------------------------------ keep as entered (accepted flags)
+  const YEAR3 = 2032;
+  const AID: Record<string, string> = {};
+  const accepted = (e: EventRow): string => e.accepted_flags ?? '';
+  // a clock that moves a minute per step, so every history row gets its own time (the session stays valid)
+  let clk = Date.now();
+  const tick = (): void => s.setClock((clk += 60_000));
+  const acceptedRows = async (id: string) => (await s.api.getEventEdits(token, id)).filter((h) => h.field === 'accepted_flags');
+
+  it('keep as entered: accepting changes only the accepted columns and writes one history row', async () => {
+    const mk = async (n: number, over: Partial<UploadRow>): Promise<UploadRow> => {
+      const base = await uploadRow();
+      const row: UploadRow = {
+        ...base, source_row: 60 + n, event_date: `${YEAR3}-04-0${n}`, stop_ts: `${YEAR3}-04-0${n} 08:00:00.000`, start_ts: `${YEAR3}-04-0${n} 09:00:00.000`, ...over,
+      };
+      row.fingerprint = await fingerprint({ area_id: row.area_id, code: row.code_raw, stop_ts: row.stop_ts, start_ts: row.start_ts, occurrence: 1 });
+      return row;
+    };
+    const rows = [
+      await mk(1, { code_raw: 'WARNCODE.1' }), // unknown_code
+      await mk(2, { code_raw: 'AFR' }), // unknown_code, placeholder
+      await mk(3, { classification: '' }), // missing_classification (blocking)
+      await mk(4, {}), // clean
+    ];
+    const { batch_id } = await s.api.uploadStart(token, 'accept.xlsx', 'e'.repeat(64));
+    expect((await s.api.uploadChunk(token, batch_id, rows)).added).toBe(4);
+    await s.api.uploadFinish(token, batch_id, { rows_read: 4, rows_skipped: 0 }, []);
+    const events = await s.api.getEvents(token, YEAR3);
+    for (const [name, n] of [['warn', 61], ['two', 62], ['block', 63], ['clean', 64]] as const) AID[name] = (events.find((e) => e.source_row === n) as EventRow).event_id;
+    const by = (id: string) => events.find((e) => e.event_id === id) as EventRow;
+    expect([by(AID.warn).flags, by(AID.two).flags, by(AID.block).flags, by(AID.clean).flags ?? '']).toEqual(['unknown_code', 'unknown_code,placeholder', 'missing_classification', '']);
+    expect(events.every((e) => !e.accepted_flags && !e.accepted_by && !e.accepted_at)).toBe(true);
+
+    tick();
+    const before = by(AID.warn);
+    const ev = await s.api.acceptEventFlags(token, AID.warn, ['unknown_code'], '  Checked: entered correctly ');
+    expect(ev.accepted_flags).toBe('unknown_code');
+    expect(ev.accepted_by).toBeTruthy();
+    expect(ev.accepted_at).toMatch(/^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}$/);
+    const same = (a: EventRow, b: EventRow) => {
+      const strip = (e: EventRow) => Object.fromEntries(Object.entries(e).filter(([k, v]) => !k.startsWith('accepted_') && v !== '' && v !== undefined));
+      expect(strip(a)).toEqual(strip(b));
+    };
+    same(ev, before);
+    expect(ev.edited).toBe(false);
+    const h = await acceptedRows(AID.warn);
+    expect(h).toHaveLength(1);
+    expect([h[0].old_value ?? '', h[0].new_value, h[0].note, h[0].edited_by]).toEqual(['', 'unknown_code', 'Checked: entered correctly', ev.accepted_by]);
+    expect((await s.api.getEvents(token, YEAR3)).find((e) => e.event_id === AID.warn)?.accepted_flags).toBe('unknown_code');
+  });
+
+  it('keep as entered: the set sent is the full new set (partial accept, partial undo, undo all)', async () => {
+    tick();
+    let ev = await s.api.acceptEventFlags(token, AID.two, ['placeholder', 'unknown_code'], 'Checked: entered correctly');
+    expect(ev.accepted_flags).toBe('unknown_code,placeholder');
+    tick();
+    ev = await s.api.acceptEventFlags(token, AID.two, ['placeholder'], 'Unknown code needs Master Data');
+    expect(ev.accepted_flags).toBe('placeholder');
+    expect(ev.flags).toBe('unknown_code,placeholder');
+    tick();
+    ev = await s.api.acceptEventFlags(token, AID.two, [], 'Taking it back');
+    expect(accepted(ev)).toBe('');
+    expect(ev.accepted_by ?? '').toBe('');
+    expect(ev.accepted_at ?? '').toBe('');
+    const h = await acceptedRows(AID.two);
+    expect(h.map((x) => [x.old_value ?? '', x.new_value ?? ''])).toEqual([['', 'unknown_code,placeholder'], ['unknown_code,placeholder', 'placeholder'], ['placeholder', '']]);
+    expect(h.map((x) => x.note)).toEqual(['Checked: entered correctly', 'Unknown code needs Master Data', 'Taking it back']);
+  });
+
+  it('keep as entered: refusals agree (bad flag, short note, nothing changed, not on the record, voided, view-only)', async () => {
+    const note = 'Checked: entered correctly';
+    expect((await rejection(s.api.acceptEventFlags(token, AID.warn, ['made_up'], note))).code).toBe('bad_request');
+    expect((await rejection(s.api.acceptEventFlags(token, AID.warn, ['unknown_code', 'made_up'], note))).message).toMatch(/Unknown flag/);
+    expect((await rejection(s.api.acceptEventFlags(token, AID.warn, 'unknown_code' as never, note))).code).toBe('bad_request');
+    expect((await rejection(s.api.acceptEventFlags(token, AID.warn, [], 'ab'))).message).toMatch(/at least 3/);
+    expect((await rejection(s.api.acceptEventFlags(token, AID.warn, [], '  '))).code).toBe('bad_request');
+    expect((await rejection(s.api.acceptEventFlags(token, AID.warn, ['unknown_code'], note))).message).toMatch(/Nothing was changed/);
+    expect((await rejection(s.api.acceptEventFlags(token, AID.clean, ['unknown_code'], note))).message).toMatch(/does not have the problem/);
+    expect((await rejection(s.api.acceptEventFlags(token, 'EV-0000000000000000', ['unknown_code'], note))).code).toBe('not_found');
+    expect((await acceptedRows(AID.warn))).toHaveLength(1);
+
+    await s.api.voidEvent(token, AID.warn, true, 'duplicate');
+    const voided = await rejection(s.api.acceptEventFlags(token, AID.warn, [], 'Undo while void'));
+    expect(voided.code).toBe('conflict');
+    await s.api.voidEvent(token, AID.warn, false, 'restored');
+
+    const created = await s.api.createUser(token, { email: 'accept.viewer@example.com', display_name: 'Accept Viewer', role_id: 'ROLE-VIEW' });
+    const first = await s.api.login('accept.viewer@example.com', created.temp_password, false);
+    const session = await s.api.changePassword(first.token, created.temp_password, 'A-New-Strong-Pass-99');
+    const denied = await rejection(s.api.acceptEventFlags(session.token, AID.two, ['placeholder'], note));
+    expect(denied.accessDenied).toBe(true);
+    expect((await rejection(s.api.acceptEventFlags('', AID.two, ['placeholder'], note))).code).toBe('unauthenticated');
+    // the viewer can read what was accepted
+    expect((await s.api.getEvents(session.token, YEAR3)).find((e) => e.event_id === AID.warn)?.accepted_flags).toBe('unknown_code');
+  });
+
+  it('keep as entered: an edit or a re-check drops accepted flags the record no longer has', async () => {
+    const note = 'Checked: entered correctly';
+    tick();
+    await s.api.acceptEventFlags(token, AID.block, ['missing_classification'], note);
+    await s.api.acceptEventFlags(token, AID.two, ['placeholder', 'unknown_code'], note);
+    // a change that keeps the problem keeps the acceptance
+    tick();
+    let ev = await s.api.editEvent(token, AID.block, { description: 'still unclassified' }, 'text only');
+    expect(ev.accepted_flags).toBe('missing_classification');
+    // fixing the problem drops it
+    tick();
+    ev = await s.api.editEvent(token, AID.block, { classification: 'MEC' }, 'classified');
+    expect([ev.flags ?? '', accepted(ev), ev.accepted_by ?? '', ev.accepted_at ?? '']).toEqual(['', '', '', '']);
+    const h = (await acceptedRows(AID.block)).at(-1);
+    expect([h?.old_value, h?.new_value ?? '', h?.note]).toEqual(['missing_classification', '', 'Removed automatically: the record no longer has this problem.']);
+    // part of the set goes: the code becomes a known one, the placeholder is gone with it
+    tick();
+    ev = await s.api.editEvent(token, AID.two, { code_raw: '900.ZZ01' }, 'real code');
+    expect(accepted(ev)).toBe('');
+    // re-check: the code is added to Master Data later
+    await s.api.saveEquipment(token, { equipment_id: 'WARNCODE.1', description: 'Late', criticality: 'High', status: 'Active', needs_review: false } as never, ['K.1']);
+    const r = await s.api.revalidateEvents(token, YEAR3);
+    expect(r).toEqual({ checked: 4, changed: 1 });
+    const after = (await s.api.getEvents(token, YEAR3)).find((e) => e.event_id === AID.warn) as EventRow;
+    expect([after.flags ?? '', accepted(after), after.accepted_by ?? '']).toEqual(['', '', '']);
+    expect(after.edited).toBe(false);
+    expect((await acceptedRows(AID.warn)).at(-1)?.new_value ?? '').toBe('');
+  });
+
+  it('keep as entered: the three targets and saved views are validated the same way', async () => {
+    const ok = { target_availability_pct: '95', target_mtbf_h: '120.5', target_mttr_h: '2' };
+    await s.api.saveSettings(token, ok);
+    const read = async () => Object.fromEntries((await s.api.getStartup(token)).settings.map((x) => [x.key, x.value]));
+    expect(await read()).toMatchObject(ok);
+    for (const bad of [{ target_availability_pct: '101' }, { target_availability_pct: 'x' }, { target_mtbf_h: '0' }, { target_mttr_h: '-1' }, { target_mtbf_h: '100001' }] as Record<string, string>[]) {
+      expect((await rejection(s.api.saveSettings(token, bad))).code, JSON.stringify(bad)).toBe('bad_request');
+    }
+    await s.api.saveSettings(token, { target_availability_pct: '', target_mtbf_h: '', target_mttr_h: '' });
+    expect(await read()).toMatchObject({ target_availability_pct: '', target_mtbf_h: '', target_mttr_h: '' });
+
+    const views = JSON.stringify([{ id: 'v1', name: 'Kiln', page: 'events', query: 'area=K.1' }, { id: 'v2', name: 'Pareto', page: 'pareto', query: '' }]);
+    expect(await s.api.saveNotificationPrefs(token, { saved_views: views })).toMatchObject({ saved_views: views });
+    expect((await s.api.getNotifications(token)).prefs.saved_views).toBe(views);
+    const bads = [
+      'nope', '{}', JSON.stringify(Array.from({ length: 21 }, (_, i) => ({ id: `v${i}`, name: 'n', page: 'events', query: '' }))),
+      JSON.stringify([{ id: 'a', name: 'n', page: 'upload', query: '' }]), JSON.stringify([{ id: 'a', name: '', page: 'events', query: '' }]),
+      JSON.stringify([{ id: 'a', name: 'n', page: 'events', query: 'q'.repeat(1501) }]), JSON.stringify([{ id: 'a', name: 'n', page: 'events' }]),
+      JSON.stringify([{ id: 'a', name: 'n', page: 'events', query: '', more: 1 }]),
+    ];
+    for (const bad of bads) expect((await rejection(s.api.saveNotificationPrefs(token, { saved_views: bad }))).code, bad.slice(0, 30)).toBe('bad_request');
+    expect((await s.api.getNotifications(token)).prefs.saved_views).toBe(views);
+  });
+
   // ------------------------------------------------------------------ notifications
   // One scenario in 2041, run against both implementations. The expectations are written out once, so the
   // plain-JS port in the backend and the calc-based rules in the mock must both produce exactly this.

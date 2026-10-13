@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EventRow } from '../api/types';
 import {
+  applyKeptFilter, keepChoices, keepConsequence, keepConsequenceMany, keepSetFor, plainKeepReason, undoSetFor,
   applyValidateFilter, buildClassificationSuggester, buildValidation, capSelection, compareRecords, EMPTY_FILTER, filterCount, filterFromParams, firstFixHint,
   flagCounts, planBulk, plainReason, recheckRecord, runBulk, storedProblems, BULK_CAP, OVERLAP_FLAG,
 } from './model';
@@ -20,6 +21,90 @@ const DATA: EventRow[] = [
   ev('o2', 'K.3', '2026-04-10 09:00:00', '2026-04-10 11:00:00', { code_raw: 'N/A', reason_raw: 'Belt slip' }),
   ev('rev', 'K.3', '2026-04-11 08:00:00', '2026-04-11 07:00:00', { flags: 'end_before_start' }),
 ];
+
+describe('kept as entered', () => {
+  const KEPT: EventRow[] = [
+    ev('w', 'K.1', '2026-05-01 08:00:00', '2026-05-01 09:00:00', { flags: 'unknown_code', accepted_flags: 'unknown_code', accepted_by: 'U1', accepted_at: '2026-06-01 10:00:00.000' }),
+    ev('b', 'K.1', '2026-05-02 08:00:00', '2026-05-02 10:00:00', { flags: 'missing_classification', accepted_flags: 'missing_classification', accepted_at: '2026-06-02 10:00:00.000' }),
+    ev('half', 'K.1', '2026-05-03 08:00:00', '2026-05-03 08:30:00', { flags: 'unknown_code,blank_reason', accepted_flags: 'unknown_code', accepted_at: '2026-06-03 10:00:00.000' }),
+    ev('mixed', 'K.2', '2026-05-04 08:00:00', '2026-05-04 09:00:00', { flags: 'missing_classification,unknown_code', accepted_flags: 'missing_classification' }),
+    ev('open', 'K.2', '2026-05-05 08:00:00', '2026-05-05 08:30:00', { flags: 'blank_reason' }),
+    ev('vk', 'K.2', '2026-05-06 08:00:00', '2026-05-06 08:30:00', { flags: 'unknown_code', accepted_flags: 'unknown_code', is_void: true }),
+  ];
+  const l = buildValidation(KEPT);
+  it('records with only kept problems leave the open list; partly kept ones stay with their open problems', () => {
+    expect(l.records.map((r) => r.event.event_id).sort()).toEqual(['half', 'mixed', 'open']);
+    const half = l.records.find((r) => r.event.event_id === 'half')!;
+    expect(half.problems).toEqual(['blank_reason']);
+    expect(half.kept).toEqual(['unknown_code']);
+    const mixed = l.records.find((r) => r.event.event_id === 'mixed')!;
+    expect(mixed.problems).toEqual(['unknown_code']);
+    expect(mixed.blocking).toBe(false); // its blocking problem was kept: nothing blocking is left to fix
+  });
+  it('lists every kept record (not voided), newest acceptance first', () => {
+    expect(l.keptRecords.map((k) => k.event.event_id)).toEqual(['half', 'b', 'w', 'mixed']);
+    expect(l.keptRecords.find((k) => k.event.event_id === 'b')).toMatchObject({ flags: ['missing_classification'], leftOut: true });
+    expect(l.keptRecords.find((k) => k.event.event_id === 'w')).toMatchObject({ leftOut: false });
+  });
+  it('counts: kept blocking records leave the to-fix numbers and are counted apart in hours', () => {
+    expect(l.summary.total).toBe(3);
+    expect(l.summary.blocked).toEqual({ count: 0, hours: 0 });
+    expect(l.summary.review.count).toBe(3);
+    expect(l.summary.kept.count).toBe(4);
+    expect(l.summary.kept.leftOut.count).toBe(2); // b and mixed are blocked (stored) with no open blocking problem
+    expect(l.summary.kept.leftOut.hours).toBeCloseTo(3, 5); // 2 h + 1 h
+    expect(l.summary.byFlag).toEqual({ blank_reason: 2, unknown_code: 1 });
+  });
+  it('an unkept blocking record still counts as to fix', () => {
+    const r = buildValidation([...KEPT, ev('x', 'K.1', '2026-05-07 08:00:00', '2026-05-07 11:00:00', { flags: 'unknown_area' })]);
+    expect(r.summary.blocked.count).toBe(1);
+    expect(r.summary.blocked.hours).toBeCloseTo(3, 5);
+  });
+  it('an accepted overlap is not listed; the partner still is', () => {
+    const o = buildValidation([
+      ev('o1', 'K.3', '2026-04-10 08:00:00', '2026-04-10 10:00:00', { accepted_flags: 'overlap_in_area' }),
+      ev('o2', 'K.3', '2026-04-10 09:00:00', '2026-04-10 11:00:00'),
+    ]);
+    expect(o.records.map((r) => r.event.event_id)).toEqual(['o2']);
+    expect(o.keptRecords.map((r) => r.event.event_id)).toEqual(['o1']);
+    expect(o.summary.overlapping).toBe(1);
+  });
+  it('filters kept records by area, month and search', () => {
+    expect(applyKeptFilter(l.keptRecords, { ...EMPTY_FILTER, area: 'K.2' }).map((k) => k.event.event_id)).toEqual(['mixed']);
+    expect(applyKeptFilter(l.keptRecords, { ...EMPTY_FILTER, month: '2026-05' })).toHaveLength(4);
+    expect(applyKeptFilter(l.keptRecords, { ...EMPTY_FILTER, month: '2026-06' })).toHaveLength(0);
+    expect(applyKeptFilter(l.keptRecords, { ...EMPTY_FILTER, q: 'half' }).map((k) => k.event.event_id)).toEqual(['half']);
+  });
+  it('recheckRecord is null once everything is kept', () => {
+    const open = ev('o', 'K.1', '2026-05-09 08:00:00', '2026-05-09 09:00:00', { flags: 'unknown_code' });
+    expect(recheckRecord([open], open)).not.toBeNull();
+    expect(recheckRecord([open], { ...open, accepted_flags: 'unknown_code' })).toBeNull();
+  });
+  it('the full new set to send: what is kept already plus the ticked open problems', () => {
+    const half = l.records.find((r) => r.event.event_id === 'half')!;
+    expect(keepSetFor(half, new Set(['blank_reason']))).toEqual(['unknown_code', 'blank_reason']);
+    expect(keepSetFor(half, new Set(['placeholder']))).toBeNull();
+    expect(keepSetFor(half, new Set())).toBeNull();
+    expect(undoSetFor({ kept: ['unknown_code', 'blank_reason'] }, new Set(['blank_reason']))).toEqual(['unknown_code']);
+    expect(undoSetFor({ kept: ['unknown_code'] }, new Set(['unknown_code']))).toEqual([]);
+    expect(undoSetFor({ kept: ['unknown_code'] }, new Set(['blank_reason']))).toBeNull();
+  });
+  it('says the consequence in plain words', () => {
+    const open = l.records.find((r) => r.event.event_id === 'open')!;
+    expect(keepConsequence(open, new Set(['blank_reason'])).sentence).toBe('Nothing in the record changes. It will stop being listed. It counts normally.');
+    const blocking = buildValidation([ev('bb', 'K.1', '2026-05-07 08:00:00', '2026-05-07 09:00:00', { flags: 'missing_classification' })]).records[0];
+    expect(keepConsequence(blocking, new Set(['missing_classification'])).sentence).toBe('Nothing in the record changes. It will stop being listed. It is still left out of the numbers.');
+    expect(keepConsequence(blocking, new Set()).sentence).toContain('stays listed');
+    expect(keepConsequenceMany([open, blocking], new Set(['blank_reason', 'missing_classification']))).toContain('1 of them are still left out of the numbers; 1 count normally.');
+    expect(keepConsequenceMany([open], new Set(['blank_reason']))).toBe(keepConsequence(open, new Set(['blank_reason'])).sentence);
+  });
+  it('offers the open problems of the records with their counts, and explains refusals', () => {
+    expect(keepChoices(l.records)).toEqual([{ flag: 'unknown_code', count: 1, blocking: false }, { flag: 'blank_reason', count: 2, blocking: false }]);
+    expect(plainKeepReason('Nothing was changed.')).toMatch(/already kept/);
+    expect(plainKeepReason('This record does not have the problem "x".')).toMatch(/no longer has this problem/);
+    expect(plainKeepReason('This event is void. Restore it before changing it.')).toMatch(/voided/);
+  });
+});
 
 describe('buildValidation', () => {
   const l = buildValidation(DATA);

@@ -51,7 +51,7 @@ wins over the role row. Missing row = Hidden.
 | `getEventEdits` | `events` View |
 | `getUploadHistory`, `getUploadWarnings` | `upload` View |
 | `uploadStart`, `uploadChunk`, `uploadFinish` | `upload` Edit |
-| `editEvent`, `voidEvent`, `revalidateEvents` | `events` Edit |
+| `editEvent`, `voidEvent`, `revalidateEvents`, `acceptEventFlags` | `events` Edit |
 | `saveEquipment`, `saveArea`, `saveReason`, `saveAlias`, `deleteAlias` | `master` Edit |
 | `saveSettings` | `settings` Edit |
 | `listUsers` | `users` View |
@@ -171,6 +171,32 @@ row, `edited` unchanged. One `audit_log` row. Returns `{ checked, changed }`. Ne
 (`field = is_void`) and an `audit_log` row. Voided events stay in the table and
 are excluded from analysis.
 
+### 6a. Keep as entered (`acceptEventFlags`, backend 1.3.0)
+
+`acceptEventFlags(eventId, flags, note)` lets a person say "this record is correct exactly as entered" for the data-check flags
+(section 4a) it carries. Nothing in the record changes.
+
+- Needs `events` Edit. `flags` is a list and is the **full new accepted set**: sending fewer flags undoes some, an empty list
+  undoes all. Every name must be a known flag (the four blocking, six warning, information `code_not_in_area` and derived
+  `overlap_in_area`; `KNOWN_FLAG_NAMES` in `Config.js` mirrors `src/calc/flags.ts`). A flag must be one the record carries in `events.flags`
+  (or already accepted, or the derived `overlap_in_area`, which the server cannot compute).
+- `note` is required, at least 3 characters (also for an undo), at most 500.
+- Stored in `events`: `accepted_flags` (comma separated, catalogue order), `accepted_by` (user_id), `accepted_at` (timestamp). An empty
+  set clears all three. `flags`, `edited`, `equipment_id` and every other field stay as they are; no flag is recalculated.
+- Writes ONE `event_edits` row (`field = accepted_flags`, old and new value, the note) and one `audit_log` row (`accept_event_flags`).
+- Refused: a voided event (`conflict`), an unknown flag or a short note (`bad_request`), a flag the record does not have, and a change
+  that changes nothing (`bad_request`, "Nothing was changed.").
+- **Pruning.** After `editEvent` or `revalidateEvents` recomputes the flags, accepted flags the record no longer carries are dropped
+  (`accepted_by`/`accepted_at` are cleared when nothing is left) and an `event_edits` row records it ("Removed automatically: ...").
+  The derived `overlap_in_area` is kept until the user undoes it. Upload never touches stored rows.
+- **Meaning for the numbers.** An accepted warning flag is resolved: the record is normal everywhere. An accepted blocking flag stops being
+  something to fix (not listed on Validate, not in the badge, the banner or the notifications) but the record is still left out of the
+  calculations, because the blocking rule (section 4a) reads the stored `flags`, never `accepted_flags`.
+- **Notifications.** The server rules still leave out blocked records (stored flags). The digest counts only open problems: a record
+  whose problems are all accepted is not counted as "to validate", "left out of the numbers" or "unknown or placeholder code".
+
+`getEvents` returns the three new columns on every event.
+
 ## 7. Passwords and accounts
 
 - Passwords never leave the server in any form; `createUser` and `resetPassword`
@@ -213,7 +239,10 @@ derived by the app from live data and are never stored.
   For `seen` and `dismissed` the snooze time is cleared. One row per user and notification (upsert).
 - `saveNotificationPrefs`: unknown keys are refused, nothing is saved when any value is invalid. Keys: `alert_types` (csv of
   notification types, blank = all), `watch_areas` (csv of existing area ids, blank = all; stored in the master spelling),
-  `digest` (`none` / `daily` / `weekly`), `last_seen_at` (timestamp, stored as `YYYY-MM-DD HH:MM:SS.mmm`). `last_digest_at`
+  `digest` (`none` / `daily` / `weekly`), `last_seen_at` (timestamp, stored as `YYYY-MM-DD HH:MM:SS.mmm`), `saved_views`
+  (JSON text up to 20000 characters: a list of at most 20 objects `{ id: text 1-40, name: text 1-60, page: overview | pareto |
+  repeats | reliability | events, query: text up to 1500 }`, no other fields, unique ids; checked on the server and stored as
+  given; blank clears them). `last_digest_at`
   is written by the server when it sends a digest; it is returned by `getNotifications` but cannot be saved.
 - `runNotificationChecks`: runs every rule now, audited as `notification_check`.
 
@@ -223,6 +252,9 @@ derived by the app from live data and are never stored.
 `notif_availability_target_pct` (blank = rule off, 0-100), `notif_repeat_alert` (`true` / `false`), `notif_retention_days`
 (30, 1-3650), `app_url` (blank or `http(s)://...`, no spaces or quotes, up to 300 characters). Validated by `saveSettings` like
 every other setting; a database without these rows uses the defaults until `seedDefaults` adds them.
+
+Targets (backend 1.3.0, used by the dashboards later): `target_availability_pct` (blank = off, 0-100), `target_mtbf_h` and
+`target_mttr_h` (blank = off, more than 0 and at most 100000 hours). Validated by `saveSettings` like every other setting.
 
 ### 9.3 Rules
 
@@ -259,8 +291,8 @@ Sent by `sendDigest_` from the daily time trigger `notificationDailyJob` (Setup.
 users with an e-mail address, at most one digest per person per plant-local day, and nothing is sent when there is nothing to say.
 Content (plain text and simple HTML, counts and titles only, never event rows):
 
-- Needs action (only what the server can count, for people who could act on it): records to validate (events with a stored flag
-  other than the information flag `code_not_in_area`; the number left out of the numbers because of a blocking flag), records with an
+- Needs action (only what the server can count, for people who could act on it): records to validate (events with an OPEN flag: a stored flag
+  other than the information flag `code_not_in_area` that nobody kept as entered, section 6a; the number left out of the numbers because of a blocking flag), records with an
   unknown or placeholder code (needs `master` Edit), equipment to review (`needs_review`, needs `master` Edit). Pending late months
   are known to the browser only and are not in the e-mail.
 - New alerts since the person's `last_digest_at`: open alerts of the person's `alert_types` and `watch_areas` (an alert without an

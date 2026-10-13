@@ -33,14 +33,16 @@ export const FIELD_LABELS: Record<string, string> = {
   reason_raw: 'Reason',
   description: 'Description',
   is_void: 'Voided',
+  accepted_flags: 'Kept as entered',
 };
 export const fieldLabel = (f: string): string => t(FIELD_LABELS[f] ?? f);
 
 /** Plain-English form of a stored history value. */
 export function historyValue(field: string, v: string | undefined): string {
-  if (v === undefined || v === '') return t('(empty)');
+  if (v === undefined || v === '') return field === 'accepted_flags' ? t('(none)') : t('(empty)');
   if (field === 'freq') return v === '1' ? t('New stop') : t('Continues the stop above');
   if (field === 'is_failure') return v === 'TRUE' ? t('Yes') : t('No');
   if (field === 'is_void') return v === 'TRUE' ? t('Voided') : t('Not voided');
+  if (field === 'accepted_flags') return v.split(',').map((f) => flagLabel(f.trim())).join(', ');
   return v;
 }

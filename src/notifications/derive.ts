@@ -9,7 +9,7 @@
 // Pending late-month upload decisions exist only inside an upload in progress; the client cannot know them: skipped.
 // Items exist only for people who can act on them (Edit on events / master); viewers get none.
 import type { EventRow } from '../api/types';
-import { codeKey, splitFlags } from '../calc';
+import { codeKey, openFlagsOf } from '../calc';
 import { t, tn } from '../i18n/t';
 import { num } from '../util/format';
 import type { FeedItem } from './model';
@@ -29,14 +29,14 @@ export interface DeriveInput {
 
 export interface CodeGroup { code: string; count: number; placeholder: boolean }
 
-/** Stored events (not voided, with a code) whose flags say the code is unknown or a placeholder, per code, most rows first. */
+/** Stored events (not voided, with a code) whose OPEN flags say the code is unknown or a placeholder (flags kept as entered do not count), per code, most rows first. */
 export function groupProblemCodes(events: readonly EventRow[]): CodeGroup[] {
   const byKey = new Map<string, CodeGroup>();
   for (const e of events) {
     if (e.is_void) continue;
     const raw = (e.code_raw ?? '').trim();
     if (!raw) continue;
-    const flags = splitFlags(e.flags);
+    const flags = openFlagsOf(e);
     const placeholder = flags.includes('placeholder');
     if (!placeholder && !flags.includes('unknown_code')) continue;
     const key = codeKey(raw);

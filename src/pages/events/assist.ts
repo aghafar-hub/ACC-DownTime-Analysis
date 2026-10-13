@@ -13,4 +13,6 @@ export interface ValidateAssist {
   initialMode?: 'view' | 'edit' | 'void';
   /** called with the saved record; true closes the popup (nothing left to fix) */
   autoClose?: (updated: EventRow) => boolean;
+  /** called after the person kept problems as entered; true closes the popup (nothing left to check on this record) */
+  afterKeep?: (updated: EventRow) => boolean;
 }

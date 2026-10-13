@@ -5,8 +5,16 @@
 // comparing events (findOverlaps over the loaded events; blocked and voided ones are ignored there).
 // Voided records never appear. Information flags (code_not_in_area: "Cause in another area") are not problems:
 // they are dropped here, so a record whose only flag is one of them is simply fine and is not listed.
+//
+// "Keep as entered": flags a person acknowledged (events.accepted_flags) are not open any more. A record with only accepted
+// problems leaves the open list and is listed under "Kept as entered" instead. An accepted WARNING makes the record normal;
+// an accepted BLOCKING problem stops being something to fix but the record stays out of the numbers (calc keeps reading the
+// stored flags), so its hours are shown apart as "Kept as entered, left out of the numbers".
 import type { EventChanges, EventRow } from '../api/types';
-import { blockedSummary, BLOCKING_FLAGS, codeKey, FLAG_INFO, findOverlaps, isBlocked, isBlockingFlag, isInfoFlag, rowSeconds, splitFlags, WARNING_FLAGS } from '../calc';
+import {
+  acceptedFlagsOf, blockedSummary, BLOCKING_FLAGS, codeKey, FLAG_INFO, findOverlaps, isBlocked, isBlockingFlag, isInfoFlag, isKeptLeftOut,
+  isOpenBlocked, rowSeconds, splitFlags, WARNING_FLAGS,
+} from '../calc';
 
 export const OVERLAP_FLAG = 'overlap_in_area';
 
@@ -15,9 +23,11 @@ export const FLAG_ORDER: string[] = [...BLOCKING_FLAGS, ...WARNING_FLAGS, OVERLA
 
 export interface ValidationRecord {
   event: EventRow;
-  /** stored flags (blocking first) followed by `overlap_in_area` when the record overlaps another */
+  /** OPEN problems: stored flags (blocking first) followed by `overlap_in_area` when the record overlaps another, minus the ones kept as entered */
   problems: string[];
-  /** has at least one blocking problem: left out of the numbers until fixed */
+  /** flags of this record that were kept as entered (it can be in the open list for other problems) */
+  kept: string[];
+  /** has at least one open blocking problem: left out of the numbers until fixed */
   blocking: boolean;
   /** event ids of the records this one overlaps (empty when it does not) */
   partners: string[];
@@ -25,11 +35,24 @@ export interface ValidationRecord {
   month: string;
 }
 
+/** A record with at least one flag kept as entered. */
+export interface KeptRecord {
+  event: EventRow;
+  /** the accepted flags, catalogue order */
+  flags: string[];
+  /** blocked by a stored blocking problem and no open blocking problem left: nothing to fix, but still out of the numbers */
+  leftOut: boolean;
+  /** 'YYYY-MM' of the stop */
+  month: string;
+}
+
 export interface ValidationSummary {
-  /** records needing checking */
+  /** records needing checking (open problems) */
   total: number;
-  /** left out of the numbers (blocking problem) */
+  /** left out of the numbers and still to be fixed (open blocking problem) */
   blocked: { count: number; hours: number };
+  /** records with something kept as entered, and among them the ones still left out of the numbers (hours) */
+  kept: { count: number; leftOut: { count: number; hours: number } };
   /** analysed as they are, but worth a look (warnings or an overlap, and no blocking problem) */
   review: { count: number };
   /** records that overlap another record (blocking ones cannot: they are ignored by the overlap search) */
@@ -39,7 +62,10 @@ export interface ValidationSummary {
 }
 
 export interface ValidationList {
+  /** records with open problems */
   records: ValidationRecord[];
+  /** records with problems kept as entered, newest acceptance first */
+  keptRecords: KeptRecord[];
   summary: ValidationSummary;
 }
 
@@ -53,11 +79,30 @@ export function storedProblems(e: Pick<EventRow, 'flags'>): string[] {
   return [...new Set(splitFlags(e.flags).filter((f) => !isInfoFlag(f)))].sort((a, b) => rank(a) - rank(b));
 }
 
+/** The OPEN stored problems: storedProblems minus the flags kept as entered. */
+export function openStoredProblems(e: Pick<EventRow, 'flags' | 'accepted_flags'>): string[] {
+  const kept = new Set(acceptedFlagsOf(e));
+  return storedProblems(e).filter((f) => !kept.has(f));
+}
+
 function recordOf(e: EventRow, partners: string[]): ValidationRecord | null {
-  const problems = storedProblems(e);
-  if (partners.length) problems.push(OVERLAP_FLAG);
+  const kept = acceptedFlagsOf(e);
+  const problems = openStoredProblems(e);
+  if (partners.length && !kept.includes(OVERLAP_FLAG)) problems.push(OVERLAP_FLAG);
   if (problems.length === 0) return null;
-  return { event: e, problems, blocking: problems.some(isBlockingFlag), partners, month: e.stop_ts.slice(0, 7) };
+  return { event: e, problems, kept, blocking: problems.some(isBlockingFlag), partners, month: e.stop_ts.slice(0, 7) };
+}
+
+/** Newest acceptance first, then event id. */
+export function compareKept(a: KeptRecord, b: KeptRecord): number {
+  return (b.event.accepted_at ?? '').localeCompare(a.event.accepted_at ?? '') || a.event.event_id.localeCompare(b.event.event_id);
+}
+
+function keptOf(e: EventRow): KeptRecord | null {
+  if (e.is_void) return null;
+  const flags = acceptedFlagsOf(e);
+  if (flags.length === 0) return null;
+  return { event: e, flags, leftOut: isKeptLeftOut(e), month: e.stop_ts.slice(0, 7) };
 }
 
 /** Blocking records first, then newest stop first, then event id (a stable order). */
@@ -84,8 +129,25 @@ export function buildValidation(events: readonly EventRow[]): ValidationList {
     if (r.partners.length) overlapping++;
     if (!r.blocking) review++;
   }
-  const b = blockedSummary(events).total;
-  return { records, summary: { total: records.length, blocked: { count: b.count, hours: b.hours }, review: { count: review }, overlapping, byFlag } };
+  const keptRecords: KeptRecord[] = [];
+  for (const e of events) {
+    const k = keptOf(e);
+    if (k) keptRecords.push(k);
+  }
+  keptRecords.sort(compareKept);
+  // calc keeps reading the STORED flags: only records with an open blocking problem are "to fix"; kept ones are shown apart
+  const live = events.filter((e) => !e.is_void);
+  const b = blockedSummary(live.filter(isOpenBlocked)).total;
+  const lo = blockedSummary(live.filter(isKeptLeftOut)).total;
+  return {
+    records,
+    keptRecords,
+    summary: {
+      total: records.length, blocked: { count: b.count, hours: b.hours },
+      kept: { count: keptRecords.length, leftOut: { count: lo.count, hours: lo.hours } },
+      review: { count: review }, overlapping, byFlag,
+    },
+  };
 }
 
 /**
@@ -146,8 +208,24 @@ export function applyValidateFilter(records: readonly ValidationRecord[], f: Val
   });
 }
 
-export const areasOf = (records: readonly ValidationRecord[]): string[] => [...new Set(records.map((r) => r.event.area_id))].sort();
-export const monthsOf = (records: readonly ValidationRecord[]): string[] => [...new Set(records.map((r) => r.month))].sort().reverse();
+/** Kept-as-entered records matching the area, month and search of the filter (problem chips and "blocking only" apply to open records only). */
+export function applyKeptFilter(records: readonly KeptRecord[], f: ValidateFilter): KeptRecord[] {
+  const needle = f.q.trim().toLowerCase();
+  return records.filter((r) => {
+    const e = r.event;
+    if (f.flags.length && !f.flags.some((x) => r.flags.includes(x))) return false;
+    if (f.area && e.area_id !== f.area) return false;
+    if (f.month && r.month !== f.month) return false;
+    if (needle) {
+      const hay = `${e.code_raw} ${e.equipment_id ?? ''} ${e.reason_raw ?? ''} ${e.description ?? ''} ${e.event_id}`.toLowerCase();
+      if (!hay.includes(needle)) return false;
+    }
+    return true;
+  });
+}
+
+export const areasOf = (records: readonly Pick<ValidationRecord, 'event'>[]): string[] => [...new Set(records.map((r) => r.event.area_id))].sort();
+export const monthsOf = (records: readonly Pick<ValidationRecord, 'month'>[]): string[] => [...new Set(records.map((r) => r.month))].sort().reverse();
 
 /** The flags that occur in the records, with their counts, in catalogue order (unknown names last). */
 export function flagCounts(records: readonly ValidationRecord[]): { flag: string; count: number; blocking: boolean }[] {
@@ -255,6 +333,7 @@ export async function runBulk(
   ids: readonly string[],
   edit: (id: string) => Promise<unknown>,
   onProgress?: (index: number, total: number) => void,
+  explain: (message: string) => string = plainReason,
 ): Promise<BulkResult> {
   const done: string[] = [];
   const failed: BulkFailure[] = [];
@@ -264,8 +343,80 @@ export async function runBulk(
       await edit(ids[i]);
       done.push(ids[i]);
     } catch (err) {
-      failed.push({ id: ids[i], reason: plainReason(err instanceof Error ? err.message : String(err)) });
+      failed.push({ id: ids[i], reason: explain(err instanceof Error ? err.message : String(err)) });
     }
   }
   return { done, failed };
+}
+
+// ---------------------------------------------------------------- keep as entered
+
+/** Note the confirmation sheet starts with. */
+export const KEEP_NOTE = 'Checked: entered correctly';
+/** The server needs at least this many characters. */
+export const KEEP_NOTE_MIN = 3;
+
+/**
+ * The FULL new set of kept flags to send for one record: what it already has kept plus its open problems that are ticked.
+ * null when none of its problems is ticked (nothing to keep for it).
+ */
+export function keepSetFor(r: Pick<ValidationRecord, 'problems' | 'kept'>, ticked: ReadonlySet<string>): string[] | null {
+  const add = r.problems.filter((f) => ticked.has(f));
+  return add.length ? [...new Set([...r.kept, ...add])] : null;
+}
+
+/** The FULL new set after "Undo": what the record has kept minus the ticked flags. null when none of its kept flags is ticked. */
+export function undoSetFor(r: Pick<ValidationRecord, 'kept'>, ticked: ReadonlySet<string>): string[] | null {
+  const drop = r.kept.filter((f) => ticked.has(f));
+  return drop.length ? r.kept.filter((f) => !ticked.has(f)) : null;
+}
+
+export interface KeepConsequence {
+  /** problems the person left unticked: the record stays in the open list */
+  staysListed: boolean;
+  /** the record is blocked by a stored blocking problem, so it stays out of the numbers whatever is kept */
+  leftOut: boolean;
+  /** the plain sentence shown on the confirmation sheet */
+  sentence: string;
+}
+
+/** What keeping the ticked flags of one record means, in plain words. */
+export function keepConsequence(r: Pick<ValidationRecord, 'problems' | 'event'>, ticked: ReadonlySet<string>): KeepConsequence {
+  const staysListed = r.problems.some((f) => !ticked.has(f));
+  const leftOut = isBlocked(r.event);
+  const parts = [
+    'Nothing in the record changes.',
+    staysListed ? 'It stays listed for the problems you did not tick.' : 'It will stop being listed.',
+    leftOut ? 'It is still left out of the numbers.' : 'It counts normally.',
+  ];
+  return { staysListed, leftOut, sentence: parts.join(' ') };
+}
+
+/** The same sentence for several records at once. */
+export function keepConsequenceMany(rs: readonly Pick<ValidationRecord, 'problems' | 'event'>[], ticked: ReadonlySet<string>): string {
+  if (rs.length === 1) return keepConsequence(rs[0], ticked).sentence;
+  const cs = rs.map((r) => keepConsequence(r, ticked));
+  const out = cs.filter((c) => c.leftOut).length;
+  const parts = [
+    'Nothing in these records changes.',
+    cs.some((c) => c.staysListed) ? 'A record stays listed for any problem you did not tick.' : 'They will stop being listed.',
+    out === 0 ? 'They count normally.' : out === cs.length ? 'They are still left out of the numbers.' : `${out} of them are still left out of the numbers; ${cs.length - out} count normally.`,
+  ];
+  return parts.join(' ');
+}
+
+/** The problems on offer for a group of records: each with how many records have it, in catalogue order. */
+export function keepChoices(records: readonly Pick<ValidationRecord, 'problems'>[]): { flag: string; count: number; blocking: boolean }[] {
+  const counts = new Map<string, number>();
+  for (const r of records) for (const f of r.problems) counts.set(f, (counts.get(f) ?? 0) + 1);
+  return [...counts.entries()].sort((a, b) => rank(a[0]) - rank(b[0]) || a[0].localeCompare(b[0])).map(([flag, count]) => ({ flag, count, blocking: isBlockingFlag(flag) }));
+}
+
+/** Server messages for keep / undo in the words a person would use. */
+export function plainKeepReason(message: string): string {
+  const m = (message || '').trim();
+  if (/nothing was changed/i.test(m)) return 'It is already kept like this, so there was nothing to change.';
+  if (/does not have the problem/i.test(m)) return 'It no longer has this problem (it may have been fixed since the list was loaded).';
+  if (/void/i.test(m)) return 'It is voided. Restore it before changing it.';
+  return m || 'The server refused this change.';
 }

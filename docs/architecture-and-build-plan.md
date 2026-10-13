@@ -250,6 +250,16 @@ needs a decision at upload. The equipment finder in the edit form offers every a
 (the stopped area's first, then "Other areas" with their owner area), and the Pareto card
 "Stopped by other areas" shows each code's owner area and the area it stopped.
 
+**Keep as entered (backend 1.3.0).** When a flagged record is correct exactly as written, a user with Edit access presses
+**Keep as entered** (one record, or all ticked rows at once). Nothing in the record changes: the flags are acknowledged in
+`events.accepted_flags` with who, when (`accepted_by`, `accepted_at`) and why (an `event_edits` row, field `accepted_flags`).
+An accepted *warning* is resolved and the record is normal everywhere. An accepted *blocking* flag stops being something to fix
+(it leaves the Validate list, the badge, the banner and the notifications) but the record is **still left out of the numbers**,
+because it still cannot be calculated; its hours are shown on Validate as "kept as entered, left out of the numbers". The
+**Kept as entered** view lists accepted records with an Undo. Editing a record or re-checking drops accepted flags the record no
+longer has. Helpers: `acceptedFlagsOf` and `openFlagsOf` in `src/calc/flags.ts`; the calc layer (`isBlocked`) keeps reading the stored
+flags. Details: `docs/wire-protocol.md` section 6a.
+
 ### 6.1 Correcting stored events
 
 Upload and correction are separate. Upload never modifies a stored row; the

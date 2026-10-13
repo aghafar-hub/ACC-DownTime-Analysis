@@ -7,7 +7,7 @@ import { useSettingsData } from './useSettingsData';
 import '../../components/ui.css';
 import '../admin.css';
 
-/** Settings > Calculations: availability basis, scheduled hours, repeated-failure rule, duration bands, target. */
+/** Settings > Calculations: availability basis, scheduled hours, repeated-failure rule, duration bands, targets. */
 export default function Calculations() {
   const { st, settings, last, edit, toastNode, toast } = useSettingsData();
   return (
@@ -20,7 +20,7 @@ export default function Calculations() {
         <Tile icon="clock" label={t('Last changed')} value={last ? last.slice(0, 10) : t('never')} sub={last ? whenText(last.replace(' ', 'T')) : undefined} testid="fact-last-changed" />
       </div>
       <DataNotes st={st} />
-      {st.startup && <SettingsForm settings={settings} canEdit={edit} groupIds={['availability', 'rules']} onSaved={(text) => { toast(text); st.reload(); }} />}
+      {st.startup && <SettingsForm settings={settings} canEdit={edit} groupIds={['availability', 'rules', 'targets']} onSaved={(text) => { toast(text); st.reload(); }} />}
       {toastNode}
     </div>
   );

@@ -442,6 +442,249 @@ test.describe('validate (desktop)', () => {
     await expect(page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Validate/ })).toHaveClass(/module-tab--active/);
   });
 
+
+  // ---------------------------------------------------------------- keep as entered
+  const keptCount = async (page: Page) => num(await page.getByTestId('v-count-kept').textContent());
+  const keptHours = async (page: Page) => num(await page.getByTestId('v-kept-hours').textContent());
+  const reviewCount = async (page: Page) => num(await page.getByTestId('v-count-review').textContent());
+  /** The first row of the current list that has exactly one problem badge and the given blocking state. */
+  async function singleProblemRow(page: Page, blocking: 'yes' | 'no') {
+    const all = rows(page).filter({ has: page.locator(`xpath=self::*[@data-blocking="${blocking}"]`) });
+    const n = await all.count();
+    for (let i = 0; i < n; i++) {
+      const r = all.nth(i);
+      if ((await r.getByTestId('v-flag').count()) === 1) return r;
+    }
+    throw new Error('no single-problem row');
+  }
+
+  test('keep a warning record as entered: leaves Open, counts drop, shows under Kept as entered with its note, Undo brings it back', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'unknown_code').click();
+    const row = await singleProblemRow(page, 'no');
+    const id = (await row.getAttribute('data-event-id'))!;
+    await page.getByTestId('v-reset').click();
+    const review0 = await reviewCount(page);
+    const blocked0 = await blockedCount(page);
+    const badge0 = num(await page.getByTestId('validate-badge-tab').textContent());
+    const kept0 = await keptCount(page);
+    const hours0 = await keptHours(page);
+    const subtitleTotal0 = num(await page.getByTestId('page-subtitle').textContent());
+
+    await page.getByTestId('v-search').fill(id);
+    await page.locator(`[data-event-id="${id}"]`).getByTestId('v-keep-btn').click();
+    const modal = page.getByTestId('keep-modal');
+    await expect(modal).toBeVisible();
+    await expect(page.getByTestId('keep-flag-box')).toHaveCount(1);
+    await expect(page.getByTestId('keep-flag-box')).toBeChecked();
+    await expect(page.getByTestId('keep-note')).toHaveValue('Checked: entered correctly');
+    await expect(page.getByTestId('keep-sentence')).toHaveText('Nothing in the record changes. It will stop being listed. It counts normally.');
+    // unticking everything, or an empty note, is refused in plain words
+    await page.getByTestId('keep-flag-box').uncheck();
+    await page.getByTestId('keep-apply').click();
+    await expect(page.getByTestId('keep-error')).toContainText('Tick at least one problem');
+    await page.getByTestId('keep-flag-box').check();
+    await page.getByTestId('keep-note').fill('ab');
+    await page.getByTestId('keep-apply').click();
+    await expect(page.getByTestId('keep-error')).toContainText('at least 3 characters');
+    await page.getByTestId('keep-note').fill('Code is correct, the master list is behind');
+    await page.getByTestId('keep-apply').click();
+    await expect(page.getByTestId('keep-result')).toContainText('Kept 1 of 1 records as entered');
+    await page.getByTestId('keep-close').click();
+    await expect(page.getByTestId('v-fixed')).toContainText('Kept as entered');
+
+    // it left the Open list, the numbers dropped, nothing else moved
+    await page.getByTestId('v-reset').click();
+    await expect(page.locator(`[data-event-id="${id}"]`)).toHaveCount(0);
+    expect(await reviewCount(page)).toBe(review0 - 1);
+    expect(await blockedCount(page)).toBe(blocked0);
+    expect(num(await page.getByTestId('validate-badge-tab').textContent())).toBe(badge0 - 1);
+    expect(num(await page.getByTestId('page-subtitle').textContent())).toBe(subtitleTotal0 - 1);
+    expect(await keptCount(page)).toBe(kept0 + 1);
+    expect(await keptHours(page)).toBe(hours0); // a warning record counts normally: no hours set aside
+
+    // it is under Kept as entered, with who, when and why
+    await page.getByTestId('v-view-kept').click();
+    const k = page.locator(`[data-testid="v-kept-row"][data-event-id="${id}"]`);
+    await expect(k).toBeVisible();
+    await expect(k.getByTestId('v-kept-by')).toContainText('Kept as entered by');
+    await expect(k.getByTestId('v-kept-by')).toContainText('Demo');
+    await expect(k.getByTestId('v-kept-note')).toHaveText('Code is correct, the master list is behind', { timeout: 15000 });
+    await expect(k.getByTestId('v-kept-leftout')).toHaveCount(0);
+    await expect(k.getByTestId('v-kept-flag')).toHaveAttribute('data-flag', 'unknown_code');
+    // the popup says it too, and its history has the entry
+    await k.locator('.row-link').click();
+    await expect(page.getByTestId('detail-kept-by')).toContainText('Kept as entered by');
+    await expect(page.getByTestId('detail-kept-note')).toHaveText('Code is correct, the master list is behind');
+    await expect(page.getByTestId('detail-no-issues')).toHaveText('No open data issues.');
+    await expect(page.getByTestId('history-item').first()).toContainText('Kept as entered');
+    await page.getByTestId('modal-close').click();
+
+    // Undo brings it back to Open
+    await k.getByTestId('v-undo-btn').click();
+    await expect(page.getByTestId('keep-sentence')).toContainText('listed under Open again');
+    await expect(page.getByTestId('keep-note')).toHaveValue('Needs checking again');
+    await page.getByTestId('keep-apply').click();
+    await expect(page.getByTestId('keep-result')).toContainText('Undone on 1 of 1 records');
+    await page.getByTestId('keep-close').click();
+    await expect(k).toHaveCount(0);
+    await page.getByTestId('v-view-open').click();
+    await page.getByTestId('v-search').fill(id);
+    await expect(page.locator(`[data-event-id="${id}"]`)).toHaveCount(1);
+    await page.getByTestId('v-reset').click();
+    expect(await reviewCount(page)).toBe(review0);
+    expect(await keptCount(page)).toBe(kept0);
+    expect(num(await page.getByTestId('validate-badge-tab').textContent())).toBe(badge0);
+  });
+
+  test('keep a blocking record as entered: leaves Open, Overview numbers do not move, its hours are counted as kept and left out', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'missing_classification').click();
+    const row = await singleProblemRow(page, 'yes');
+    const id = (await row.getAttribute('data-event-id'))!;
+    const month = (await row.locator('.row-link').textContent())!.slice(0, 7);
+    await page.getByTestId('v-reset').click();
+    const blocked0 = await blockedCount(page);
+    const kept0 = await keptCount(page);
+    const hours0 = await keptHours(page);
+    const badge0 = num(await page.getByTestId('validate-badge-tab').textContent());
+
+    await page.goto(`/#/overview?r=month&m=${month}&cmp=none`);
+    await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId('validation-banner')).toBeVisible();
+    expect(num(await page.getByTestId('validation-banner').textContent())).toBe(blocked0);
+    const overview0 = num(await page.getByTestId('kpi-total-hours-value').textContent());
+
+    await page.goto('/#/validate');
+    await page.getByTestId('v-search').fill(id);
+    await page.locator(`[data-event-id="${id}"]`).getByTestId('v-keep-btn').click();
+    await expect(page.getByTestId('keep-sentence')).toHaveText('Nothing in the record changes. It will stop being listed. It is still left out of the numbers.');
+    await page.getByTestId('keep-apply').click();
+    await expect(page.getByTestId('keep-result')).toContainText('Kept 1 of 1');
+    await page.getByTestId('keep-close').click();
+    await page.getByTestId('v-reset').click();
+    await expect(page.locator(`[data-event-id="${id}"]`)).toHaveCount(0);
+    expect(await blockedCount(page)).toBe(blocked0 - 1);
+    expect(num(await page.getByTestId('validate-badge-tab').textContent())).toBe(badge0 - 1);
+    expect(await keptCount(page)).toBe(kept0 + 1);
+    expect(await keptHours(page)).toBeGreaterThan(hours0); // set aside, not counted
+
+    // the Overview number is unchanged: the record is still left out; the banner no longer counts it
+    await page.goto(`/#/overview?r=month&m=${month}&cmp=none`);
+    await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
+    expect(num(await page.getByTestId('kpi-total-hours-value').textContent())).toBe(overview0);
+    expect(num(await page.getByTestId('validation-banner').textContent())).toBe(blocked0 - 1);
+
+    // it shows under Kept as entered as still left out of the numbers; Event Explorer shows a neutral badge, no problem badge
+    await page.goto('/#/validate');
+    await page.getByTestId('v-view-kept').click();
+    await page.getByTestId('v-search').fill(id);
+    const k = page.locator(`[data-testid="v-kept-row"][data-event-id="${id}"]`);
+    await expect(k.getByTestId('v-kept-leftout')).toContainText('left out of the numbers');
+    await page.goto('/#/events');
+    await page.getByTestId('event-search').fill(id);
+    const ex = page.locator(`[data-event-id="${id}"]`);
+    await expect(ex.getByTestId('badge-kept')).toBeVisible();
+    await expect(ex.getByTestId('badge-flag')).toHaveCount(0);
+    await page.getByTestId('filter-show').selectOption('issues');
+    await expect(ex).toHaveCount(0);
+  });
+
+  test('bulk keep: one note for all, progress, and a record with nothing ticked is listed as refused', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'unknown_code').click();
+    const picks: string[] = [];
+    const warn = rows(page).filter({ has: page.locator('xpath=self::*[@data-blocking="no"]') });
+    for (let i = 0; i < (await warn.count()) && picks.length < 2; i++) {
+      const r = warn.nth(i);
+      await r.getByTestId('v-tick').check();
+      picks.push((await r.getAttribute('data-event-id'))!);
+    }
+    expect(picks).toHaveLength(2);
+    await page.getByTestId('v-reset').click();
+    await chip(page, 'blank_reason').click();
+    const only = rows(page).filter({ has: page.locator('xpath=self::*[@data-blocking="no"]') });
+    let refusedId = '';
+    for (let i = 0; i < (await only.count()); i++) {
+      const r = only.nth(i);
+      if ((await r.getByTestId('v-flag').count()) === 1 && !picks.includes((await r.getAttribute('data-event-id'))!)) {
+        await r.getByTestId('v-tick').check();
+        refusedId = (await r.getAttribute('data-event-id'))!;
+        break;
+      }
+    }
+    expect(refusedId).not.toBe('');
+    await page.getByTestId('v-reset').click();
+    const kept0 = await keptCount(page);
+    await expect(page.getByTestId('v-selected')).toContainText('3 records');
+    await page.getByTestId('v-keep-open').click();
+    await expect(page.getByTestId('keep-modal')).toBeVisible();
+    await expect(page.getByTestId('keep-flag-unknown_code')).toContainText('records');
+    await page.getByTestId('keep-flag-blank_reason').locator('input').uncheck(); // the third record has only this problem
+    await expect(page.getByTestId('keep-note')).toHaveValue('Checked: entered correctly');
+    await page.getByTestId('keep-note').fill('Bulk check of the unknown codes');
+    await page.getByTestId('keep-apply').click();
+    await expect(page.getByTestId('keep-result')).toContainText('Kept 2 of 3 records as entered');
+    await expect(page.getByTestId('keep-refused-item')).toHaveCount(1);
+    await expect(page.getByTestId('keep-refused-item')).toHaveAttribute('data-event-id', refusedId);
+    await expect(page.getByTestId('keep-refused-item')).toContainText('none of the problems you ticked');
+    await page.getByTestId('keep-close').click();
+    // the refused record stays ticked; the kept ones left the selection
+    await expect(page.getByTestId('v-selected')).toContainText('1 record');
+    expect(await keptCount(page)).toBe(kept0 + 2);
+    await page.getByTestId('v-view-kept').click();
+    for (const id of picks) await expect(page.locator(`[data-testid="v-kept-row"][data-event-id="${id}"]`)).toBeVisible();
+  });
+
+  test('view-only people see what was kept, read-only: no Keep button, no Undo', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'unknown_code').click();
+    const row = await singleProblemRow(page, 'no');
+    const id = (await row.getAttribute('data-event-id'))!;
+    await row.getByTestId('v-keep-btn').click();
+    await page.getByTestId('keep-note').fill('Checked for the viewer test');
+    await page.getByTestId('keep-apply').click();
+    await expect(page.getByTestId('keep-result')).toBeVisible();
+    await page.getByTestId('keep-close').click();
+    // sign out and in as the viewer without reloading (the made-up data stays in memory)
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('sign-out').click();
+    await page.getByTestId('login-email').fill('viewer@demo.test');
+    await page.getByTestId('login-password').fill('Demo-Pass-1234');
+    await page.getByTestId('login-submit').click();
+    await expect(page.getByTestId('page-title')).toBeVisible();
+    await page.goto('/#/validate');
+    await expect(page.getByTestId('v-count-kept')).toBeVisible({ timeout: 20000 });
+    await expect(page.getByTestId('v-keep-btn')).toHaveCount(0);
+    await expect(page.getByTestId('v-tick')).toHaveCount(0);
+    await expect(page.getByTestId('v-keep-open')).toHaveCount(0);
+    await page.getByTestId('v-view-kept').click();
+    const k = page.locator(`[data-testid="v-kept-row"][data-event-id="${id}"]`);
+    await expect(k).toBeVisible();
+    await expect(k.getByTestId('v-kept-note')).toHaveText('Checked for the viewer test', { timeout: 15000 });
+    await expect(page.getByTestId('v-undo-btn')).toHaveCount(0);
+    await k.locator('.row-link').click();
+    await expect(page.getByTestId('detail-kept-by')).toBeVisible();
+    await expect(page.getByTestId('detail-undo')).toHaveCount(0);
+    await expect(page.getByTestId('keep-event')).toHaveCount(0);
+  });
+
+  test('the popup of an open record has Keep as entered, and the record leaves the list', async ({ page }) => {
+    await openValidate(page, 'engineer');
+    await chip(page, 'unknown_code').click();
+    const row = await singleProblemRow(page, 'no');
+    const id = (await row.getAttribute('data-event-id'))!;
+    await row.locator('.row-link').click();
+    await page.getByTestId('keep-event').click();
+    await expect(page.getByTestId('keep-modal')).toBeVisible();
+    await page.getByTestId('keep-apply').click();
+    await expect(page.getByTestId('keep-result')).toContainText('Kept 1 of 1');
+    await page.getByTestId('keep-close').click();
+    await expect(page.getByTestId('event-detail')).toHaveCount(0);
+    await expect(page.getByTestId('v-fixed')).toContainText('Kept as entered');
+    await expect(page.locator(`[data-event-id="${id}"]`)).toHaveCount(0);
+  });
+
   test('size and text on the desktop page', async ({ page }) => {
     await openValidate(page, 'engineer');
     await rows(page).first().locator('.row-link').click();
@@ -506,6 +749,41 @@ for (const width of [360, 390]) {
       await expect(page.getByTestId('f-note')).toBeVisible();
       expect(await smallTargets(page)).toEqual([]);
       expect(await smallText(page)).toEqual([]);
+      expect((await noSidewaysScroll(page)).ok).toBe(true);
+    });
+
+    test('keep as entered on a phone: button on the card, sheet and Kept as entered view fit', async ({ page }) => {
+      await signInAndWait(page, 'engineer');
+      await page.goto('/#/validate');
+      await expect(page.getByTestId('v-cards')).toBeVisible();
+      await expect(page.getByTestId('v-view')).toBeVisible();
+      const card = page.getByTestId('v-card').filter({ has: page.locator('xpath=self::*[@data-blocking="no"]') }).first();
+      const id = (await card.getAttribute('data-event-id'))!;
+      await expect(card.getByTestId('v-keep-btn')).toBeVisible();
+      expect(await smallTargets(page)).toEqual([]);
+      expect((await noSidewaysScroll(page)).ok).toBe(true);
+      await card.getByTestId('v-keep-btn').click();
+      await expect(page.getByTestId('keep-modal')).toBeVisible();
+      expect(await smallTargets(page)).toEqual([]);
+      expect(await smallText(page)).toEqual([]);
+      expect((await noSidewaysScroll(page)).ok).toBe(true);
+      await page.getByTestId('keep-apply').click();
+      await expect(page.getByTestId('keep-result')).toBeVisible();
+      await page.getByTestId('keep-close').click();
+      await page.getByTestId('v-view-kept').click();
+      const k = page.locator(`[data-testid="v-kept-card"][data-event-id="${id}"]`);
+      await expect(k).toBeVisible();
+      await expect(k.getByTestId('v-kept-by')).toContainText('Kept as entered by');
+      await expect(k.getByTestId('v-undo-btn')).toBeVisible();
+      expect(await smallTargets(page)).toEqual([]);
+      expect(await smallText(page)).toEqual([]);
+      expect((await noSidewaysScroll(page)).ok).toBe(true);
+      await expect(page.getByTestId('v-phone-summary')).toContainText('kept as entered');
+      // the bulk bar offers Keep as entered beside the bulk edit
+      await page.getByTestId('v-view-open').click();
+      await page.getByTestId('v-tick').first().check();
+      await expect(page.getByTestId('v-keep-open')).toBeVisible();
+      expect(await smallTargets(page)).toEqual([]);
       expect((await noSidewaysScroll(page)).ok).toBe(true);
     });
 

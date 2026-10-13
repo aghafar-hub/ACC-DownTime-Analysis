@@ -93,14 +93,15 @@ test('accept a warning: only accepted_* change, one history row, one audit row',
 
 test('partial accept, change of set, partial undo and undo all (the set sent is the full new set)', () => {
   const { env, admin, two } = world();
-  assert.equal(two.flags, 'placeholder,blank_reason');
+  assert.equal(two.flags, 'unknown_code,placeholder,blank_reason');
   let r = accept(env, admin.token, two, ['blank_reason', 'placeholder']).data; // any order, stored in catalogue order
   assert.equal(r.accepted_flags, 'placeholder,blank_reason');
   env.advance(60000);
   r = accept(env, admin.token, two, ['placeholder']).data; // fewer = undo one
   assert.equal(r.accepted_flags, 'placeholder');
-  assert.equal(r.flags, 'placeholder,blank_reason');
+  assert.equal(r.flags, 'unknown_code,placeholder,blank_reason');
   const t1 = r.accepted_at;
+  env.advance(60000);
   r = accept(env, admin.token, two, []).data; // empty = undo all
   assert.equal(r.accepted_flags, '');
   assert.equal(r.accepted_by, '');
@@ -119,7 +120,7 @@ test('refusals: unknown flag, short note, repeat, flag the record does not have,
   bad(accept(env, admin.token, warn, [7]), /Unknown flag/);
   bad(accept(env, admin.token, warn, ['unknown_code'], 'ok'), /at least 3/);
   bad(accept(env, admin.token, warn, ['unknown_code'], '   '), /required/);
-  bad(accept(env, admin.token, warn, ['unknown_code'], undefined), /required/);
+  bad(accept(env, admin.token, warn, ['unknown_code'], null), /required/);
   bad(accept(env, admin.token, warn, ['placeholder']), /does not have the problem/);
   bad(accept(env, admin.token, clean, ['unknown_code']), /does not have the problem/);
   bad(accept(env, admin.token, warn, []), /Nothing was changed/); // nothing accepted, nothing to undo
@@ -172,7 +173,7 @@ test('pruning: an edit drops accepted flags the record no longer has; others sta
   // fixing the reason removes blank_reason (still unlisted? 'Bearing failure' is listed for MEC) and keeps the placeholder
   const ed = env.call('editEvent', admin.token, { eventId: two.event_id, changes: { reason_raw: 'Bearing failure' }, note: 'Reason found' });
   assert.equal(ed.status, 'ok');
-  assert.equal(ed.data.flags, 'placeholder');
+  assert.equal(ed.data.flags, 'unknown_code,placeholder');
   assert.equal(ed.data.accepted_flags, 'placeholder');
   assert.equal(ed.data.accepted_by, admin.user_id, 'who accepted stays while something is still accepted');
   const h = history(env, two);
@@ -224,9 +225,9 @@ test('notifications: accepted flags are not counted as records to validate; bloc
   assert.deepEqual(count(), { validate: 3, blocked: 1, codes: 2 });
   accept(env, admin.token, warn, ['unknown_code']);
   assert.deepEqual(count(), { validate: 2, blocked: 1, codes: 1 });
-  accept(env, admin.token, two, ['placeholder']); // blank_reason still open
+  accept(env, admin.token, two, ['unknown_code', 'placeholder']); // blank_reason still open
   assert.deepEqual(count(), { validate: 2, blocked: 1, codes: 0 });
-  accept(env, admin.token, two, ['placeholder', 'blank_reason']);
+  accept(env, admin.token, two, ['unknown_code', 'placeholder', 'blank_reason']);
   assert.deepEqual(count(), { validate: 1, blocked: 1, codes: 0 });
   accept(env, admin.token, block, ['missing_classification']);
   assert.deepEqual(count(), { validate: 0, blocked: 0, codes: 0 });

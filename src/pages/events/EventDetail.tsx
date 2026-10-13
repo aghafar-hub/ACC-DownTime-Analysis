@@ -3,7 +3,9 @@ import { api, describeError } from '../../api';
 import type { ClassificationCode, EventChanges, EventEdit, EventRow, Startup } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import ShellModal, { FormSection } from '../../components/ShellModal';
-import { FLAG_INFO, isBlockingFlag, isInfoFlag } from '../../calc/flags';
+import { acceptedFlagsOf, FLAG_INFO, isBlockingFlag, isInfoFlag, openFlagsOf } from '../../calc/flags';
+import KeepModal from '../../validate/KeepModal';
+import { useUserNames } from '../../validate/useKeepInfo';
 import { SAVE_BLOCKED_EVENT } from '../../components/SaveBlockedToast';
 import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
@@ -70,7 +72,7 @@ function reasonText(startup: Startup | null, r: EventRow): string {
 }
 
 function resultSummary(startup: Startup | null, u: EventRow): string[] {
-  const flags = flagList(u).filter((f) => !isInfoFlag(f));
+  const flags = openFlagsOf(u);
   return [
     t('Duration: {d}', { d: duration(u.duration_s) }),
     u.is_area_level ? t('Equipment: the whole area (N/A)') : u.equipment_id ? t('Equipment: {id}', { id: u.equipment_id }) : t('Equipment: not in the equipment list'),
@@ -96,6 +98,9 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ title: string; lines: string[] } | null>(null);
+  const [keepMode, setKeepMode] = useState<'keep' | 'undo' | null>(null);
+  const [lastKept, setLastKept] = useState<EventRow | null>(null);
+  const userName = useUserNames();
 
   const loadHistory = useCallback(() => {
     if (!token) return;
@@ -115,8 +120,10 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
     () => (startup?.reasons.filter((r) => r.classification === form.classification && r.active).map((r) => r.text_as_listed.trim()) ?? []),
     [startup, form.classification],
   );
-  // the stored problems (information flags are not problems), plus the overlap found by comparing records (Validate page)
-  const flags = [...flagList(row).filter((f) => !isInfoFlag(f)), ...(assist?.overlaps?.length ? ['overlap_in_area'] : [])];
+  // the OPEN stored problems (information flags are not problems; flags kept as entered are not open), plus the overlap found by comparing records (Validate page)
+  const kept = acceptedFlagsOf(row);
+  const flags = [...openFlagsOf(row), ...(assist?.overlaps?.length && !kept.includes('overlap_in_area') ? ['overlap_in_area'] : [])];
+  const keptNoteRow = (history ?? []).filter((h) => h.field === 'accepted_flags' && (h.new_value ?? '') !== '').at(-1);
   const ownerLookup = useMemo(() => buildOwnerLookup(startup?.equipment_areas), [startup]);
   const crossOwners = ownersOfRow(row, ownerLookup);
   const crossArea = flagList(row).some(isInfoFlag);
@@ -204,6 +211,23 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
     }
   }
 
+  function startKeep(mode: 'keep' | 'undo') {
+    if (blockedOffline) return window.dispatchEvent(new CustomEvent(SAVE_BLOCKED_EVENT, { detail: { message: t('Editing needs a connection.') } }));
+    setLastKept(null);
+    setKeepMode(mode);
+  }
+  function endKeep() {
+    const mode = keepMode;
+    setKeepMode(null);
+    if (!lastKept) return;
+    if (mode === 'keep' && assist?.afterKeep?.(lastKept)) {
+      onClose();
+      return;
+    }
+    setResult({ title: mode === 'undo' ? t('Undone. The record is listed under Open again.') : t('Kept as entered. Nothing in the record was changed.'), lines: [] });
+    loadHistory();
+  }
+
   const upd = <K extends keyof Form>(k: K, v: Form[K]) => setForm((f) => ({ ...f, [k]: v }));
   const err = (k: string) => errors[k] && <span className="field-error" role="alert" data-testid={`error-${k}`}>{errors[k]}</span>;
   const startBeforeStop = parseTs(fromInput(form.start_ts)) !== null && parseTs(fromInput(form.stop_ts)) !== null && parseTs(fromInput(form.start_ts))! < parseTs(fromInput(form.stop_ts))!;
@@ -220,6 +244,11 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
               </button>
             ) : (
               <>
+                {flags.length > 0 && (
+                  <button type="button" className="btn" onClick={() => startKeep('keep')} data-testid="keep-event">
+                    <Icon name="check" size={15} /> {t('Keep as entered')}
+                  </button>
+                )}
                 <button type="button" className="btn-danger" onClick={startVoid} data-testid="void-event">
                   <Icon name="ban" size={15} /> {t('Void')}
                 </button>
@@ -244,6 +273,18 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
         </button>
       </>
     );
+
+  if (keepMode) {
+    return (
+      <KeepModal
+        mode={keepMode}
+        targets={[{ event: row, problems: keepMode === 'keep' ? flags : [], kept }]}
+        onClose={endKeep}
+        onSaved={(updated) => { setLastKept(updated); onChanged(updated); }}
+        onFinished={() => undefined}
+      />
+    );
+  }
 
   return (
     <ShellModal
@@ -309,7 +350,7 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
               </div>
             )}
             {flags.length === 0 ? (
-              <p className="muted" style={{ margin: 0, marginTop: crossArea ? 8 : 0 }}>{t('No data issues found.')}</p>
+              <p className="muted" style={{ margin: 0, marginTop: crossArea ? 8 : 0 }} data-testid="detail-no-issues">{kept.length > 0 ? t('No open data issues.') : t('No data issues found.')}</p>
             ) : (
               <ul className="history" data-testid="detail-flags">
                 {flags.map((f) => {
@@ -340,6 +381,27 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
                   );
                 })}
               </ul>
+            )}
+            {kept.length > 0 && (
+              <div className="callout" role="note" data-testid="detail-kept" style={{ marginTop: 10 }}>
+                <Icon name="check" size={16} />
+                <span>
+                  <b data-testid="detail-kept-by">{t('Kept as entered by {name} on {date}', { name: userName(row.accepted_by), date: (row.accepted_at ?? '').slice(0, 16) })}</b>
+                  {keptNoteRow?.note ? <>{': '}<span data-testid="detail-kept-note">{keptNoteRow.note}</span></> : null}
+                  <span style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                    {kept.map((f) => <span key={f} className="badge" data-testid="detail-kept-flag" data-flag={f}><span aria-hidden="true">✓</span> {flagLabel(f)}</span>)}
+                  </span>
+                  <span className="muted" style={{ display: 'block', marginTop: 6 }}>
+                    {t('Nothing in the record was changed.')}{' '}
+                    {kept.some(isBlockingFlag) ? t('A record with a kept ◆ problem is still left out of the numbers because it cannot be calculated.') : t('It counts normally.')}
+                  </span>
+                </span>
+                {canEdit && !row.is_void && (
+                  <button type="button" className="btn btn-sm" onClick={() => startKeep('undo')} data-testid="detail-undo" style={{ minHeight: 44 }}>
+                    <Icon name="history" size={14} /> {t('Undo')}
+                  </button>
+                )}
+              </div>
             )}
           </FormSection>
 
