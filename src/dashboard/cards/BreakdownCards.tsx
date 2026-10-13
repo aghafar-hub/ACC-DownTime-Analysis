@@ -35,6 +35,7 @@ function BarAxis({ max, unit, format = (n: number) => String(n) }: { max: number
 // ---------------------------------------------------------------- (3) what kind of stoppage
 
 export function ClassCard({ ctx, filters, dark, classNames, onOpen }: { ctx: DashCtx; filters: DashFilters; dark: boolean; classNames: Map<string, string>; onOpen: OpenFn }) {
+  const mobile = useIsMobile();
   const eff = ctx.win.effective!;
   const m = useMemo(() => classHours(ctx), [ctx]);
   const ids = useMemo(() => idsWithHours(ctx, eff), [ctx, eff]);
@@ -62,7 +63,7 @@ export function ClassCard({ ctx, filters, dark, classNames, onOpen }: { ctx: Das
       summary={summary} scope={scopeText(eff, filters, 'none')} open={{ ids, label: t('Stoppage by classification') }} onOpen={onOpen}
     >
       <div className="class-wrap">
-        <Donut slices={['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'].map((c) => ({ paint: paint(c), value: m.hours[c]! }))} centre={fh(m.total)} centreSub={t('h total')} ariaLabel={summary} />
+        <Donut size={mobile ? 132 : 172} slices={['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'].map((c) => ({ paint: paint(c), value: m.hours[c]! }))} centre={fh(m.total)} centreSub={t('h total')} ariaLabel={summary} />
         <table className="class-table" data-testid="class-table">
           <thead><tr><th scope="col">{t('Class')}</th><th scope="col" className="num">h</th><th scope="col" className="num">%</th></tr></thead>
           <tbody>
@@ -131,7 +132,7 @@ export function LossesCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Da
         <>
           <p className="loss-head" data-testid="pareto-honest">
             <span className="pill pill--accent">{topLabel}</span>
-            {needText && <span>{t('80% needs')} <b>{need} {need === 1 ? t('item') : t('items')}</b></span>}
+            {needText && <span>{t('80% needs')} <b>{need} {need === 1 ? t('item') : t('items')}</b>{mobile ? ` · ${t('dashed = 80%')}` : ''}</span>}
           </p>
           <div className="loss-grid" style={{ '--row-h': `${rowH}px` } as CSSProperties}>
             <div className="loss-rows" role="list">
@@ -156,20 +157,32 @@ export function LossesCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Da
               })}
               <div className="loss-axis-row" aria-hidden="true"><span /><BarAxis max={scale.max} unit={unit} /></div>
             </div>
-            <div className="loss-cum" aria-hidden="true">
-              <span className="loss-cum-head">{t('Cumulative % of {t}', { t: `${f(m!.all.total)} ${unit}` })}</span>
-              <svg width="100%" height={cumH} viewBox={`0 0 100 ${cumH}`} preserveAspectRatio="none" className="loss-cum-svg">
-                <rect x="0" y="0" width="100" height={cumH} fill="var(--tk-card-sub-bg)" />
-                <line x1={cx(80)} x2={cx(80)} y1={0} y2={cumH} stroke="var(--tk-text-primary)" strokeWidth="1.2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
-                <polyline points={top.map((b, i) => `${cx(b.cumulativePct)},${i * rowH + rowH / 2}`).join(' ')} fill="none" stroke="var(--tk-text-secondary)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
-              </svg>
-              <div className="loss-cum-labels" style={{ height: cumH }}>
-                {top.map((b, i) => (
-                  <span key={b.key} style={{ top: i * rowH, left: `${Math.min(70, cx(b.cumulativePct))}%` }}><i className="loss-dot" />{b.cumulativePct.toFixed(1)}%</span>
+            {mobile ? (
+              <div className="loss-cum loss-cum--list" aria-hidden="true">
+                <span className="loss-cum-head">{t('Cum. %')}</span>
+                {top.map((b) => (
+                  <span key={b.key} className="loss-cum-item" style={{ height: rowH }}>
+                    <span>{b.cumulativePct.toFixed(1)}%</span>
+                    <span className="loss-cum-track"><span style={{ width: `${Math.min(100, b.cumulativePct)}%` }} /></span>
+                  </span>
                 ))}
               </div>
-              <div className="loss-cum-axis"><span>0%</span><span>50%</span><b>80%</b></div>
-            </div>
+            ) : (
+              <div className="loss-cum" aria-hidden="true">
+                <span className="loss-cum-head">{t('Cumulative % of {t}', { t: `${f(m!.all.total)} ${unit}` })}</span>
+                <svg width="100%" height={cumH} viewBox={`0 0 100 ${cumH}`} preserveAspectRatio="none" className="loss-cum-svg">
+                  <rect x="0" y="0" width="100" height={cumH} fill="var(--tk-card-sub-bg)" />
+                  <line x1={cx(80)} x2={cx(80)} y1={0} y2={cumH} stroke="var(--tk-text-primary)" strokeWidth="1.2" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+                  <polyline points={top.map((b, i) => `${cx(b.cumulativePct)},${i * rowH + rowH / 2}`).join(' ')} fill="none" stroke="var(--tk-text-secondary)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" />
+                </svg>
+                <div className="loss-cum-labels" style={{ height: cumH }}>
+                  {top.map((b, i) => (
+                    <span key={b.key} style={{ top: i * rowH, left: `${Math.min(70, cx(b.cumulativePct))}%` }}><i className="loss-dot" />{b.cumulativePct.toFixed(1)}%</span>
+                  ))}
+                </div>
+                <div className="loss-cum-axis"><span>0%</span><span>50%</span><b>80%</b></div>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -186,7 +199,7 @@ function SplitBar({ s, paints, testid }: { s: TypeSplit; paints: Paint[]; testid
       {vals.map((v, i) => {
         const p = pct0(v, s.total);
         if (!(v > 0)) return null;
-        const label = p >= 14 ? `${paints[i]!.short} ${p}%` : p >= 7 ? `${p}%` : '';
+        const label = p >= 24 ? `${paints[i]!.short} ${p}%` : p >= 9 ? `${p}%` : '';
         return <span key={i} className="split-seg" style={{ ...paintCss(paints[i]!), flexGrow: v }}>{label && <span className="split-txt">{label}</span>}</span>;
       })}
     </div>
@@ -333,8 +346,8 @@ export function AreaTargetCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters
         <div className="at-row at-row--axis" aria-hidden="true">
           <span />
           <span className="at-track at-track--axis">
-            {[0, 25, 50, 100].filter((v) => !mobile || v !== 25).map((v) => <span key={v} style={{ left: `${v}%` }}>{v}%</span>)}
-            {tg !== null && mobile && <b className="at-axis-target" style={{ left: `${tg}%` }} data-testid="target-line">{t('{x}% target', { x: tg })}</b>}
+            {(tg === null ? [0, 25, 50, 75, 100] : [0, 25, 50, 100]).filter((v) => !mobile || v === 0 || v === 50 || (tg === null && v === 100)).map((v) => <span key={v} style={{ left: `${v}%` }}>{v}%</span>)}
+            {tg !== null && mobile && <b className="at-axis-target" style={{ left: `${tg}%`, transform: tg > 70 ? 'translateX(-100%)' : tg < 30 ? 'none' : 'translateX(-50%)' }} data-testid="target-line">{t('{x}% target', { x: tg })}</b>}
           </span>
         </div>
       </div>

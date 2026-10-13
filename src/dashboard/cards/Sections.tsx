@@ -41,14 +41,14 @@ export function QualitySection() {
           <span className="dsec-text">
             <b className="dsec-title" data-testid="quality-mini-text">{t('Data quality')}: {t('{p} clean, {n} to check', { p: pct1(sc.total.cleanPct), n: num(toCheck) })}</b>
             <span className="dsec-sum">
-              {t('{n} records', { n: num(sc.total.records) })}
+              {mobile ? <><b className="dsec-warn">{t('{n} to check', { n: num(toCheck) })}</b> · {t('of {n} records', { n: num(sc.total.records) })}</> : t('{n} records', { n: num(sc.total.records) })}
               {!mobile && top.map(([f, n]) => <span key={f}> · <b>{num(n)}</b> {flagLabel(f)}</span>)}
             </span>
           </span>
           {!mobile && <span className="dsec-more" aria-hidden="true">{open ? t('Collapse') : t('Expand')}</span>}
         </button>
         <a href="#/validate" className="btn dsec-btn" data-testid="quality-mini-open" onClick={(e) => { e.preventDefault(); navigate('/validate'); }}>
-          {t('Review {n}', { n: num(toCheck) })} <span aria-hidden="true">›</span>
+          {mobile ? t('Review') : t('Review {n}', { n: num(toCheck) })} <span aria-hidden="true">›</span>
         </a>
       </div>
       {open && <div id="dash-quality-body" className="dsec-body"><QualityTable /></div>}
@@ -59,7 +59,7 @@ export function QualitySection() {
 /** Areas: top 5 by stopped hours (Show all), with failures, availability against the target, MTBF, MTTR and their records. */
 export function AreasSection({ ctx, filters, onOpen }: { ctx: DashCtx; filters: DashFilters; onOpen: OpenFn }) {
   const mobile = useIsMobile();
-  const [open, setOpen] = useState(!mobile);
+  const [open, setOpen] = useState(true);
   const [all, setAll] = useState(false);
   const eff = ctx.win.effective!;
   const k = ctx.kpis.current;

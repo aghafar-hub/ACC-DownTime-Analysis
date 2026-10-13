@@ -103,12 +103,11 @@ export default function DashCard({
   const hid = useId();
   return (
     <section className={`card dcard dcard--${span}${className ? ` ${className}` : ''}`} aria-labelledby={`${hid}-t`} aria-describedby={`${hid}-s`} data-testid={testid} data-dash-card={id}>
-      <header className="dcard-head">
-        <div className="dcard-titles">
-          <h2 id={`${hid}-t`}>{title}</h2>
-          {subtitle && <p className="dcard-sub">{subtitle}</p>}
-        </div>
-        {(controls || headLink) && <div className="dcard-controls">{controls}{headLink}</div>}
+      <header className={`dcard-head${controls ? ' dcard-head--ctl' : ''}`}>
+        <h2 id={`${hid}-t`} className="dcard-title">{title}</h2>
+        {headLink && <div className="dcard-headlink">{headLink}</div>}
+        {subtitle && <p className="dcard-sub">{subtitle}</p>}
+        {controls && <div className="dcard-controls">{controls}</div>}
       </header>
       {legend && <CardLegend items={legend} />}
       <p className="sr-only" id={`${hid}-s`} data-testid="chart-summary">{summary}</p>

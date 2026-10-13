@@ -48,7 +48,6 @@ for (const theme of ONLY) {
       await shot('overview-month-vs-month-chart');
       await page.getByTestId('quality-mini').evaluate((el) => el.scrollIntoView({ block: 'center' }));
       await shot('overview-quality-card');
-      if (vp.phone) await page.getByTestId('sec-where-toggle').click();
       await page.getByTestId('chart-area-availability').evaluate((el) => el.scrollIntoView({ block: 'start' }));
       await shot('overview-availability-per-area');
       await checks('overview');

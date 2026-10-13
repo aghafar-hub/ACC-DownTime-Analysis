@@ -56,22 +56,31 @@ test.describe('targets', () => {
     await open(page, '/overview', 'page-overview');
     const av = page.getByTestId('kpi-availability-target');
     await expect(av).toBeVisible();
-    await expect(av).toHaveText(/Target 99\.9%: (on|below) target \([+−]?\d+\.\d pts\)/);
+    await expect(av).toHaveText(/^(✔ On target \([+−]?\d+\.\d pt\)|▼ \d+\.\d pt below target)$/);
     await expect(av.locator('.target-sym')).toHaveText(/[✔▼]/);
+    await expect(page.getByTestId('kpi-availability')).toContainText('Target 99.9%');
     const mttr = page.getByTestId('kpi-mttr-target');
-    await expect(mttr).toHaveText(/Target 0\.5 h: (on|above) target \([+−]?\d+\.\d\d h\)/);
+    await expect(mttr).toHaveText(/^(✔ On target \([+−]?\d+\.\d\d h\)|▲ \d+\.\d\d h above target)$/);
     await expect(mttr.locator('.target-sym')).toHaveText(/[✔▲]/);
 
     // availability per area: the count line, the target line and the striped bars
     await expect(page.getByTestId('below-target-count')).toHaveText(/^\d+ of \d+ areas below target/);
     const chart = page.getByTestId('chart-area-availability');
+    await expect(chart.getByRole('heading', { level: 2 })).toHaveText('Which areas miss the 99.9% target?');
     await expect(chart.getByTestId('chart-summary')).toContainText(/\d+ of \d+ areas below target \(99\.9%\)/);
-    await expect(chart.getByTestId('hbars-extra-ref')).toContainText('Target 99.9%');
-    await expect(chart.locator('rect[fill^="url(#hb-"]').first()).toBeVisible(); // below target: striped
+    await expect(chart.getByTestId('chart-legend')).toContainText('99.9% target');
     await expect(chart.getByTestId('chart-legend')).toContainText('Below target');
-    await chart.getByTestId('view-table').click();
-    await expect(chart.locator('table th', { hasText: 'Status' })).toBeVisible();
-    await expect(chart.locator('table')).toContainText('Below target');
+    await expect(chart.getByTestId('no-target-note')).toHaveCount(0);
+    // below target: a symbol and the gap in points, not colour alone; the dashed target line on every row
+    const below = chart.locator('[data-testid="at-row"][data-state="below"]');
+    expect(await below.count()).toBeGreaterThan(0);
+    await expect(below.first().getByTestId('at-gap')).toHaveText(/^▼ −\d+\.\d pt$/);
+    await expect(chart.locator('.at-target').first()).toBeVisible();
+    await expect(chart.getByTestId('card-scope')).toContainText(/\d+ of \d+ below target/);
+    // the heat map colours by the target: at, near (5 points) or below
+    const tones = await page.getByTestId('chart-avail-heat').locator('td[data-tone]').evaluateAll((els) => [...new Set(els.map((e) => e.getAttribute('data-tone')))]);
+    expect(tones.every((x) => ['ok', 'near', 'below'].includes(x!))).toBe(true);
+    await expect(page.getByTestId('chart-avail-heat').getByTestId('chart-legend')).toContainText('At or above 99.9%');
 
     // info dialogs mention the target
     await page.getByTestId('kpi-availability-info').click();
@@ -84,7 +93,7 @@ test.describe('targets', () => {
     // P4: one MTBF rule and label: the all-area MTBF has its status and its info dialog for any number of areas
     await expect(page.getByTestId('kpi-mtbf')).toContainText('MTBF · all areas (area-hours)');
     await expect(page.getByTestId('kpi-mtbf')).not.toContainText('Select one area');
-    await expect(page.getByTestId('kpi-mtbf-target')).toHaveText(/Target 200 h: (on|below) target \([+−]?\d+\.\d h\)/);
+    await expect(page.getByTestId('kpi-mtbf-target')).toHaveText(/^(✔ On target \([+−]?\d+\.\d h\)|▼ \d+\.\d h below target)$/);
     await page.getByTestId('kpi-mtbf-info').click();
     await expect(page.getByTestId('kpi-info')).toContainText('MTBF · all areas (area-hours)');
     await expect(page.getByTestId('kpi-info')).toContainText('Target: 200 h');
@@ -92,7 +101,7 @@ test.describe('targets', () => {
     await page.goto('/#/overview?area=K.1');
     await expect(page.getByTestId('page-overview')).toBeVisible();
     await expect(page.getByTestId('kpi-mtbf')).toBeVisible();
-    await expect(page.getByTestId('kpi-mtbf-target')).toHaveText(/Target 200 h: (on|below) target \([+−]?\d+\.\d h\)/);
+    await expect(page.getByTestId('kpi-mtbf-target')).toHaveText(/^(✔ On target \([+−]?\d+\.\d h\)|▼ \d+\.\d h below target)$/);
 
     // Reliability (all areas again): dashed target lines, status columns (words + symbol) per area, counts in the summaries
     await open(page, '/reliability?r=last90', 'page-reliability');
@@ -124,7 +133,8 @@ test.describe('targets', () => {
     await as(page, 'admin');
     await setTargets(page, { avail: '1', mttr: '99999' });
     await open(page, '/overview', 'page-overview');
-    await expect(page.getByTestId('kpi-availability-target')).toHaveText(/Target 1%: on target \(\+\d+\.\d pts\)/);
+    await expect(page.getByTestId('kpi-availability-target')).toHaveText(/^✔ On target \(\+\d+\.\d pt\)$/);
+    await expect(page.locator('[data-testid="at-row"][data-state="below"]')).toHaveCount(0);
     await expect(page.getByTestId('kpi-availability-target')).toHaveAttribute('data-state', 'on');
     await expect(page.getByTestId('kpi-mttr-target')).toHaveAttribute('data-state', 'on');
     await expect(page.getByTestId('below-target-count')).toHaveText(/^0 of \d+ areas below target/);
@@ -281,8 +291,9 @@ for (const width of [360, 390]) {
       await expect(page.getByTestId('overview-mvm-cards').getByTestId('mvm-row')).toHaveCount(10);
       await expect(page.getByTestId('overview-mvm-cards').getByTestId('mvm-change').first()).toHaveText(/^[▲▼■] /);
       await checks('overview + month vs month');
-      await page.getByTestId('sec-where-toggle').click();
-      await expect(page.getByTestId('below-target-count')).toBeVisible();
+      await page.getByTestId('chart-area-availability').scrollIntoViewIfNeeded();
+      await expect(page.getByTestId('chart-area-availability').getByTestId('target-line')).toContainText('99.9% target');
+      await expect(page.getByTestId('chart-area-availability').getByTestId('at-gap').first()).toBeVisible();
       await checks('overview + availability chart');
       await open(page, '/reliability', 'page-reliability');
       await expect(page.getByTestId('status-availability').first()).toBeVisible();

@@ -1,4 +1,6 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import SubTabs from '../dashboard/SubTabs';
 import { tsText } from '../util/dates';
 import type { Metric } from '../calc';
 import { ChartCard } from '../charts/ChartKit';
@@ -24,6 +26,11 @@ import '../dashboard/dashboard.css';
 
 type YoyMetric = 'failureHours' | 'failureCount' | 'mtbf' | 'rate';
 
+/** The Reliability sub-pages, in the address as ?tab= (deep links; Back returns to the previous one). */
+const REL_TABS = ['areas', 'timing', 'trends', 'longest'] as const;
+type RelTab = (typeof REL_TABS)[number];
+const TAB_LABEL: Record<RelTab, string> = { areas: 'Areas', timing: 'Timing', trends: 'Trends', longest: 'Longest' };
+
 const num = (m: Metric): number | null => (m.available ? m.value : null);
 const why = (m: Metric): string | undefined => (m.available ? undefined : m.code === 'no_failures' ? t('No failures this month: MTBF is not defined') : m.reason);
 
@@ -33,6 +40,14 @@ export default function Reliability() {
   const mobile = useIsMobile();
   const { dark } = useTheme();
   const drill = useDrill(dash, 'Reliability');
+  const [sp, setSp] = useSearchParams();
+  const tabParam = sp.get('tab');
+  const tab: RelTab = (REL_TABS as readonly string[]).includes(tabParam ?? '') ? (tabParam as RelTab) : 'areas';
+  const setTab = (next: RelTab) => setSp((cur) => {
+    const n = new URLSearchParams(cur);
+    if (next === 'areas') n.delete('tab'); else n.set('tab', next);
+    return n;
+  });
   const [area, setArea] = useState('');
   const [yoyMetric, setYoyMetric] = useState<YoyMetric>('failureHours');
   const [startMeasure, setStartMeasure] = useState<'count' | 'hours'>('count');
@@ -146,83 +161,102 @@ export default function Reliability() {
       {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}
       {model && ctx && !empty && (
         <>
-          <AreasBlock ctx={ctx} onOpen={(label, ids) => drill(label, { eventIds: ids })} />
-          <section aria-labelledby="when-heading" data-testid="when-block">
-            <h2 className="dash-section-title" id="when-heading">{t('When failures start')}</h2>
-            <ChartCard
-              title={t('Failure starts by hour and weekday')} subtitle={t('Failure events chained as failures, by the plant-local time the stop began. Each cell is one hour of one weekday over the whole range.')} testid="chart-when-heat"
-              summary={startSummary}
-              controls={<Toggle value={startMeasure} options={[{ value: 'count', label: t('Count') }, { value: 'hours', label: t('Hours') }]} onChange={setStartMeasure} label={t('Measure')} testid="when-measure" />}
-              legend={[{ label: t('Darker = more'), color: ACCENT }]}
-              table={startHeat ? { head: [t('Hour'), ...startHeat.cols.map((c) => t(c.label)), t('Total')], rows: [...startHeat.rows.map((r, i) => [r.label, ...startHeat.values[i]!.map((v) => (v > 0 ? startFmt(v) : '-')), startFmt(r.total)]), [t('Total'), ...startHeat.cols.map((c) => startFmt(c.total)), startFmt(startHeat.total)]] } : undefined}
-              footnote={startMeasure === 'count' ? t('Times are plant-local as recorded; no time zone conversion. An event is counted once, at the hour and weekday its first row stopped.') : t('Times are plant-local as recorded; no time zone conversion. Hours are the whole duration of each event, placed at the hour and weekday it started.')}
-            >
-              {() => startHeat ? <HeatmapTable map={startHeat} format={startFmt} caption={t('Failure starts by hour and weekday')} rowHead={t('Hour')} shortCol={(l) => t(l)} colTotals /> : null}
-            </ChartCard>
-          </section>
-          <h2 className="dash-section-title">{t('Monthly trends')}</h2>
-          <div className="field" style={{ maxWidth: 280, marginBottom: 12 }}>
-            <label htmlFor="rel-area">{t('Area for the monthly charts')}</label>
-            <select id="rel-area" className="select" value={areaId} onChange={(e) => setArea(e.target.value)} data-testid="rel-area">
-              <option value="">{t('All areas (area-hours)')}</option>
-              {ctx.base.areaIds.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-          <div className="chart-grid chart-grid--even">
-            <ChartCard title={t('Monthly MTBF')} subtitle={t('Operating hours per failure, {a}', { a: areaLabel })} testid="chart-mtbf"
-              summary={`${t('{n} of {m} months have an MTBF.', { n: months.length - gapCount(mtbf), m: months.length })}`} footnote={gapNote(mtbf)}
-              table={seriesTable(cats, [mtbf], t('Month'), (_s, n) => fh(n))}>
-              {(w) => <CartesianChart categories={cats} series={[mtbf]} width={w} ariaLabel={t('Line chart of monthly MTBF')} zeroBased />}
-            </ChartCard>
-            <ChartCard title={t('Mean restoration time')} subtitle={t('Mean duration of failure events that started in the month')} testid="chart-mttr"
-              summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(mttr), m: months.length })} footnote={gapNote(mttr)}
-              table={seriesTable(cats, [mttr], t('Month'), (_s, n) => fh2(n))}>
-              {(w) => <CartesianChart categories={cats} series={[mttr]} width={w} ariaLabel={t('Line chart of monthly mean restoration time')} yFormat={(n) => `${n}`} />}
-            </ChartCard>
-            <ChartCard title={t('Failures per 1,000 operating hours')} subtitle={t('Failure rate adjusted for exposure, {a}', { a: areaLabel })} testid="chart-rate"
-              summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(rate), m: months.length })} footnote={gapNote(rate)}
-              table={seriesTable(cats, [rate], t('Month'), (_s, n) => fh2(n))}>
-              {(w) => <CartesianChart categories={cats} series={[rate]} width={w} ariaLabel={t('Line chart of failures per 1,000 operating hours')} yFormat={(n) => `${n}`} />}
-            </ChartCard>
-            <ChartCard title={t('Failure duration distribution')} subtitle={t('Failure events by total duration; colours and labels mark short, medium and long')} testid="chart-histogram"
-              summary={hist ? t('{n} failure events. Short {s}, medium {m}, long {l}.', { n: fint(hist.eventCount), s: fint(hist.bands[0]!.count), m: fint(hist.bands[1]!.count), l: fint(hist.bands[2]!.count) }) : ''}
-              legend={[
-                { label: t('Short (up to {m} min)', { m: ctx.master.settings.durationShortMaxMin }), color: BAND_COLOR.short },
-                { label: t('Medium'), color: BAND_COLOR.medium, symbol: 'diamond' },
-                { label: t('Long (from {m} min)', { m: ctx.master.settings.durationLongMinMin }), color: BAND_COLOR.long, symbol: 'triangle' },
-              ]}
-              table={hist ? { head: [t('Duration'), t('Events'), t('Hours'), t('Band')], rows: hist.bins.map((b) => [b.label, fint(b.count), fh(b.hours), bandOf(b.fromMin, b.toMin)]) } : undefined}
-              footnote={hist ? hist.bands.map((b) => `${b.band}: ${fint(b.count)} (${b.countPct.toFixed(0)}% of events, ${b.hoursPct.toFixed(0)}% of hours)`).join(' · ') : undefined}>
-              {(w) => <CartesianChart categories={hcats} series={hseries} width={w} ariaLabel={t('Histogram of failure durations')} yFormat={(n) => `${n}`} rotateLabels />}
-            </ChartCard>
-          </div>
-          <ChartCard title={t('Year over year, by month')} subtitle={t('{a} against {b}, {m}', { a: model.yoyYear, b: model.yoyYear - 1, m: yoyLabels[yoyMetric] })} testid="chart-yoy"
-            controls={<Toggle value={yoyMetric} options={(Object.keys(yoyLabels) as YoyMetric[]).map((v) => ({ value: v, label: yoyLabels[v] }))} onChange={setYoyMetric} label={t('Measure')} testid="yoy-measure" />}
-            summary={t('Months without data in either year are left out.')} legend={yseries.map((s) => ({ label: s.label, color: s.color }))} footnote={yoyFoot}
-            table={seriesTable(ycats, yseries, t('Month'), (_s, n) => yfmt(n))}>
-            {(w) => <CartesianChart categories={ycats} series={yseries} width={w} ariaLabel={t('Grouped bars comparing each month with the same month a year earlier')} yFormat={(n) => `${n}`} maxBarWidth={26} />}
-          </ChartCard>
-          <section className="card" data-testid="longest-card">
-            <h2>{t('Longest events')}</h2>
-            <p className="chart-sub" style={{ marginBottom: 8 }}>{t('Ranked by chained event: a stop that continues over several rows counts once, with all its rows.')}</p>
-            {longest.length === 0 ? <p className="muted">{t('No failure events in this range.')}</p> : (
-              <div className="table-wrap">
-                <table className="data-table" data-testid="longest-table">
-                  <thead><tr><th scope="col">#</th><th scope="col">{t('Started')}</th><th scope="col">{t('Area')}</th><th scope="col">{t('Code')}</th><th scope="col">{t('Reason')}</th><th scope="col" className="num">{t('Hours')}</th><th scope="col" className="num">{t('Rows')}</th></tr></thead>
-                  <tbody>
-                    {longest.map((e, i) => (
-                      <tr key={e.eventId} data-testid="longest-row">
-                        <td>{i + 1}</td>
-                        <td className="nowrap"><button type="button" className="row-btn" onClick={() => drill(t('the event {id}', { id: e.eventId }), { eventIds: [e.eventId] })} aria-label={t('Open event {id}', { id: e.eventId })}>{tsText(e.startTs)}</button></td>
-                        <td>{e.area_id}</td><td className="mono">{e.code}</td><td>{e.reason || t('(blank)')}</td>
-                        <td className="num">{fh2(e.hours)}</td><td className="num">{e.rowCount}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <SubTabs value={tab} options={REL_TABS.map((v) => ({ value: v, label: t(TAB_LABEL[v]) }))} onChange={setTab} label={t('Reliability views')} testid="rel-tab" />
+          {tab === 'areas' && (
+            <div role="tabpanel" id="rel-tab-areas-panel" aria-labelledby="rel-tab-areas" data-testid="rel-panel-areas">
+            <AreasBlock ctx={ctx} onOpen={(label, ids) => drill(label, { eventIds: ids })} />
+            </div>
+          )}
+          {tab === 'timing' && (
+            <div role="tabpanel" id="rel-tab-timing-panel" aria-labelledby="rel-tab-timing" data-testid="rel-panel-timing">
+            <section aria-labelledby="when-heading" data-testid="when-block">
+              <h2 className="dash-section-title" id="when-heading">{t('When failures start')}</h2>
+              <ChartCard
+                title={t('Failure starts by hour and weekday')} subtitle={t('Failure events chained as failures, by the plant-local time the stop began. Each cell is one hour of one weekday over the whole range.')} testid="chart-when-heat"
+                summary={startSummary}
+                controls={<Toggle value={startMeasure} options={[{ value: 'count', label: t('Count') }, { value: 'hours', label: t('Hours') }]} onChange={setStartMeasure} label={t('Measure')} testid="when-measure" />}
+                legend={[{ label: t('Darker = more'), color: ACCENT }]}
+                table={startHeat ? { head: [t('Hour'), ...startHeat.cols.map((c) => t(c.label)), t('Total')], rows: [...startHeat.rows.map((r, i) => [r.label, ...startHeat.values[i]!.map((v) => (v > 0 ? startFmt(v) : '-')), startFmt(r.total)]), [t('Total'), ...startHeat.cols.map((c) => startFmt(c.total)), startFmt(startHeat.total)]] } : undefined}
+                footnote={startMeasure === 'count' ? t('Times are plant-local as recorded; no time zone conversion. An event is counted once, at the hour and weekday its first row stopped.') : t('Times are plant-local as recorded; no time zone conversion. Hours are the whole duration of each event, placed at the hour and weekday it started.')}
+              >
+                {() => startHeat ? <HeatmapTable map={startHeat} format={startFmt} caption={t('Failure starts by hour and weekday')} rowHead={t('Hour')} shortCol={(l) => t(l)} colTotals /> : null}
+              </ChartCard>
+            </section>
+              <div className="chart-grid">
+                <ChartCard title={t('Failure duration distribution')} subtitle={t('Failure events by total duration; colours and labels mark short, medium and long')} testid="chart-histogram"
+                  summary={hist ? t('{n} failure events. Short {s}, medium {m}, long {l}.', { n: fint(hist.eventCount), s: fint(hist.bands[0]!.count), m: fint(hist.bands[1]!.count), l: fint(hist.bands[2]!.count) }) : ''}
+                  legend={[
+                    { label: t('Short (up to {m} min)', { m: ctx.master.settings.durationShortMaxMin }), color: BAND_COLOR.short },
+                    { label: t('Medium'), color: BAND_COLOR.medium, symbol: 'diamond' },
+                    { label: t('Long (from {m} min)', { m: ctx.master.settings.durationLongMinMin }), color: BAND_COLOR.long, symbol: 'triangle' },
+                  ]}
+                  table={hist ? { head: [t('Duration'), t('Events'), t('Hours'), t('Band')], rows: hist.bins.map((b) => [b.label, fint(b.count), fh(b.hours), bandOf(b.fromMin, b.toMin)]) } : undefined}
+                  footnote={hist ? hist.bands.map((b) => `${b.band}: ${fint(b.count)} (${b.countPct.toFixed(0)}% of events, ${b.hoursPct.toFixed(0)}% of hours)`).join(' · ') : undefined}>
+                  {(w) => <CartesianChart categories={hcats} series={hseries} width={w} ariaLabel={t('Histogram of failure durations')} yFormat={(n) => `${n}`} rotateLabels />}
+                </ChartCard>
               </div>
-            )}
-          </section>
+            </div>
+          )}
+          {tab === 'trends' && (
+            <div role="tabpanel" id="rel-tab-trends-panel" aria-labelledby="rel-tab-trends" data-testid="rel-panel-trends">
+            <h2 className="dash-section-title">{t('Monthly trends')}</h2>
+            <div className="field" style={{ maxWidth: 280, marginBottom: 12 }}>
+              <label htmlFor="rel-area">{t('Area for the monthly charts')}</label>
+              <select id="rel-area" className="select" value={areaId} onChange={(e) => setArea(e.target.value)} data-testid="rel-area">
+                <option value="">{t('All areas (area-hours)')}</option>
+                {ctx.base.areaIds.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
+            <div className="chart-grid chart-grid--even">
+              <ChartCard title={t('Monthly MTBF')} subtitle={t('Operating hours per failure, {a}', { a: areaLabel })} testid="chart-mtbf"
+                summary={`${t('{n} of {m} months have an MTBF.', { n: months.length - gapCount(mtbf), m: months.length })}`} footnote={gapNote(mtbf)}
+                table={seriesTable(cats, [mtbf], t('Month'), (_s, n) => fh(n))}>
+                {(w) => <CartesianChart categories={cats} series={[mtbf]} width={w} ariaLabel={t('Line chart of monthly MTBF')} zeroBased />}
+              </ChartCard>
+              <ChartCard title={t('Mean restoration time')} subtitle={t('Mean duration of failure events that started in the month')} testid="chart-mttr"
+                summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(mttr), m: months.length })} footnote={gapNote(mttr)}
+                table={seriesTable(cats, [mttr], t('Month'), (_s, n) => fh2(n))}>
+                {(w) => <CartesianChart categories={cats} series={[mttr]} width={w} ariaLabel={t('Line chart of monthly mean restoration time')} yFormat={(n) => `${n}`} />}
+              </ChartCard>
+              <ChartCard title={t('Failures per 1,000 operating hours')} subtitle={t('Failure rate adjusted for exposure, {a}', { a: areaLabel })} testid="chart-rate"
+                summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(rate), m: months.length })} footnote={gapNote(rate)}
+                table={seriesTable(cats, [rate], t('Month'), (_s, n) => fh2(n))}>
+                {(w) => <CartesianChart categories={cats} series={[rate]} width={w} ariaLabel={t('Line chart of failures per 1,000 operating hours')} yFormat={(n) => `${n}`} />}
+              </ChartCard>
+            </div>
+            <ChartCard title={t('Year over year, by month')} subtitle={t('{a} against {b}, {m}', { a: model.yoyYear, b: model.yoyYear - 1, m: yoyLabels[yoyMetric] })} testid="chart-yoy"
+              controls={<Toggle value={yoyMetric} options={(Object.keys(yoyLabels) as YoyMetric[]).map((v) => ({ value: v, label: yoyLabels[v] }))} onChange={setYoyMetric} label={t('Measure')} testid="yoy-measure" />}
+              summary={t('Months without data in either year are left out.')} legend={yseries.map((s) => ({ label: s.label, color: s.color }))} footnote={yoyFoot}
+              table={seriesTable(ycats, yseries, t('Month'), (_s, n) => yfmt(n))}>
+              {(w) => <CartesianChart categories={ycats} series={yseries} width={w} ariaLabel={t('Grouped bars comparing each month with the same month a year earlier')} yFormat={(n) => `${n}`} maxBarWidth={26} />}
+            </ChartCard>
+            </div>
+          )}
+          {tab === 'longest' && (
+            <div role="tabpanel" id="rel-tab-longest-panel" aria-labelledby="rel-tab-longest" data-testid="rel-panel-longest">
+            <section className="card" data-testid="longest-card">
+              <h2>{t('Longest events')}</h2>
+              <p className="chart-sub" style={{ marginBottom: 8 }}>{t('Ranked by chained event: a stop that continues over several rows counts once, with all its rows.')}</p>
+              {longest.length === 0 ? <p className="muted">{t('No failure events in this range.')}</p> : (
+                <div className="table-wrap">
+                  <table className="data-table" data-testid="longest-table">
+                    <thead><tr><th scope="col">#</th><th scope="col">{t('Started')}</th><th scope="col">{t('Area')}</th><th scope="col">{t('Code')}</th><th scope="col">{t('Reason')}</th><th scope="col" className="num">{t('Hours')}</th><th scope="col" className="num">{t('Rows')}</th></tr></thead>
+                    <tbody>
+                      {longest.map((e, i) => (
+                        <tr key={e.eventId} data-testid="longest-row">
+                          <td>{i + 1}</td>
+                          <td className="nowrap"><button type="button" className="row-btn" onClick={() => drill(t('the event {id}', { id: e.eventId }), { eventIds: [e.eventId] })} aria-label={t('Open event {id}', { id: e.eventId })}>{tsText(e.startTs)}</button></td>
+                          <td>{e.area_id}</td><td className="mono">{e.code}</td><td>{e.reason || t('(blank)')}</td>
+                          <td className="num">{fh2(e.hours)}</td><td className="num">{e.rowCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+            </div>
+          )}
         </>
       )}
     </div>

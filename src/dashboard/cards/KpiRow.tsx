@@ -83,15 +83,20 @@ export function MonthSpark({ slots, values, label, format, target }: { slots: Sl
   );
 }
 
-function Tile({ id, label, info, value, unit, extra, change, sub, children, spark, wide }: {
-  id: string; label: string; info: ReactNode; value: string; unit?: string; extra?: ReactNode; change?: ReactNode; sub?: ReactNode; children?: ReactNode;
+function Tile({ id, label, info, value, unit, after, extra, change, sub, children, spark, wide }: {
+  id: string; label: string; info: ReactNode; value: string;
+  /** part of the value ('h', '%'): the figure reads '374.5 h' as everywhere else */
+  unit?: string;
+  /** words after the value ('events') */
+  after?: string;
+  extra?: ReactNode; change?: ReactNode; sub?: ReactNode; children?: ReactNode;
   spark: ReactNode; wide?: boolean;
 }) {
   return (
     <div className={wide ? 'ktile ktile--wide' : 'ktile'} data-testid={`kpi-${id}`}>
       <div className="ktile-head"><span className="ktile-label">{label}</span>{info}</div>
       <div className="ktile-value-row">
-        <span className="ktile-value" data-testid={`kpi-${id}-value`}>{value}{unit && <small>{unit}</small>}</span>
+        <span className="ktile-value"><span data-testid={`kpi-${id}-value`}>{value}{unit && <small>{unit === '%' ? '%' : ` ${unit}`}</small>}</span>{after && <small>{` ${after}`}</small>}</span>
         {extra}
       </div>
       {change}
@@ -121,7 +126,7 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
   const sparkFoot = (s: ReactNode) => (
     <>
       {s}
-      <span className="ktile-spark-note">{spanText}<br />{t('by month')}</span>
+      <span className="ktile-spark-note">{spanText}<br /><span className="ksn-by">{t('by month')}</span></span>
     </>
   );
   const mttr = metricText(tot.mttrHours, fh2, '');
@@ -149,7 +154,7 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
       </Tile>
       <Tile
         id="failure-count" label={t('Failures')} info={<InfoButton info={kpiInfo('failure-count', basis)} testid="kpi-failure-count-info" />}
-        value={tot.failureCount === 0 ? t('None recorded') : fint(tot.failureCount)} unit={tot.failureCount === 0 ? undefined : t('events')}
+        value={tot.failureCount === 0 ? t('None recorded') : fint(tot.failureCount)} after={tot.failureCount === 0 ? undefined : t('events')}
         change={<ChangeLine change={ch?.failureCount ?? null} fmt={fint} label={cmpLabel} compare={cmp} />}
         sub={`${prev ? `${pre}${fint(prev.failureCount)} · ` : ''}${t('{h} h lost', { h: fh(tot.failureHours) })}`}
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.failureCount} label={t('Failures')} format={fint} />)}

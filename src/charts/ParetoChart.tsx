@@ -20,14 +20,17 @@ export function paretoTable(result: ParetoResult, valueHead: string, fmt: (n: nu
   };
 }
 
+/**
+ * The first sentence of a Pareto's summary: items, total and the largest one. The share of the shown items and the
+ * items needed for 80% are added by the caller from the complete Pareto (see paretoHonestText), never 'the first N
+ * bars reach 80%' counted on a cut chart.
+ */
 export function paretoSummary(result: ParetoResult, what: string, unit: string, fmt: (n: number) => string): string {
   if (result.bars.length === 0) return t('No {what} in the selected scope.', { what });
   const top = result.bars[0]!;
-  const ref = result.referenceIndex;
-  const refText = ref === null ? '' : ref === 0 ? t(' The first bar alone reaches {p}%.', { p: result.referencePct }) : t(' The first {n} bars reach {p}%.', { n: ref + 1, p: result.referencePct });
   return t('{n} items, {total} {unit} in total. Largest: {label}, {value} {unit} ({share}%).', {
     n: result.entryCount, total: fmt(result.total), unit, label: top.label, value: fmt(top.value), share: top.sharePct.toFixed(1),
-  }) + refText;
+  });
 }
 
 function short(label: string, max = 16): string {

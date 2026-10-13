@@ -5,6 +5,7 @@ import ParetoChart, { paretoSummary, paretoTable } from '../charts/ParetoChart';
 import { t } from '../i18n/t';
 import { num } from '../util/format';
 import { cutPareto } from './models';
+import { paretoHonestText } from './dashModels';
 import { Toggle } from './parts';
 
 const TOPS: { value: string; label: string }[] = [
@@ -22,7 +23,8 @@ export default function ParetoCard({
   const [top, setTop] = useState<string>('10');
   const topN: TopN = top === 'all' ? 'all' : (Number(top) as TopN);
   const result = useMemo(() => (all ? cutPareto(all, topN) : null), [all, topN]);
-  const summary = result ? paretoSummary(result, what, unit, fmt) : t('No data in this range.');
+  const honest = all ? paretoHonestText(all, topN === 'all' ? all.entryCount : topN, what) : '';
+  const summary = result ? `${paretoSummary(result, what, unit, fmt)}${honest ? ` ${honest}.` : ''}` : t('No data in this range.');
   return (
     <ChartCard
       title={title} subtitle={subtitle} summary={summary} testid={testid}

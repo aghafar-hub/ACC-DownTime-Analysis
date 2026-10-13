@@ -15,7 +15,7 @@ import { dayText, monthShort, monthText, rangeText } from '../../util/dates';
 import { num } from '../../util/format';
 import { fh, fh2, fint, monthAxisLabels } from '../format';
 import {
-  availabilityHeat, failureIdsStarted, failuresByMonth, hasValues, idsWithHours, lastDays, periodText, plannedRuns, repeatsTop, scopeText,
+  availabilityHeat, failureIdsStarted, failuresByMonth, idsWithHours, lastDays, periodText, plannedRuns, repeatsTop, scopeText,
   type FailMonth, type HeatTone,
 } from '../dashModels';
 import type { DashFilters } from '../filters';
@@ -92,12 +92,12 @@ function FailMttrChart({ months, width, selected, onSelect, ariaLabel }: { month
           {showVal(i) && <text x={cx(i)} y={yM(x.mttr) - 9} textAnchor="middle" className="chart-ink" fontWeight={i === selected ? 700 : 500} {...HALO}>{fh2(x.mttr)}</text>}
         </g>
       )))}
-      {months.map((x, i) => (
+      {months.map((x, i) => (!(band < 34 && i % 2 !== (n - 1) % 2) || i === selected) ? (
         <g key={`l${x.key}`}>
           <text x={cx(i)} y={low.t + low.h + 18} textAnchor="middle" className={i === selected ? 'chart-ink' : undefined} fontWeight={i === selected ? 700 : 400}>{labels[i]}</text>
           {x.status !== 'full' && <text x={cx(i)} y={low.t + low.h + 33} textAnchor="middle" className="col-sub">{x.status === 'partial' ? 'partial' : x.status === 'notUploaded' ? 'n/u' : ''}</text>}
         </g>
-      ))}
+      ) : null)}
       {months.map((x, i) => (
         <rect key={`h${x.key}`} className="chart-hit chart-focusable" x={m.l + band * i} y={top.t - 20} width={band} height={H - top.t + 14} role="button" tabIndex={i === (selected ?? 0) ? 0 : -1}
           aria-pressed={i === selected} aria-label={`${monthText(x.key)}: ${x.failures === null ? (x.status === 'notUploaded' ? t('not uploaded') : t('no data')) : t('{f} failures, MTTR {m}', { f: fint(x.failures), m: x.mttr === null ? '–' : `${fh2(x.mttr)} h` })}`}
@@ -167,10 +167,11 @@ export function AttentionCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters:
       <div ref={boxRef} className="dcard-chart">
         {width > 0 && (
           <QuadrantChart
-            width={width} height={mobile ? 330 : 360} xTitle={t('← fails more often · MTBF (h) · fails less often →')} yTitle={t('MTTR (h) · slower ↑')}
+            width={width} height={mobile ? 330 : 360} xTitle={mobile ? t('MTBF (h, log) · fails less often →') : t('← fails more often · MTBF (h, log scale) · fails less often →')} yTitle={t('MTTR (h) · slower ↑')}
             medianX={q.medianMtbf} medianY={q.medianMttr}
             medianXLabel={q.medianMtbf !== null ? t('median {v} h', { v: fh(q.medianMtbf) }) : undefined} medianYLabel={q.medianMttr !== null ? t('median {v} h', { v: fh2(q.medianMttr) }) : undefined}
-            worstLabel={t('Fails often, slow to fix')} ariaLabel={summary}
+            worstLabel={t('Fails often, slow to fix')} ariaLabel={summary} xLog variant="dashboard"
+            cornerLabels={mobile ? [t('Rare, slow'), t('Often, quick'), t('Rare, quick')] : [t('Rare, slow to fix'), t('Fails often, quick to fix'), t('Rare, quick to fix')]}
             points={q.points.map((p) => ({
               key: p.area_id, label: p.area_id, x: p.mtbf, y: p.mttr, worst: p.quadrant === 'worst',
               details: [{ label: t('MTBF'), value: `${fh(p.mtbf)} h` }, { label: t('MTTR'), value: `${fh2(p.mttr)} h` }, { label: t('Failure events'), value: fint(p.failureEvents) }],
@@ -252,7 +253,13 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
   const label = (k: string) => (mobile ? monthShort(k).slice(0, 1) : monthShort(k));
   const sortName = m.sortMonth ? monthShort(m.sortMonth) : '';
   const summary = `${t('{n} areas by month', { n: m.rows.length })}${sortName ? `, ${t('worst {m} first', { m: sortName })}` : ''}. ${tg !== null ? t('Green: at or above {x}%; amber: up to 5 points below; red: further below.', { x: tg }) : t('No target set: darker = lower availability.')}`;
-  const sortIdx = m.months.findIndex((x) => x.key === m.sortMonth);
+  const sortAt = m.months.findIndex((x) => x.key === m.sortMonth);
+  // a phone shows at most 8 months: those up to the month after the sorted one
+  const end = mobile ? Math.min(m.months.length, (sortAt >= 0 ? sortAt : m.months.length - 1) + 2) : m.months.length;
+  const start = mobile ? Math.max(0, end - 8) : 0;
+  const months = m.months.slice(start, end);
+  const sortIdx = sortAt - start;
+  const names = !mobile && m.months.length <= 9;
   return (
     <DashCard
       id="heat" testid="chart-avail-heat" title={t('Is any area slipping over time?')}
@@ -273,25 +280,25 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
           <thead>
             <tr>
               <th scope="col" className="hm-corner"><span className="sr-only">{t('Area')}</span></th>
-              {m.months.map((x, i) => <th key={x.key} scope="col" className={i === sortIdx ? 'hm-col hm-col--sel' : 'hm-col'} title={monthText(x.key)}>{label(x.key)}</th>)}
+              {months.map((x, i) => <th key={x.key} scope="col" className={i === sortIdx ? 'hm-col hm-col--sel' : 'hm-col'} title={monthText(x.key)}>{label(x.key)}</th>)}
             </tr>
           </thead>
           <tbody>
             {rows.map((r, ri) => (
               <tr key={r.area_id} data-testid="heat-row" data-area={r.area_id}>
-                <th scope="row" className="hm-row"><b>{r.area_id}</b>{r.name && !mobile && <span className="muted"> {r.name}</span>}</th>
-                {r.cells.map((c, i) => {
+                <th scope="row" className="hm-row"><span className="hm-rowname" title={r.name ? `${r.area_id} ${r.name}` : r.area_id}><b>{r.area_id}</b>{r.name && names && <span className="muted"> {r.name}</span>}</span></th>
+                {r.cells.slice(start, end).map((c, i) => {
                   const cls = `hm-cell${i === sortIdx ? ' hm-cell--sel' : ''}${ri === 0 && i === sortIdx ? ' hm-cell--first' : ''}${ri === rows.length - 1 && i === sortIdx ? ' hm-cell--last' : ''}`;
                   if (c.pct === null) {
                     return (
-                      <td key={i} className={`${cls} hm-nodata`} data-status={c.status} title={`${r.area_id}, ${monthText(m.months[i]!.key)}: ${c.status === 'notUploaded' ? t('Not uploaded') : t('no data')}`}>
+                      <td key={i} className={`${cls} hm-nodata`} data-status={c.status} title={`${r.area_id}, ${monthText(months[i]!.key)}: ${c.status === 'notUploaded' ? t('Not uploaded') : t('no data')}`}>
                         {ri === Math.floor((rows.length - 1) / 2) && c.status === 'notUploaded' ? <span className="hm-nu">{t('no data')}</span> : <span className="sr-only">{t('no data')}</span>}
                       </td>
                     );
                   }
                   return (
                     <td key={i} className={`${cls} ${c.tone ? TONE_CLASS[c.tone] : 'hm-scale-cell'}`} style={c.tone ? undefined : neutral(c.pct)} data-tone={c.tone ?? 'scale'}
-                      title={`${r.area_id}, ${monthText(m.months[i]!.key)}: ${c.pct.toFixed(1)}%${c.status === 'partial' ? ` (${t('partial month')})` : ''}`}>
+                      title={`${r.area_id}, ${monthText(months[i]!.key)}: ${c.pct.toFixed(1)}%${c.status === 'partial' ? ` (${t('partial month')})` : ''}`}>
                       {c.pct.toFixed(1)}
                     </td>
                   );
@@ -301,6 +308,7 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
           </tbody>
         </table>
       </div>
+      {mobile && months.length < m.months.length && <p className="dcard-note">{t('Showing {a} – {b}; a larger screen shows every month.', { a: monthText(months[0]!.key), b: monthText(months[months.length - 1]!.key) })}</p>}
       {m.months.some((x) => x.status === 'partial') && <p className="dcard-note">{t('Partial months: {m}.', { m: m.months.filter((x) => x.status === 'partial').map((x) => (x.window ? rangeText(x.window) : monthText(x.key))).join(', ') })}</p>}
     </DashCard>
   );
@@ -342,16 +350,16 @@ export function DailyCard({ ctx, model, filters, dark, onOpen }: { ctx: DashCtx;
     >
       {more || (mobile && allDays) ? (
         <div className="daily-bar">
-          <span className="pill">{allDays ? t('All {n} days', { n: model.daily.length }) : t('Last 14 days · {r}', { r: rangeText(range) })}</span>
+          <span className="pill">{allDays ? t('All {n} days', { n: model.daily.length }) : t('Last 14 days · {r}', { r: range.from.slice(0, 7) === range.to.slice(0, 7) ? `${Number(range.from.slice(8))}–${dayText(range.to)}` : `${dayText(range.from)} – ${dayText(range.to)}` })}</span>
           <button type="button" className="dcard-link" onClick={() => { setAllDays((v) => !v); setSel(null); }} data-testid="daily-all">{allDays ? t('Last 14 days') : t('See all {n} days', { n: model.daily.length })} <span aria-hidden="true">›</span></button>
         </div>
       ) : null}
-      {runs.length > 0 && !mobile && <p className="daily-runs" data-testid="daily-runs">{runs.map((r) => t('Mostly planned {r}', { r: rangeText(r) })).join(' · ')}</p>}
       <div ref={boxRef} className={mobile && allDays ? 'dcard-chart dcard-chart--scroll' : 'dcard-chart'}>
         {width > 0 && (
           <ColumnChart
             slots={cols} paints={paints} width={mobile && allDays ? Math.max(width, days.length * 18) : width} height={mobile ? 240 : 280} format={fh} selected={sel} onSelect={setSel}
             labelMode="peak" maxBar={30} unitLabel="h" testid="daily-chart"
+            bands={runs.map((r) => ({ from: days.findIndex((d) => d.date === r.from), to: days.findIndex((d) => d.date === r.to), label: t('Mostly planned {r}', { r: rangeText(r) }) })).filter((b) => b.from >= 0 && b.to >= b.from)}
             line={{ label: t('{k}-day average', { k: ROLLING_DAYS }), color: 'var(--tk-text-primary)', values: days.map((d) => d.rollingDowntimeHours), format: fh, endLabel: lastAvg === null ? undefined : t('avg {v} h/day', { v: fh(lastAvg) }) }}
             ariaLabel={summary}
           />

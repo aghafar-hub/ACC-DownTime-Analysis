@@ -63,6 +63,17 @@ for (const theme of ONLY) {
         expect(r.ok, `${p} sideways scroll ${JSON.stringify(r)}`).toBe(true);
         expect(await smallText(page), `${p} text under 12px`).toEqual([]);
         await page.screenshot({ path: `${DIR}/${slug(theme)}-${vp.name}-${p}.png`, fullPage: true });
+        if (p === 'reliability') {
+          // every sub-tab passes the same checks
+          for (const tab of ['timing', 'trends', 'longest']) {
+            await page.getByTestId(`rel-tab-${tab}`).click();
+            await expect(page.getByTestId(`rel-panel-${tab}`)).toBeVisible();
+            await page.waitForTimeout(150);
+            expect((await noSidewaysScroll(page)).ok, `${p} ${tab} sideways scroll`).toBe(true);
+            expect(await smallText(page), `${p} ${tab} text under 12px`).toEqual([]);
+            await page.screenshot({ path: `${DIR}/${slug(theme)}-${vp.name}-${p}-${tab}.png`, fullPage: true });
+          }
+        }
       }
       expect(errors, errors.join('\n')).toEqual([]);
       await context.close();

@@ -11,6 +11,7 @@ export interface QuadPt { key: string; label: string; x: number; y: number; wors
 
 export default function QuadrantChart({
   points, width, height = 320, xTitle, yTitle, medianX, medianY, medianXLabel, medianYLabel, worstLabel, ariaLabel, onPoint, openLabel, static: isStatic = false,
+  xLog = false, variant = 'default', cornerLabels,
 }: {
   points: QuadPt[]; width: number; height?: number; xTitle: string; yTitle: string; ariaLabel: string;
   /** null: no median lines (fewer than two points) */
@@ -20,6 +21,12 @@ export default function QuadrantChart({
   onPoint?: (p: QuadPt) => void; openLabel?: string;
   /** report mode: no tooltips and no hit areas, only the drawing (for print and PDF) */
   static?: boolean;
+  /** x on a log scale (powers of two): MTBF spans orders of magnitude */
+  xLog?: boolean;
+  /** 'dashboard': the worst points are filled red dots with bold labels, the others hollow rings */
+  variant?: 'default' | 'dashboard';
+  /** words in the other three corners: top right, bottom left, bottom right */
+  cornerLabels?: [string, string, string];
 }) {
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const { tip, bind, hide } = useChartTip({ current: box } as React.RefObject<HTMLDivElement | null>);
@@ -37,9 +44,16 @@ export default function QuadrantChart({
   };
   const [x0, x1] = span([...points.map((p) => p.x), ...(medianX !== null ? [medianX] : [])]);
   const [y0, y1] = span([...points.map((p) => p.y), ...(medianY !== null ? [medianY] : [])]);
-  const xs = niceTicks(x0, x1, 5);
+  const xPos = points.map((p) => p.x).filter((v) => v > 0);
+  const useLog = xLog && xPos.length === points.length && xPos.length > 0;
+  const lx0 = useLog ? Math.floor(Math.log2(Math.min(...xPos, ...(medianX !== null && medianX > 0 ? [medianX] : [])))) : 0;
+  const lx1 = useLog ? Math.ceil(Math.log2(Math.max(...xPos, ...(medianX !== null && medianX > 0 ? [medianX] : [])))) : 0;
+  const xs = useLog
+    ? { ticks: Array.from({ length: Math.max(1, lx1 - lx0) + 1 }, (_, i) => 2 ** (lx0 + i)), min: 2 ** lx0, max: 2 ** Math.max(lx1, lx0 + 1) }
+    : niceTicks(x0, x1, 5);
   const ys = niceTicks(y0, y1, 5);
-  const x = linear(xs.min, xs.max, m.l, m.l + pw);
+  const xl = linear(useLog ? lx0 : xs.min, useLog ? Math.max(lx1, lx0 + 1) : xs.max, m.l, m.l + pw);
+  const x = (v: number): number => xl(useLog ? Math.log2(Math.max(v, 1e-9)) : v);
   const y = linear(ys.min, ys.max, m.t + ph, m.t);
   const R = 6;
 
@@ -100,10 +114,10 @@ export default function QuadrantChart({
         {xs.ticks.map((v) => (
           <g key={`x${v}`}>
             <line x1={x(v)} x2={x(v)} y1={m.t} y2={m.t + ph} stroke={GRID} />
-            <text x={x(v)} y={m.t + ph + 16} textAnchor="middle">{axisNum(v)}</text>
+            <text x={x(v)} y={m.t + ph + 16} textAnchor="middle">{axisNum(v)}{useLog && v === xs.ticks[xs.ticks.length - 1] ? ' h' : ''}</text>
           </g>
         ))}
-        {showQuad && <rect x={wx0} y={wy0} width={wx1 - wx0} height={wy1 - wy0} fill={`url(#${hatchId})`} opacity={0.28} data-testid="quadrant-worst-area" />}
+        {showQuad && <rect x={wx0} y={wy0} width={wx1 - wx0} height={wy1 - wy0} fill={`url(#${hatchId})`} opacity={variant === 'dashboard' ? 0.22 : 0.28} data-testid="quadrant-worst-area" />}
         <line x1={m.l} x2={m.l + pw} y1={m.t + ph} y2={m.t + ph} stroke={AXIS} />
         <line x1={m.l} x2={m.l} y1={m.t} y2={m.t + ph} stroke={AXIS} />
         <text x={m.l + pw / 2} y={height - 4} textAnchor="middle">{xTitle}</text>
@@ -120,12 +134,25 @@ export default function QuadrantChart({
             {medianYLabel && <text x={m.l + pw - 4} y={y(medianY) + (y(medianY) < m.t + 22 ? 14 : -5)} textAnchor="end" className="chart-ink" stroke="var(--tk-card-bg)" strokeWidth={3} paintOrder="stroke">{medianYLabel}</text>}
           </g>
         )}
-        {showQuad && <text x={wx0 + 6} y={wy0 + 16} className="chart-ink" fontWeight={700} stroke="var(--tk-card-bg)" strokeWidth={3} paintOrder="stroke" data-testid="quadrant-worst-label">{worstLabel}</text>}
+        {showQuad && (variant === 'dashboard'
+          ? <text x={wx1 - wx0 >= 180 ? wx1 - 6 : wx0 + 6} y={wy0 + 18} textAnchor={wx1 - wx0 >= 180 ? 'end' : 'start'} className="chart-ink quadrant-worst-text" fontWeight={700} fill="var(--tk-danger)" stroke="var(--tk-card-bg)" strokeWidth={3} paintOrder="stroke" data-testid="quadrant-worst-label">{worstLabel}</text>
+          : <text x={wx0 + 6} y={wy0 + 16} className="chart-ink" fontWeight={700} stroke="var(--tk-card-bg)" strokeWidth={3} paintOrder="stroke" data-testid="quadrant-worst-label">{worstLabel}</text>)}
+        {showQuad && cornerLabels && (
+          <g className="quadrant-corners" data-testid="quadrant-corners">
+            <text x={m.l + pw - 6} y={m.t + 18} textAnchor="end">{cornerLabels[0]}</text>
+            {pw >= 380 && <text x={m.l + 6} y={m.t + ph - 8}>{cornerLabels[1]}</text>}
+            {pw >= 380 && <text x={m.l + pw - 6} y={m.t + ph - 8} textAnchor="end">{cornerLabels[2]}</text>}
+          </g>
+        )}
         {points.map((p) => (
           <g key={p.key}>
-            {p.worst
-              ? <path d={`M${x(p.x)} ${y(p.y) - R - 1.5} L${x(p.x) + R + 1.5} ${y(p.y)} L${x(p.x)} ${y(p.y) + R + 1.5} L${x(p.x) - R - 1.5} ${y(p.y)} Z`} fill="var(--tk-danger)" stroke="var(--tk-card-bg)" strokeWidth="1.5" />
-              : <circle cx={x(p.x)} cy={y(p.y)} r={R} fill={ACCENT} fillOpacity={0.75} stroke={ACCENT} strokeWidth={1.5} />}
+            {variant === 'dashboard'
+              ? (p.worst
+                ? <circle cx={x(p.x)} cy={y(p.y)} r={R} fill="var(--tk-danger)" stroke="var(--tk-card-bg)" strokeWidth="1.5" data-testid="quadrant-worst-point" />
+                : <circle cx={x(p.x)} cy={y(p.y)} r={R - 1} fill="var(--tk-card-bg)" stroke={ACCENT} strokeWidth={2} />)
+              : p.worst
+                ? <path d={`M${x(p.x)} ${y(p.y) - R - 1.5} L${x(p.x) + R + 1.5} ${y(p.y)} L${x(p.x)} ${y(p.y) + R + 1.5} L${x(p.x) - R - 1.5} ${y(p.y)} Z`} fill="var(--tk-danger)" stroke="var(--tk-card-bg)" strokeWidth="1.5" />
+                : <circle cx={x(p.x)} cy={y(p.y)} r={R} fill={ACCENT} fillOpacity={0.75} stroke={ACCENT} strokeWidth={1.5} />}
             {!isStatic && <circle cx={x(p.x)} cy={y(p.y)} r={11} fill="transparent" className="chart-hit" data-testid="quadrant-point" data-key={p.key} {...bind(node(p))} />}
           </g>
         ))}

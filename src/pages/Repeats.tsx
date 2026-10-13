@@ -11,7 +11,7 @@ import { ACCENT } from '../charts/palette';
 import { BottomSheet, PAGE_SIZE, ShowMore } from '../components/PhoneParts';
 import { Tile } from '../components/Tile';
 import DashTop from '../dashboard/DashTop';
-import { dayLabel, fh, fh2, fint } from '../dashboard/format';
+import { dayLabel, dayShort, fh, fh2, fint } from '../dashboard/format';
 import { repeatsTakeaway } from '../dashboard/takeaways';
 import { eventsOfEquipment, repeatsModel, rolling } from '../dashboard/models';
 import { EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
@@ -75,6 +75,7 @@ export default function Repeats() {
     return gs.filter((g) => g.occurrences >= 2);
   }, [model, sort]);
   const singles = (model?.result.groups.length ?? 0) - groups.length;
+  const repeatCodes = useMemo(() => new Set(groups.map((g) => g.equipmentId)), [groups]);
   const selCode = sel ?? groups[0]?.equipmentId ?? model?.scatter[0]?.code ?? '';
   const events = useMemo(() => (ctx && selCode ? eventsOfEquipment(ctx, selCode) : []), [ctx, selCode]);
   const rollPts = useMemo(() => (ctx ? rolling(ctx, roll === '30' ? 30 : 90) : []), [ctx, roll]);
@@ -125,7 +126,7 @@ export default function Repeats() {
     </ChartCard>
   );
 
-  const rcats: CartCategory[] = rollPts.map((p) => ({ key: p.date, label: p.date.slice(5), note: dayLabel(p.date) }));
+  const rcats: CartCategory[] = rollPts.map((p) => ({ key: p.date, label: dayShort(p.date), note: dayLabel(p.date) }));
   const heat = heatMeasure === 'hours' ? model?.heatMonthHours : model?.heatMonthCount;
   const heatFull = heatMeasure === 'hours' ? model?.heatAll.monthHours : model?.heatAll.monthCount;
   const heat2Full = heat2Measure === 'hours' ? model?.heatAll.reasonHours : model?.heatAll.reasonCount;
@@ -224,15 +225,16 @@ export default function Repeats() {
           </div>
 
           <ChartCard
-            title={t('Frequency against average duration')} subtitle={t('One point per equipment code (own-stop rule). Bigger point = more total hours. Tap a point for details.')} testid="chart-scatter"
-            summary={t('{n} equipment codes with failures.', { n: model.scatter.length })}
+            title={t('Frequency against average duration')} subtitle={t('One point per equipment code (own-stop rule). Bigger = more total hours; codes with the same count are spread a little sideways. Tap a point for details.')} testid="chart-scatter"
+            summary={t('{n} equipment codes with failures; {k} of them have a repeated failure (diamonds, labelled first).', { n: model.scatter.length, k: model.scatter.filter((p) => repeatCodes.has(p.code)).length })}
+            legend={[{ label: t('Has a repeated failure'), color: 'var(--tk-danger)', symbol: 'diamond' }, { label: t('Other equipment codes'), color: 'var(--tk-accent)', symbol: 'circle' }]}
             table={{ head: [t('Code'), t('Failures'), t('Avg h'), t('Total h')], rows: [...model.scatter].sort((a, b) => b.count - a.count).map((p) => [p.code, fint(p.count), fh2(p.avgHours), fh(p.totalHours)]) }}
           >
             {(w) => (
               <ScatterChart
                 width={w} xTitle={t('Failures (count)')} yTitle={t('Average hours per failure')} ariaLabel={t('Scatter chart of failure frequency against average duration per equipment code')}
                 points={model.scatter.map((p) => ({ key: p.code, label: p.code, x: p.count, y: p.avgHours, size: p.totalHours, details: [{ label: t('Failures'), value: fint(p.count) }, { label: t('Average'), value: `${fh2(p.avgHours)} h` }, { label: t('Total'), value: `${fh(p.totalHours)} h` }] }))}
-                selected={selCode} onPoint={(p) => select(p.key)} openLabel={t('Show timeline')}
+                selected={selCode} onPoint={(p) => select(p.key)} openLabel={t('Show timeline')} highlight={repeatCodes} jitter height={w < 520 ? 320 : 360}
               />
             )}
           </ChartCard>

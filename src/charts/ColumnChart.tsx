@@ -23,11 +23,13 @@ export interface ColSlot {
   values: number[];
 }
 export interface ColLine { label: string; color: string; values: (number | null)[]; format: (n: number) => string; endLabel?: string }
+/** a named run of columns (light band behind them, label above) */
+export interface ColBand { from: number; to: number; label: string }
 
 const HALO = { stroke: 'var(--tk-card-bg)', strokeWidth: 3, paintOrder: 'stroke' } as const;
 
 export default function ColumnChart({
-  slots, paints, width, height = 260, yFormat = axisNum, format, selected, onSelect, line, ariaLabel, labelMode = 'auto', maxBar = 56, testid = 'col-chart', unitLabel,
+  slots, paints, width, height = 260, yFormat = axisNum, format, selected, onSelect, line, ariaLabel, labelMode = 'auto', maxBar = 56, testid = 'col-chart', unitLabel, bands = [],
 }: {
   slots: ColSlot[];
   paints: Paint[];
@@ -46,6 +48,7 @@ export default function ColumnChart({
   testid?: string;
   /** unit printed after the top tick ('h') */
   unitLabel?: string;
+  bands?: ColBand[];
 }) {
   const uid = useUid();
   const n = slots.length;
@@ -53,7 +56,7 @@ export default function ColumnChart({
   const maxV = Math.max(0, ...totals.map((v) => v ?? 0), ...(line ? line.values.map((v) => v ?? 0) : []));
   const ticks = niceTicks(0, maxV || 1, height < 220 ? 3 : 4);
   const labelW = Math.max(...ticks.ticks.map((v) => yFormat(v).length)) * 7 + 10 + (unitLabel ? 14 : 0);
-  const m = { l: Math.max(30, labelW), r: line?.endLabel ? 8 : 6, t: 22, b: 40 };
+  const m = { l: Math.max(30, labelW), r: line?.endLabel ? 8 : 6, t: bands.length || line?.endLabel ? 40 : 22, b: 40 };
   const pw = Math.max(40, width - m.l - m.r);
   const ph = height - m.t - m.b;
   const y = linear(0, ticks.max, m.t + ph, m.t);
@@ -94,6 +97,12 @@ export default function ColumnChart({
         ? <rect key={`hl${s.key}`} x={m.l + band * i + 1} y={m.t - 18} width={band - 2} height={ph + 18 + 34} rx={6} fill={i === selected ? 'var(--tk-nav-active)' : 'var(--tk-info-bar-bg)'} opacity={i === selected ? 1 : 0.7} />
         : null))}
       {highlightAll && selected !== null && <rect x={m.l + band * selected + 1} y={m.t - 18} width={band - 2} height={ph + 18 + 34} rx={6} fill="var(--tk-nav-active)" />}
+      {bands.map((b) => (
+        <g key={`band${b.from}`} data-testid="col-band">
+          <rect x={m.l + band * b.from + 1} y={m.t - 4} width={band * (b.to - b.from + 1) - 2} height={ph + 4} rx={4} fill="var(--tk-info-bar-bg)" />
+          <text x={m.l + band * (b.from + b.to + 1) / 2} y={m.t - 26} textAnchor="middle" className="col-band-text">{b.label}</text>
+        </g>
+      ))}
       <line x1={m.l} x2={m.l + pw} y1={y(0)} y2={y(0)} stroke={AXIS} />
       {slots.map((s, i) => {
         const x0 = cx(i) - bw / 2;
@@ -102,7 +111,7 @@ export default function ColumnChart({
           return (
             <g key={s.key} data-testid="col-not-uploaded" data-key={s.key}>
               <rect x={x0} y={top} width={bw} height={y(0) - top} rx={3} fill="none" stroke="var(--tk-text-muted)" strokeWidth={1.25} strokeDasharray="4 3" />
-              {bw >= 50 && (
+              {band >= 56 && (
                 <text x={cx(i)} y={(top + y(0)) / 2} textAnchor="middle" className="col-nu-text">
                   <tspan x={cx(i)} dy="-0.2em">{'not'}</tspan><tspan x={cx(i)} dy="1.2em">{'uploaded'}</tspan>
                 </text>
@@ -142,7 +151,7 @@ export default function ColumnChart({
             {segs.map((d, k) => <path key={k} d={d} fill="none" stroke={line.color} strokeWidth={2.25} strokeLinejoin="round" strokeLinecap="round" />)}
             {lastI >= 0 && <circle cx={cx(lastI)} cy={y(line.values[lastI]!)} r={4} fill="var(--tk-card-bg)" stroke={line.color} strokeWidth={2} />}
             {lastI >= 0 && line.endLabel && (
-              <text x={Math.min(cx(lastI), m.l + pw)} y={Math.max(12, y(line.values[lastI]!) - 10)} textAnchor="end" className="chart-ink" fontWeight={700} {...HALO}>{line.endLabel}</text>
+              <text x={m.l + pw} y={m.t - 26} textAnchor="end" className="chart-ink" fontWeight={700} data-testid="col-line-label">{line.endLabel}</text>
             )}
           </g>
         );
@@ -153,7 +162,7 @@ export default function ColumnChart({
       {slots.map((s, i) => {
         const show = i % every === 0 || i === selected || (s.status !== 'full' && every <= 2);
         if (!show) return null;
-        const sub = s.status === 'partial' ? 'partial' : s.status === 'notUploaded' && bw < 50 ? 'n/u' : '';
+        const sub = s.status === 'partial' ? 'partial' : s.status === 'notUploaded' && band < 56 ? 'n/u' : '';
         return (
           <g key={`l${s.key}`}>
             <text x={cx(i)} y={m.t + ph + 16} textAnchor="middle" className={i === selected || (s.highlight && !highlightAll) ? 'chart-ink' : undefined} fontWeight={i === selected || (s.highlight && !highlightAll) ? 700 : 400}>{s.label}</text>
