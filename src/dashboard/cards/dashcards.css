@@ -1669,3 +1669,20 @@ button.hb-row:hover {
   outline: 2px solid var(--tk-accent);
   outline-offset: 1px;
 }
+
+/* narrow cards (a 1280 px screen with the rail): the donut table drops the class names, then wraps under the donut */
+.dcard--narrow {
+  container-type: inline-size;
+}
+.class-wrap {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.class-table {
+  flex: 1 1 200px;
+}
+@container (max-width: 480px) {
+  .class-table .cls-name {
+    display: none;
+  }
+}
