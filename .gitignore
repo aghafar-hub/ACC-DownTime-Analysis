@@ -15,3 +15,6 @@ local-data/
 
 *.tsbuildinfo
 dist-e2e-*/
+
+# agent worktrees
+.claude/worktrees/
