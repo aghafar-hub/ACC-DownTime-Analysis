@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 import { useTheme } from '../theme/ThemeContext';
 import { t } from '../i18n/t';
-import heroUrl from '../assets/login-hero.svg';
+import heroUrl from '../assets/login-hero.webp';
 
 // Shared pieces of the two sign-in screens (Login, ChangePassword): the split
 // layout with the navy brand panel, and the labelled fields.
@@ -54,7 +54,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           <p className="auth-hero-title">{t('Understand every stop.')}</p>
           <p className="auth-hero-sub">{t('Turn downtime data into reliable decisions.')}</p>
         </div>
-        <img src={heroUrl} alt="" className="auth-hero-art" width={640} height={590} />
+        <img src={heroUrl} alt="" className="auth-hero-art" width={1206} height={832} />
         <p className="auth-hero-caption">{t('ACC DOWN TIME ANALYSIS')}</p>
       </aside>
       <main className="auth-panel" id="main">
