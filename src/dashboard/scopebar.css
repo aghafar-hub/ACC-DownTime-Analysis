@@ -160,7 +160,19 @@
   padding: 0 16px 8px;
 }
 .scope-info--phone .sb-active {
-  margin-top: 0;
+  margin-top: 8px;
+}
+.sb-phone-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.sb-phone-tools:empty {
+  display: none;
+}
+.sb-phone-tools .pm > .btn {
+  border-radius: 999px;
+  background: var(--tk-card-bg);
 }
 .sb-tag {
   display: inline-flex;
@@ -411,10 +423,6 @@
 .sb-pills-scroll::-webkit-scrollbar {
   display: none;
 }
-.sb-pills-scroll .pm > .btn {
-  min-height: 44px;
-  border-radius: 999px;
-}
 .sb-pill {
   display: inline-flex;
   align-items: center;
@@ -563,5 +571,29 @@
   }
   .scope-bar .pm > .btn {
     padding-inline: 10px;
+  }
+}
+/* phone: the data line sits right under the sticky pills (as on the mock-up); Views / Export and the active filters follow */
+@media (max-width: 860px) {
+  .app-shell-right > * {
+    order: 3;
+  }
+  .app-shell-right > .shell-topbar,
+  .app-shell-right > .module-tabs,
+  .app-shell-right > .scope-slot {
+    order: 0;
+  }
+  .app-shell-right > .ds-strip {
+    order: 1;
+  }
+  .app-shell-right > .scope-info-slot {
+    order: 2;
+  }
+  .scope-info-slot:not(:empty) {
+    border-bottom: 0;
+    background: transparent;
+  }
+  .scope-info--phone {
+    padding-top: 8px;
   }
 }

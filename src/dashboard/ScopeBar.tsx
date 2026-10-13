@@ -392,15 +392,22 @@ function PhoneBar({ src, m, eventCount, hideCompare, views, exportMenu }: BarPro
           </button>
           {pill('scope-line', f.lineIds.length ? m.lineText : t('All lines'), f.lineIds.length > 0)}
           {pill('scope-area', f.areaIds.length ? m.areaText : t('All areas'), f.areaIds.length > 0)}
-          {views ?? <DashViews src={src} />}
-          {exportMenu}
         </div>
         <button type="button" className={n ? 'sb-filters sb-filters--on' : 'sb-filters'} onClick={() => setOpen(true)} aria-haspopup="dialog" data-testid="fb-filters-pill">
           <Icon name="sliders" size={16} /> {t('Filters')}{n > 0 && <> · <span data-testid="fb-badge" aria-label={t('{n} active', { n })}>{n}</span></>}
         </button>
       </div>
       {clash && <div className="callout callout--warning fb-clash" role="status" data-testid="fb-clash"><Icon name="alert" size={16} /><span>{t(clash)}</span></div>}
-      {n > 0 && <InScopeSlot info><div className="scope-info scope-info--phone"><ActiveChips src={src} m={m} /></div></InScopeSlot>}
+      {/* under the sticky pills, scrolling with the page: Views and Export (their panels need room), then the active filters */}
+      <InScopeSlot info>
+        <div className="scope-info scope-info--phone">
+          <div className="sb-phone-tools" data-testid="scope-tools">
+            {views ?? <DashViews src={src} />}
+            {exportMenu}
+          </div>
+          {n > 0 && <ActiveChips src={src} m={m} />}
+        </div>
+      </InScopeSlot>
       {open && (
         <BottomSheet
           title={t('Filters')}
