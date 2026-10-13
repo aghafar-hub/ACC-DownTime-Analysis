@@ -1,6 +1,9 @@
 // The report builder: template, period, filters, sections, and a summary card with the Build button. Everything lives
 // in one ReportSetup the page keeps in the URL query, so a setup link restores it exactly.
 import { useMemo, type ReactNode } from 'react';
+import ReportExport from './ReportExport';
+import { useTemplateUi } from './SavedTemplates';
+import type { ReportModel } from './model';
 import type { ClassificationCode, Criticality, ReportSectionId, ReportSectionOptions, Startup } from '../api/types';
 import { areasInScope, type DashFilters } from '../dashboard/filters';
 import { MultiPick } from '../dashboard/FilterBar';
@@ -29,8 +32,9 @@ export interface BuilderProps {
   onBuild: () => void;
   onCopyLink: () => void;
   copied: boolean;
-  /** save-as / rename / delete of the person's own templates comes with step R2 */
-  templatesSlot?: ReactNode;
+  /** the report model for Download Excel / CSV (built on the click); null while the data is not ready */
+  getModel: (only?: ReportSectionId[]) => ReportModel | null;
+  dataReady: boolean;
 }
 
 function Step({ n, title, hint, children, testid }: { n: number; title: string; hint?: string; children: ReactNode; testid: string }) {
@@ -52,6 +56,7 @@ function toggleIn<T>(list: T[], v: T): T[] {
 export default function Builder(p: BuilderProps) {
   const { setup, onChange, startup } = p;
   const f = setup.filters;
+  const tpl = useTemplateUi(setup, onChange);
   const setFilters = (patch: Partial<ReportFilters>) => onChange({ ...setup, filters: { ...f, ...patch } });
 
   const lines = startup?.lines ?? [];
@@ -117,6 +122,7 @@ export default function Builder(p: BuilderProps) {
           <Icon name="share" size={16} /> {t('Copy link')}
         </button>
       </div>
+      <ReportExport sections={setup.sections} getModel={p.getModel} ready={p.dataReady} testid="rb" />
       {none && <p className="rb-hint rb-warn" role="status" data-testid="rb-none">{t('Choose at least one section to build a report.')}</p>}
       <p className="rb-copied" role="status" aria-live="polite" data-testid="rb-copied">{p.copied ? t('Link copied. It opens this setup.') : ''}</p>
     </aside>
@@ -128,10 +134,11 @@ export default function Builder(p: BuilderProps) {
         <Step n={1} title={t('Template')} hint={t('Start from a ready-made report, then change anything below.')} testid="rb-template">
           <ChipRow label={t('Template')}>
             {TEMPLATE_DEFS.map((x) => (
-              <CountChip key={x.id} on={setup.template === x.id} onClick={() => onChange(applyTemplate(setup, x.id))} testid={`rb-tpl-${x.id}`}>{t(x.label)}</CountChip>
+              <CountChip key={x.id} on={setup.template === x.id && !tpl.active} onClick={() => onChange(applyTemplate(setup, x.id))} testid={`rb-tpl-${x.id}`}>{t(x.label)}</CountChip>
             ))}
-            {p.templatesSlot}
+            {tpl.chips}
           </ChipRow>
+          {tpl.actions}
           <p className="rb-blurb" data-testid="rb-tpl-blurb">{t(TEMPLATE_DEFS.find((x) => x.id === setup.template)?.blurb ?? '')}</p>
         </Step>
 

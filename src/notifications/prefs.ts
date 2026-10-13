@@ -12,6 +12,10 @@ export interface Prefs {
   digest: Digest;
   /** plant-local timestamp, '' when never saved */
   lastSeenAt: string;
+  /** saved views as stored (JSON text, '' when none); read with src/views/savedViews.ts */
+  savedViews: string;
+  /** saved report templates as stored (JSON text, '' when none); read with src/reports/savedTemplates.ts */
+  savedReports: string;
 }
 
 const csv = (v: string | undefined): string[] => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -25,6 +29,8 @@ export function parsePrefs(raw: NotificationPrefs | undefined | null): Prefs {
     watchAreas: [...new Set(csv(r.watch_areas))],
     digest,
     lastSeenAt: (r.last_seen_at ?? '').trim(),
+    savedViews: r.saved_views ?? '',
+    savedReports: r.saved_reports ?? '',
   };
 }
 

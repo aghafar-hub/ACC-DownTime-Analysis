@@ -73,6 +73,26 @@ design lead where the owner was silent.
   `src/validate/scorecard.ts` (`buildScorecard`).
 - Event Explorer: Excel and CSV export of the filtered events; Saved views (filter sets) for dashboards via the
   `saved_views` preference.
+  **Built (R2, exports and saved lists):**
+  - `src/export/`: `xlsx.ts` (production .xlsx writer on fflate: shared strings, bold filled header, number formats 0.0 / 0.00 hours,
+    0.0 % stored as a fraction, yyyy-mm-dd and yyyy-mm-dd hh:mm:ss as Excel serials, frozen header, autofilter over the data rows,
+    widths capped at 60, valid unique sheet names), `csv.ts` (UTF-8 with BOM, comma, quotes doubled, CRLF; text that starts with
+    `= + - @` gets a leading apostrophe), `table.ts` (one export table feeds both Excel and CSV), `reportExport.ts` (report model to
+    sheets: the model's own tables cell for cell; plotted data where the chart shows more than the table, i.e. every day, the
+    month-by-classification matrix, the hour-by-weekday grid, the three Pareto charts in one table), `eventsExport.ts`.
+  - Report: 'Download Excel' (Summary sheet first, then one sheet per chosen section that has a table) and 'Download CSV' (a menu of those
+    sections, one file per click, no total row, percentages as points under a "(%)" header) in the builder and the preview. File names:
+    `ACC-downtime-<report-name>_<yyyy-mm or from_to_to>[_<section>].xlsx|csv`.
+  - Saved templates (`saved_reports`): chips after the ready-made ones, Save as template / Rename / Delete (`src/reports/savedTemplates.ts`,
+    `SavedTemplates.tsx`); a template keeps the period preset (Last full month stays relative), filters, sections, options. Names 1-60
+    characters, unique ignoring case, not a ready-made template's name; at most 20.
+  - Event Explorer 'Export' (Excel / CSV): exactly the filtered rows in list order, 23 columns, at most 50,000 rows (a note says when
+    capped; the Excel file also has an 'Export info' sheet). It uses the events the page already loaded for the person.
+  - Saved views (`saved_views`) for Overview, Pareto, Repeats, Reliability and Event Explorer: a 'Views' button by the filter bar
+    (`src/views/`): apply, rename, delete, 'Save current filters as view'; at most 20 in all pages, query at most 1500 characters,
+    names unique per page. A dashboard view is the filter query (the shared-filter store follows it); an Event Explorer view is its
+    filter query (`q line area cls crit fail from to show sort`), applied by `/events?<query>`, which the page reads once and then
+    removes from the address. The year switch is not part of a view.
 
 ## 5. Acceptance
 

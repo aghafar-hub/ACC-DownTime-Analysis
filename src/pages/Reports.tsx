@@ -3,6 +3,8 @@
 // the builder. Building is a pure client calculation (src/reports/model.ts); the dashboards' filters are never touched.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import type { ReportSectionId } from '../api/types';
+import ReportExport from '../reports/ReportExport';
 import { comparisonRange } from '../calc';
 import { PageHeader } from '../components/Tile';
 import DataStatus from '../components/DataStatus';
@@ -103,6 +105,15 @@ export default function Reports() {
   const range = live?.range ?? data.range;
   const compareRange = setup.compare && range ? (live?.ctx.win.compareRange ?? comparisonRange(range, comparisonKindFor(setup.preset))) : null;
 
+  const generatedBy = user?.display_name || user?.email || '';
+  // the builder makes the model when a download is asked for (only the sections that download needs)
+  const getModel = useCallback((only?: ReportSectionId[]): ReportModel | null => {
+    if (!data.ready || !data.startup || !data.asOf) return null;
+    return buildReport({
+      setup: only ? { ...setup, sections: only } : setup, startup: data.startup, rows: data.rows, asOf: data.asOf, generatedAt: nowText(), generatedBy, plant: PLANT_NAME,
+    });
+  }, [data.ready, data.startup, data.rows, data.asOf, setup, generatedBy]);
+
   const subtitle = view === 'builder'
     ? t('Choose what goes into the report, add filters and press Build. The report can be printed or saved as a PDF.')
     : t('Print or save the report as a PDF, or go back to change what it contains.');
@@ -117,10 +128,10 @@ export default function Reports() {
       {view === 'builder' ? (
         <Builder
           setup={setup} onChange={change} startup={data.startup} range={range} compareRange={compareRange} scope={counts} coverage={live?.ctx.coverage ?? null}
-          onBuild={build} onCopyLink={copyLink} copied={copied}
+          onBuild={build} onCopyLink={copyLink} copied={copied} getModel={getModel} dataReady={data.ready}
         />
       ) : (
-        <Preview setup={setup} data={data} generatedBy={user?.display_name || user?.email || ''} onEdit={edit} onCopyLink={copyLink} copied={copied} />
+        <Preview setup={setup} data={data} generatedBy={generatedBy} onEdit={edit} onCopyLink={copyLink} copied={copied} />
       )}
     </div>
   );
@@ -168,6 +179,10 @@ function Preview({ setup, data, generatedBy, onEdit, onCopyLink, copied }: {
       <div className="card rpt-toolbar rpt-noprint" role="toolbar" aria-label={t('Report actions')} data-testid="report-toolbar">
         <button type="button" className="btn" onClick={onEdit} data-testid="report-edit"><Icon name="chevronRight" size={16} style={{ transform: 'rotate(180deg)' }} /> {t('Edit setup')}</button>
         <button type="button" className="btn" onClick={onCopyLink} data-testid="report-copy-link"><Icon name="share" size={16} /> {t('Copy link')}</button>
+        <ReportExport
+          sections={setup.sections} ready={!!model} testid="rp"
+          getModel={(only) => (model ? (only ? { ...model, sections: model.sections.filter((s) => only.includes(s.id)) } : model) : null)}
+        />
         <button type="button" className="btn-primary" onClick={() => window.print()} disabled={!info} data-testid="report-print"><Icon name="download" size={16} /> {t('Print / Save as PDF')}</button>
         <span className="rpt-toolbar-info" data-testid="report-info" role="status">
           {info ? t('{p} pages · {s} sections', { p: info.pages, s: info.sections }) : model ? t('Laying out the pages…') : ''}

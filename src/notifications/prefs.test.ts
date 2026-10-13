@@ -4,12 +4,17 @@ import { ALERT_TYPE_GROUPS, enabledGroups, parsePrefs, serializeAlertTypes, seri
 
 describe('parsePrefs', () => {
   it('a person who never chose gets every type, every area and no digest', () => {
-    expect(parsePrefs({})).toEqual({ alertTypes: NOTIFICATION_TYPES, watchAreas: [], digest: 'none', lastSeenAt: '' });
+    expect(parsePrefs({})).toEqual({ alertTypes: NOTIFICATION_TYPES, watchAreas: [], digest: 'none', lastSeenAt: '', savedViews: '', savedReports: '' });
     expect(parsePrefs(undefined).watchAreas).toEqual([]);
+  });
+  it('carries the stored saved views and saved report templates as text, untouched', () => {
+    const p = parsePrefs({ saved_views: '[{"id":"v1"}]', saved_reports: '[]' });
+    expect(p.savedViews).toBe('[{"id":"v1"}]');
+    expect(p.savedReports).toBe('[]');
   });
   it('reads the saved values and ignores unknown types and digests', () => {
     const p = parsePrefs({ alert_types: 'long_stop, upload_gap,bogus', watch_areas: 'K.1,RM.2,K.1', digest: 'weekly', last_seen_at: '2026-03-05 10:00:00.000' });
-    expect(p).toEqual({ alertTypes: ['long_stop', 'upload_gap'], watchAreas: ['K.1', 'RM.2'], digest: 'weekly', lastSeenAt: '2026-03-05 10:00:00.000' });
+    expect(p).toEqual({ alertTypes: ['long_stop', 'upload_gap'], watchAreas: ['K.1', 'RM.2'], digest: 'weekly', lastSeenAt: '2026-03-05 10:00:00.000', savedViews: '', savedReports: '' });
     expect(parsePrefs({ digest: 'hourly' }).digest).toBe('none');
   });
 });

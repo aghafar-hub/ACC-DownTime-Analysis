@@ -3,14 +3,18 @@
 // number of active filters. The button opens the full set of fields as an inline panel on a desktop and as the
 // bottom sheet on a phone; the active filters sit below as removable chips with Reset.
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import type { ClassificationCode } from '../api/types';
 import { matchKey } from '../calc';
 import { BottomSheet, ChipRow, CountChip } from '../components/PhoneParts';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
-import { areasInScope, activeCount, DEFAULT_PRESET, PRESET_LABELS, RANGE_PRESETS, type CompareMode, type RangePreset } from './filters';
+import { VIEW_PAGE_PATH, viewPageOfPath, type SavedView } from '../views/savedViews';
+import ViewsMenu from '../views/ViewsMenu';
+import { areasInScope, activeCount, DEFAULT_PRESET, parseFilters, PRESET_LABELS, RANGE_PRESETS, serializeFilters, type CompareMode, type RangePreset } from './filters';
 import { dayLabel, fint, rangeLabel } from './format';
+import { rememberQuery } from './sharedFilters';
 import type { Dash } from './useDash';
 
 interface Opt { value: string; label: string; hint?: string }
@@ -260,6 +264,21 @@ function ActiveChips({ dash }: { dash: Dash }) {
   );
 }
 
+/** The Views button of a dashboard page: saves the filters on screen, and applies a saved view by going to the page with its query. */
+function DashViews({ dash }: { dash: Dash }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const page = viewPageOfPath(location.pathname);
+  if (!page) return null;
+  const apply = (v: SavedView) => {
+    // the shared-filter store follows the query (an empty query means the defaults)
+    const q = serializeFilters(parseFilters(new URLSearchParams(v.query))).toString();
+    rememberQuery(q);
+    navigate({ pathname: VIEW_PAGE_PATH[page], search: q ? `?${q}` : '' });
+  };
+  return <ViewsMenu page={page} currentQuery={() => serializeFilters(dash.filters).toString()} onApply={apply} />;
+}
+
 export default function FilterBar({ dash, eventCount, hideCompare }: { dash: Dash; eventCount: number | null; hideCompare?: boolean }) {
   const mobile = useIsMobile();
   const [open, setOpen] = useState(false);
@@ -286,6 +305,7 @@ export default function FilterBar({ dash, eventCount, hideCompare }: { dash: Das
       <div className="fb-row">
         <RangeFields dash={dash} />
         {filtersBtn}
+        <DashViews dash={dash} />
         {!hideCompare && <CompareToggle dash={dash} short={mobile} />}
       </div>
       {!mobile && open && (

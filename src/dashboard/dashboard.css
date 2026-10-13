@@ -96,7 +96,8 @@
   .fb-range-field {
     flex: 1 1 150px;
   }
-  .fb-filters-btn {
+  .fb-filters-btn,
+  .fb-row > .pm {
     order: 2;
   }
   .fb-compare {

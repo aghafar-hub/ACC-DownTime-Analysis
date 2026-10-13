@@ -1,6 +1,6 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import type { ClassificationCode, EventRow, Startup } from '../api/types';
+import type { ClassificationCode, Startup } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import DataNotes from '../components/DataNotes';
 import { BottomSheet, ChipRow, CountChip, FiltersPill, PAGE_SIZE, ShowMore } from '../components/PhoneParts';
@@ -19,51 +19,21 @@ import { duration, hours, num, shortTs } from '../util/format';
 import EventBadges from './events/EventBadges';
 import { buildOwnerLookup } from './events/crossArea';
 import { hasOpenProblemFlags } from '../calc/flags';
+import {
+  activeCount, applyFilters, describeExplorerFilters, EMPTY, hasExplorerParams, parseExplorerFilters, serializeExplorerFilters, EXPLORER_KEYS,
+  type Filters, type Show, type Sort,
+} from './events/explorerFilters';
+import ExportMenu from '../components/ExportMenu';
+import ViewsMenu from '../views/ViewsMenu';
+import { VIEW_PAGE_PATH, type SavedView } from '../views/savedViews';
+import { buildEventsWorkbook, eventsCsv, eventsFileName, eventsTable, EVENTS_EXPORT_CAP } from '../export/eventsExport';
+import { downloadFile, stampNow } from '../export/files';
+import { XLSX_MIME } from '../export/xlsx';
+import { CSV_MIME } from '../export/csv';
 import EventDetail from './events/EventDetail';
 import TimelineView from './events/TimelineView';
 import './events/timeline.css';
 import '../components/ui.css';
-
-type Show = 'all' | 'issues' | 'edited' | 'void';
-type Sort = 'stop_desc' | 'stop_asc' | 'dur_desc';
-interface Filters {
-  q: string; line: string; area: string; classes: ClassificationCode[]; crit: '' | 'INC' | 'NO_INC';
-  failureOnly: boolean; from: string; to: string; show: Show; sort: Sort;
-}
-const EMPTY: Filters = { q: '', line: '', area: '', classes: [], crit: '', failureOnly: false, from: '', to: '', show: 'all', sort: 'stop_desc' };
-
-/** How many filters are active (the search box and the sort order are not counted). */
-function activeCount(f: Filters, includeFailure = true): number {
-  return [f.line, f.area, f.classes.length > 0, f.crit, includeFailure && f.failureOnly, f.from, f.to, f.show !== 'all'].filter(Boolean).length;
-}
-
-function applyFilters(rows: EventRow[], f: Filters, startup: Startup | null, q: string): EventRow[] {
-  const needle = q.trim().toLowerCase();
-  const reasonText = new Map(startup?.reasons.map((r) => [r.reason_id, r.text_as_listed.trim().toLowerCase()]) ?? []);
-  // the area decides the line (the sheet's own line can be wrong)
-  const lineOfArea = new Map(startup?.areas.map((a) => [a.area_id, a.line_id]) ?? []);
-  const out = rows.filter((e) => {
-    if (f.line && (lineOfArea.get(e.area_id) ?? e.line_id) !== f.line) return false;
-    if (f.area && e.area_id !== f.area) return false;
-    if (f.classes.length && !f.classes.includes(e.classification)) return false;
-    if (f.crit && e.criticality !== f.crit) return false;
-    if (f.failureOnly && !(e.is_failure && !e.is_void)) return false;
-    if (f.from && e.event_date < f.from) return false;
-    if (f.to && e.event_date > f.to) return false;
-    if (f.show === 'issues' && !hasOpenProblemFlags(e)) return false;
-    if (f.show === 'edited' && !e.edited) return false;
-    if (f.show === 'void' && !e.is_void) return false;
-    if (needle) {
-      const hay = `${e.code_raw} ${e.equipment_id ?? ''} ${e.reason_raw ?? ''} ${e.reason_id ? reasonText.get(e.reason_id) ?? '' : ''} ${e.description ?? ''} ${e.event_id}`.toLowerCase();
-      if (!hay.includes(needle)) return false;
-    }
-    return true;
-  });
-  if (f.sort === 'stop_desc') out.sort((a, b) => b.stop_ts.localeCompare(a.stop_ts) || a.area_id.localeCompare(b.area_id));
-  else if (f.sort === 'stop_asc') out.sort((a, b) => a.stop_ts.localeCompare(b.stop_ts) || a.area_id.localeCompare(b.area_id));
-  else out.sort((a, b) => b.duration_s - a.duration_s);
-  return out;
-}
 
 function SortField({ f, set, id }: { f: Filters; set: (p: Partial<Filters>) => void; id: string }) {
   return (
@@ -140,7 +110,7 @@ function FilterFields({ f, set, startup, stacked }: { f: Filters; set: (p: Parti
 
 export default function EventExplorer() {
   const { st, startup, year, ev, facts } = useYearData();
-  const { canEdit } = useAuth();
+  const { canEdit, user } = useAuth();
   const { T } = useTheme();
   const mobile = useIsMobile();
   const location = useLocation();
@@ -168,6 +138,19 @@ export default function EventExplorer() {
   }, [drill, multi.ready, multi.rows]);
   const sourceRows = drill ? drillRows ?? [] : ev.events;
   const [f, setF] = useState<Filters>(EMPTY);
+  // a saved view (or a pasted link) arrives as a query: its filters replace the ones on screen, then the query is dropped from the address
+  const classCodes = startup?.classifications.map((c) => c.code) ?? null;
+  const classKey = classCodes?.join(',') ?? '';
+  useEffect(() => {
+    if (!hasExplorerParams(params)) return;
+    setF(parseExplorerFilters(params, classCodes));
+    setParams((cur) => {
+      const p = new URLSearchParams(cur);
+      EXPLORER_KEYS.forEach((k) => p.delete(k));
+      return p;
+    }, { replace: true, state: location.state });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key, classKey]);
   const [sheet, setSheet] = useState(false);
   const [shown, setShown] = useState(PAGE_SIZE);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -204,6 +187,44 @@ export default function EventExplorer() {
   const filtersOn = activeCount(f) + (f.q.trim() ? 1 : 0);
   const reset = () => setF(EMPTY);
 
+  // ---- export: exactly the rows of the list (same filters, same order), capped at EVENTS_EXPORT_CAP
+  const [exportNote, setExportNote] = useState<{ text: string; capped: boolean } | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const runExport = async (kind: 'xlsx' | 'csv') => {
+    if (exporting || filtered.length === 0) return;
+    setExporting(true);
+    setExportNote({ text: t('Preparing the file…'), capped: false });
+    await new Promise((r) => window.setTimeout(r, 30)); // let the note paint before the heavy work
+    try {
+      const ex = eventsTable(filtered, startup);
+      const label = drill ? 'selection' : String(year ?? '');
+      const name = eventsFileName(label, kind);
+      const ok = kind === 'xlsx'
+        ? downloadFile(name, buildEventsWorkbook(ex, {
+          filters: describeExplorerFilters(f, startup), by: user?.display_name || user?.email || '', on: stampNow(),
+          scope: drill ? t('Events opened from {label}', { label: drill.label }) : t('Events of {year}', { year: year ?? '' }),
+        }), XLSX_MIME)
+        : downloadFile(name, eventsCsv(ex), CSV_MIME);
+      if (!ok) setExportNote({ text: t('The browser did not start the download. Try again.'), capped: false });
+      else if (ex.capped) setExportNote({ text: t('{name}: the list has {n} events; the file holds the first {k}. Narrow the filters to export the rest.', { name, n: num(ex.matching), k: num(EVENTS_EXPORT_CAP) }), capped: true });
+      else setExportNote({ text: t('{name}: {n} events exported.', { name, n: num(ex.exported) }), capped: false });
+    } catch {
+      setExportNote({ text: t('The file could not be made. Try again, or narrow the filters.'), capped: false });
+    } finally {
+      setExporting(false);
+    }
+  };
+  const exportMenu = (
+    <ExportMenu onExcel={() => void runExport('xlsx')} onCsv={() => void runExport('csv')} disabled={!dataReady || filtered.length === 0 || exporting} testid="export-btn" />
+  );
+  const applyView = (v: SavedView) => navigate({ pathname: VIEW_PAGE_PATH.events, search: v.query ? `?${v.query}` : '' });
+  const currentViewQuery = (): string => {
+    const q = serializeExplorerFilters(f);
+    if (view === 'timeline') q.set('view', 'timeline');
+    return q.toString();
+  };
+  const viewsMenu = <ViewsMenu page="events" currentQuery={currentViewQuery} onApply={applyView} />;
+
   const searchBox = (
     <div className="field" style={{ flex: '1 1 260px', minWidth: 0 }}>
       <label htmlFor="ev-search">{t('Search')}</label>
@@ -222,6 +243,7 @@ export default function EventExplorer() {
         right={
           <>
             <YearSwitch />
+            {!mobile && exportMenu}
             <button type="button" className="btn btn-sm" onClick={() => { st.reload(); ev.reload(); }} disabled={ev.refreshing || ev.loading} data-testid="refresh">
               <Icon name="sync" size={14} /> {ev.refreshing ? t('Refreshing…') : t('Refresh')}
             </button>
@@ -237,6 +259,14 @@ export default function EventExplorer() {
           <button type="button" className="btn btn-sm" onClick={() => navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null })} data-testid="drill-remove" aria-label={t('Remove the filter: {label}', { label: drill.label })}>
             <Icon name="close" size={14} /> {t('Remove')}
           </button>
+        </div>
+      )}
+
+      {exportNote && (
+        <div className="callout" role="status" data-testid="export-note">
+          <Icon name={exportNote.capped ? 'alert' : 'download'} size={16} />
+          <span data-testid="export-note-text">{exportNote.text}</span>
+          <button type="button" className="btn btn-sm" onClick={() => setExportNote(null)} aria-label={t('Dismiss this note')}><Icon name="close" size={14} /></button>
         </div>
       )}
 
@@ -264,12 +294,14 @@ export default function EventExplorer() {
                 <CountChip on={f.failureOnly} onClick={() => set({ failureOnly: !f.failureOnly })} testid="failure-only">{t('Failures only')}</CountChip>
               </div>
               <button type="button" className="btn" onClick={reset} disabled={filtersOn === 0} data-testid="reset-filters">{t('Reset filters')}</button>
+              {viewsMenu}
             </div>
             <FilterFields f={f} set={set} startup={startup} />
           </section>
         </>
       ) : (
         <>
+          <div className="ev-tools" data-testid="ev-tools">{viewsMenu}{exportMenu}</div>
           <div className="phone-summary" data-testid="phone-summary">
             <b>{num(filtered.length)}</b> {t('events')}
             <span><span aria-hidden="true">◆</span> {num(stats.failures)} {t('failures')}</span>

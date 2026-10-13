@@ -950,3 +950,76 @@
     flex-basis: 100%;
   }
 }
+
+/* ---- saved templates, export buttons (R2) ---- */
+.tpl {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.tpl-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tpl-bar .btn {
+  min-height: 44px;
+}
+.tpl-note {
+  margin: 0;
+  font: 400 12.5px var(--sans);
+  color: var(--tk-text-secondary);
+}
+.tpl-note--bad {
+  color: var(--tk-danger);
+  font-weight: 600;
+}
+.tpl-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tpl-label {
+  font: 600 13px var(--sans);
+}
+.tpl-input {
+  min-height: 44px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.rx {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.rx .btn,
+.rx .pm > .btn {
+  min-height: 44px;
+}
+.rx-note {
+  margin: 0;
+  font: 400 12.5px var(--sans);
+  color: var(--tk-text-secondary);
+}
+.rx-note--bad {
+  color: var(--tk-danger);
+  font-weight: 600;
+}
+
+/* in the builder's side card the download buttons are as wide as Build report */
+.rb-summary .rx {
+  flex-direction: column;
+  align-items: stretch;
+  margin-top: 8px;
+}
+.rb-summary .rx > .btn,
+.rb-summary .rx .pm,
+.rb-summary .rx .pm > .btn {
+  width: 100%;
+  box-sizing: border-box;
+}
+.rb-summary .rx .pm {
+  display: block;
+}
