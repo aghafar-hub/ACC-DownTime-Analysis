@@ -142,13 +142,39 @@ function eventOrThrow_(eventId) {
   return ev;
 }
 
+// ---------- accepted flags ("Keep as entered") ----------
+
+function flagRank_(f) {
+  var i = KNOWN_FLAG_NAMES.indexOf(f);
+  return i < 0 ? KNOWN_FLAG_NAMES.length : i;
+}
+
+/** A comma separated list (or an array) as a list of known flag names without repeats, in catalogue order. */
+function canonFlags_(v) {
+  var list = Array.isArray(v) ? v : String(v === null || v === undefined ? '' : v).split(',');
+  var out = [];
+  list.forEach(function (f) {
+    f = String(f).trim();
+    if (f && out.indexOf(f) < 0) out.push(f);
+  });
+  return out.sort(function (a, b) { return flagRank_(a) - flagRank_(b) || (a < b ? -1 : a > b ? 1 : 0); });
+}
+
+/** The accepted flags that still apply: a flag stays when the record still carries it. The derived overlap stays until undone. */
+function pruneAccepted_(accepted, storedFlags) {
+  var have = canonFlags_(storedFlags);
+  return canonFlags_(accepted).filter(function (f) { return DERIVED_FLAG_NAMES.indexOf(f) >= 0 || have.indexOf(f) >= 0; });
+}
+
+var PRUNE_NOTE_ = 'Removed automatically: the record no longer has this problem.';
+
 function editRows_(session, ev, pairs, note) {
   var at = nowTs_();
   var stamp = compactTs_('yyyyMMddHHmmssSSS');
   return pairs.map(function (p, i) {
     return {
       edit_id: 'ED-' + stamp + '-' + (i + 1), event_id: ev.event_id, edited_at: at, edited_by: session.user.user_id,
-      field: p.field, old_value: editText_(p.oldValue), new_value: editText_(p.newValue), note: note
+      field: p.field, old_value: editText_(p.oldValue), new_value: editText_(p.newValue), note: p.note || note
     };
   });
 }
@@ -199,6 +225,11 @@ function editEvent_(session, eventId, changes, note) {
       if (editText_(rec[f]) !== editText_(ev[f])) pairs.push({ field: f, oldValue: ev[f], newValue: rec[f] });
     });
     if (!pairs.length) throw apiError_(ERR.BAD_REQUEST, 'Nothing was changed.');
+    // Accepted flags that no longer apply to the changed record are dropped (and the history says so).
+    var accOld = canonFlags_(ev.accepted_flags);
+    var accNew = pruneAccepted_(accOld, rec.flags);
+    var pruned = accNew.length !== accOld.length;
+    if (pruned) pairs.push({ field: 'accepted_flags', oldValue: accOld.join(','), newValue: accNew.join(','), note: PRUNE_NOTE_ });
     var patch = {
       event_date: rec.event_date, line_id: rec.line_id, area_id: rec.area_id, code_raw: rec.code_raw,
       stop_ts: rec.stop_ts, start_ts: rec.start_ts, freq: rec.freq, classification: rec.classification,
@@ -206,6 +237,10 @@ function editEvent_(session, eventId, changes, note) {
       equipment_id: rec.equipment_id, is_area_level: rec.is_area_level, duration_s: rec.duration_s,
       reason_id: rec.reason_id, flags: rec.flags, edited: true
     };
+    if (pruned) {
+      patch.accepted_flags = accNew.join(',');
+      if (!accNew.length) { patch.accepted_by = ''; patch.accepted_at = ''; }
+    }
     updateRow_(T.EVENTS, ev._row, patch);
     appendRows_(T.EDITS, editRows_(session, ev, pairs, why));
     auditLog_(session.user.user_id, 'edit_event', T.EVENTS, ev.event_id,
@@ -223,6 +258,45 @@ function voidEvent_(session, eventId, isVoid, note) {
     updateRow_(T.EVENTS, ev._row, { is_void: isVoid });
     appendRows_(T.EDITS, editRows_(session, ev, [{ field: 'is_void', oldValue: ev.is_void, newValue: isVoid }], why));
     auditLog_(session.user.user_id, isVoid ? 'void_event' : 'unvoid_event', T.EVENTS, ev.event_id, 'Note: ' + why);
+    return readRowAt_(T.EVENTS, ev._row);
+  });
+}
+
+/**
+ * "Keep as entered": the person has checked the record and says its flagged problems are fine. `flags` is the FULL new
+ * accepted set (fewer = undo, empty = undo all). Nothing else about the record changes and no flag is recalculated.
+ * One history row (field accepted_flags) says who, when and why.
+ */
+function acceptEventFlags_(session, eventId, flags, note) {
+  var why = cleanText_(note, 'A note explaining why', true, 500);
+  if (why.length < ACCEPT_NOTE_MIN) throw apiError_(ERR.BAD_REQUEST, 'The note must be at least ' + ACCEPT_NOTE_MIN + ' characters.');
+  if (!Array.isArray(flags)) throw apiError_(ERR.BAD_REQUEST, 'Flags must be a list.');
+  if (flags.length > KNOWN_FLAG_NAMES.length * 2) throw apiError_(ERR.BAD_REQUEST, 'Too many flags.');
+  flags.forEach(function (f) {
+    if (typeof f !== 'string' || KNOWN_FLAG_NAMES.indexOf(f) < 0) {
+      throw apiError_(ERR.BAD_REQUEST, 'Unknown flag: ' + String(f).slice(0, 40) + '.');
+    }
+  });
+  var wanted = canonFlags_(flags);
+  return withLock_(function () {
+    var ev = eventOrThrow_(eventId);
+    if (ev.is_void) throw apiError_(ERR.CONFLICT, 'This event is void. Restore it before changing it.');
+    var current = canonFlags_(ev.accepted_flags);
+    var stored = canonFlags_(ev.flags);
+    wanted.forEach(function (f) {
+      if (current.indexOf(f) < 0 && stored.indexOf(f) < 0 && DERIVED_FLAG_NAMES.indexOf(f) < 0) {
+        throw apiError_(ERR.BAD_REQUEST, 'This record does not have the problem "' + f + '".');
+      }
+    });
+    if (wanted.join(',') === current.join(',')) throw apiError_(ERR.BAD_REQUEST, 'Nothing was changed.');
+    var at = nowTs_();
+    var patch = wanted.length
+      ? { accepted_flags: wanted.join(','), accepted_by: session.user.user_id, accepted_at: at }
+      : { accepted_flags: '', accepted_by: '', accepted_at: '' };
+    updateRow_(T.EVENTS, ev._row, patch);
+    appendRows_(T.EDITS, editRows_(session, ev, [{ field: 'accepted_flags', oldValue: current.join(','), newValue: wanted.join(',') }], why));
+    auditLog_(session.user.user_id, 'accept_event_flags', T.EVENTS, ev.event_id,
+      (wanted.length ? 'Kept as entered: ' + wanted.join(', ') : 'Undid keep as entered (was: ' + current.join(', ') + ')') + '. Note: ' + why);
     return readRowAt_(T.EVENTS, ev._row);
   });
 }
@@ -245,7 +319,8 @@ function revalidateEvents_(session, year) {
     var sheet = getSheet_(T.EVENTS);
     var headers = sheetHeaders_(sheet);
     var last = sheet.getLastRow();
-    var checked = 0, changedRows = [];
+    var checked = 0, changedRows = [], history = [];
+    var stamp = compactTs_('yyyyMMddHHmmssSSS'), at = nowTs_();
     if (last >= 2) {
       var values = sheet.getRange(2, 1, last - 1, headers.length).getValues();
       var types = columnTypes_(T.EVENTS);
@@ -257,18 +332,28 @@ function revalidateEvents_(session, year) {
         var norm = normalizeEvent_(ctx, ev);
         if (norm.error) continue;
         var rec = norm.rec;
-        if (rec.flags === (ev.flags || '') && rec.equipment_id === (ev.equipment_id || '') && rec.reason_id === (ev.reason_id || '') &&
+        var accOld = canonFlags_(ev.accepted_flags);
+        var accNew = pruneAccepted_(accOld, rec.flags);
+        var pruned = accNew.length !== accOld.length;
+        if (!pruned && rec.flags === (ev.flags || '') && rec.equipment_id === (ev.equipment_id || '') && rec.reason_id === (ev.reason_id || '') &&
             rec.is_area_level === ev.is_area_level && rec.duration_s === ev.duration_s) continue;
-        changedRows.push({
-          rowNum: i + 2,
-          values: objectToRow_(T.EVENTS, headers, {
-            flags: rec.flags, equipment_id: rec.equipment_id, reason_id: rec.reason_id,
-            is_area_level: rec.is_area_level, duration_s: rec.duration_s
-          }, values[i])
-        });
+        var patch = {
+          flags: rec.flags, equipment_id: rec.equipment_id, reason_id: rec.reason_id,
+          is_area_level: rec.is_area_level, duration_s: rec.duration_s
+        };
+        if (pruned) {
+          patch.accepted_flags = accNew.join(',');
+          if (!accNew.length) { patch.accepted_by = ''; patch.accepted_at = ''; }
+          history.push({
+            edit_id: 'ED-' + stamp + '-R' + (history.length + 1), event_id: ev.event_id, edited_at: at, edited_by: session.user.user_id,
+            field: 'accepted_flags', old_value: accOld.join(','), new_value: accNew.join(','), note: PRUNE_NOTE_
+          });
+        }
+        changedRows.push({ rowNum: i + 2, values: objectToRow_(T.EVENTS, headers, patch, values[i]) });
       }
     }
     writeRowRuns_(sheet, headers.length, changedRows);
+    appendRows_(T.EDITS, history);
     auditLog_(session.user.user_id, 'revalidate_events', T.EVENTS, y === null ? 'all' : String(y),
       'Checked ' + checked + ', changed ' + changedRows.length);
     return { checked: checked, changed: changedRows.length };

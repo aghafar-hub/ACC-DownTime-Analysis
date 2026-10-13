@@ -21,7 +21,11 @@ var SETTING_RULES = {
   notif_availability_target_pct: { type: 'number_or_blank', min: 0, max: 100 },
   notif_repeat_alert: { type: 'enum', values: ['true', 'false'] },
   notif_retention_days: { type: 'int', min: 1, max: 3650 },
-  app_url: { type: 'url_or_blank' }
+  app_url: { type: 'url_or_blank' },
+  // Targets shown on the dashboards (blank = no target). Hours must be above 0.
+  target_availability_pct: { type: 'number_or_blank', min: 0, max: 100 },
+  target_mtbf_h: { type: 'number_or_blank', min: 0, max: 100000, minExclusive: true },
+  target_mttr_h: { type: 'number_or_blank', min: 0, max: 100000, minExclusive: true }
 };
 
 function readSettings_() { return readTable_(T.SETTINGS); }
@@ -53,9 +57,10 @@ function validateSetting_(key, value) {
   }
   if (rule.type === 'number_or_blank' && s === '') return '';
   var n = Number(s);
-  var bad = s === '' || isNaN(n) || n < rule.min || n > rule.max || (rule.type === 'int' && Math.floor(n) !== n);
+  var bad = s === '' || isNaN(n) || n < rule.min || n > rule.max || (rule.minExclusive && n <= rule.min) ||
+    (rule.type === 'int' && Math.floor(n) !== n);
   if (bad) throw apiError_(ERR.BAD_REQUEST, 'Setting ' + key + ' must be ' + (rule.type === 'int' ? 'a whole number' : 'a number') +
-    ' between ' + rule.min + ' and ' + rule.max + '.');
+    (rule.minExclusive ? ' above ' + rule.min + ' and up to ' : ' between ' + rule.min + ' and ') + rule.max + '.');
   return String(n);
 }
 

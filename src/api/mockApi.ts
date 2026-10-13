@@ -10,7 +10,7 @@ import type {
 import {
   notificationCandidates, oneLine, parseNotifSettings, uploadDoneCandidate, userEventCandidate, type Candidate,
 } from './mockNotifications';
-import { buildIndex, deriveEventFields, findArea, type MasterIndex } from '../calc';
+import { buildIndex, canonicalFlags, deriveEventFields, findArea, isKnownFlag, pruneAcceptedFlags, splitFlags, DERIVED_FLAGS, type MasterIndex } from '../calc';
 import { ApiError, NOTIFICATION_TYPES, TAB_IDS } from './types';
 import { buildSyntheticDb, fmtTs, type MockUser, type SyntheticDb } from '../mock/synthetic';
 import { codeKey, eventIdOf, fingerprintOf, isValidDate, matchKey, parseTs } from '../util/normalize';
@@ -18,6 +18,9 @@ import { codeKey, eventIdOf, fingerprintOf, isValidDate, matchKey, parseTs } fro
 const LEVEL_RANK: Record<AccessLevel, number> = { Hidden: 0, View: 1, Edit: 2 };
 const CLASS_CODES: ClassificationCode[] = ['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'];
 const TEXT_MAX = 1000;
+const ACCEPT_NOTE_MIN = 3;
+const PRUNE_NOTE = 'Removed automatically: the record no longer has this problem.';
+const SAVED_VIEW_PAGES = ['overview', 'pareto', 'repeats', 'reliability', 'events'];
 const FINGERPRINT_HINT_MAX = 20;
 const EDITABLE: string[] = [
   'event_date', 'line_id', 'area_id', 'code_raw', 'stop_ts', 'start_ts', 'freq', 'classification', 'criticality', 'is_failure', 'reason_raw', 'description',
@@ -38,6 +41,30 @@ function randomTempPassword(): string {
   let out = '';
   for (let i = 0; i < 12; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
   return `${out.slice(0, 4)}-${out.slice(4, 8)}-${out.slice(8)}`;
+}
+
+/** Same rules as cleanSavedViews_ in backend/apps-script/Notifications.js. */
+function cleanSavedViews(text: string): string {
+  const bad = (m: string) => new ApiError(m, 'bad_request');
+  if (text === '') return '';
+  if (text.length > 20000) throw bad('Saved views are too long.');
+  let list: unknown;
+  try { list = JSON.parse(text); } catch { throw bad('Saved views are not readable.'); }
+  if (!Array.isArray(list)) throw bad('Saved views must be a list.');
+  if (list.length > 20) throw bad('You can save at most 20 views.');
+  const seen = new Set<string>();
+  for (const v of list) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw bad('Each saved view must be an object.');
+    const o = v as Record<string, unknown>;
+    for (const k of Object.keys(o)) if (!['id', 'name', 'page', 'query'].includes(k)) throw bad(`A saved view has an unknown field: ${oneLine(k, 40)}.`);
+    if (typeof o.id !== 'string' || !o.id || o.id.length > 40) throw bad('A saved view needs an id of 1 to 40 characters.');
+    if (typeof o.name !== 'string' || !o.name.trim() || o.name.length > 60) throw bad('A saved view needs a name of 1 to 60 characters.');
+    if (typeof o.page !== 'string' || !SAVED_VIEW_PAGES.includes(o.page)) throw bad(`A saved view page must be one of: ${SAVED_VIEW_PAGES.join(', ')}.`);
+    if (typeof o.query !== 'string' || o.query.length > 1500) throw bad('A saved view query must be text of at most 1500 characters.');
+    if (seen.has(o.id)) throw bad('Two saved views have the same id.');
+    seen.add(o.id);
+  }
+  return text;
 }
 
 export interface MockApi extends Api {
@@ -314,22 +341,79 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
     if (!('is_failure' in incoming) && (rec.criticality !== ev.criticality || rec.freq !== ev.freq)) {
       rec.is_failure = rec.criticality === 'INC' && rec.freq === 1;
     }
+    const accOld = canonicalFlags(splitFlags(ev.accepted_flags));
+    const accNew = pruneAcceptedFlags(ev.accepted_flags, rec.flags);
     const order = EDITABLE.filter((f) => editText((rec as unknown as Record<string, unknown>)[f]) !== editText((ev as unknown as Record<string, unknown>)[f]));
     if (!order.length) throw bad('Nothing was changed.');
     const before = { ...ev } as unknown as Record<string, unknown>;
+    const pruned = accNew.length !== accOld.length;
     Object.assign(ev, {
       event_date: rec.event_date, line_id: rec.line_id, area_id: rec.area_id, code_raw: rec.code_raw, stop_ts: rec.stop_ts, start_ts: rec.start_ts,
       freq: rec.freq, classification: rec.classification, criticality: rec.criticality, is_failure: rec.is_failure,
       reason_raw: stored(rec.reason_raw), description: stored(rec.description), equipment_id: rec.equipment_id, is_area_level: rec.is_area_level,
       duration_s: rec.duration_s, reason_id: rec.reason_id, flags: stored(rec.flags), edited: true,
     });
+    if (pruned) {
+      // accepted flags the record no longer carries are dropped, and the history says so
+      ev.accepted_flags = stored(accNew.join(','));
+      if (!accNew.length) { ev.accepted_by = undefined; ev.accepted_at = undefined; }
+    }
     order.forEach((f) => {
       d.event_edits.push({
         edit_id: `ED-${at.replace(/\D/g, '').slice(0, 14)}-${++counter}`, event_id: ev.event_id, edited_at: at, edited_by: userId,
         field: f, old_value: stored(editText(before[f])), new_value: stored(editText(ev[f as keyof EventRow])), note: why,
       });
     });
-    d.audit_log.push({ at, user_id: userId, action: 'editEvent', entity: 'events', entity_id: ev.event_id, detail: `Changed ${order.join(', ')}. ${why}` });
+    if (pruned) {
+      d.event_edits.push({
+        edit_id: `ED-${at.replace(/\D/g, '').slice(0, 14)}-${++counter}`, event_id: ev.event_id, edited_at: at, edited_by: userId,
+        field: 'accepted_flags', old_value: stored(accOld.join(',')), new_value: stored(accNew.join(',')), note: PRUNE_NOTE,
+      });
+    }
+    d.audit_log.push({ at, user_id: userId, action: 'editEvent', entity: 'events', entity_id: ev.event_id, detail: `Changed ${[...order, ...(pruned ? ['accepted_flags'] : [])].join(', ')}. ${why}` });
+    return ev;
+  }
+
+  function applyAccept(userId: string, eventId: string, flags: unknown, note: string, at: string): EventRow {
+    const d = get();
+    const why = typeof note === 'string' ? note.trim() : '';
+    if (!why) throw new ApiError('A note explaining why is required.', 'bad_request');
+    if (why.length < ACCEPT_NOTE_MIN) throw new ApiError(`The note must be at least ${ACCEPT_NOTE_MIN} characters.`, 'bad_request');
+    if (why.length > 500) throw new ApiError('A note explaining why is too long.', 'bad_request');
+    if (!Array.isArray(flags)) throw new ApiError('Flags must be a list.', 'bad_request');
+    if (flags.length > 40) throw new ApiError('Too many flags.', 'bad_request');
+    for (const f of flags) {
+      if (typeof f !== 'string' || !isKnownFlag(f)) throw new ApiError(`Unknown flag: ${String(f).slice(0, 40)}.`, 'bad_request');
+    }
+    const wanted = canonicalFlags(flags as string[]);
+    const ev = d.events.find((e) => e.event_id === eventId);
+    if (!ev) throw new ApiError('Event not found.', 'not_found');
+    if (ev.is_void) throw new ApiError('This event is void. Restore it before changing it.', 'conflict');
+    const current = canonicalFlags(splitFlags(ev.accepted_flags));
+    const storedFlags = canonicalFlags(splitFlags(ev.flags));
+    for (const f of wanted) {
+      if (!current.includes(f) && !storedFlags.includes(f) && !(DERIVED_FLAGS as readonly string[]).includes(f)) {
+        throw new ApiError(`This record does not have the problem "${f}".`, 'bad_request');
+      }
+    }
+    if (wanted.join(',') === current.join(',')) throw new ApiError('Nothing was changed.', 'bad_request');
+    if (wanted.length) {
+      ev.accepted_flags = wanted.join(',');
+      ev.accepted_by = userId;
+      ev.accepted_at = at;
+    } else {
+      ev.accepted_flags = undefined;
+      ev.accepted_by = undefined;
+      ev.accepted_at = undefined;
+    }
+    d.event_edits.push({
+      edit_id: `ED-${at.replace(/\D/g, '').slice(0, 14)}-${++counter}`, event_id: ev.event_id, edited_at: at, edited_by: userId,
+      field: 'accepted_flags', old_value: stored(current.join(',')), new_value: stored(wanted.join(',')), note: why,
+    });
+    d.audit_log.push({
+      at, user_id: userId, action: 'acceptEventFlags', entity: 'events', entity_id: ev.event_id,
+      detail: `${wanted.length ? `Kept as entered: ${wanted.join(', ')}` : `Undid keep as entered (was: ${current.join(', ')})`}. Note: ${why}`,
+    });
     return ev;
   }
 
@@ -535,6 +619,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       const a = need(token, ['events'], 'Edit');
       if (year !== undefined && year !== null && (!Number.isInteger(year) || year < 1990 || year > 2200)) throw new ApiError('Year is not valid.', 'bad_request');
       const index = lookup();
+      const at = nowTs();
       let checked = 0, changed = 0;
       for (const ev of get().events) {
         if (ev.is_void) continue;
@@ -543,8 +628,19 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
         const norm = normalizeRecord(ev, index);
         if ('error' in norm) continue;
         const rec = norm.rec;
-        if (rec.flags === (ev.flags ?? '') && (rec.equipment_id ?? '') === (ev.equipment_id ?? '') && (rec.reason_id ?? '') === (ev.reason_id ?? '')
+        const accOld = canonicalFlags(splitFlags(ev.accepted_flags));
+        const accNew = pruneAcceptedFlags(ev.accepted_flags, rec.flags);
+        const pruned = accNew.length !== accOld.length;
+        if (!pruned && rec.flags === (ev.flags ?? '') && (rec.equipment_id ?? '') === (ev.equipment_id ?? '') && (rec.reason_id ?? '') === (ev.reason_id ?? '')
           && rec.is_area_level === ev.is_area_level && rec.duration_s === ev.duration_s) continue;
+        if (pruned) {
+          ev.accepted_flags = stored(accNew.join(','));
+          if (!accNew.length) { ev.accepted_by = undefined; ev.accepted_at = undefined; }
+          get().event_edits.push({
+            edit_id: `ED-${at.replace(/\D/g, '').slice(0, 14)}-R${++counter}`, event_id: ev.event_id, edited_at: at, edited_by: a.user.user_id,
+            field: 'accepted_flags', old_value: stored(accOld.join(',')), new_value: stored(accNew.join(',')), note: PRUNE_NOTE,
+          });
+        }
         ev.flags = stored(rec.flags);
         ev.equipment_id = rec.equipment_id;
         ev.reason_id = rec.reason_id;
@@ -564,6 +660,11 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
     async voidEvent(token, eventId, isVoid, note) {
       const a = need(token, ['events'], 'Edit');
       return clone(applyVoid(a.user.user_id, eventId, isVoid, note, nowTs()));
+    },
+
+    async acceptEventFlags(token, eventId, flags, note) {
+      const a = need(token, ['events'], 'Edit');
+      return clone(applyAccept(a.user.user_id, eventId, flags, note, nowTs()));
     },
 
     // --- master data
@@ -671,6 +772,8 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
         if (k === 'notif_availability_target_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The availability target must be between 0 and 100, or blank.', 'bad_request');
         if (k === 'notif_repeat_alert' && !['true', 'false'].includes(val)) throw new ApiError('Repeat alerts must be true or false.', 'bad_request');
         if (k === 'app_url' && val !== '' && (val.length > 300 || !/^https?:\/\/[^\s<>"']+$/i.test(val))) throw new ApiError('The app address must start with http:// or https://, or be blank.', 'bad_request');
+        if (k === 'target_availability_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The availability target must be between 0 and 100, or blank.', 'bad_request');
+        if ((k === 'target_mtbf_h' || k === 'target_mttr_h') && val !== '' && !(Number.isFinite(Number(val)) && Number(val) > 0 && Number(val) <= 100000)) throw new ApiError('The target must be above 0 and at most 100000 hours, or blank.', 'bad_request');
         if (k === 'availability_target_pct' && val !== '' && !(Number(val) > 0 && Number(val) <= 100)) throw new ApiError('The availability target must be between 0 and 100, or blank.', 'bad_request');
       }
       for (const [k, v] of Object.entries(changes ?? {})) {
@@ -802,7 +905,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       const clean: Record<string, string> = {};
       for (const k of keys) {
         const raw = (prefs as Record<string, unknown>)[k];
-        if (!['alert_types', 'watch_areas', 'digest', 'last_seen_at'].includes(k)) throw new ApiError(`Unknown preference: ${oneLine(k, 40)}.`, 'bad_request');
+        if (!['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views'].includes(k)) throw new ApiError(`Unknown preference: ${oneLine(k, 40)}.`, 'bad_request');
         if (typeof raw !== 'string') throw new ApiError(`Preference ${k} must be text.`, 'bad_request');
         const v = raw.trim();
         if (k === 'digest') {
@@ -823,6 +926,8 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
             if (!chosen.includes(real.area_id)) chosen.push(real.area_id);
           }
           clean[k] = chosen.join(',');
+        } else if (k === 'saved_views') {
+          clean[k] = cleanSavedViews(v);
         } else {
           const ms = parseTs(v);
           if (ms === null) throw new ApiError('Last seen must be a time like 2026-03-05 10:00:00.000.', 'bad_request');

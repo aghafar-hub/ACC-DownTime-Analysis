@@ -23,6 +23,7 @@ var ACTION_RULES = {
   revalidateEvents: { auth: 'tabs', tabs: ['events'], level: 'Edit' },
   editEvent: { auth: 'tabs', tabs: ['events'], level: 'Edit' },
   voidEvent: { auth: 'tabs', tabs: ['events'], level: 'Edit' },
+  acceptEventFlags: { auth: 'tabs', tabs: ['events'], level: 'Edit' },
   saveEquipment: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
   saveArea: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
   saveReason: { auth: 'tabs', tabs: ['master'], level: 'Edit' },

@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "notes": [
     "Single source of truth for the database spreadsheet, the Apps Script backend and the TypeScript types.",
     "Timestamps are plain text 'YYYY-MM-DD HH:MM:SS.mmm' in plant-local time (no time zone). Dates are 'YYYY-MM-DD'.",
@@ -145,7 +145,10 @@
         {"name": "flags", "type": "text", "required": false, "description": "Comma-separated data-quality flags"},
         {"name": "edited", "type": "bool", "required": true, "description": "TRUE once edited in the app"},
         {"name": "is_void", "type": "bool", "required": true, "description": "TRUE when voided; excluded from analysis, kept for audit"},
-        {"name": "created_at", "type": "timestamp", "required": true, "description": ""}
+        {"name": "created_at", "type": "timestamp", "required": true, "description": ""},
+        {"name": "accepted_flags", "type": "text", "required": false, "description": "Comma-separated data-check flags the user chose to keep as entered (Validate > Keep as entered). Pruned when an edit or re-check removes the problem"},
+        {"name": "accepted_by", "type": "text", "required": false, "description": "user_id of the last person who changed accepted_flags; blank when none are accepted"},
+        {"name": "accepted_at", "type": "timestamp", "required": false, "description": "When accepted_flags was last changed; blank when none are accepted"}
       ]
     },
     {
@@ -283,7 +286,7 @@
       "key": ["user_id", "key"],
       "columns": [
         {"name": "user_id", "type": "text", "required": true, "description": "References users.user_id"},
-        {"name": "key", "type": "text", "required": true, "description": "alert_types (csv of notification types, blank = all) | watch_areas (csv of area ids, blank = all) | digest (none | daily | weekly) | last_seen_at (timestamp) | last_digest_at (timestamp, written by the server)"},
+        {"name": "key", "type": "text", "required": true, "description": "alert_types (csv of notification types, blank = all) | watch_areas (csv of area ids, blank = all) | digest (none | daily | weekly) | last_seen_at (timestamp) | last_digest_at (timestamp, written by the server) | saved_views (JSON text, at most 20 saved views of the dashboards)"},
         {"name": "value", "type": "text", "required": false, "description": ""},
         {"name": "updated_at", "type": "timestamp", "required": true, "description": ""}
       ]
@@ -310,7 +313,10 @@
     {"key": "notif_availability_target_pct", "value": "", "description": "Availability (basis B) of the latest complete month below this percent raises an alert; blank = rule off"},
     {"key": "notif_repeat_alert", "value": "true", "description": "true | false. A new repeated-failure group raises an alert"},
     {"key": "notif_retention_days", "value": "30", "description": "Alerts and updates expire after this many days"},
-    {"key": "app_url", "value": "", "description": "Web address of the app, used for the link in digest emails; blank = no link"}
+    {"key": "app_url", "value": "", "description": "Web address of the app, used for the link in digest emails; blank = no link"},
+    {"key": "target_availability_pct", "value": "", "description": "Availability target shown on the dashboards, percent (0 to 100); blank = no target"},
+    {"key": "target_mtbf_h", "value": "", "description": "MTBF target, hours (above 0, up to 100000); blank = no target"},
+    {"key": "target_mttr_h", "value": "", "description": "MTTR target, hours (above 0, up to 100000); blank = no target"}
   ],
   "roleSeeds": [
     {"role_id": "ROLE-ADMIN", "name": "Admin", "description": "Everything, including users and settings"},

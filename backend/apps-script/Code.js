@@ -35,6 +35,7 @@ var HANDLERS = {
   revalidateEvents: function (s, p) { return revalidateEvents_(s, p.year); },
   editEvent: function (s, p) { return editEvent_(s, p.eventId, p.changes, p.note); },
   voidEvent: function (s, p) { return voidEvent_(s, p.eventId, p.isVoid, p.note); },
+  acceptEventFlags: function (s, p) { return acceptEventFlags_(s, p.eventId, p.flags, p.note); },
   saveEquipment: function (s, p) { return saveEquipment_(s, p.row, p.areaIds); },
   saveArea: function (s, p) { return saveArea_(s, p.row); },
   saveReason: function (s, p) { return saveReason_(s, p.row); },

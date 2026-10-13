@@ -53,6 +53,7 @@ export function createSheetsApi(url: string): Api {
     revalidateEvents: (token, year) => call('revalidateEvents', token, year === undefined ? {} : { year }),
     editEvent: (token, eventId, changes, note) => call('editEvent', token, { eventId, changes, note }),
     voidEvent: (token, eventId, isVoid, note) => call('voidEvent', token, { eventId, isVoid, note }),
+    acceptEventFlags: (token, eventId, flags, note) => call('acceptEventFlags', token, { eventId, flags, note }),
 
     saveEquipment: (token, row, areaIds) => call('saveEquipment', token, { row, areaIds }),
     saveArea: (token, row) => call('saveArea', token, { row }),

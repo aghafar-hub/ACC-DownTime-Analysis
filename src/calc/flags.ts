@@ -133,3 +133,54 @@ export const problemFlagsOf = (e: Pick<EventRow, 'flags'>): string[] => splitFla
 
 /** True when the record carries at least one real problem (information flags do not count). */
 export const hasProblemFlags = (e: Pick<EventRow, 'flags'>): boolean => problemFlagsOf(e).length > 0;
+
+// ---------------------------------------------------------------- kept as entered (accepted flags)
+//
+// A person with Edit access can say "keep this record exactly as entered" for flagged records (Validate page). The record
+// does not change; `events.accepted_flags` lists the flags that were acknowledged (who, when and why are stored too).
+//  - An accepted WARNING flag is fully resolved: the record is normal everywhere (it was counted before and still is).
+//  - An accepted BLOCKING flag stops being something to fix (it leaves the Validate list, the badge, the banner and the
+//    notifications) but the record still cannot be calculated, so it STAYS out of the numbers: isBlocked() keeps reading the
+//    STORED flags on purpose.
+
+/** Every flag name of the catalogue, in display order (blocking, warning, information, derived). */
+export const KNOWN_FLAGS: readonly string[] = [...BLOCKING_FLAGS, ...WARNING_FLAGS, ...INFO_FLAGS, ...DERIVED_FLAGS];
+export const isKnownFlag = (flag: string): boolean => KNOWN_FLAGS.includes(flag);
+
+/** A list of flag names without repeats or blanks, in catalogue order (names this version does not know come last). */
+export function canonicalFlags(list: Iterable<string>): string[] {
+  const rank = (f: string): number => {
+    const i = KNOWN_FLAGS.indexOf(f);
+    return i < 0 ? KNOWN_FLAGS.length : i;
+  };
+  return [...new Set([...list].map((f) => f.trim()).filter(Boolean))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+}
+
+/** The flags the record is kept with (events.accepted_flags), in catalogue order. */
+export function acceptedFlagsOf(e: Pick<EventRow, 'accepted_flags'>): string[] {
+  return canonicalFlags(splitFlags(e.accepted_flags));
+}
+
+/** The stored problem flags that nobody has kept as entered. Information flags are never problems. The derived overlap is not stored, see validate/model.ts. */
+export function openFlagsOf(e: Pick<EventRow, 'flags' | 'accepted_flags'>): string[] {
+  const kept = new Set(acceptedFlagsOf(e));
+  return problemFlagsOf(e).filter((f) => !kept.has(f));
+}
+
+/** True when the record has a stored problem that is still to be dealt with. */
+export const hasOpenProblemFlags = (e: Pick<EventRow, 'flags' | 'accepted_flags'>): boolean => openFlagsOf(e).length > 0;
+
+/** The blocking problems still to be fixed (blocking flags kept as entered are not in here). */
+export const openBlockingFlagsOf = (e: Pick<EventRow, 'flags' | 'accepted_flags'>): string[] => openFlagsOf(e).filter(isBlockingFlag);
+
+/** Blocked by a problem nobody has accepted: still to be fixed. */
+export const isOpenBlocked = (e: Pick<EventRow, 'flags' | 'accepted_flags'>): boolean => openBlockingFlagsOf(e).length > 0;
+
+/** Blocked, and every blocking problem was kept as entered: nothing to fix, but still left out of the numbers. */
+export const isKeptLeftOut = (e: Pick<EventRow, 'flags' | 'accepted_flags'>): boolean => isBlocked(e) && !isOpenBlocked(e);
+
+/** What is left of the accepted flags after the stored flags changed: accepted ones the record no longer carries are dropped (the derived overlap stays until undone). */
+export function pruneAcceptedFlags(accepted: string | undefined | null, storedFlags: string | undefined | null): string[] {
+  const have = new Set(splitFlags(storedFlags));
+  return canonicalFlags(splitFlags(accepted)).filter((f) => (DERIVED_FLAGS as readonly string[]).includes(f) || have.has(f));
+}

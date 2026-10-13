@@ -20,7 +20,10 @@
 var NOTIF_RESOLVABLE_ = ['long_stop', 'repeat_group', 'upload_gap'];
 // Most severe first (used by the digest).
 var NOTIF_SEVERITY_ORDER_ = ['long_stop', 'availability_low', 'failure_spike', 'repeat_group', 'upload_gap'];
-var NOTIF_PREF_KEYS_ = ['alert_types', 'watch_areas', 'digest', 'last_seen_at'];
+var NOTIF_PREF_KEYS_ = ['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views'];
+var SAVED_VIEWS_MAX_ = 20;
+var SAVED_VIEWS_TEXT_MAX_ = 20000;
+var SAVED_VIEW_PAGES_ = ['overview', 'pareto', 'repeats', 'reliability', 'events'];
 var NOTIF_DIGEST_MODES_ = ['none', 'daily', 'weekly'];
 var NOTIF_DIGEST_MAX_ = 10;
 var NOTIF_SPIKE_DAYS_ = 30;
@@ -60,6 +63,12 @@ function addMonths_(month, n) {
 function splitFlags_(flags) {
   return String(flags === null || flags === undefined ? '' : flags).split(',').map(function (f) { return f.trim(); }).filter(Boolean);
 }
+/** Stored flags minus the ones a user kept as entered (events.accepted_flags). Accepted flags are not open problems. */
+function openFlags_(e) {
+  var kept = splitFlags_(e.accepted_flags);
+  return splitFlags_(e.flags).filter(function (f) { return kept.indexOf(f) < 0; });
+}
+function hasOpenProblem_(e) { return openFlags_(e).some(function (f) { return NOTIF_INFO_FLAGS_.indexOf(f) < 0; }); }
 function isBlockedFlags_(flags) { return splitFlags_(flags).some(function (f) { return NOTIF_BLOCKING_FLAGS_.indexOf(f) >= 0; }); }
 function hasProblemFlags_(flags) { return splitFlags_(flags).some(function (f) { return NOTIF_INFO_FLAGS_.indexOf(f) < 0; }); }
 
@@ -565,6 +574,30 @@ function setNotificationState_(session, notificationId, state, snoozeUntil) {
   });
 }
 
+/** Saved views: JSON text, at most 20 of {id, name, page, query}. Returned as given (trimmed); blank clears them. */
+function cleanSavedViews_(text) {
+  if (text === '') return '';
+  if (text.length > SAVED_VIEWS_TEXT_MAX_) throw apiError_(ERR.BAD_REQUEST, 'Saved views are too long.');
+  var list;
+  try { list = JSON.parse(text); } catch (e) { throw apiError_(ERR.BAD_REQUEST, 'Saved views are not readable.'); }
+  if (!Array.isArray(list)) throw apiError_(ERR.BAD_REQUEST, 'Saved views must be a list.');
+  if (list.length > SAVED_VIEWS_MAX_) throw apiError_(ERR.BAD_REQUEST, 'You can save at most ' + SAVED_VIEWS_MAX_ + ' views.');
+  var seen = {};
+  list.forEach(function (v) {
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw apiError_(ERR.BAD_REQUEST, 'Each saved view must be an object.');
+    Object.keys(v).forEach(function (k) {
+      if (['id', 'name', 'page', 'query'].indexOf(k) < 0) throw apiError_(ERR.BAD_REQUEST, 'A saved view has an unknown field: ' + oneLine_(k, 40) + '.');
+    });
+    if (typeof v.id !== 'string' || !v.id || v.id.length > 40) throw apiError_(ERR.BAD_REQUEST, 'A saved view needs an id of 1 to 40 characters.');
+    if (typeof v.name !== 'string' || !v.name.trim() || v.name.length > 60) throw apiError_(ERR.BAD_REQUEST, 'A saved view needs a name of 1 to 60 characters.');
+    if (SAVED_VIEW_PAGES_.indexOf(v.page) < 0) throw apiError_(ERR.BAD_REQUEST, 'A saved view page must be one of: ' + SAVED_VIEW_PAGES_.join(', ') + '.');
+    if (typeof v.query !== 'string' || v.query.length > 1500) throw apiError_(ERR.BAD_REQUEST, 'A saved view query must be text of at most 1500 characters.');
+    if (seen[v.id]) throw apiError_(ERR.BAD_REQUEST, 'Two saved views have the same id.');
+    seen[v.id] = true;
+  });
+  return text;
+}
+
 function cleanNotifPref_(key, value) {
   if (typeof value !== 'string') throw apiError_(ERR.BAD_REQUEST, 'Preference ' + key + ' must be text.');
   var v = value.trim();
@@ -591,6 +624,7 @@ function cleanNotifPref_(key, value) {
     });
     return chosen.join(',');
   }
+  if (key === 'saved_views') return cleanSavedViews_(v);
   var ts = normTs_(v);
   if (ts === null) throw apiError_(ERR.BAD_REQUEST, 'Last seen must be a time like 2026-03-05 10:00:00.000.');
   return ts;
@@ -639,10 +673,10 @@ function digestContext_() {
   var events = readTable_(T.EVENTS, function (row, idx) { return !toBool_(row[idx.is_void]); });
   var validate = 0, blocked = 0, codes = 0;
   events.forEach(function (e) {
-    if (!hasProblemFlags_(e.flags)) return;
+    if (!hasOpenProblem_(e)) return; // a record whose only problems are kept as entered is not counted
     validate++;
-    if (isBlockedFlags_(e.flags)) blocked++;
-    var f = splitFlags_(e.flags);
+    var f = openFlags_(e);
+    if (f.some(function (x) { return NOTIF_BLOCKING_FLAGS_.indexOf(x) >= 0; })) blocked++;
     if (f.indexOf('unknown_code') >= 0 || f.indexOf('placeholder') >= 0) codes++;
   });
   var prefsBy = {};

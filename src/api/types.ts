@@ -53,6 +53,12 @@ export interface EventRow {
   reason_raw?: string; reason_id?: string; description?: string;
   source_file?: string; source_row?: number; fingerprint: string; flags?: string;
   edited: boolean; is_void: boolean; created_at: string;
+  /** flags the user chose to keep as entered (comma separated, Validate > Keep as entered); absent or blank when none */
+  accepted_flags?: string;
+  /** user_id of the last person who changed accepted_flags */
+  accepted_by?: string;
+  /** when accepted_flags was last changed ('YYYY-MM-DD HH:MM:SS.mmm') */
+  accepted_at?: string;
 }
 
 /** Fields an authorised user may correct on a stored event. */
@@ -139,10 +145,11 @@ export interface NotificationState {
 /**
  * The caller's own preferences. Keys: alert_types (csv of NotificationType, blank = all), watch_areas (csv of
  * area ids, blank = all), digest ('none' | 'daily' | 'weekly'), last_seen_at (timestamp), and last_digest_at
- * (read only, written by the server). A key that was never saved is absent.
+ * (read only, written by the server), and saved_views (JSON text: at most 20 of {id, name, page, query}, see
+ * docs/wire-protocol.md). A key that was never saved is absent.
  */
 export type NotificationPrefs = Record<string, string>;
-export type NotificationPrefKey = 'alert_types' | 'watch_areas' | 'digest' | 'last_seen_at';
+export type NotificationPrefKey = 'alert_types' | 'watch_areas' | 'digest' | 'last_seen_at' | 'saved_views';
 
 export interface NotificationsPayload {
   items: Notification[]; state: NotificationState[]; prefs: NotificationPrefs;
@@ -189,6 +196,14 @@ export interface Api {
   // --- event correction (never done by upload) ---
   editEvent(token: string, eventId: string, changes: EventChanges, note: string): Promise<EventRow>;
   voidEvent(token: string, eventId: string, isVoid: boolean, note: string): Promise<EventRow>;
+  /**
+   * "Keep as entered": says the data-check flags of a record are fine as they are. `flags` is the FULL new set of
+   * accepted flags (sending fewer undoes some, an empty list undoes all); every name must be a known flag and
+   * a note of at least 3 characters is required (also to undo). Needs Edit on the events tab. Changes nothing else
+   * about the record and recalculates no flag. One history row (field accepted_flags) records who, when and why.
+   * Refused for a voided record and when nothing would change ('Nothing was changed.').
+   */
+  acceptEventFlags(token: string, eventId: string, flags: string[], note: string): Promise<EventRow>;
 
   // --- master data ---
   saveEquipment(token: string, row: Equipment, areaIds: string[]): Promise<void>;

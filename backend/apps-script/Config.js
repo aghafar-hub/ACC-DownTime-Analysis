@@ -4,7 +4,7 @@
  * at load time, so file order does not matter.
  */
 
-var APP_VERSION = '1.2.0';
+var APP_VERSION = '1.3.0';
 var TIMEZONE = 'Africa/Cairo';
 
 // Password hashing cost. Run benchmarkHashRounds() and, if it suggests a
@@ -27,6 +27,15 @@ var LEVELS = ['Hidden', 'View', 'Edit'];
 
 var AREA_LEVEL_KEYS = ['N/A', 'NA'];
 var PLACEHOLDER_CODES = ['AFR', 'AFR2'];
+
+// Data-check flags (mirror of src/calc/flags.ts). A user may keep any of them as entered ("accept" them).
+var BLOCKING_FLAG_NAMES = ['missing_classification', 'invalid_classification', 'unknown_area', 'end_before_start'];
+var WARNING_FLAG_NAMES = ['missing_code', 'unknown_code', 'placeholder', 'unlisted_reason', 'blank_reason', 'line_mismatch'];
+var INFO_FLAG_NAMES = ['code_not_in_area'];
+/** Found by the browser by comparing events; the server never computes it. */
+var DERIVED_FLAG_NAMES = ['overlap_in_area'];
+var KNOWN_FLAG_NAMES = BLOCKING_FLAG_NAMES.concat(WARNING_FLAG_NAMES, INFO_FLAG_NAMES, DERIVED_FLAG_NAMES);
+var ACCEPT_NOTE_MIN = 3;
 
 var EDITABLE_EVENT_FIELDS = [
   'event_date', 'line_id', 'area_id', 'code_raw', 'stop_ts', 'start_ts',

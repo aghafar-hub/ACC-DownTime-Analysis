@@ -1,7 +1,7 @@
 // GENERATED FILE - do not edit by hand.
 // Source: schema/tables.json. Regenerate with: node tools/gen-apps-script-schema.mjs
 var SCHEMA = {
- "version": 2,
+ "version": 3,
  "tableOrder": [
   "lines",
   "areas",
@@ -492,6 +492,21 @@ var SCHEMA = {
      "name": "created_at",
      "type": "timestamp",
      "required": true
+    },
+    {
+     "name": "accepted_flags",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "accepted_by",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "accepted_at",
+     "type": "timestamp",
+     "required": false
     }
    ]
   },
@@ -1104,6 +1119,21 @@ var SCHEMA = {
     "key": "app_url",
     "value": "",
     "description": "Web address of the app, used for the link in digest emails; blank = no link"
+   },
+   {
+    "key": "target_availability_pct",
+    "value": "",
+    "description": "Availability target shown on the dashboards, percent (0 to 100); blank = no target"
+   },
+   {
+    "key": "target_mtbf_h",
+    "value": "",
+    "description": "MTBF target, hours (above 0, up to 100000); blank = no target"
+   },
+   {
+    "key": "target_mttr_h",
+    "value": "",
+    "description": "MTTR target, hours (above 0, up to 100000); blank = no target"
    }
   ],
   "roles": [
