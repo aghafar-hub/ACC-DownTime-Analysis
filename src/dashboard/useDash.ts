@@ -1,7 +1,7 @@
 // Hooks for the dashboard pages: the filters (URL query shared by the four tabs), the events of every year the
 // filters need, and the scope built from both.
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import type { EventRow, Startup } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { dataRangeOf, type DateRange } from '../calc';
@@ -19,7 +19,15 @@ import { buildBase, buildEventScope, buildKpis, buildMaster, buildWindows, cover
  * Analyze tabs (and in sessionStorage, see sharedFilters.ts), so moving to another tab keeps every filter.
  */
 export function useDashFilters(): { filters: DashFilters; setFilters: (patch: Partial<DashFilters>) => void; reset: () => void } {
-  const [sp, setSp] = useSearchParams();
+  const [sp, setSpRaw] = useSearchParams();
+  const location = useLocation();
+  // router state (a drill-through's event ids) stays with the address when the filters change
+  const stateRef = useRef(location.state);
+  stateRef.current = location.state;
+  const setSp = useCallback(
+    (next: URLSearchParams, opts: { replace: boolean }) => setSpRaw(next, { ...opts, state: stateRef.current }),
+    [setSpRaw],
+  );
   const own = hasFilterParams(sp);
   const effective = own ? sp : new URLSearchParams(rememberedQuery());
   const key = effective.toString();
@@ -39,21 +47,33 @@ export function useDashFilters(): { filters: DashFilters; setFilters: (patch: Pa
   spRef.current = sp;
   const setFilters = useCallback(
     (patch: Partial<DashFilters>) => {
-      const next = serializeFilters({ ...ref.current, ...patch });
+      // two quick changes render in one transition: start from the address as it is now, not from the last render
+      const live = liveSearch() ?? spRef.current;
+      const cur = hasFilterParams(live) ? parseFilters(live) : ref.current;
+      const next = serializeFilters({ ...cur, ...patch });
       rememberQuery(next.toString());
-      nonFilterParams(spRef.current).forEach((v, k) => next.append(k, v));
+      nonFilterParams(live).forEach((v, k) => next.append(k, v));
       setSp(next, { replace: true });
     },
     [setSp],
   );
   const reset = useCallback(() => {
     forgetDashFilters();
-    setSp(new URLSearchParams(), { replace: true });
+    // the page's own parameters (Event records: search, list or timeline) stay
+    setSp(nonFilterParams(liveSearch() ?? spRef.current), { replace: true });
   }, [setSp]);
   return { filters, setFilters, reset };
 }
 
 export { forgetDashFilters };
+
+/** The query of the address as it is right now (hash routing), or null outside a hash route. */
+function liveSearch(): URLSearchParams | null {
+  const h = window.location.hash;
+  if (!h.startsWith('#/')) return null;
+  const i = h.indexOf('?');
+  return new URLSearchParams(i < 0 ? '' : h.slice(i + 1));
+}
 
 // ---------------------------------------------------------------- several years of events
 
@@ -199,4 +219,58 @@ export function useDash(opts: { extraYearsBack?: number } = {}): Dash {
   }, [st, first, data]);
 
   return { st, startup, filters, setFilters, reset, ready, data: first.ready ? data : first, range, asOf, allRows: data.rows, ctx, years: wanted, reload };
+}
+
+// ---------------------------------------------------------------- Event records
+
+export interface RecordsScope {
+  st: StartupHook;
+  startup: Startup | null;
+  filters: DashFilters;
+  setFilters: (patch: Partial<DashFilters>) => void;
+  reset: () => void;
+  /** the shared range (null until the latest data says where "today" is) */
+  range: DateRange | null;
+  asOf: string | null;
+  /** every record of the years the range touches (void and blocked rows too: the list shows them) */
+  rows: EventRow[];
+  ready: boolean;
+  state: MultiYear['state'];
+  years: number[];
+  reload: () => void;
+}
+
+/**
+ * Event records share the dashboards' filters (period, line, area, equipment, type): this loads the records of every
+ * year the shared period touches. The page's own search, list or timeline and paging stay in its own query keys.
+ */
+export function useRecordsScope(): RecordsScope {
+  const st = useStartup();
+  const { filters, setFilters, reset } = useDashFilters();
+  const startup = st.startup;
+  const available = startup?.years ?? [];
+  const latest = available.length ? Math.max(...available) : null;
+  const first = useEventsForYears(latest === null ? [] : [latest]);
+  const asOf = useMemo(() => {
+    if (!first.ready) return null;
+    const cov = dataRangeOf(first.rows.filter((r) => !r.is_void));
+    return cov ? cov.to : today();
+  }, [first.ready, first.rows]);
+  const range = useMemo(() => (asOf ? resolveRange(filters, asOf) : null), [asOf, filters]);
+  const years = useMemo(() => {
+    if (!range) return [];
+    const y0 = Number(range.from.slice(0, 4));
+    const y1 = Number(range.to.slice(0, 4));
+    return available.filter((y) => y >= y0 && y <= y1).sort((a, b) => a - b);
+  }, [range, available.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  const data = useEventsForYears(first.ready ? years : []);
+  const none = first.ready && years.length === 0;
+  const ready = !!startup && first.ready && (none || data.ready);
+  const reload = useCallback(() => {
+    st.reload();
+    first.reload();
+    data.reload();
+  }, [st, first, data]);
+  const state = first.ready ? (none ? first.state : data.state) : first.state;
+  return { st, startup, filters, setFilters, reset, range, asOf, rows: none ? [] : data.rows, ready, state, years, reload };
 }

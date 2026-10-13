@@ -1,9 +1,9 @@
-// The top of every Analyze page, in the same order: title with its one-line takeaway, the data-quality banner,
-// loading / offline notes, then the shared filter bar.
+// The top of every Analyze page, in the same order: the shared scope bar (drawn into the shell's sticky slot under the
+// top bar), the title with its one-line takeaway, the data-quality banner, then loading / offline notes.
 import type { ReactNode } from 'react';
 import { PageHeader } from '../components/Tile';
 import { ValidationBanner } from '../validate/ValidationBanner';
-import FilterBar from './FilterBar';
+import ScopeBar, { scopeFromDash } from './ScopeBar';
 import { DashStatus } from './parts';
 import type { Dash } from './useDash';
 
@@ -14,11 +14,11 @@ export default function DashTop({ title, takeaway, right, dash, eventCount, hide
 }) {
   return (
     <>
+      <ScopeBar src={scopeFromDash(dash)} eventCount={eventCount} hideCompare={hideCompare} />
       <PageHeader title={title} subtitle={<span className="takeaway" data-testid="takeaway">{takeaway}</span>} right={right} />
       {belowTakeaway}
       <ValidationBanner />
       <DashStatus dash={dash} />
-      <FilterBar dash={dash} eventCount={eventCount} hideCompare={hideCompare} />
     </>
   );
 }

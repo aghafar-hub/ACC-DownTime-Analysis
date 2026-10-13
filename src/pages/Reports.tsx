@@ -128,7 +128,7 @@ export default function Reports() {
       {view === 'builder' ? (
         <Builder
           setup={setup} onChange={change} startup={data.startup} range={range} compareRange={compareRange} scope={counts} coverage={live?.ctx.coverage ?? null}
-          onBuild={build} onCopyLink={copyLink} copied={copied} getModel={getModel} dataReady={data.ready}
+          onBuild={build} onCopyLink={copyLink} copied={copied} getModel={getModel} dataReady={data.ready} asOf={data.asOf}
         />
       ) : (
         <Preview setup={setup} data={data} generatedBy={generatedBy} onEdit={edit} onCopyLink={copyLink} copied={copied} />

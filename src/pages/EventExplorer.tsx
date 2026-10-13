@@ -1,26 +1,31 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import type { ClassificationCode, Startup } from '../api/types';
+import type { EventRow } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
-import DataNotes from '../components/DataNotes';
+import DataStatus from '../components/DataStatus';
 import { BottomSheet, ChipRow, CountChip, FiltersPill, PAGE_SIZE, ShowMore } from '../components/PhoneParts';
 import { PageHeader, Tile } from '../components/Tile';
-import YearSwitch from '../components/YearSwitch';
-import { buildFailureEvents, isBlocked, isFailureHead } from '../calc';
+import { buildFailureEvents, comparisonRange, isBlocked, isFailureHead, parseSettings, type DateRange } from '../calc';
 import { readDrill } from '../dashboard/drill';
-import { useEventsForYears } from '../dashboard/useDash';
-import { useYearData } from '../data/useYearData';
+import { defaultFilters, nonFilterParams, parseFilters, serializeFilters, type CompareMode, type DashFilters } from '../dashboard/filters';
+import ScopeBar from '../dashboard/ScopeBar';
+import { rememberQuery } from '../dashboard/sharedFilters';
+import { useEventsForYears, useRecordsScope } from '../dashboard/useDash';
+import { eventsResource } from '../data/stores';
+import { useYear } from '../data/useStartup';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { ValidationBanner } from '../validate/ValidationBanner';
 import { Icon } from '../icons';
 import { useTheme } from '../theme/ThemeContext';
 import { duration, hours, num, shortTs } from '../util/format';
+import { rangeText } from '../util/dates';
+import { useValidationOptional } from '../validate/ValidationContext';
 import EventBadges from './events/EventBadges';
 import { buildOwnerLookup } from './events/crossArea';
 import { hasOpenProblemFlags } from '../calc/flags';
 import {
-  activeCount, applyFilters, describeExplorerFilters, EMPTY, parseExplorerFilters, serializeExplorerFilters, EXPLORER_KEYS, SHOWN_PARAM,
+  activeCount, applyFilters, describeExplorerFilters, EMPTY, parseExplorerFilters, scopeRows, serializeExplorerFilters, totalActive, EXPLORER_KEYS, SHOWN_PARAM,
   type Filters, type Show, type Sort,
 } from './events/explorerFilters';
 import ExportMenu from '../components/ExportMenu';
@@ -49,68 +54,45 @@ function SortField({ f, set, id }: { f: Filters; set: (p: Partial<Filters>) => v
   );
 }
 
-function FilterFields({ f, set, startup, stacked }: { f: Filters; set: (p: Partial<Filters>) => void; startup: Startup | null; stacked?: boolean }) {
-  const areas = (startup?.areas ?? []).filter((a) => !f.line || a.line_id === f.line);
-  const toggleClass = (c: ClassificationCode) => set({ classes: f.classes.includes(c) ? f.classes.filter((x) => x !== c) : [...f.classes, c] });
-  const id = stacked ? 's' : 'd';
+function ShowField({ f, set, id }: { f: Filters; set: (p: Partial<Filters>) => void; id: string }) {
   return (
-    <>
-      <div className={stacked ? 'bottom-sheet-body' : 'filter-grid'} style={stacked ? { padding: 0 } : undefined}>
-        <div className="field">
-          <label htmlFor={`${id}-line`}>{t('Line')}</label>
-          <select id={`${id}-line`} className="select" value={f.line} onChange={(e) => set({ line: e.target.value, area: '' })} data-testid="filter-line">
-            <option value="">{t('All lines')}</option>
-            {startup?.lines.map((l) => <option key={l.line_id} value={l.line_id}>{l.name}</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor={`${id}-area`}>{t('Area')}</label>
-          <select id={`${id}-area`} className="select" value={f.area} onChange={(e) => set({ area: e.target.value })} data-testid="filter-area">
-            <option value="">{t('All areas')}</option>
-            {areas.map((a) => <option key={a.area_id} value={a.area_id}>{a.area_id} · {a.name}</option>)}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor={`${id}-crit`}>{t('Criticality')}</label>
-          <select id={`${id}-crit`} className="select" value={f.crit} onChange={(e) => set({ crit: e.target.value as Filters['crit'] })} data-testid="filter-crit">
-            <option value="">{t('All')}</option>
-            <option value="INC">INC ({t('incident')})</option>
-            <option value="NO_INC">NO_INC</option>
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor={`${id}-from`}>{t('From date')}</label>
-          <input id={`${id}-from`} className="input mono" type="date" value={f.from} max={f.to || undefined} onChange={(e) => set({ from: e.target.value })} data-testid="filter-from" />
-        </div>
-        <div className="field">
-          <label htmlFor={`${id}-to`}>{t('To date')}</label>
-          <input id={`${id}-to`} className="input mono" type="date" value={f.to} min={f.from || undefined} onChange={(e) => set({ to: e.target.value })} data-testid="filter-to" />
-        </div>
-        <div className="field">
-          <label htmlFor={`${id}-show`}>{t('Show')}</label>
-          <select id={`${id}-show`} className="select" value={f.show} onChange={(e) => set({ show: e.target.value as Show })} data-testid="filter-show">
-            <option value="all">{t('All rows')}</option>
-            <option value="issues">{t('Only rows with data issues')}</option>
-            <option value="edited">{t('Only edited rows')}</option>
-            <option value="void">{t('Only voided rows')}</option>
-          </select>
-        </div>
-        {stacked && <SortField f={f} set={set} id={id} />}
-      </div>
-      <div className="field" style={{ marginTop: 12 }}>
-        <span className="field-label">{t('Classification')}</span>
-        <ChipRow label={t('Classification')}>
-          {(startup?.classifications ?? []).map((c) => (
-            <CountChip key={c.code} on={f.classes.includes(c.code)} onClick={() => toggleClass(c.code)} testid={`class-${c.code}`}>{c.code} · {c.name}</CountChip>
-          ))}
-        </ChipRow>
-      </div>
-    </>
+    <div className="field">
+      <label htmlFor={`${id}-show`}>{t('Show')}</label>
+      <select id={`${id}-show`} className="select" value={f.show} onChange={(e) => set({ show: e.target.value as Show })} data-testid="filter-show">
+        <option value="all">{t('All rows')}</option>
+        <option value="issues">{t('Only rows with data issues')}</option>
+        <option value="edited">{t('Only edited rows')}</option>
+        <option value="void">{t('Only voided rows')}</option>
+      </select>
+    </div>
   );
 }
 
+/** The years as chips: a shortcut that sets the shared period to that whole year. */
+function YearChips({ filters, setFilters, years }: { filters: DashFilters; setFilters: (p: Partial<DashFilters>) => void; years: number[] }) {
+  const [, setYear] = useYear();
+  if (years.length === 0) return null;
+  return (
+    <ChipRow label={t('Year')}>
+      {years.map((y) => (
+        <CountChip key={y} on={filters.preset === 'year' && filters.year === y} onClick={() => { setYear(y); setFilters({ preset: 'year', year: y }); }} testid={`year-${y}`}>{y}</CountChip>
+      ))}
+    </ChipRow>
+  );
+}
+
+/** File name part of an export: the year, the month, or the two ISO dates. */
+function exportLabel(f: DashFilters, range: DateRange | null): string {
+  if (!range) return '';
+  if (f.preset === 'year') return range.from.slice(0, 4);
+  if (range.from.slice(0, 7) === range.to.slice(0, 7) && range.from.endsWith('-01') && (f.preset === 'month' || f.preset === 'prevmonth' || f.preset === 'thismonth' || f.preset === 'custom')) return range.from.slice(0, 7);
+  return `${range.from}_${range.to}`;
+}
+
 export default function EventExplorer() {
-  const { st, startup, year, ev, facts } = useYearData();
+  const sc = useRecordsScope();
+  const { st, startup } = sc;
+  const validation = useValidationOptional();
   const { canEdit, user } = useAuth();
   const { T } = useTheme();
   const mobile = useIsMobile();
@@ -137,17 +119,15 @@ export default function EventExplorer() {
     }
     return multi.rows.filter((r) => want.has(r.event_id));
   }, [drill, multi.ready, multi.rows]);
-  const sourceRows = drill ? drillRows ?? [] : ev.events;
-  // The filters, the search and the shown count live in the address (?fail=1&q=belt&n=100), so Back, a tab switch or a
-  // reload brings the same list back and ScrollKeeper can restore the scroll into it. A saved view or a pasted link
-  // is simply such an address. Every change replaces the entry (typing does not fill the history).
-  const classCodes = startup?.classifications.map((c) => c.code) ?? null;
-  const classKey = classCodes?.join(',') ?? '';
+  const sourceRows = drill ? drillRows ?? [] : sc.rows;
+  // The scope (period, line, area, equipment, type) is the dashboards' shared filter set, read from the same query keys.
+  // The page's own search, Show and order, and the shown count, live in their own keys (?q=belt&show=issues&n=100), so
+  // Back, a tab switch or a reload brings the same list back and ScrollKeeper can restore the scroll into it.
+  const shared = useMemo(() => ({ filters: sc.filters, range: sc.range }), [sc.filters, sc.range]);
   const filterKey = EXPLORER_KEYS.map((k) => params.getAll(k).join('\u0001')).join('\u0002');
-  const f = useMemo(() => parseExplorerFilters(params, classCodes), [filterKey, classKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Location updates render in a transition, so two quick changes (a chip, then a select) could both start from the
-  // same rendered query and the second would drop the first. Each change therefore starts from the address as it is
-  // now (the hash is written at once), not from the last render.
+  const f = useMemo(() => parseExplorerFilters(params), [filterKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Location updates render in a transition, so two quick changes could both start from the same rendered query and the
+  // second would drop the first. Each change therefore starts from the address as it is now (the hash is written at once).
   const liveParams = (): URLSearchParams => {
     const h = window.location.hash;
     const i = h.indexOf('?');
@@ -158,7 +138,7 @@ export default function EventExplorer() {
     edit(p);
     setParams(p, { replace: true, state: location.state });
   };
-  const liveFilters = (): Filters => parseExplorerFilters(liveParams(), classCodes);
+  const liveFilters = (): Filters => parseExplorerFilters(liveParams());
   const setF = (next: Filters) =>
     writeParams((p) => {
       EXPLORER_KEYS.forEach((k) => p.delete(k));
@@ -193,9 +173,18 @@ export default function EventExplorer() {
     if (focusKey) searchRef.current?.focus();
   }, [focusKey]);
 
-  const filtered = useMemo(() => applyFilters(sourceRows, f, startup, q), [sourceRows, f, startup, q]);
-  // another year or another drill-through starts at the first page again (not on the first render: the address may hold n)
-  const pageKey = `${year ?? ''}|${drill?.label ?? ''}`;
+  // the rows of the period (before the narrowing filters), the rows of the whole scope, then the page's own choices.
+  // A drill-through shows exactly the events it was opened with: the scope already picked them.
+  const periodRows = useMemo(() => (drill || !sc.range ? sourceRows : scopeRows(sourceRows, { filters: defaultFilters(), range: sc.range }, startup)), [drill, sourceRows, sc.range, startup]);
+  const inScope = useMemo(() => (drill ? sourceRows : scopeRows(sourceRows, shared, startup)), [drill, sourceRows, shared, startup]);
+  const filtered = useMemo(() => applyFilters(inScope, f, startup, q), [inScope, f, startup, q]);
+  // the timeline has its own day / week window: the scope without the period
+  const timelineRows = useMemo(
+    () => (view !== 'timeline' ? [] : applyFilters(drill ? sourceRows : scopeRows(sourceRows, shared, startup, false), f, startup, q)),
+    [view, drill, sourceRows, shared, startup, f, q],
+  );
+  // another scope or another drill-through starts at the first page again (not on the first render: the address may hold n)
+  const pageKey = `${serializeFilters(sc.filters).toString()}|${drill?.label ?? ''}`;
   const lastPageKey = useRef(pageKey);
   useEffect(() => {
     if (lastPageKey.current === pageKey) return;
@@ -213,15 +202,34 @@ export default function EventExplorer() {
     }
     return { sec, failures, issues };
   }, [filtered]);
+  const facts = useMemo(() => {
+    let edited = 0, voided = 0;
+    for (const e of periodRows) {
+      if (e.is_void) voided++;
+      else if (e.edited) edited++;
+    }
+    return { edited, voided };
+  }, [periodRows]);
 
   const owners = useMemo(() => buildOwnerLookup(startup?.equipment_areas), [startup]);
   const areaName = useMemo(() => new Map(startup?.areas.map((a) => [a.area_id, a.name]) ?? []), [startup]);
   const open = openId ? sourceRows.find((e) => e.event_id === openId) ?? null : null;
   const visible = filtered.slice(0, shown);
-  const total = sourceRows.length;
-  const dataReady = drill ? multi.ready : !!ev.data;
-  const filtersOn = activeCount(f) + (qText.trim() ? 1 : 0);
-  const reset = () => setF(EMPTY);
+  const total = periodRows.length;
+  const dataReady = drill ? multi.ready : sc.ready;
+  const periodName = sc.range ? rangeText(sc.range) : '';
+  const ownOn = activeCount(f) + (qText.trim() ? 1 : 0);
+  const filtersOn = totalActive(f, shared) + (qText.trim() ? 1 : 0);
+  // Reset: the page's own choices and the shared scope
+  const reset = () => {
+    setQText('');
+    writeParams((p) => { EXPLORER_KEYS.forEach((k) => p.delete(k)); p.delete(SHOWN_PARAM); });
+    sc.reset();
+  };
+  const replaceEvent = (row: EventRow) => {
+    if (validation) validation.replaceEvent(row);
+    else for (const y of sc.years) eventsResource(y).patch((l) => l.map((e) => (e.event_id === row.event_id ? row : e)));
+  };
 
   // ---- export: exactly the rows of the list (same filters, same order), capped at EVENTS_EXPORT_CAP
   const [exportNote, setExportNote] = useState<{ text: string; capped: boolean } | null>(null);
@@ -233,12 +241,12 @@ export default function EventExplorer() {
     await new Promise((r) => window.setTimeout(r, 30)); // let the note paint before the heavy work
     try {
       const ex = eventsTable(filtered, startup);
-      const label = drill ? 'selection' : String(year ?? '');
+      const label = drill ? 'selection' : exportLabel(sc.filters, sc.range);
       const name = eventsFileName(label, kind);
       const ok = kind === 'xlsx'
         ? downloadFile(name, buildEventsWorkbook(ex, {
-          filters: describeExplorerFilters(f, startup), by: user?.display_name || user?.email || '', on: stampNow(),
-          scope: drill ? t('Events opened from {label}', { label: drill.label }) : t('Events of {year}', { year: year ?? '' }),
+          filters: describeExplorerFilters(f, startup, drill ? null : shared), by: user?.display_name || user?.email || '', on: stampNow(),
+          scope: drill ? t('Events opened from {label}', { label: drill.label }) : t('Events from {a} to {b}', { a: sc.range?.from ?? '', b: sc.range?.to ?? '' }),
         }), XLSX_MIME)
         : downloadFile(name, eventsCsv(ex), CSV_MIME);
       if (!ok) setExportNote({ text: t('The browser did not start the download. Try again.'), capped: false });
@@ -253,11 +261,20 @@ export default function EventExplorer() {
   const exportMenu = (
     <ExportMenu onExcel={() => void runExport('xlsx')} onCsv={() => void runExport('csv')} disabled={!dataReady || filtered.length === 0 || exporting} testid="export-btn" />
   );
-  const applyView = (v: SavedView) => navigate({ pathname: VIEW_PAGE_PATH.events, search: v.query ? `?${v.query}` : '' });
+  const applyView = (v: SavedView) => {
+    // the shared filters follow the view (an empty set means the defaults), the page's own keys come with it
+    const sp = new URLSearchParams(v.query);
+    const sharedQ = serializeFilters(parseFilters(sp)).toString();
+    rememberQuery(sharedQ);
+    const own = nonFilterParams(sp);
+    const query = [sharedQ, own.toString()].filter(Boolean).join('&');
+    navigate({ pathname: VIEW_PAGE_PATH.events, search: query ? `?${query}` : '' });
+  };
   const currentViewQuery = (): string => {
-    const q = serializeExplorerFilters(f);
-    if (view === 'timeline') q.set('view', 'timeline');
-    return q.toString();
+    const out = serializeFilters(sc.filters);
+    serializeExplorerFilters(f).forEach((v, k) => out.append(k, v));
+    if (view === 'timeline') out.set('view', 'timeline');
+    return out.toString();
   };
   const viewsMenu = <ViewsMenu page="events" currentQuery={currentViewQuery} onApply={applyView} />;
 
@@ -270,24 +287,40 @@ export default function EventExplorer() {
       />
     </div>
   );
+  // the shared Compare chip shows here too (it is one setting for every page); the list itself has no comparison
+  const settings = useMemo(() => (startup ? parseSettings(startup.settings) : null), [startup]);
+  const cmpMode: CompareMode = sc.filters.compare ?? settings?.defaultComparison ?? 'previous_period';
+  const failureChip = (
+    <CountChip on={sc.filters.failureOnly} onClick={() => sc.setFilters({ failureOnly: !sc.filters.failureOnly })} testid="failure-only">{t('Failures only')}</CountChip>
+  );
 
   return (
     <div className="page" data-testid="page-events">
+      <ScopeBar
+        src={{
+          filters: sc.filters, setFilters: sc.setFilters, reset, startup, range: sc.range, compareMode: cmpMode,
+          compareRange: sc.range && cmpMode !== 'none' ? comparisonRange(sc.range, cmpMode) : null, settings, rows: sc.rows,
+        }}
+        eventCount={dataReady ? filtered.length : null} views={viewsMenu} exportMenu={exportMenu}
+      />
       <PageHeader
         title={t('Event Explorer')}
-        subtitle={dataReady ? t('{shown} of {total} events in {year} · {hours} stoppage hours · {failures} failures', { shown: num(filtered.length), total: num(total), year: year ?? '', hours: hours(stats.sec), failures: num(stats.failures) }) : t('Loading…')}
+        subtitle={dataReady
+          ? (drill
+            ? t('{shown} of {total} opened events · {hours} stoppage hours · {failures} failures', { shown: num(filtered.length), total: num(total), hours: hours(stats.sec), failures: num(stats.failures) })
+            : t('{shown} of {total} events in {period} · {hours} stoppage hours · {failures} failures', { shown: num(filtered.length), total: num(total), period: periodName, hours: hours(stats.sec), failures: num(stats.failures) }))
+          : t('Loading…')}
         right={
           <>
-            <YearSwitch />
-            {!mobile && exportMenu}
-            <button type="button" className="btn btn-sm" onClick={() => { st.reload(); ev.reload(); }} disabled={ev.refreshing || ev.loading} data-testid="refresh">
-              <Icon name="sync" size={14} /> {ev.refreshing ? t('Refreshing…') : t('Refresh')}
+            <YearChips filters={sc.filters} setFilters={sc.setFilters} years={startup?.years ?? []} />
+            <button type="button" className="btn btn-sm" onClick={sc.reload} disabled={sc.state.refreshing || sc.state.loading} data-testid="refresh">
+              <Icon name="sync" size={14} /> {sc.state.refreshing ? t('Refreshing…') : t('Refresh')}
             </button>
           </>
         }
       />
       <ValidationBanner />
-      <DataNotes st={st} ev={ev} />
+      {st.error || (st.loading && !st.data) ? <DataStatus state={st} onRetry={st.reload} what={t('master data')} /> : <DataStatus state={sc.state} onRetry={sc.reload} what={t('events')} />}
       {drill && (
         <div className="callout" role="status" data-testid="drill-chip">
           <Icon name="filter" size={16} />
@@ -315,29 +348,27 @@ export default function EventExplorer() {
         <>
           {view === 'list' && (
           <div className="tiles" data-testid="event-tiles">
-            <Tile icon="list" label={t('Events shown')} value={num(filtered.length)} sub={drill ? t('of {n} in the opened events', { n: num(total) }) : t('of {n} in {year}', { n: num(total), year: year ?? '' })} testid="tile-shown" />
+            <Tile icon="list" label={t('Events shown')} value={num(filtered.length)} sub={drill ? t('of {n} in the opened events', { n: num(total) }) : t('of {n} in {period}', { n: num(total), period: periodName })} testid="tile-shown" />
             <Tile icon="clock" label={t('Stoppage hours shown')} value={hours(stats.sec)} sub={t('area-hours, not voided or left out')} testid="tile-hours" />
             <Tile icon="alert" label={t('Failures shown')} value={num(stats.failures)} tone={stats.failures ? T.danger : undefined} sub={t('not voided or left out')} testid="tile-failures" />
-            <Tile icon="info" label={t('Rows with data issues')} value={num(stats.issues)} tone={stats.issues ? T.warning : undefined} sub={t('{n} edited · {v} voided in {year}', { n: facts.edited, v: facts.voided, year: year ?? '' })} testid="tile-issues" />
+            <Tile icon="info" label={t('Rows with data issues')} value={num(stats.issues)} tone={stats.issues ? T.warning : undefined} sub={t('{n} edited · {v} voided in this period', { n: facts.edited, v: facts.voided })} testid="tile-issues" />
           </div>
           )}
-          <section className="card" aria-label={t('Filters')} data-testid="filters">
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
+          <section className="card ev-tools-card" aria-label={t('Find in these records')} data-testid="filters">
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               {searchBox}
+              <ShowField f={f} set={set} id="top" />
               <SortField f={f} set={set} id="top" />
               <div className="field">
                 <span className="field-label">{t('Failures')}</span>
-                <CountChip on={f.failureOnly} onClick={() => set({ failureOnly: !f.failureOnly })} testid="failure-only">{t('Failures only')}</CountChip>
+                {failureChip}
               </div>
               <button type="button" className="btn" onClick={reset} disabled={filtersOn === 0} data-testid="reset-filters">{t('Reset filters')}</button>
-              {viewsMenu}
             </div>
-            <FilterFields f={f} set={set} startup={startup} />
           </section>
         </>
       ) : (
         <>
-          <div className="ev-tools" data-testid="ev-tools">{viewsMenu}{exportMenu}</div>
           <div className="phone-summary" data-testid="phone-summary">
             <b>{num(filtered.length)}</b> {t('events')}
             <span><span aria-hidden="true">◆</span> {num(stats.failures)} {t('failures')}</span>
@@ -348,23 +379,27 @@ export default function EventExplorer() {
             <input id="ev-search" ref={searchRef} className="input" type="search" value={qText} onChange={(e) => typeSearch(e.target.value)} placeholder={t('Code, reason or description')} autoComplete="off" data-testid="event-search" />
           </div>
           <ChipRow label={t('Quick filters')}>
-            <CountChip on={f.failureOnly} onClick={() => set({ failureOnly: !f.failureOnly })} testid="failure-only">{t('Failures only')}</CountChip>
-            <FiltersPill count={activeCount(f, false)} onClick={() => setSheet(true)} testid="filters-pill" />
-            {filtersOn > 0 && <button type="button" className="chip" onClick={reset}>{t('Reset')}</button>}
+            {failureChip}
+            <FiltersPill count={activeCount(f)} label={t('Show and order')} onClick={() => setSheet(true)} testid="filters-pill" />
+            {filtersOn > 0 && <button type="button" className="chip" onClick={reset} data-testid="reset-filters">{t('Reset')}</button>}
           </ChipRow>
           {sheet && (
             <BottomSheet
-              title={t('Filters')}
+              title={t('Show and order')}
               onClose={() => setSheet(false)}
               testid="filters-sheet"
               footer={
                 <>
-                  <button type="button" className="btn" onClick={reset}>{t('Reset')}</button>
-                  <button type="button" className="btn-primary" onClick={() => setSheet(false)} data-testid="sheet-apply">{t('Show {n} events', { n: num(filtered.length) })}</button>
+                  <button type="button" className="btn" onClick={() => setF({ ...EMPTY, q: liveFilters().q })}>{t('Reset')}</button>
+                  <button type="button" className="btn-brand" onClick={() => setSheet(false)} data-testid="sheet-apply">{t('Show {n} events', { n: num(filtered.length) })}</button>
                 </>
               }
             >
-              <FilterFields f={f} set={set} startup={startup} stacked />
+              <div className="bottom-sheet-body" style={{ padding: 0 }}>
+                <ShowField f={f} set={set} id="s" />
+                <SortField f={f} set={set} id="s" />
+              </div>
+              {ownOn > 0 && <p className="field-hint">{t('The period, line, area, equipment and type are under Filters at the top: they are shared with the dashboards.')}</p>}
             </BottomSheet>
           )}
         </>
@@ -372,7 +407,7 @@ export default function EventExplorer() {
 
       {dataReady && view === 'timeline' && (
         <div style={{ marginTop: 12 }}>
-          <TimelineView sourceRows={sourceRows} filteredRows={filtered} startup={startup} year={year} mobile={mobile} onOpen={setOpenId} />
+          <TimelineView sourceRows={sourceRows} filteredRows={timelineRows} startup={startup} year={drill ? '' : periodName} mobile={mobile} onOpen={setOpenId} />
         </div>
       )}
       {dataReady && view === 'list' && (
@@ -445,7 +480,7 @@ export default function EventExplorer() {
           startup={startup}
           canEdit={canEdit('events')}
           onClose={() => setOpenId(null)}
-          onChanged={ev.replaceEvent}
+          onChanged={replaceEvent}
         />
       )}
     </div>

@@ -72,6 +72,36 @@ export function toDashFilters(setup: ReportSetup, range: { from: string; to: str
   };
 }
 
+/** The report filters cannot narrow by these shared dashboard filters; 'Use current dashboard filters' names what it left out. */
+export type NotCopied = 'reason' | 'duration' | 'equipment type';
+
+/**
+ * 'Use current dashboard filters': the shared dashboard filters (and their period, already resolved to `range`) as this
+ * setup's period and filters. A month, 'this month' and year to date keep their report preset; any other period becomes
+ * a custom range. The comparison follows (on unless the dashboards have none). Sections and template stay.
+ */
+export function fromDashFilters(setup: ReportSetup, f: DashFilters, range: { from: string; to: string }): { setup: ReportSetup; notCopied: NotCopied[] } {
+  const preset: ReportPreset = f.preset === 'thismonth' ? 'thismonth' : f.preset === 'prevmonth' ? 'lastmonth' : f.preset === 'ytd' ? 'ytd' : 'custom';
+  const notCopied: NotCopied[] = [];
+  if (f.reasonKeys.length) notCopied.push('reason');
+  if (f.durationBand) notCopied.push('duration');
+  if (f.equipmentTypes.length) notCopied.push('equipment type');
+  return {
+    setup: {
+      ...setup,
+      preset,
+      from: preset === 'custom' ? range.from : setup.from,
+      to: preset === 'custom' ? range.to : setup.to,
+      compare: f.compare !== 'none',
+      filters: {
+        lineIds: [...f.lineIds], areaIds: [...f.areaIds], equipmentIds: [...f.equipmentIds],
+        classifications: [...f.classifications], criticality: [...f.criticality], failuresOnly: f.failureOnly,
+      },
+    },
+    notCopied,
+  };
+}
+
 // ---------------------------------------------------------------- URL
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

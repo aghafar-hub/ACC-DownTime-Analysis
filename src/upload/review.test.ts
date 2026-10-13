@@ -176,7 +176,7 @@ describe('review of an upload', () => {
     expect(skip.summary).toEqual({ rows_read: 4, rows_skipped: 4 });
     expect(skip.warnings.find((w) => w.type === 'late_month')).toMatchObject({ resolution: 'skipped' });
     expect(buildPlan(r2, decideAll(r2, 'add')).willAdd).toBe(4);
-    expect(monthLabel('2025-01')).toBe('January 2025');
+    expect(monthLabel('2025-01')).toBe('Jan 2025'); // the app's one month format
   });
 
   it('flags data problems on rows that will be added and drops them for skipped late rows', async () => {

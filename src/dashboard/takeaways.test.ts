@@ -57,7 +57,7 @@ describe('repeatsTakeaway', () => {
 describe('reliabilityTakeaway', () => {
   it('reads MTBF, mean restoration time and the last two months', () => {
     const s = reliabilityTakeaway({ mtbf: avail(120.4), mttr: avail(1.256), failureEvents: 40, areaId: 'K.1', lastMonths: [{ month: '2026-02', mtbf: 100 }, { month: '2026-03', mtbf: 120 }] });
-    expect(s).toBe('MTBF is 120.4 h for K.1 and mean restoration time 1.26 h, over 40 failure events; MTBF in Mar 26 was 120.0 h, up from 100.0 h in Feb 26.');
+    expect(s).toBe('MTBF is 120.4 h for K.1 and mean restoration time 1.26 h, over 40 failure events; MTBF in Mar 2026 was 120.0 h, up from 100.0 h in Feb 2026.');
   });
   it('an undefined MTBF keeps its reason and adds no trend', () => {
     const s = reliabilityTakeaway({ mtbf: unavail('no_failures', 'No failures recorded in the window'), mttr: unavail('no_failures', 'x'), failureEvents: 0, areaId: null, lastMonths: [] });

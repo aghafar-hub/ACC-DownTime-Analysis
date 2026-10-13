@@ -24,10 +24,10 @@ export function CountChip({ on, onClick, children, count, testid }: { on?: boole
 }
 
 /** "Filters · 2" pill that opens the filter sheet. */
-export function FiltersPill({ count = 0, onClick, testid }: { count?: number; onClick: () => void; testid?: string }) {
+export function FiltersPill({ count = 0, onClick, testid, label }: { count?: number; onClick: () => void; testid?: string; label?: string }) {
   return (
     <button type="button" className={count ? 'chip chip--filters chip--on' : 'chip chip--filters'} onClick={onClick} data-testid={testid} aria-haspopup="dialog">
-      <Icon name="filter" size={14} /> {t('Filters')}{count ? ` · ${count}` : ''}
+      <Icon name="filter" size={14} /> {label ?? t('Filters')}{count ? ` · ${count}` : ''}
     </button>
   );
 }
@@ -43,15 +43,23 @@ export function ShowMore({ shown, total, onMore, testid = 'show-more' }: { shown
   );
 }
 
-/** Bottom sheet: grab bar, title, scrolling body, footer buttons. Back closes it. */
-export function BottomSheet({ title, onClose, footer, children, testid }: { title: string; onClose: () => void; footer?: ReactNode; children: ReactNode; testid?: string }) {
+/** Bottom sheet: grab bar, title (with an optional '2 active' badge and a close button), scrolling body, footer buttons. Back closes it. */
+export function BottomSheet({ title, onClose, footer, children, testid, badge, withClose }: {
+  title: string; onClose: () => void; footer?: ReactNode; children: ReactNode; testid?: string; badge?: string; withClose?: boolean;
+}) {
   useBackClose(true, onClose);
   return (
     <>
       <div className="module-sheet-backdrop" onClick={onClose} aria-hidden="true" />
       <div className="module-sheet bottom-sheet" role="dialog" aria-modal="true" aria-label={title} data-testid={testid}>
         <div className="module-sheet-grab" aria-hidden="true" />
-        <p className="module-sheet-title">{title}</p>
+        {badge || withClose ? (
+          <div className="bottom-sheet-head">
+            <p className="module-sheet-title">{title}</p>
+            {badge && <span className="bottom-sheet-badge">{badge}</span>}
+            {withClose && <button type="button" className="bottom-sheet-close" onClick={onClose} aria-label={t('Close')} data-testid={testid ? `${testid}-close` : undefined}><Icon name="close" size={20} /></button>}
+          </div>
+        ) : <p className="module-sheet-title">{title}</p>}
         <div className="bottom-sheet-body">{children}</div>
         {footer && <div className="bottom-sheet-foot">{footer}</div>}
       </div>

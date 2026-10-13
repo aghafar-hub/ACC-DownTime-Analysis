@@ -70,7 +70,9 @@ const uniq = (xs: string[]): string[] => [...new Set(xs.filter((x) => x !== ''))
 
 export function parseFilters(sp: URLSearchParams): DashFilters {
   const d = defaultFilters();
-  const preset = sp.get('r') as RangePreset | null;
+  // an old Event Explorer link or saved view has from / to without a preset: that is a custom range
+  const legacyCustom = !sp.has('r') && (DATE_RE.test(sp.get('from') ?? '') || DATE_RE.test(sp.get('to') ?? ''));
+  const preset = (legacyCustom ? 'custom' : sp.get('r')) as RangePreset | null;
   const year = Number(sp.get('y'));
   const month = sp.get('m') ?? '';
   const band = sp.get('band');

@@ -1,6 +1,6 @@
 // The report builder: template, period, filters, sections, and a summary card with the Build button. Everything lives
 // in one ReportSetup the page keeps in the URL query, so a setup link restores it exactly.
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import ReportExport from './ReportExport';
 import { useTemplateUi } from './SavedTemplates';
 import type { ReportModel } from './model';
@@ -16,7 +16,9 @@ import { Icon } from '../icons';
 import {
   PERIOD_PRESETS, SECTION_DEFS, SECTION_GROUPS, SECTION_ORDER, TEMPLATE_DEFS, effectiveOptions, sortSections, type SectionDef,
 } from './sections';
-import { applyTemplate, filterCount, type ReportFilters, type ReportSetup } from './setup';
+import { applyTemplate, filterCount, fromDashFilters, type NotCopied, type ReportFilters, type ReportSetup } from './setup';
+import { parseFilters, resolveRange } from '../dashboard/filters';
+import { rememberedQuery } from '../dashboard/sharedFilters';
 import './reports.css';
 
 export interface BuilderProps {
@@ -35,6 +37,8 @@ export interface BuilderProps {
   /** the report model for Download Excel / CSV (built on the click); null while the data is not ready */
   getModel: (only?: ReportSectionId[]) => ReportModel | null;
   dataReady: boolean;
+  /** the last day with data (the dashboards' relative periods count back from it) */
+  asOf?: string | null;
 }
 
 function Step({ n, title, hint, children, testid }: { n: number; title: string; hint?: string; children: ReactNode; testid: string }) {
@@ -58,6 +62,15 @@ export default function Builder(p: BuilderProps) {
   const f = setup.filters;
   const tpl = useTemplateUi(setup, onChange);
   const setFilters = (patch: Partial<ReportFilters>) => onChange({ ...setup, filters: { ...f, ...patch } });
+  // 'Use current dashboard filters': the shared filters of the Analyze pages and Event records, with their period
+  const [copied, setCopied] = useState<{ notCopied: NotCopied[] } | null>(null);
+  const useDashboard = () => {
+    const dash = parseFilters(new URLSearchParams(rememberedQuery()));
+    const asOf = p.asOf ?? p.coverage?.to ?? new Date().toISOString().slice(0, 10);
+    const r = fromDashFilters(setup, dash, resolveRange(dash, asOf));
+    onChange(r.setup);
+    setCopied({ notCopied: r.notCopied });
+  };
 
   const lines = startup?.lines ?? [];
   const areas = useMemo(() => (startup?.areas ?? []).filter((a) => a.active && a.in_downtime_sheet), [startup]);
@@ -141,6 +154,21 @@ export default function Builder(p: BuilderProps) {
           {tpl.actions}
           <p className="rb-blurb" data-testid="rb-tpl-blurb">{t(TEMPLATE_DEFS.find((x) => x.id === setup.template)?.blurb ?? '')}</p>
         </Step>
+
+        <div className="card rb-use-dash" data-testid="rb-use-dash-card">
+          <div>
+            <b>{t('Start from the dashboards')}</b>
+            <p className="rb-hint">{t('Copy the period and filters you have on the Dashboard, Losses, Repeated failures, Reliability and Event records.')}</p>
+            {copied && (
+              <p className="rb-hint" role="status" data-testid="rb-use-dash-note">
+                {copied.notCopied.length
+                  ? t('Copied. Not in a report: {what} (the report has no such filter).', { what: copied.notCopied.map((x) => t(x)).join(', ') })
+                  : t('Copied the dashboard period and filters.')}
+              </p>
+            )}
+          </div>
+          <button type="button" className="btn" onClick={useDashboard} data-testid="rb-use-dash"><Icon name="filter" size={15} /> {t('Use current dashboard filters')}</button>
+        </div>
 
         <Step n={2} title={t('Period')} testid="rb-period">
           <ChipRow label={t('Period')}>

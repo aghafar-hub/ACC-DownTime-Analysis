@@ -19,10 +19,14 @@ export interface PopMenuProps {
   /** a count shown on the button, such as the number of saved views */
   count?: number;
   buttonClass?: string;
+  /** what the button shows instead of icon + label (the label stays its accessible name) */
+  content?: ReactNode;
+  /** extra class on the panel */
+  panelClass?: string;
   children: (close: () => void) => ReactNode;
 }
 
-export default function PopMenu({ label, icon, testid, kind = 'menu', disabled, hint, count, buttonClass = 'btn', children }: PopMenuProps) {
+export default function PopMenu({ label, icon, testid, kind = 'menu', disabled, hint, count, buttonClass = 'btn', content, panelClass, children }: PopMenuProps) {
   const [open, setOpen] = useState(false);
   const [shift, setShift] = useState(0);
   // where the panel goes: under the button, or above it when there is more room there; its height is limited to the room it has
@@ -110,15 +114,15 @@ export default function PopMenu({ label, icon, testid, kind = 'menu', disabled, 
     <div className="pm" ref={wrap}>
       <button
         type="button" ref={btn} className={buttonClass} disabled={disabled} aria-haspopup={kind === 'menu' ? 'menu' : 'dialog'} aria-expanded={open}
-        aria-controls={open ? `pm-${id}` : undefined} aria-label={hint ? `${label}. ${hint}` : undefined} onClick={() => setOpen((v) => !v)} data-testid={testid}
+        aria-controls={open ? `pm-${id}` : undefined} aria-label={hint ? `${label}. ${hint}` : content ? label : undefined} onClick={() => setOpen((v) => !v)} data-testid={testid}
       >
-        {icon && <Icon name={icon} size={16} />} {label}
+        {content ?? <>{icon && <Icon name={icon} size={16} />} {label}</>}
         {count !== undefined && count > 0 && <span className="pm-count" aria-hidden="true">{count}</span>}
         <Icon name={open ? 'chevronUp' : 'chevronDown'} size={14} />
       </button>
       {open && (
         <div
-          id={`pm-${id}`} ref={panel} className={kind === 'menu' ? 'pm-panel pm-panel--menu' : 'pm-panel'} style={{ left: shift, maxHeight: place.maxH ?? undefined, ...(place.up ? { top: 'auto', bottom: 'calc(100% + 6px)' } : null) }}
+          id={`pm-${id}`} ref={panel} className={`${kind === 'menu' ? 'pm-panel pm-panel--menu' : 'pm-panel'}${panelClass ? ` ${panelClass}` : ''}`} style={{ left: shift, maxHeight: place.maxH ?? undefined, ...(place.up ? { top: 'auto', bottom: 'calc(100% + 6px)' } : null) }}
           role={kind === 'menu' ? 'menu' : 'dialog'} aria-label={label} onKeyDown={onPanelKey} data-testid={`${testid}-panel`}
         >
           {children(close)}

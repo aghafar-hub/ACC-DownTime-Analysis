@@ -1,5 +1,4 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import { monthText } from '../util/dates';
 import { useNavigate } from 'react-router-dom';
 import DataStatus from '../components/DataStatus';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -9,32 +8,17 @@ import type { DrillState } from './drill';
 import { conflictingFilters } from './filters';
 import type { Dash } from './useDash';
 
-/** Loading, error and offline notes for the master data and every year the filters need. */
+/** Loading, error and offline notes for the master data and every year the filters need (the months not uploaded are in the shell's data status strip). */
 export function DashStatus({ dash }: { dash: Dash }) {
   const { st, data } = dash;
   if (st.error || (st.loading && !st.data)) return <DataStatus state={st} onRetry={st.reload} what={t('master data')} />;
   return (
     <>
       <DataStatus state={data.state} onRetry={data.reload} what={t('events')} />
-      <NotUploadedLine dash={dash} />
     </>
   );
 }
 
-
-/** P6: the data status line names the months inside the data that have no record at all (information, never 0 h or 100 %). */
-export function NotUploadedLine({ dash }: { dash: Dash }) {
-  const ctx = dash.ctx;
-  if (!ctx || !ctx.coverage || ctx.notUploaded.length === 0) return null;
-  return (
-    <p className="status-line" role="note" data-testid="data-status-not-uploaded">
-      <Icon name="info" size={14} />{' '}
-      {t('Data {a} to {b}. Not uploaded (no records at all): {m}. These months are left out of the numbers, never shown as 0 h or 100%.', {
-        a: ctx.coverage.from, b: ctx.coverage.to, m: ctx.notUploaded.map(monthText).join(', '),
-      })}
-    </p>
-  );
-}
 
 /** On the phone a section folds away under a 48 px heading; on a desktop it is simply shown. */
 export function Collapsible({ title, defaultOpen = false, children, testid }: { title: string; defaultOpen?: boolean; children: ReactNode; testid?: string }) {

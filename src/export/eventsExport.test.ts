@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EventRow, Startup } from '../api/types';
-import { applyFilters, EMPTY } from '../pages/events/explorerFilters';
+import { defaultFilters } from '../dashboard/filters';
+import { applyFilters, EMPTY, scopeRows } from '../pages/events/explorerFilters';
 import { buildSyntheticDb } from '../mock/synthetic';
 import { readXlsxSheet } from '../upload/xlsxReader';
 import { buildEventsWorkbook, eventsCsv, eventsFileName, eventsTable, EVENTS_EXPORT_CAP } from './eventsExport';
@@ -28,8 +29,8 @@ describe('Event Explorer export', () => {
   });
 
   it('exports exactly the filtered rows in the list\'s order', async () => {
-    const f = { ...EMPTY, failureOnly: true, area: db.areas.find((a) => a.active)!.area_id, sort: 'dur_desc' as const };
-    const filtered = applyFilters(rows2026, f, startup, '');
+    const shared = { filters: { ...defaultFilters(), failureOnly: true, areaIds: [db.areas.find((a) => a.active)!.area_id] }, range: { from: '2026-01-01', to: '2026-12-31' } };
+    const filtered = applyFilters(scopeRows(rows2026, shared, startup), { ...EMPTY, sort: 'dur_desc' }, startup, '');
     expect(filtered.length).toBeGreaterThan(3);
     const ex = eventsTable(filtered, startup);
     expect(ex.exported).toBe(filtered.length);

@@ -1,36 +1,71 @@
-// Event Explorer's filters as plain data: the filter shape, the rules that pick and order the rows, a count of active
-// filters, a sentence that describes them, and their query. The filters live in the address as that query (so Back
-// and a reload restore them); a saved view stores the same query. Pure.
-import type { ClassificationCode, EventRow, Startup } from '../../api/types';
+// Event records' filters as plain data. The scope (period, line, area, equipment, type ...) is the dashboards' shared
+// filter set (src/dashboard/filters.ts), so changing it on any Analyze page changes the list here and back. The page
+// keeps its own choices in its own query keys: the search text, which rows to show (all, with issues, edited, voided)
+// and the order. Both live in the address, so Back, a reload or a saved view restore the same list. Pure.
+import type { EventRow, Startup } from '../../api/types';
+import { applyFilters as applyRowFilters, buildIndex, emptyFilter, matchKey, parseSettings, type DateRange, type MasterIndex } from '../../calc';
 import { hasOpenProblemFlags } from '../../calc/flags';
+import { activeCount as sharedCount, type DashFilters } from '../../dashboard/filters';
 import { t } from '../../i18n/t';
 
 export type Show = 'all' | 'issues' | 'edited' | 'void';
 export type Sort = 'stop_desc' | 'stop_asc' | 'dur_desc';
-export interface Filters {
-  q: string; line: string; area: string; classes: ClassificationCode[]; crit: '' | 'INC' | 'NO_INC';
-  failureOnly: boolean; from: string; to: string; show: Show; sort: Sort;
-}
-export const EMPTY: Filters = { q: '', line: '', area: '', classes: [], crit: '', failureOnly: false, from: '', to: '', show: 'all', sort: 'stop_desc' };
+/** The page's own choices (the scope is the shared filter set). */
+export interface Filters { q: string; show: Show; sort: Sort }
+export const EMPTY: Filters = { q: '', show: 'all', sort: 'stop_desc' };
 
-/** How many filters are active (the search box and the sort order are not counted). */
-export function activeCount(f: Filters, includeFailure = true): number {
-  return [f.line, f.area, f.classes.length > 0, f.crit, includeFailure && f.failureOnly, f.from, f.to, f.show !== 'all'].filter(Boolean).length;
+/** The shared scope as the list applies it: the filters and the range they resolve to. */
+export interface SharedScope { filters: DashFilters; range: DateRange | null }
+
+/** How many of the page's own filters are on (the search box and the order are not counted). */
+export function activeCount(f: Filters): number {
+  return f.show !== 'all' ? 1 : 0;
 }
 
-export function applyFilters(rows: EventRow[], f: Filters, startup: Startup | null, q: string): EventRow[] {
+/** Narrowing filters in total: the shared ones plus the page's own. */
+export function totalActive(f: Filters, shared: SharedScope | null): number {
+  return activeCount(f) + (shared ? sharedCount(shared.filters) : 0);
+}
+
+const masters = new WeakMap<Startup, { index: MasterIndex; settings: ReturnType<typeof parseSettings> }>();
+function masterOf(startup: Startup) {
+  let m = masters.get(startup);
+  if (!m) {
+    m = { index: buildIndex(startup), settings: parseSettings(startup.settings) };
+    masters.set(startup, m);
+  }
+  return m;
+}
+
+/**
+ * The rows of the shared scope, row by row (a list of records, so a continuation row is listed on its own): the
+ * stop date inside the period, then line (through the area), area, equipment, equipment type, classification,
+ * criticality, failures only, reason and duration band. Voided rows and rows with a data problem stay in (the list
+ * shows them; 'Show' picks them out). `withDates: false` leaves the period out (the timeline has its own window).
+ */
+export function scopeRows(rows: readonly EventRow[], shared: SharedScope, startup: Startup | null, withDates = true): EventRow[] {
+  const f = shared.filters;
+  const from = withDates ? shared.range?.from ?? '' : '';
+  const to = withDates ? shared.range?.to ?? '' : '';
+  const dated = from || to ? rows.filter((e) => (!from || e.event_date >= from) && (!to || e.event_date <= to)) : [...rows];
+  const narrowing = f.lineIds.length || f.areaIds.length || f.equipmentIds.length || f.equipmentTypes.length || f.classifications.length || f.criticality.length
+    || f.failureOnly || f.reasonKeys.length || f.durationBand;
+  if (!narrowing) return dated;
+  const m = startup ? masterOf(startup) : null;
+  const kept = applyRowFilters(dated, {
+    ...emptyFilter(), lineIds: f.lineIds, areaIds: f.areaIds, equipmentIds: f.equipmentIds, equipmentTypes: f.equipmentTypes,
+    classifications: f.classifications, criticality: f.criticality, failureOnly: f.failureOnly, reasonKeys: f.reasonKeys.map(matchKey),
+    durationBand: f.durationBand, includeVoid: true, includeInvalid: true,
+  }, { settings: m?.settings ?? { durationShortMaxMin: 30, durationLongMinMin: 120 }, index: m?.index });
+  // a voided row is never a failure
+  return f.failureOnly ? kept.filter((e) => !e.is_void) : kept;
+}
+
+/** The page's own choices on top: which rows to show, the search text, then the order. */
+export function applyFilters(rows: readonly EventRow[], f: Filters, startup: Startup | null, q: string): EventRow[] {
   const needle = q.trim().toLowerCase();
   const reasonText = new Map(startup?.reasons.map((r) => [r.reason_id, r.text_as_listed.trim().toLowerCase()]) ?? []);
-  // the area decides the line (the sheet's own line can be wrong)
-  const lineOfArea = new Map(startup?.areas.map((a) => [a.area_id, a.line_id]) ?? []);
   const out = rows.filter((e) => {
-    if (f.line && (lineOfArea.get(e.area_id) ?? e.line_id) !== f.line) return false;
-    if (f.area && e.area_id !== f.area) return false;
-    if (f.classes.length && !f.classes.includes(e.classification)) return false;
-    if (f.crit && e.criticality !== f.crit) return false;
-    if (f.failureOnly && !(e.is_failure && !e.is_void)) return false;
-    if (f.from && e.event_date < f.from) return false;
-    if (f.to && e.event_date > f.to) return false;
     if (f.show === 'issues' && !hasOpenProblemFlags(e)) return false;
     if (f.show === 'edited' && !e.edited) return false;
     if (f.show === 'void' && !e.is_void) return false;
@@ -46,16 +81,22 @@ export function applyFilters(rows: EventRow[], f: Filters, startup: Startup | nu
   return out;
 }
 
-/** The filters in words, for the export's info sheet: 'Line L.1, Area CR, search "belt"'. 'No filters' when nothing is on. */
-export function describeExplorerFilters(f: Filters, startup: Startup | null): string {
+/** The filters in words, for the export's info sheet (dates stay ISO, as in every file): 'Period 2026-08-01 to 2026-08-31, Line L.1, Area CR, search "belt"'. */
+export function describeExplorerFilters(f: Filters, startup: Startup | null, shared: SharedScope | null = null): string {
   const bits: string[] = [];
-  if (f.line) bits.push(`${t('Line')} ${startup?.lines.find((l) => l.line_id === f.line)?.name ?? f.line}`);
-  if (f.area) bits.push(`${t('Area')} ${f.area}`);
-  if (f.classes.length) bits.push(`${t('Classification')} ${f.classes.join(', ')}`);
-  if (f.crit) bits.push(`${t('Criticality')} ${f.crit}`);
-  if (f.failureOnly) bits.push(t('Failures only'));
-  if (f.from) bits.push(`${t('From date')} ${f.from}`);
-  if (f.to) bits.push(`${t('To date')} ${f.to}`);
+  const s = shared?.filters;
+  if (shared?.range) bits.push(`${t('Period')} ${shared.range.from} ${t('to')} ${shared.range.to}`);
+  if (s) {
+    if (s.lineIds.length) bits.push(`${t('Line')} ${s.lineIds.map((id) => startup?.lines.find((l) => l.line_id === id)?.name ?? id).join(', ')}`);
+    if (s.areaIds.length) bits.push(`${t('Area')} ${s.areaIds.join(', ')}`);
+    if (s.equipmentIds.length) bits.push(`${t('Equipment')} ${s.equipmentIds.join(', ')}`);
+    if (s.equipmentTypes.length) bits.push(`${t('Equipment type')} ${s.equipmentTypes.join(', ')}`);
+    if (s.classifications.length) bits.push(`${t('Classification')} ${s.classifications.join(', ')}`);
+    if (s.criticality.length) bits.push(`${t('Criticality')} ${s.criticality.join(', ')}`);
+    if (s.failureOnly) bits.push(t('Failures only'));
+    if (s.reasonKeys.length) bits.push(`${t('Reason')} ${s.reasonKeys.join(', ')}`);
+    if (s.durationBand) bits.push(`${t('Duration')} ${s.durationBand}`);
+  }
   if (f.show === 'issues') bits.push(t('Only rows with data issues'));
   if (f.show === 'edited') bits.push(t('Only edited rows'));
   if (f.show === 'void') bits.push(t('Only voided rows'));
@@ -63,51 +104,34 @@ export function describeExplorerFilters(f: Filters, startup: Startup | null): st
   return bits.length ? bits.join(', ') : t('No filters');
 }
 
-// ---------------------------------------------------------------- saved views
+// ---------------------------------------------------------------- the page's own query keys
 
-/** Query keys of the explorer's filters (the view switch `view` is kept apart: it is not a filter). */
-export const EXPLORER_KEYS = ['q', 'line', 'area', 'cls', 'crit', 'fail', 'from', 'to', 'show', 'sort'] as const;
+/** Query keys of the page's own choices (the shared filters use the dashboards' keys; `view` is the list / timeline switch). */
+export const EXPLORER_KEYS = ['q', 'show', 'sort'] as const;
 
 /** Query key of how many rows the list shows (Show more); not a filter, so it is not part of a saved view. */
 export const SHOWN_PARAM = 'n';
 
 export const hasExplorerParams = (sp: URLSearchParams): boolean => EXPLORER_KEYS.some((k) => sp.has(k));
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SHOWS: Show[] = ['all', 'issues', 'edited', 'void'];
 const SORTS: Sort[] = ['stop_desc', 'stop_asc', 'dur_desc'];
 
-/** Only non-default values are written, so an empty filter set is an empty query. */
+/** Only non-default values are written, so the defaults are an empty query. */
 export function serializeExplorerFilters(f: Filters): URLSearchParams {
   const sp = new URLSearchParams();
   if (f.q.trim()) sp.set('q', f.q.trim());
-  if (f.line) sp.set('line', f.line);
-  if (f.area) sp.set('area', f.area);
-  f.classes.forEach((c) => sp.append('cls', c));
-  if (f.crit) sp.set('crit', f.crit);
-  if (f.failureOnly) sp.set('fail', '1');
-  if (f.from) sp.set('from', f.from);
-  if (f.to) sp.set('to', f.to);
   if (f.show !== 'all') sp.set('show', f.show);
   if (f.sort !== 'stop_desc') sp.set('sort', f.sort);
   return sp;
 }
 
-/** The filters a query describes; anything missing or not valid is the default. */
-export function parseExplorerFilters(sp: URLSearchParams, classCodes: readonly string[] | null = null): Filters {
-  const crit = sp.get('crit');
+/** The page's choices a query describes; anything missing or not valid is the default. */
+export function parseExplorerFilters(sp: URLSearchParams): Filters {
   const show = sp.get('show') as Show | null;
   const sort = sp.get('sort') as Sort | null;
-  const allowed = classCodes ?? ['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'];
   return {
     q: sp.get('q') ?? '',
-    line: sp.get('line') ?? '',
-    area: sp.get('area') ?? '',
-    classes: [...new Set(sp.getAll('cls'))].filter((c): c is ClassificationCode => allowed.includes(c)),
-    crit: crit === 'INC' || crit === 'NO_INC' ? crit : '',
-    failureOnly: sp.get('fail') === '1',
-    from: DATE_RE.test(sp.get('from') ?? '') ? sp.get('from')! : '',
-    to: DATE_RE.test(sp.get('to') ?? '') ? sp.get('to')! : '',
     show: show && SHOWS.includes(show) ? show : 'all',
     sort: sort && SORTS.includes(sort) ? sort : 'stop_desc',
   };

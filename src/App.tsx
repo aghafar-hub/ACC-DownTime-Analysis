@@ -4,9 +4,11 @@ import { AuthProvider, useAuth } from './auth/AuthContext';
 import RequireAuth from './auth/RequireAuth';
 import RequireTab from './auth/RequireTab';
 import BottomNav from './components/BottomNav';
+import DataStatusStrip from './components/DataStatusStrip';
 import { InstallBanner } from './components/InstallGuide';
 import OfflineBanner from './components/OfflineBanner';
 import PageTabs from './components/PageTabs';
+import { ScopeSlotContext } from './components/ScopeSlot';
 import SaveBlockedToast from './components/SaveBlockedToast';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
@@ -14,6 +16,8 @@ import { Tile } from './components/Tile';
 import { ENV_LABEL } from './config';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useVisiblePages } from './hooks/useVisiblePages';
+import { useRail } from './hooks/useRail';
+import { pageForPath } from './navigation';
 import { t } from './i18n/t';
 import MoreSheet, { OPEN_MORE_EVENT } from './mobile/MoreSheet';
 import ScrollKeeper from './mobile/ScrollKeeper';
@@ -41,6 +45,11 @@ function ShellLayout() {
   const { dark } = useTheme();
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
+  const { pinned } = useRail();
+  // the page's scope bar is drawn into this slot (sticky under the top bar); the data status strip follows it
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const page = pageForPath(location.pathname);
+  const scoped = !!page && (page.group === 'analyze' || page.id === 'events');
 
   useEffect(() => {
     const on = () => setMoreOpen(true);
@@ -66,11 +75,14 @@ function ShellLayout() {
   return (
     <ValidationProvider>
     <NotificationsProvider>
-    <div className="app-shell">
+    <ScopeSlotContext.Provider value={slot}>
+    <div className={pinned && !mobile ? 'app-shell app-shell--rail-pinned' : 'app-shell'}>
       {!mobile && <Sidebar />}
       <div className="app-shell-right">
         <TopBar />
         <PageTabs />
+        <div className="scope-slot" ref={setSlot} />
+        {scoped && <DataStatusStrip />}
         <OfflineBanner />
         <main className="shell-page-content" id="main">
           <Outlet />
@@ -82,6 +94,7 @@ function ShellLayout() {
       </div>
       <SaveBlockedToast />
     </div>
+    </ScopeSlotContext.Provider>
     </NotificationsProvider>
     </ValidationProvider>
   );

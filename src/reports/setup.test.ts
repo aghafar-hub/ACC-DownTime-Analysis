@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { REPORT_PRESETS, REPORT_SECTION_IDS, REPORT_TEMPLATES } from '../api/types';
 import { cleanSavedReports } from '../api/mockNotifications';
 import { SECTION_DEFS, SECTION_ORDER, TEMPLATE_DEFS, effectiveOptions } from './sections';
-import { applyTemplate, defaultSetup, fromSavedTemplate, parseSetup, resolvedOptions, serializeSetup, setupsEqual, toSavedTemplate } from './setup';
+import { defaultFilters } from '../dashboard/filters';
+import { applyTemplate, defaultSetup, fromDashFilters, fromSavedTemplate, parseSetup, resolvedOptions, serializeSetup, setupsEqual, toSavedTemplate } from './setup';
 
 describe('sections catalogue', () => {
   it('lists every wire section id once, in report order, and the backend mirrors the lists', () => {
@@ -83,5 +84,25 @@ describe('saved templates', () => {
     expect(() => cleanSavedReports(JSON.stringify([saved]))).not.toThrow();
     expect(fromSavedTemplate(saved)).toEqual({ ...s, options: resolvedOptions(s) });
     expect(() => cleanSavedReports(JSON.stringify([{ ...saved, sections: ['nope'] }]))).toThrow();
+  });
+});
+
+describe('Use current dashboard filters', () => {
+  it('copies the shared filters and the period; a relative period becomes the custom range it resolves to', () => {
+    const dash = { ...defaultFilters(), lineIds: ['L.1'], areaIds: ['K.1'], equipmentIds: ['X.1'], classifications: ['MEC' as const], criticality: ['INC' as const], failureOnly: true };
+    const r = fromDashFilters(defaultSetup('monthly'), dash, { from: '2026-07-14', to: '2026-10-11' });
+    expect(r.setup).toMatchObject({
+      preset: 'custom', from: '2026-07-14', to: '2026-10-11', compare: true,
+      filters: { lineIds: ['L.1'], areaIds: ['K.1'], equipmentIds: ['X.1'], classifications: ['MEC'], criticality: ['INC'], failuresOnly: true },
+    });
+    expect(r.setup.sections).toEqual(defaultSetup('monthly').sections); // the sections stay
+    expect(r.notCopied).toEqual([]);
+  });
+
+  it('keeps the report presets that exist, turns comparison off with the dashboards, and names what a report cannot filter', () => {
+    const prev = fromDashFilters(defaultSetup(), { ...defaultFilters(), preset: 'prevmonth', compare: 'none', reasonKeys: ['belt'], durationBand: 'long' }, { from: '2026-09-01', to: '2026-09-30' });
+    expect(prev.setup).toMatchObject({ preset: 'lastmonth', compare: false });
+    expect(prev.notCopied).toEqual(['reason', 'duration']);
+    expect(fromDashFilters(defaultSetup(), { ...defaultFilters(), preset: 'ytd' }, { from: '2026-01-01', to: '2026-10-11' }).setup.preset).toBe('ytd');
   });
 });

@@ -1023,3 +1023,24 @@
 .rb-summary .rx .pm {
   display: block;
 }
+
+/* 'Use current dashboard filters' (R1) */
+.rb-use-dash {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  border-style: dashed;
+  background: var(--tk-info-bar-bg);
+}
+.rb-use-dash b {
+  font: 700 15px var(--font-display, var(--sans));
+  color: var(--tk-text-primary);
+}
+.rb-use-dash .rb-hint {
+  margin: 4px 0 0;
+}
+.rb-use-dash .btn {
+  min-height: 44px;
+}

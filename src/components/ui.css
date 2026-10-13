@@ -52,6 +52,7 @@
 /* buttons */
 .btn,
 .btn-primary,
+.btn-brand,
 .btn-danger {
   display: inline-flex;
   align-items: center;
@@ -70,10 +71,16 @@
 .btn:hover {
   border-color: var(--tk-accent);
 }
-.btn-primary {
-  background: var(--tk-accent);
-  border-color: var(--tk-accent);
-  color: var(--tk-accent-text);
+/* primary calls to action use the ACC orange (the secondary accent; blue stays for links, chips and focus) */
+.btn-primary,
+.btn-brand {
+  background: var(--tk-brand);
+  border-color: var(--tk-brand);
+  color: var(--tk-brand-text);
+}
+.btn-primary:hover:not(:disabled),
+.btn-brand:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--tk-brand) 88%, #000);
 }
 .btn-danger {
   background: transparent;
@@ -452,9 +459,47 @@
   border-top: 1px solid var(--tk-border);
 }
 .bottom-sheet-foot .btn,
-.bottom-sheet-foot .btn-primary {
+.bottom-sheet-foot .btn-primary,
+.bottom-sheet-foot .btn-brand {
   flex: 1;
   min-height: 48px;
+}
+.bottom-sheet-foot .btn-brand {
+  flex: 2;
+  font-size: 16px;
+}
+.bottom-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 4px 6px;
+}
+.bottom-sheet-head .module-sheet-title {
+  margin: 0;
+  font-size: 20px;
+}
+.bottom-sheet-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--tk-brand-soft);
+  color: var(--tk-brand-ink);
+  font: 650 13px var(--sans);
+}
+.bottom-sheet-close {
+  margin-inline-start: auto;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--tk-text-secondary);
+  cursor: pointer;
+}
+.bottom-sheet-close:focus-visible {
+  outline: 2px solid var(--tk-accent);
 }
 
 /* detail rows inside popups */
