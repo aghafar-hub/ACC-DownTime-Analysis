@@ -8,17 +8,22 @@ import './validate.css';
 /** Count of records needing checking beside the Validate entry. Danger colour when any is left out of the numbers. */
 export default function ValidateBadge({ testid = 'validate-badge' }: { testid?: string }) {
   const v = useValidationOptional();
-  if (!v || !v.ready) return null;
-  const { total, blocked } = v.list.summary;
+  // the latest year counts first; while older years load the number is marked as not final yet
+  if (!v || !v.earlyReady) return null;
+  const { total, blocked } = v.early.summary;
   if (total === 0) return null;
   const blocking = blocked.count > 0;
-  const label = blocking
+  const base = blocking
     ? t('{n} need checking, {b} left out of the numbers', { n: num(total), b: num(blocked.count) })
     : tn(total, '{n} record to review', '{n} records to review');
+  const label = v.checkingOlder ? `${base} · ${t('checking older years…')}` : base;
   return (
-    <span className={blocking ? 'vbadge vbadge--danger' : 'vbadge vbadge--warning'} role="img" aria-label={label} title={label} data-testid={testid}>
+    <span
+      className={blocking ? 'vbadge vbadge--danger' : 'vbadge vbadge--warning'} role="img" aria-label={label} title={label}
+      data-testid={testid} data-partial={v.checkingOlder || undefined}
+    >
       <span className="vbadge-sym" aria-hidden="true">{blocking ? '◆' : '▲'}</span>
-      <span>{total > 999 ? '999+' : num(total)}</span>
+      <span>{total > 999 ? '999+' : num(total)}{v.checkingOlder ? '…' : ''}</span>
     </span>
   );
 }

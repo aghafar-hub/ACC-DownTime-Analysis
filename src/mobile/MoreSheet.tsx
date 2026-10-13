@@ -37,7 +37,7 @@ export default function MoreSheet({ open, onClose }: { open: boolean; onClose: (
   const initials = (name.match(/\b\w/g) || ['?']).slice(0, 2).join('').toUpperCase();
   const role = user ? t(ROLE_LABELS[user.role_id] || user.role_id) : '';
   const tile = (p: (typeof pages)[number]) => (
-    <button key={p.id} type="button" className="more-tile" onClick={() => go(p.path)} data-testid={`more-tile-${p.id}`}>
+    <button key={p.id} type="button" className="more-tile" onClick={() => go(p.path)} data-preload={p.path} data-testid={`more-tile-${p.id}`}>
       <span className="more-tile-icon more-tile-icon--other"><Icon name={p.icon} size={22} /></span>
       <b>{pageLabel(p)} {p.id === 'validate' && <ValidateBadge testid="validate-badge-more" />}</b>
       <small>{levelOf(p.access) === 'Edit' ? t('Can edit') : t('View only')}</small>

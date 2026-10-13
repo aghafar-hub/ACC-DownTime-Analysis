@@ -16,8 +16,66 @@ export interface Master {
   settings: CalcSettings;
 }
 
-export function buildMaster(startup: Startup): Master {
+// ---- R5: memo of the heavy stages, shared by every page (Dashboard -> Pareto -> Repeats reuse one build)
+// Keys are the identity of the inputs (the loaded rows, the start-up data) plus the filters the stage reads, so a
+// hit is the very result the same call would have built. A few entries each: the current filters and the last ones.
+
+const ids = new WeakMap<object, number>();
+let nextId = 1;
+function idOf(o: object): number {
+  let id = ids.get(o);
+  if (id === undefined) {
+    id = nextId++;
+    ids.set(o, id);
+  }
+  return id;
+}
+
+/** A small least-recently-used map. */
+export class Lru<V> {
+  private map = new Map<string, V>();
+  constructor(private size: number) {}
+  get(key: string): V | undefined {
+    const v = this.map.get(key);
+    if (v !== undefined) {
+      this.map.delete(key);
+      this.map.set(key, v);
+    }
+    return v;
+  }
+  set(key: string, v: V): V {
+    this.map.delete(key);
+    this.map.set(key, v);
+    while (this.map.size > this.size) this.map.delete(this.map.keys().next().value!);
+    return v;
+  }
+  clear() {
+    this.map.clear();
+  }
+}
+
+const masters = new WeakMap<Startup, Master>();
+const bases = new Lru<BaseScope>(4);
+const scopes = new Lru<EventScope>(6);
+
+/** Forgets the memo (tests; nothing else needs it: entries are keyed by their inputs). */
+export function clearScopeMemo() {
+  bases.clear();
+  scopes.clear();
+}
+
+function buildMasterNow(startup: Startup): Master {
   return { index: buildIndex(startup), lineNames: new Map(startup.lines.map((l) => [l.line_id, l.name])), settings: parseSettings(startup.settings) };
+}
+
+/** Master index, line names and settings of one start-up payload (built once per payload). */
+export function buildMaster(startup: Startup): Master {
+  let m = masters.get(startup);
+  if (!m) {
+    m = buildMasterNow(startup);
+    masters.set(startup, m);
+  }
+  return m;
 }
 
 /** Stage 1: rows and chains of the chosen lines / areas, whole (continuation rows kept). */
@@ -28,6 +86,11 @@ export interface BaseScope {
 }
 
 export function buildBase(rows: EventRow[], startup: Startup, f: Pick<DashFilters, 'lineIds' | 'areaIds'>, master: Master): BaseScope {
+  const key = `${idOf(rows)}|${idOf(startup)}|${idOf(master)}|${JSON.stringify([f.lineIds, f.areaIds])}`;
+  return bases.get(key) ?? bases.set(key, buildBaseNow(rows, startup, f, master));
+}
+
+function buildBaseNow(rows: EventRow[], startup: Startup, f: Pick<DashFilters, 'lineIds' | 'areaIds'>, master: Master): BaseScope {
   const areaIds = areasInScope(startup.areas, { ...f } as DashFilters);
   const filter: Filter = { ...emptyFilter(), lineIds: f.lineIds, areaIds };
   const kept = applyFilters(rows, filter, { settings: master.settings, index: master.index });
@@ -46,6 +109,13 @@ export interface EventScope {
 }
 
 export function buildEventScope(base: BaseScope, f: DashFilters, master: Master): EventScope {
+  // the stage reads only the event-level filters (and the base and master)
+  const fk = JSON.stringify([f.equipmentIds, f.equipmentTypes, f.classifications, f.criticality, f.failureOnly, f.reasonKeys, f.durationBand]);
+  const key = `${idOf(base)}|${idOf(master)}|${fk}`;
+  return scopes.get(key) ?? scopes.set(key, buildEventScopeNow(base, f, master));
+}
+
+function buildEventScopeNow(base: BaseScope, f: DashFilters, master: Master): EventScope {
   if (!hasEventLevelFilter(f)) {
     return { kpiRows: base.rows, chains: base.chains, failureChains: base.chains.filter((c) => c.isFailure), attribution: attributeRows(base.rows.filter(isAnalysable)) };
   }
