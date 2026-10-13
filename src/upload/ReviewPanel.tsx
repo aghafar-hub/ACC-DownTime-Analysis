@@ -5,7 +5,7 @@ import { PAGE_SIZE, ShowMore } from '../components/PhoneParts';
 import { t, tn } from '../i18n/t';
 import { num } from '../util/format';
 import {
-  checkGroups, flagProblem, flagSummary, flagTitle, monthKey, monthLabel, undecidedCount,
+  checkGroups, criticalityItems, criticalityLine, criticalityTitle, flagProblem, flagSummary, flagTitle, monthKey, monthLabel, undecidedCount,
   type CheckGroup, type Decision, type Decisions, type FlagCount, type Review,
 } from './review';
 import { fieldName, INFO_CHECK_TYPES, OTHER_CHECK_TYPES, warningHelp, warningLabel, warningSymbol, warningTone } from './warningText';
@@ -122,6 +122,8 @@ export default function ReviewPanel({ review, decisions, onDecide, onDecideAll }
   const totalLate = review.late.length + review.lateMonths.length;
   const [lateShown, setLateShown] = useState(PAGE_SIZE);
   const [changedShown, setChangedShown] = useState(10);
+  const critItems = criticalityItems(review, decisions);
+  const critConflicts = critItems.filter((i) => i.conflict).length;
   const groups = checkGroups(review, decisions, OTHER_CHECK_TYPES);
   const flags = flagSummary(review, decisions);
   const infoGroups = checkGroups(review, decisions, INFO_CHECK_TYPES);
@@ -230,7 +232,7 @@ export default function ReviewPanel({ review, decisions, onDecide, onDecideAll }
         </section>
       )}
 
-      {(infoGroups.length > 0 || review.edited.length > 0 || review.missing.length > 0 || review.parsed.caseFixes.length > 0) && (
+      {(infoGroups.length > 0 || review.edited.length > 0 || review.missing.length > 0 || review.parsed.caseFixes.length > 0 || critItems.length > 0) && (
         <section className="card" aria-label={t('Information')} data-testid="info-section">
           <h2><span aria-hidden="true">● </span>{t('Information')}</h2>
           <p className="adm-note">{t('Nothing here needs a decision or a fix, and nothing blocks Add.')}</p>
@@ -248,6 +250,26 @@ export default function ReviewPanel({ review, decisions, onDecide, onDecideAll }
               <p className="adm-note">{warningHelp('missing_row')}</p>
               <ul className="up-list">{review.missing.slice(0, 20).map((w, i) => <li key={i}><span className="adm-wrap">{w.detail}</span></li>)}</ul>
               {review.missing.length > 20 && <p className="adm-muted-sm">{t('and {n} more (they are in the downloadable list)', { n: review.missing.length - 20 })}</p>}
+            </details>
+          )}
+          {critItems.length > 0 && (
+            <details className="up-group" data-testid="info-criticality">
+              <summary>
+                <span className="badge badge--info"><span aria-hidden="true">●</span> {critItems.length}</span>
+                <span className="up-group-title">{criticalityTitle(critItems)}</span>
+                {critConflicts > 0 && <span className="adm-muted-sm"> {t('{n} to check', { n: critConflicts })}</span>}
+              </summary>
+              <p className="adm-note">{t('The text is read as INC or NO_INC and the row is added. The workbook is not changed. Rows tagged "Check this row" disagree with the sheet rule (CIR and PL are NO_INC, any other classification is INC).')}</p>
+              <ul className="up-list">
+                {critItems.slice(0, 50).map((i) => (
+                  <li key={i.source_row} data-testid="info-criticality-row" data-conflict={i.conflict ? 'yes' : 'no'}>
+                    <b className="mono">{t('Row {n}', { n: i.source_row })}</b>{' '}
+                    <span className="adm-wrap">{criticalityLine({ ...i, conflict: false })}</span>
+                    {i.conflict && <> <span className="badge badge--warning"><span aria-hidden="true">▲</span> {t('Check this row')}</span></>}
+                  </li>
+                ))}
+              </ul>
+              {critItems.length > 50 && <p className="adm-muted-sm">{t('and {n} more (they are in the downloadable list)', { n: critItems.length - 50 })}</p>}
             </details>
           )}
           {review.parsed.caseFixes.length > 0 && (

@@ -32,12 +32,31 @@ export type ProblemCode =
 export interface FileProblem { code: ProblemCode; message: string; rows?: number[] }
 
 export interface CaseFix { source_row: number; from: string; to: string }
+/** A CRITICALITY text that is not exactly INC or NO_INC (letter case and surrounding spaces ignored) but was read as one of them. */
+export interface ValueFix { source_row: number; column: 'CRITICALITY'; from: string; to: Criticality }
+
+const CRIT_INC = ['INC', 'INCIDENT', 'INCIDENTS', 'INCIDENTAL', 'INCIDENTIAL', 'INCIDENTIALS'];
+const CRIT_NO_INC = [
+  'NO_INC', 'NOINC', 'NON_INC', 'NONINC', 'NOT_INC', 'NO_INCIDENT', 'NO_INCIDENTAL', 'NO_INCIDENTIAL', 'NON_INCIDENTAL', 'NON_INCIDENTIAL',
+];
+/** Reads a CRITICALITY text tolerantly; null when it is none of the accepted spellings. */
+export function readCriticality(text: string): Criticality | null {
+  const k = text.trim().toUpperCase().replace(/[\s-]+/g, '_');
+  return CRIT_INC.includes(k) ? 'INC' : CRIT_NO_INC.includes(k) ? 'NO_INC' : null;
+}
+/** The sheet's own rule: classification CIR or PL is NO_INC, anything else is INC. True when the value read disagrees with it. */
+export function criticalityConflict(classification: string, read: Criticality): boolean {
+  const c = classification.trim().toUpperCase();
+  return read !== (c === 'CIR' || c === 'PL' ? 'NO_INC' : 'INC');
+}
 
 export interface ParsedFile {
   ok: true;
   /** every row with data: nothing is left out (a row with a data problem is stored with flags) */
   rows: DiffUploadRow[];
   caseFixes: CaseFix[];
+  /** rows whose CRITICALITY was written differently from INC / NO_INC and was read as one of them */
+  valueFixes: ValueFix[];
   /** rows with data */
   rowsRead: number;
   /** rows without any data (formulas only), skipped silently */
@@ -179,6 +198,7 @@ interface RawRow {
 export interface Extracted {
   rows: RawRow[];
   caseFixes: CaseFix[];
+  valueFixes: ValueFix[];
   rowsRead: number;
   blankRows: number;
   problems: FileProblem[];
@@ -186,7 +206,7 @@ export interface Extracted {
 
 /** Everything except the fingerprints: works on the sheet as an array of rows (tested without a file). */
 export function extractRows(data: unknown[][], date1904 = false): Extracted {
-  const out: Extracted = { rows: [], caseFixes: [], rowsRead: 0, blankRows: 0, problems: [] };
+  const out: Extracted = { rows: [], caseFixes: [], valueFixes: [], rowsRead: 0, blankRows: 0, problems: [] };
   const head = findHeaderRow(data);
   if (!head) {
     out.problems.push({ code: 'no_headings', message: t('The "Downtime" sheet does not have the expected column headings (DATE, Freq, Line, EQUIPMENT, EQUIPMENT CODE, Stop Time, Start Time and so on). Check that you chose the monthly downtime workbook.') });
@@ -243,15 +263,18 @@ export function extractRows(data: unknown[][], date1904 = false): Extracted {
     const code = textOf(cell(row, 'code'));
     const line = textOf(cell(row, 'line'));
     const freqN = readNumber(cell(row, 'freq')) ?? (cell(row, 'freq') === true ? 1 : cell(row, 'freq') === false ? 0 : null);
-    const critText = textOf(cell(row, 'criticality')).toUpperCase().replace(/[\s-]+/g, '_');
+    const critRaw = textOf(cell(row, 'criticality'));
+    const crit = readCriticality(critRaw);
     const failText = textOf(cell(row, 'failure')).toUpperCase();
     const failure = ['YES', 'TRUE', '1', 'Y'].includes(failText) ? true : ['NO', 'FALSE', '0', 'N'].includes(failText) ? false : null;
     const bad = (what: string, v: unknown, rule: string) => badValue.push({ row: n, what, text: t('{what} must be {rule}, but row {row} has "{v}".', { what, rule, row: n, v: textOf(v) }) });
     if (freqN !== 0 && freqN !== 1) bad('Freq', cell(row, 'freq'), t('0 or 1'));
-    if (critText !== 'INC' && critText !== 'NO_INC') bad('CRITICALITY', cell(row, 'criticality'), t('INC or NO_INC'));
+    if (crit === null) bad('CRITICALITY', cell(row, 'criticality'), t('INC or NO_INC'));
     if (failure === null) bad('Failure', cell(row, 'failure'), t('YES or NO'));
     if (freqN !== 0 && freqN !== 1) continue;
-    if ((critText !== 'INC' && critText !== 'NO_INC') || failure === null) continue;
+    if (crit === null || failure === null) continue;
+    const critExact = critRaw.trim().toUpperCase();
+    if (critExact !== 'INC' && critExact !== 'NO_INC') out.valueFixes.push({ source_row: n, column: 'CRITICALITY', from: critRaw, to: crit });
     const classRaw = textOf(cell(row, 'classification'));
     const classification = classRaw.toUpperCase();
     if (classRaw !== classification && normalizeClassification(classRaw)) out.caseFixes.push({ source_row: n, from: classRaw, to: classification });
@@ -259,7 +282,7 @@ export function extractRows(data: unknown[][], date1904 = false): Extracted {
     const totalH = readNumber(cell(row, 'total'));
     out.rows.push({
       source_row: n, event_date: eventDate, line_id: line, area_id: area, code_raw: code, stop_ts: stop, start_ts: start,
-      freq: freqN, classification, criticality: critText, is_failure: failure,
+      freq: freqN, classification, criticality: crit, is_failure: failure,
       reason_raw: textOf(cell(row, 'reason')) || undefined,
       description: textOf(cell(row, 'description')) || undefined,
       sheet_duration_s: totalH === null ? undefined : Math.round(totalH * 3600 * 1000) / 1000,
@@ -360,7 +383,7 @@ async function finish(ex: Extracted): Promise<ParsedFile> {
     if (r.event_date < from) from = r.event_date;
     if (r.event_date > to) to = r.event_date;
   }
-  return { ok: true, rows, caseFixes: ex.caseFixes, rowsRead: ex.rowsRead, blankRows: ex.blankRows, dateFrom: rows.length ? from : '', dateTo: rows.length ? to : '' };
+  return { ok: true, rows, caseFixes: ex.caseFixes, valueFixes: ex.valueFixes, rowsRead: ex.rowsRead, blankRows: ex.blankRows, dateFrom: rows.length ? from : '', dateTo: rows.length ? to : '' };
 }
 
 /** Test helper: finish a sheet given as arrays. */

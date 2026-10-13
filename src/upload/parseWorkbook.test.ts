@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { buildXlsx, serialOf } from '../../tests/helpers/xlsxWriter';
 import { buildWorkbook, simpleRows, type SheetRowSpec } from '../../tests/helpers/makeWorkbook';
-import { extractRows, parseWorkbook, parseSheetArrays, readDate, readTimestamp, type ParsedFile, type RefusedFile } from './parseWorkbook';
+import { criticalityConflict, extractRows, parseWorkbook, parseSheetArrays, readDate, readTimestamp, type ParsedFile, type RefusedFile } from './parseWorkbook';
 
 const ORIGINAL_TZ = process.env.TZ;
 afterAll(() => {
@@ -99,6 +99,49 @@ describe('parseWorkbook: cached formula values', () => {
     expect(r.caseFixes).toEqual([{ source_row: 5, from: 'mec', to: 'MEC' }]);
     expect(new Set(r.rows.map((x) => x.fingerprint)).size).toBe(5);
     expect('rejected' in r).toBe(false);
+  });
+
+  describe('CRITICALITY written differently', () => {
+    const INC = ['INC', 'incident', 'Incidents', 'Incidental', 'Incidential', ' INCIDENTIALS ', 'inc'];
+    const NO_INC = ['NO_INC', 'no inc', 'NOINC', 'non-inc', 'NONINC', 'not inc', 'NO_INCIDENT', 'No Incidental', 'no-incidential', 'Non Incidental', 'NON_INCIDENTIAL'];
+    it.each(INC)('reads %j as INC', async (v) => {
+      const r = ok(await parseWorkbook(await buildWorkbook(simpleRows(1), { overrides: [[0, 'CRITICALITY', v]] })));
+      expect(r.rows[0]!.criticality).toBe('INC');
+    });
+    it.each(NO_INC)('reads %j as NO_INC', async (v) => {
+      const r = ok(await parseWorkbook(await buildWorkbook(simpleRows(1), { overrides: [[0, 'CRITICALITY', v]] })));
+      expect(r.rows[0]!.criticality).toBe('NO_INC');
+    });
+    it.each(['HIGH', 'INCI', 'NO', 'INC INC'])('still refuses %j with the row number', async (v) => {
+      const r = refused(await parseWorkbook(await buildWorkbook(simpleRows(2), { overrides: [[1, 'CRITICALITY', v]] })));
+      expect(r.problems.find((x) => x.code === 'bad_value')!.rows).toEqual([3]);
+      expect(r.message).toMatch(/CRITICALITY must be INC or NO_INC, but row 3/);
+    });
+    it('records only rows that are not exactly INC / NO_INC (case and surrounding spaces ignored), keeps every row and the stored value', async () => {
+      const rows = simpleRows(5, '2026-11-01', { classification: 'MEC' });
+      const r = ok(await parseWorkbook(await buildWorkbook(rows, {
+        overrides: [[0, 'CRITICALITY', 'Incidential'], [1, 'CRITICALITY', ' inc '], [2, 'CRITICALITY', 'No inc'], [3, 'CRITICALITY', 'no_inc'], [4, 'CRITICALITY', 'Non-Incidental']],
+      })));
+      expect(r.rows).toHaveLength(5);
+      expect(r.rows.map((x) => x.criticality)).toEqual(['INC', 'INC', 'NO_INC', 'NO_INC', 'NO_INC']);
+      expect(r.valueFixes).toEqual([
+        { source_row: 2, column: 'CRITICALITY', from: 'Incidential', to: 'INC' },
+        { source_row: 4, column: 'CRITICALITY', from: 'No inc', to: 'NO_INC' },
+        { source_row: 6, column: 'CRITICALITY', from: 'Non-Incidental', to: 'NO_INC' },
+      ]);
+      expect(r.caseFixes).toEqual([]);
+    });
+    it('has no valueFixes for a normal sheet', async () => {
+      expect(ok(await parseWorkbook(await buildWorkbook(simpleRows(2)))).valueFixes).toEqual([]);
+    });
+    it('marks a read value that disagrees with the sheet rule', () => {
+      expect(criticalityConflict('MEC', 'INC')).toBe(false);
+      expect(criticalityConflict('CIR', 'INC')).toBe(true);
+      expect(criticalityConflict('cir', 'NO_INC')).toBe(false);
+      expect(criticalityConflict('PL', 'INC')).toBe(true);
+      expect(criticalityConflict('MEC', 'NO_INC')).toBe(true);
+      expect(criticalityConflict('PL', 'NO_INC')).toBe(false);
+    });
   });
 
   it('refuses the whole file, listing the rows, only for values that cannot be stored', async () => {

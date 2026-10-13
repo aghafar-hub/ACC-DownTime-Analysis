@@ -7,7 +7,7 @@ import {
   type DiffUploadRow, type DiffWarning, type FieldChange, type LateMonth, type UploadDiff,
 } from '../calc';
 import { t } from '../i18n/t';
-import type { ParsedFile } from './parseWorkbook';
+import { criticalityConflict, type ParsedFile } from './parseWorkbook';
 import { CHECK_TYPES, fieldName, INFO_CHECK_TYPES, resolutionLabel, warningLabel } from './warningText';
 
 export type Decision = 'add' | 'skip';
@@ -231,6 +231,28 @@ export function checkGroups(review: Review, decisions: Decisions, types: Warning
   return types.filter((ty) => by.has(ty)).map((ty) => ({ type: ty, items: (by.get(ty) as CheckItem[]).sort((a, b) => (a.source_row ?? 0) - (b.source_row ?? 0)) }));
 }
 
+// ---------------------------------------------------------------- criticality written differently
+export interface CriticalityItem { source_row: number; from: string; to: string; classification: string; conflict: boolean }
+
+/** Rows whose CRITICALITY text was read as INC / NO_INC although written differently. Client-side information only. Rows the person chose to skip are left out. */
+export function criticalityItems(review: Review, decisions: Decisions): CriticalityItem[] {
+  const byRow = new Map(review.parsed.rows.map((r) => [r.source_row, r]));
+  const out: CriticalityItem[] = [];
+  for (const f of review.parsed.valueFixes) {
+    const r = byRow.get(f.source_row);
+    if (!r) continue;
+    const d = review.diff.rows.find((x) => x.fingerprint === r.fingerprint);
+    if (d && (d.status === 'identical' || d.status === 'changed_row')) continue;
+    if (isSkipped(review, decisions, r.fingerprint)) continue;
+    out.push({ source_row: f.source_row, from: f.from, to: f.to, classification: r.classification, conflict: criticalityConflict(r.classification, f.to) });
+  }
+  return out;
+}
+export const criticalityTitle = (items: CriticalityItem[]): string =>
+  t('Criticality written differently (read as {as})', { as: [...new Set(items.map((i) => i.to))].join(' / ') || '…' });
+export const criticalityLine = (i: CriticalityItem): string =>
+  t('Written "{from}", read as {to}; classification {cls}', { from: i.from, to: i.to, cls: i.classification || t('(blank)') }) + (i.conflict ? `. ${t('Check this row')}` : '');
+
 // ---------------------------------------------------------------- the downloadable list
 /** Spreadsheet programs run text that starts with = + - or @: put a quote in front so a cell is only ever text. */
 export function csvCell(v: unknown): string {
@@ -255,6 +277,14 @@ export function reviewCsv(review: Review, decisions: Decisions): string {
     else if (INFO_CHECK_TYPES.includes(w.type)) what = w.fingerprint && isSkipped(review, decisions, w.fingerprint) ? t('Row not added') : t('Added; nothing to fix');
     else what = w.fingerprint && isSkipped(review, decisions, w.fingerprint) ? t('Row not added') : t('Added and flagged');
     lines.push({ row: w.source_row ?? 0, cells: [String(w.source_row ?? ''), kind(w.type), warningLabel(w.type), w.detail ?? '', what] });
+  }
+  for (const i of criticalityItems(review, decisions)) {
+    lines.push({
+      row: i.source_row,
+      cells: [String(i.source_row), t('Information'), t('Criticality written differently'),
+        `${t('Written "{from}", read as {to}; classification {cls}', { from: i.from, to: i.to, cls: i.classification || t('(blank)') })}`,
+        i.conflict ? t('Read as {to}; check row', { to: i.to }) : t('Added; nothing to fix')],
+    });
   }
   lines.sort((a, b) => a.row - b.row);
   return csvText([head, ...lines.map((l) => l.cells)]);
