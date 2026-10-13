@@ -74,9 +74,13 @@ test.describe('validate (desktop)', () => {
     expect(blocked).toBeGreaterThan(0);
     expect(review).toBeGreaterThan(0);
     await expect(page.getByTestId('page-subtitle')).toHaveText(new RegExp(`^[\\d,]+ records need checking, ${blocked} of them left out of the numbers \\([\\d,.]+ h\\)$`));
-    for (const f of ['missing_classification', 'invalid_classification', 'unknown_area', 'end_before_start', 'missing_code', 'unknown_code', 'unlisted_reason', 'blank_reason', 'line_mismatch', 'overlap_in_area']) {
+    for (const f of ['missing_classification', 'invalid_classification', 'unknown_area', 'end_before_start', 'missing_code', 'unknown_code', 'unlisted_reason', 'blank_reason', 'line_mismatch', 'failure_flag_mismatch']) {
       await expect(chip(page, f), f).toBeVisible();
     }
+    // overlaps are information (P1): no problem chip, a tile and a view of their own
+    await expect(chip(page, 'overlap_in_area')).toHaveCount(0);
+    expect(num(await page.getByTestId('v-count-overlap').textContent())).toBeGreaterThan(0);
+    await expect(page.getByTestId('v-view-overlaps')).toBeVisible();
     // blocking chips carry ◆ and warning chips ▲
     await expect(chip(page, 'missing_classification')).toContainText('◆');
     await expect(chip(page, 'unknown_code')).toContainText('▲');
@@ -333,11 +337,15 @@ test.describe('validate (desktop)', () => {
     await expect(page.getByTestId('v-selected')).toContainText('1 record');
   });
 
-  test('void a duplicate: needs a note, then the record and its overlap leave the list', async ({ page }) => {
+  test('void a duplicate: needs a note, then the record and its overlap leave the Overlaps (information) list', async ({ page }) => {
     await openValidate(page, 'engineer');
-    await chip(page, 'overlap_in_area').click();
-    const n0 = await chipCount(page, 'overlap_in_area');
+    await page.getByTestId('v-view-overlaps').click();
+    await expect(page.getByTestId('v-overlap-hint')).toContainText('counted once');
+    const n0 = await rows(page).count();
     const o0 = num(await page.getByTestId('v-count-overlap').textContent());
+    expect(n0).toBe(o0);
+    // information only: no keep-as-entered and no ticks here
+    await expect(page.getByTestId('v-tick')).toHaveCount(0);
     const row = rows(page).first();
     const id = (await row.getAttribute('data-event-id'))!;
     await row.getByTestId('v-void-btn').click();
@@ -348,13 +356,12 @@ test.describe('validate (desktop)', () => {
     await page.getByTestId('confirm-void').click();
     await expect(page.getByTestId('v-fixed')).toContainText('Voided');
     await expect(page.locator(`[data-event-id="${id}"]`)).toHaveCount(0);
-    expect(await chipCount(page, 'overlap_in_area')).toBeLessThan(n0);
     expect(num(await page.getByTestId('v-count-overlap').textContent())).toBeLessThan(o0);
   });
 
   test('an overlapping record shows the other record, with a button to open it', async ({ page }) => {
     await openValidate(page, 'viewer');
-    await chip(page, 'overlap_in_area').click();
+    await page.getByTestId('v-view-overlaps').click();
     const row = rows(page).first();
     const id = (await row.getAttribute('data-event-id'))!;
     await row.locator('.row-link').click();

@@ -81,8 +81,14 @@ test.describe('targets', () => {
     await expect(page.getByTestId('kpi-info')).toContainText('Target: 0.5 h');
     await page.getByTestId('kpi-info-close').click();
 
-    // MTBF status only for a single area
-    await expect(page.getByTestId('kpi-mtbf-target')).toHaveCount(0);
+    // P4: one MTBF rule and label: the all-area MTBF has its status and its info dialog for any number of areas
+    await expect(page.getByTestId('kpi-mtbf')).toContainText('MTBF · all areas (area-hours)');
+    await expect(page.getByTestId('kpi-mtbf')).not.toContainText('Select one area');
+    await expect(page.getByTestId('kpi-mtbf-target')).toHaveText(/Target 200 h: (on|below) target \([+−]?\d+\.\d h\)/);
+    await page.getByTestId('kpi-mtbf-info').click();
+    await expect(page.getByTestId('kpi-info')).toContainText('MTBF · all areas (area-hours)');
+    await expect(page.getByTestId('kpi-info')).toContainText('Target: 200 h');
+    await page.getByTestId('kpi-info-close').click();
     await page.goto('/#/overview?area=K.1');
     await expect(page.getByTestId('page-overview')).toBeVisible();
     await expect(page.getByTestId('kpi-mtbf')).toBeVisible();
@@ -149,7 +155,7 @@ test.describe('month vs month', () => {
     const rows = sec.getByTestId('mvm-row');
     await expect(rows).toHaveCount(10);
     const labels = await rows.locator('th').allTextContents();
-    expect(labels).toEqual(['Stoppage hours', 'Failure hours', 'Planned hours', 'Other hours', 'Failure count', 'Operating hours', 'Availability (basis B)', 'MTTR', 'MTBF, all areas (area-hours)', 'Repeated failures']);
+    expect(labels).toEqual(['Stoppage hours', 'Failure hours', 'Planned hours', 'Other hours', 'Failure count', 'Operating hours', 'Availability (basis B)', 'MTTR', 'MTBF · all areas (area-hours)', 'Repeated failures']);
     // the change reads as arrow + sign + words
     await expect(rows.first().getByTestId('mvm-change')).toHaveText(/^[▲▼■] .*(better|worse|no change)/);
     await expect(sec.getByTestId('chart-mvm-hours')).toBeVisible();

@@ -45,12 +45,13 @@ for (const theme of ONLY) {
       await expect(page.getByTestId(rowSel).first()).toBeVisible();
       await shot('2-list');
 
-      await pickFlag('overlap_in_area');
+      // overlaps are information (P1): their own view, not a problem chip
+      await page.getByTestId('v-view-overlaps').click();
       await page.getByTestId(rowSel).first().getByRole('button').first().click();
       await expect(page.getByTestId('overlap-partner').first()).toBeVisible();
       await shot('3-detail-overlap');
       await page.getByTestId('modal-close').click();
-      await page.getByTestId('v-reset').click();
+      await page.getByTestId('v-view-open').click();
 
       await pickFlag('missing_classification');
       await page.getByTestId(rowSel).first().getByTestId('v-fix-btn').click();

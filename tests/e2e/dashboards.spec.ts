@@ -586,9 +586,12 @@ test.describe('Phase 4: more charts (desktop)', () => {
       await expect(strip).toHaveAttribute('aria-label', /\d+ occurrences, first \d{4}-\d{2}-\d{2}, last \d{4}-\d{2}-\d{2}/);
       expect(Number(await strip.getAttribute('data-count'))).toBe(occurrences);
       expect(await strip.locator('circle').count()).toBe(occurrences);
-      const last = await row.locator('td').nth(8).textContent();
+      const last = await row.locator('td').nth(9).textContent(); // Equipment, Area(s), Reason, Timeline, Occurrences, Bursts, Total, Avg, Max, Last
       expect(await strip.getAttribute('aria-label')).toContain(`last ${last}`);
     }
+    // P5: bursts are a column of their own, and the rule is explained under the table
+    await expect(rows.first().getByTestId('repeat-bursts')).toBeVisible();
+    await expect(page.getByTestId('repeat-burst-note')).toContainText('within 10 minutes');
     // sorting keeps the strips with their rows
     await page.getByTestId('sort-equipmentId').click();
     await expect(page.getByTestId('repeat-table').getByTestId('occ-strip')).toHaveCount(n);
