@@ -9,10 +9,12 @@ import { axisNum, linear, niceTicks } from './scale';
 export interface ScatterPt { key: string; label: string; x: number; y: number; size: number; details: { label: string; value: string }[] }
 
 export default function ScatterChart({
-  points, width, height = 300, xTitle, yTitle, ariaLabel, onPoint, openLabel, selected,
+  points, width, height = 300, xTitle, yTitle, ariaLabel, onPoint, openLabel, selected, static: isStatic = false,
 }: {
   points: ScatterPt[]; width: number; height?: number; xTitle: string; yTitle: string; ariaLabel: string;
   onPoint?: (p: ScatterPt) => void; openLabel?: string; selected?: string | null;
+  /** report mode: no tooltips and no hit areas, only the drawing (for print and PDF) */
+  static?: boolean;
 }) {
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const { tip, bind, hide } = useChartTip({ current: box } as React.RefObject<HTMLDivElement | null>);
@@ -81,7 +83,7 @@ export default function ScatterChart({
         {points.map((p) => (
           <g key={p.key}>
             <circle cx={x(p.x)} cy={y(p.y)} r={r(p)} fill={ACCENT} fillOpacity={selected === p.key ? 0.95 : 0.5} stroke={ACCENT} strokeWidth={selected === p.key ? 3 : 1.5} />
-            <circle cx={x(p.x)} cy={y(p.y)} r={Math.max(r(p), 14)} fill="transparent" className="chart-hit" data-testid="scatter-point" data-key={p.key} {...bind(node(p))} />
+            {!isStatic && <circle cx={x(p.x)} cy={y(p.y)} r={Math.max(r(p), 14)} fill="transparent" className="chart-hit" data-testid="scatter-point" data-key={p.key} {...bind(node(p))} />}
           </g>
         ))}
         {/* labels last, with a halo in the card colour, so neighbouring points never cover them */}
@@ -92,7 +94,7 @@ export default function ScatterChart({
           })}
         </g>
       </svg>
-      <TipLayer tip={tip} width={width} />
+      {!isStatic && <TipLayer tip={tip} width={width} />}
     </div>
   );
 }

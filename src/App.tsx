@@ -25,6 +25,7 @@ import Master from './pages/Master';
 import Overview from './pages/Overview';
 import Pareto from './pages/Pareto';
 import Reliability from './pages/Reliability';
+import Reports from './pages/Reports';
 import Repeats from './pages/Repeats';
 import Settings from './pages/Settings';
 import Upload from './pages/Upload';
@@ -151,6 +152,7 @@ export default function App() {
                 <Route path="/pareto" element={<RequireTab tab="pareto"><Pareto /></RequireTab>} />
                 <Route path="/repeats" element={<RequireTab tab="repeats"><Repeats /></RequireTab>} />
                 <Route path="/reliability" element={<RequireTab tab="reliability"><Reliability /></RequireTab>} />
+                <Route path="/reports" element={<RequireTab tab="reports"><Reports /></RequireTab>} />
                 <Route path="/events" element={<RequireTab tab="events"><EventExplorer /></RequireTab>} />
                 <Route path="/validate" element={<RequireTab tab="events"><Validate /></RequireTab>} />
                 <Route path="/upload" element={<RequireTab tab="upload"><Upload /></RequireTab>} />

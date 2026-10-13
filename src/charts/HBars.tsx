@@ -19,7 +19,7 @@ export interface HRow {
 export interface HRef { value: number; label: string; /** dash pattern of the line (default 6 4) */ dash?: string }
 
 export default function HBars({
-  rows, width, format, ariaLabel, totalLabel, onRow, openLabel, xMax, xMin = 0, axisNote, axisFormat = axisNum, refLine, extraRefs = [],
+  rows, width, format, ariaLabel, totalLabel, onRow, openLabel, xMax, xMin = 0, axisNote, axisFormat = axisNum, refLine, extraRefs = [], static: isStatic = false, labelMax = 96,
 }: {
   rows: HRow[]; width: number; format: (n: number) => string; ariaLabel: string; totalLabel?: (r: HRow, total: number) => string;
   /** a mouse click on a row (or the button in a tapped row's tooltip) opens something, e.g. the events behind it */
@@ -34,11 +34,15 @@ export default function HBars({
   refLine?: HRef;
   /** more reference lines (for example a target), labelled one row higher each */
   extraRefs?: HRef[];
+  /** report mode: no tooltips and no hit areas, only the drawing (for print and PDF) */
+  static?: boolean;
+  /** widest the row labels may get, in px (default 96) */
+  labelMax?: number;
 }) {
   const uid = useUid();
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const { tip, bind, hide } = useChartTip({ current: box } as React.RefObject<HTMLDivElement | null>);
-  const labelW = Math.min(96, Math.max(52, Math.max(0, ...rows.map((r) => r.label.length)) * 7 + 8));
+  const labelW = Math.min(labelMax, Math.max(52, Math.max(0, ...rows.map((r) => r.label.length)) * 7 + 8));
   const totals = rows.map((r) => r.segments.reduce((s, x) => s + Math.max(0, x.value), 0));
   const valueText = (r: HRow, i: number): string => r.unavailable ?? (totalLabel ? totalLabel(r, totals[i]!) : format(totals[i]!));
   const valueW = Math.max(...rows.map((r, i) => valueText(r, i).length * 7 + 10), 40);
@@ -90,7 +94,7 @@ export default function HBars({
                 return <rect key={s.key} x={x0} y={top + 4} width={Math.max(1, x(Math.max(acc, scale.min)) - x0)} height={rowH - 8} fill={s.hatch ? `url(#hb-${uid})` : s.color} stroke={s.hatch ? s.color : 'var(--tk-card-bg)'} strokeWidth={s.hatch ? 1.5 : 0.75} />;
               })}
               <text x={(xMax !== undefined ? m.l + pw : x(totals[i]!)) + 6} y={top + rowH / 2 + 4} className="chart-ink">{valueText(r, i)}</text>
-              <rect className="chart-hit" x={0} y={top} width={width} height={rowH} {...bind(node(r, totals[i]!), onRow && !r.unavailable ? () => onRow(r) : undefined)} />
+              {!isStatic && <rect className="chart-hit" x={0} y={top} width={width} height={rowH} {...bind(node(r, totals[i]!), onRow && !r.unavailable ? () => onRow(r) : undefined)} />}
             </g>
           );
         })}
@@ -108,7 +112,7 @@ export default function HBars({
         ))}
       {axisNote && <text x={m.l} y={height - 6} className="chart-ink" data-testid="hbars-axis-note">{axisNote}</text>}
       </svg>
-      <TipLayer tip={tip} width={width} />
+      {!isStatic && <TipLayer tip={tip} width={width} />}
     </div>
   );
 }

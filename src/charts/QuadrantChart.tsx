@@ -10,7 +10,7 @@ import { axisNum, linear, niceTicks } from './scale';
 export interface QuadPt { key: string; label: string; x: number; y: number; worst: boolean; details: { label: string; value: string }[] }
 
 export default function QuadrantChart({
-  points, width, height = 320, xTitle, yTitle, medianX, medianY, medianXLabel, medianYLabel, worstLabel, ariaLabel, onPoint, openLabel,
+  points, width, height = 320, xTitle, yTitle, medianX, medianY, medianXLabel, medianYLabel, worstLabel, ariaLabel, onPoint, openLabel, static: isStatic = false,
 }: {
   points: QuadPt[]; width: number; height?: number; xTitle: string; yTitle: string; ariaLabel: string;
   /** null: no median lines (fewer than two points) */
@@ -18,6 +18,8 @@ export default function QuadrantChart({
   /** the words printed in the bad quadrant */
   worstLabel: string;
   onPoint?: (p: QuadPt) => void; openLabel?: string;
+  /** report mode: no tooltips and no hit areas, only the drawing (for print and PDF) */
+  static?: boolean;
 }) {
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const { tip, bind, hide } = useChartTip({ current: box } as React.RefObject<HTMLDivElement | null>);
@@ -124,7 +126,7 @@ export default function QuadrantChart({
             {p.worst
               ? <path d={`M${x(p.x)} ${y(p.y) - R - 1.5} L${x(p.x) + R + 1.5} ${y(p.y)} L${x(p.x)} ${y(p.y) + R + 1.5} L${x(p.x) - R - 1.5} ${y(p.y)} Z`} fill="var(--tk-danger)" stroke="var(--tk-card-bg)" strokeWidth="1.5" />
               : <circle cx={x(p.x)} cy={y(p.y)} r={R} fill={ACCENT} fillOpacity={0.75} stroke={ACCENT} strokeWidth={1.5} />}
-            <circle cx={x(p.x)} cy={y(p.y)} r={11} fill="transparent" className="chart-hit" data-testid="quadrant-point" data-key={p.key} {...bind(node(p))} />
+            {!isStatic && <circle cx={x(p.x)} cy={y(p.y)} r={11} fill="transparent" className="chart-hit" data-testid="quadrant-point" data-key={p.key} {...bind(node(p))} />}
           </g>
         ))}
         <g pointerEvents="none">
@@ -134,7 +136,7 @@ export default function QuadrantChart({
           })}
         </g>
       </svg>
-      <TipLayer tip={tip} width={width} />
+      {!isStatic && <TipLayer tip={tip} width={width} />}
     </div>
   );
 }

@@ -64,3 +64,37 @@ describe('reliabilityTakeaway', () => {
     expect(s).toBe('MTBF is not defined (no failures recorded in the window), over 0 failure events.');
   });
 });
+
+import { areaDowntimeTakeaway, causesTakeaway, dailyTakeaway, eventsTakeaway, pointsClause, qualityTakeaway, summaryBullets, whenTakeaway } from './takeaways';
+
+describe('report takeaways (real numbers only)', () => {
+  const facts = {
+    downtimeHours: 428.3, failureHours: 168, plannedHours: 187.2, otherHours: 73.1, failureCount: 233, failureEventCount: 233, areaCount: 15,
+    availability: avail(0.977), basis: 'B' as const, mttr: avail(0.87), topArea: { available: true as const, areaId: 'K.2', sharePct: 13.1 },
+    topEquipment: { code: '141.VL170', hours: 12.6 }, repeatGroups: 10, repeatedFailureCount: 10,
+    downtimeChange: compareValues(avail(428.3), avail(374.5), 'lower'), availabilityChange: compareValues(avail(0.977), avail(0.978), 'higher'), mttrChange: null,
+    compare: 'previous_period' as const, availabilityStatus: null, mttrStatus: null, belowTarget: null,
+  };
+  it('summary bullets: stoppage with change, availability in points, failures, contributor, repeats', () => {
+    const b = summaryBullets(facts);
+    expect(b[0]).toBe('428.3 area-hours stopped (168.0 h failures, 187.2 h planned, 73.1 h other), +14.4% vs previous period.');
+    expect(b[1]).toBe('Availability (basis B) was 97.7%, −0.1 pts vs previous period.');
+    expect(b[2]).toBe('233 failures; mean restoration time 0.87 h.');
+    expect(b[3]).toBe('K.2 is the largest contributor (13.1% of failure hours); 141.VL170 is the top equipment with 12.6 h.');
+    expect(b[4]).toBe('10 repeated-failure groups with 10 recurrence events.');
+  });
+  it('says what is missing instead of inventing it', () => {
+    const b = summaryBullets({ ...facts, failureCount: 0, failureEventCount: 0, mttr: unavail('no_failures', 'x'), topArea: { available: false }, topEquipment: null, repeatGroups: 0, availability: unavail('no_scheduled_time', 'No scheduled time'), compare: 'none' });
+    expect(b).toEqual(['428.3 area-hours stopped (168.0 h failures, 187.2 h planned, 73.1 h other).', 'Availability could not be calculated: no scheduled time.', 'No failures were recorded in this period.']);
+    expect(pointsClause(null, 'previous_period')).toBe('');
+  });
+  it('section sentences', () => {
+    expect(dailyTakeaway({ days: 0, totalHours: 0, peak: null })).toBe('No daily data in this period.');
+    expect(dailyTakeaway({ days: 30, totalHours: 300, peak: { date: '2026-09-05', hours: 28.9 } })).toBe('300.0 area-hours stopped over 30 days (average 10.0 h a day); the highest day was 5 Sep 2026 with 28.9 h.');
+    expect(areaDowntimeTakeaway({ total: 100, top: { areaId: 'K.1', hours: 25 }, areaCount: 4 })).toBe('K.1 stopped longest: 25.0 h of the 100.0 h in total (25.0%), across 4 areas.');
+    expect(causesTakeaway(null)).toBe('No data for this period');
+    expect(whenTakeaway({ measure: 'count', total: 0, peakHour: null, peakDay: null, peakSlot: null })).toBe('No failure events started in this period.');
+    expect(eventsTakeaway({ records: 0, shown: 0, all: false, shownHours: 0, totalHours: 0 })).toBe('No records match the filters in this period.');
+    expect(qualityTakeaway({ records: 10, leftOut: { count: 1, hours: 2 }, kept: 3, open: 4, voided: 5 })).toBe('10 records were checked: 1 left out of the numbers (2.0 h), 3 kept as entered, 4 with problems still open. 5 voided records are ignored everywhere.');
+  });
+});

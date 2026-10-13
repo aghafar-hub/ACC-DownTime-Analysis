@@ -35,7 +35,7 @@ function short(label: string, max = 16): string {
 }
 
 export default function ParetoChart({
-  result, width, height = 300, valueLabel, format, onBar, ariaLabel, openLabel,
+  result, width, height = 300, valueLabel, format, onBar, ariaLabel, openLabel, static: isStatic = false,
 }: {
   result: ParetoResult;
   width: number;
@@ -45,6 +45,8 @@ export default function ParetoChart({
   onBar?: (bar: ParetoBar) => void;
   ariaLabel: string;
   openLabel?: (bar: ParetoBar) => string;
+  /** report mode: no tooltips, hit areas or sideways scrolling, only the drawing fitted to `width` (for print and PDF) */
+  static?: boolean;
 }) {
   const uid = useUid();
   const [box, setBox] = useState<HTMLDivElement | null>(null);
@@ -55,7 +57,7 @@ export default function ParetoChart({
 
   const maxLabel = Math.max(...bars.map((b) => Math.min(b.label.length, 16)));
   const m = { l: 46, r: 40, t: 26, b: Math.min(110, 18 + maxLabel * 6.2) };
-  const innerMin = n * SLOT;
+  const innerMin = isStatic ? 0 : n * SLOT;
   const avail = width - m.l - m.r;
   const pw = Math.max(avail, innerMin);
   const svgW = pw + m.l + m.r;
@@ -107,7 +109,7 @@ export default function ParetoChart({
 
   return (
     <div ref={setBox} style={{ position: 'relative' }} data-testid="pareto-chart">
-      <div className={avail < innerMin ? 'chart-scroll' : undefined}>
+      <div className={!isStatic && avail < innerMin ? 'chart-scroll' : undefined}>
         <svg width={svgW} height={height} role="img" aria-label={ariaLabel} onClick={hide}>
           <title>{ariaLabel}</title>
           <HatchDefs id={`o-${uid}`} color={ACCENT} />
@@ -141,7 +143,7 @@ export default function ParetoChart({
 
           {clipped && bars.map((b, i) => (b.isOthers ? <text key={`ov${i}`} x={cx(i)} y={y(shown(b)) - 8} textAnchor="middle" className="chart-ink" {...HALO}>{format(b.value)}</text> : null))}
 
-          {bars.map((b, i) => {
+          {!isStatic && bars.map((b, i) => {
             const label = `${b.label}: ${format(b.value)} ${valueLabel}, ${b.sharePct.toFixed(1)}% of total, cumulative ${b.cumulativePct.toFixed(1)}%`;
             const h = bind(node(b), onBar ? () => onBar(b) : undefined);
             return (
@@ -153,7 +155,7 @@ export default function ParetoChart({
           })}
         </svg>
       </div>
-      <TipLayer tip={tip} width={Math.min(width, svgW)} />
+      {!isStatic && <TipLayer tip={tip} width={Math.min(width, svgW)} />}
     </div>
   );
 }

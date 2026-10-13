@@ -49,7 +49,7 @@ export function seriesTable(categories: CartCategory[], series: CartSeries[], fi
 }
 
 export default function CartesianChart({
-  categories, series, width, height = 240, ariaLabel, yFormat = axisNum, zeroBased = true, refLines = [], yMax, yMin, onCategory, maxBarWidth = 44, marginLeft, rotateLabels = false,
+  categories, series, width, height = 240, ariaLabel, yFormat = axisNum, zeroBased = true, refLines = [], yMax, yMin, onCategory, maxBarWidth = 44, marginLeft, rotateLabels = false, static: isStatic = false,
 }: {
   categories: CartCategory[];
   series: CartSeries[];
@@ -68,6 +68,8 @@ export default function CartesianChart({
   marginLeft?: number;
   /** tilt the category labels when they are wider than their slot, instead of leaving some out */
   rotateLabels?: boolean;
+  /** report mode: no tooltips and no hit areas, only the drawing (for print and PDF) */
+  static?: boolean;
 }) {
   const uid = useUid();
   const [boxRef, setBox] = useState<HTMLDivElement | null>(null);
@@ -197,12 +199,12 @@ export default function CartesianChart({
           );
         })}
 
-        {categories.map((c, i) => (
+        {!isStatic && categories.map((c, i) => (
           <rect key={`hit-${c.key}`} className="chart-hit" x={m.l + band * i} y={m.t} width={band} height={ph}
             {...wrap(bind(tipNode(i)), () => setActive(i))} />
         ))}
       </svg>
-      <TipLayer tip={tip} width={width} />
+      {!isStatic && <TipLayer tip={tip} width={width} />}
     </div>
   );
 }

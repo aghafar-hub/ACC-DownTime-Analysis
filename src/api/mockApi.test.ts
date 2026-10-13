@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createMockApi, type MockApi } from './mockApi';
-import { ApiError, type EventRow, type Session, type UploadRow } from './types';
+import { ApiError, TAB_IDS, type EventRow, type Session, type UploadRow } from './types';
 import { DEMO_PASSWORD, DEMO_TEMP_EMAIL, DEMO_TEMP_PASSWORD } from '../mock/synthetic';
 import { codeKey, durationSeconds, eventIdOf, fingerprintOf, matchKey } from '../util/normalize';
 import { sha256Hex } from '../util/sha256';
@@ -175,7 +175,7 @@ describe('access per action (docs/wire-protocol.md section 3)', () => {
     const a = createMockApi();
     const admin = await a.login('admin@demo.test', DEMO_PASSWORD, false);
     const viewer = (await a.listUsers(admin.token)).find((u) => u.email === 'viewer@demo.test')!;
-    const hidden = Object.fromEntries(['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users'].map((t) => [t, 'Hidden']));
+    const hidden = Object.fromEntries(TAB_IDS.map((t) => [t, 'Hidden']));
     await a.setUserTabAccess(admin.token, viewer.user_id, hidden);
     const s = await a.login('viewer@demo.test', DEMO_PASSWORD, false);
     expect(await code(a.getStartup(s.token))).toBe('forbidden');
@@ -489,5 +489,20 @@ describe('notifications in the mock', () => {
     expect(await a.saveNotificationPrefs(viewer.token, { digest: 'daily', watch_areas: 'k.1' })).toEqual({ digest: 'daily', watch_areas: 'K.1' });
     expect((await a.getNotifications(admin.token)).prefs).toEqual({});
     expect(await code(a.getNotifications(''))).toBe('unauthenticated');
+  });
+});
+
+describe('reports tab and saved_reports in the mock', () => {
+  it('seeds Admin Edit, Manager Edit, Engineer View, Viewer View; the Reports tab alone allows reading events', async () => {
+    const a = createMockApi({ seed: 3 });
+    const admin = await a.login('admin@demo.test', DEMO_PASSWORD, false);
+    const levels = await Promise.all(['admin', 'manager', 'engineer', 'viewer'].map(async (r) => (await a.getMyAccess((await a.login(`${r}@demo.test`, DEMO_PASSWORD, false)).token)).access.reports));
+    expect(levels).toEqual(['Edit', 'Edit', 'View', 'View']);
+    const viewer = (await a.listUsers(admin.token)).find((u) => u.email === 'viewer@demo.test')!;
+    await a.setUserTabAccess(admin.token, viewer.user_id, { ...Object.fromEntries(TAB_IDS.map((t) => [t, 'Hidden'])), reports: 'View' } as never);
+    const s = await a.login('viewer@demo.test', DEMO_PASSWORD, false);
+    expect((await a.getEvents(s.token, 2026)).length).toBeGreaterThan(0);
+    await a.setUserTabAccess(admin.token, viewer.user_id, Object.fromEntries(TAB_IDS.map((t) => [t, 'Hidden'])) as never);
+    expect(await code(a.getEvents(s.token, 2026))).toBe('forbidden');
   });
 });

@@ -9,9 +9,11 @@ import { AXIS, GRID } from './palette';
 export interface TimelineEvent { id: string; startMs: number; endMs: number; hours: number; reason: string; area: string }
 
 export default function TimelineChart({
-  events, range, width, ariaLabel, onEvent, openLabel,
+  events, range, width, ariaLabel, onEvent, openLabel, static: isStatic = false,
 }: {
   events: TimelineEvent[]; range: DateRange; width: number; ariaLabel: string; onEvent?: (e: TimelineEvent) => void; openLabel?: string;
+  /** report mode: no tooltips and no hit areas, only the drawing (for print and PDF) */
+  static?: boolean;
 }) {
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const { tip, bind, hide } = useChartTip({ current: box } as React.RefObject<HTMLDivElement | null>);
@@ -81,12 +83,12 @@ export default function TimelineChart({
               <rect x={x(e.startMs)} y={base - hOf(e)} width={w} height={hOf(e)} fill="var(--tk-danger)" stroke="var(--tk-card-bg)" strokeWidth="0.75" />
               <path d={`M${x(e.startMs) + w / 2} ${base - hOf(e) - 3}l-4 -6h8z`} fill="var(--tk-danger)" />
               {labelled.has(i) && <text x={x(e.startMs) + w / 2} y={base - hOf(e) - 12} textAnchor="middle" className="chart-ink">{e.hours.toFixed(1)} h</text>}
-              <rect className="chart-hit" x={x(e.startMs) - 8} y={markTop - 6} width={w + 16} height={markMax + 12} data-testid="timeline-mark" {...bind(node(e, gapDays))} />
+              {!isStatic && <rect className="chart-hit" x={x(e.startMs) - 8} y={markTop - 6} width={w + 16} height={markMax + 12} data-testid="timeline-mark" {...bind(node(e, gapDays))} />}
             </g>
           );
         })}
       </svg>
-      <TipLayer tip={tip} width={width} />
+      {!isStatic && <TipLayer tip={tip} width={width} />}
     </div>
   );
 }

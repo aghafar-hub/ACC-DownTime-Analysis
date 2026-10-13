@@ -8,10 +8,10 @@ const ANALYZE_RAIL = ['Overview', 'Pareto & Contributors', 'Repeated Failures', 
 const DATA_VIEW = ['Event Explorer', 'Validate'];
 // the left rail: every page the role may open, grouped under Analyze / Data / Setup
 const RAIL: Record<Role, Record<string, string[]>> = {
-  admin: { Analyze: ANALYZE_RAIL, Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
-  manager: { Analyze: ANALYZE_RAIL, Data: DATA_VIEW, Setup: ['Master Data'] },
-  engineer: { Analyze: ANALYZE_RAIL, Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
-  viewer: { Analyze: ANALYZE_RAIL, Data: DATA_VIEW },
+  admin: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
+  manager: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Data: DATA_VIEW, Setup: ['Master Data'] },
+  engineer: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
+  viewer: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Data: DATA_VIEW },
 };
 
 test.describe('desktop', () => {
@@ -343,7 +343,7 @@ test.describe('phone', () => {
     const sheet = page.getByTestId('more-sheet');
     await expect(sheet).toBeVisible();
     // pages grouped under Analyze / Data (no Setup for a viewer)
-    await expect(sheet.locator('.more-group-title')).toHaveText(['Analyze', 'Data']);
+    await expect(sheet.locator('.more-group-title')).toHaveText(['Analyze', 'Reports', 'Data']);
     await expect(sheet.locator('[data-section="analyze"] .more-tile')).toHaveCount(4);
     await expect(sheet.locator('[data-section="data"] .more-tile')).toHaveCount(2);
     for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'validate']) await expect(sheet.getByTestId(`more-tile-${id}`)).toBeVisible();
@@ -375,7 +375,7 @@ test.describe('phone', () => {
       await expect(page.getByTestId(`more-tile-${id}`)).toBeVisible();
     }
     for (const id of ['settings', 'users']) await expect(page.getByTestId(`more-tile-${id}`)).toHaveCount(0);
-    await expect(page.locator('.more-group-title')).toHaveText(['Analyze', 'Data', 'Setup']);
+    await expect(page.locator('.more-group-title')).toHaveText(['Analyze', 'Reports', 'Data', 'Setup']);
     await expect(page.locator('[data-section="data"] .more-tile')).toHaveCount(3);
     await expect(page.locator('[data-section="setup"] .more-tile')).toHaveCount(1);
     await expect(page.getByTestId('more-tile-master')).toContainText('Can edit');
