@@ -32,9 +32,21 @@ for (const theme of THEMES) {
 
       await signInAndWait(page, 'engineer');
       await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
-      await shot('2-overview');
+      await shot('2-dashboard');
+      // the scope bar's filters: the phone sheet, the desktop Type panel
+      if (vp.phone) {
+        await page.getByTestId('fb-filters-pill').click();
+        await expect(page.getByTestId('fb-sheet')).toBeVisible();
+        await shot('2b-filters-sheet');
+        await page.getByTestId('fb-sheet-close').click();
+      } else {
+        await page.getByTestId('scope-type').click();
+        await shot('2b-type-panel');
+        await page.keyboard.press('Escape');
+      }
 
-      await page.goto('/#/events');
+      // Event records follow the shared period: the whole year has edited rows
+      await page.goto('/#/events?r=year&y=2026');
       await expect(page.getByTestId(vp.phone ? 'event-card' : 'event-row').first()).toBeVisible();
       await shot('3-events');
 
@@ -53,6 +65,10 @@ for (const theme of THEMES) {
       await page.getByTestId('edit-event').click();
       await shot('5-event-edit');
       await page.keyboard.press('Escape');
+
+      await page.goto('/#/reports');
+      await expect(page.getByTestId('builder')).toBeVisible();
+      await shot('5b-reports-builder');
 
       if (vp.phone) {
         await page.getByTestId('bottom-more').click();

@@ -547,6 +547,8 @@
   min-height: 44px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  list-style: none;
   font: 700 16px var(--sans);
   color: var(--tk-text-primary);
   cursor: pointer;
@@ -596,4 +598,11 @@
   .scope-info--phone {
     padding-top: 8px;
   }
+}
+
+.sb-details > summary::-webkit-details-marker {
+  display: none;
+}
+.sb-details[open] > summary svg {
+  transform: rotate(180deg);
 }

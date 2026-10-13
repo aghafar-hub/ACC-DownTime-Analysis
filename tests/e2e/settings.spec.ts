@@ -33,7 +33,7 @@ test.describe('desktop', () => {
       await gear.click();
       await expect(page.getByTestId('page-settings')).toBeVisible();
       await expect(page).toHaveURL(/#\/settings\/appearance$/);
-      await expect(page.getByTestId('breadcrumb')).toHaveText('ACC Downtime›Settings›Appearance');
+      await expect(page.getByTestId('breadcrumb')).toHaveText('Settings›Appearance');
     });
   }
 

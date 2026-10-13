@@ -383,7 +383,7 @@ for (const vp of [{ w: 360, h: 740 }, { w: 390, h: 844 }]) {
       // Back closes it, staying on the page
       await page.goBack();
       await expect(panel(page)).toHaveCount(0);
-      await expect(page.getByTestId('page-title')).toHaveText('Overview');
+      await expect(page.getByTestId('page-title')).toHaveText('Dashboard');
     });
 
     test('the More badge shows the action count (admin) and nothing for a viewer; Validate keeps its own badge', async ({ page }) => {

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, type Download, type Page } from '@playwright/test';
 import { readXlsxSheet } from '../../src/upload/xlsxReader';
-import { noSidewaysScroll, signInAndWait, smallTargets, stubFonts, watchConsole, type Role } from './helpers';
+import { closePanel, noSidewaysScroll, openType, pickPeriod, signInAndWait, smallTargets, stubFonts, watchConsole, type Role } from './helpers';
 
 // R2: Excel and CSV downloads of the report and of Event Explorer, saved report templates and saved views.
 // Runs against `vite preview` in mock mode (made-up data). Downloads are parsed with the app's own xlsx reader.
@@ -265,15 +265,18 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('event-table')).toBeVisible();
     await page.getByTestId('failure-only').click();
     await page.getByTestId('filter-sort').selectOption('dur_desc');
-    await page.getByTestId('filter-from').fill('2026-08-01');
-    await page.getByTestId('filter-to').fill('2026-08-31');
+    // the period is the shared scope bar's
+    await pickPeriod(page, 'custom');
+    await page.getByTestId('fb-from').fill('2026-08-01');
+    await page.getByTestId('fb-to').fill('2026-08-31');
+    await closePanel(page);
     const shown = Number((await settledCount(page)).replace(/,/g, ''));
     expect(shown).toBeGreaterThan(5);
     const firstIds = await page.getByTestId('event-row').evaluateAll((els) => els.slice(0, 10).map((e) => (e as HTMLElement).dataset.eventId));
 
     await page.getByTestId('export-btn').click();
     const xl = await grab(page, () => page.getByTestId('export-btn-excel').click());
-    expect(xl.name).toBe('ACC-downtime-events_2026.xlsx');
+    expect(xl.name).toBe('ACC-downtime-events_2026-08.xlsx'); // a whole month
     expect(await sheetsOf(xl.bytes)).toEqual(['Events', 'Export info']);
     const rows = await rowsOf(xl.bytes, 'Events');
     expect(rows).toHaveLength(1 + shown);
@@ -292,7 +295,7 @@ test.describe('desktop', () => {
 
     await page.getByTestId('export-btn').click();
     const csv = await grab(page, () => page.getByTestId('export-btn-csv').click());
-    expect(csv.name).toBe('ACC-downtime-events_2026.csv');
+    expect(csv.name).toBe('ACC-downtime-events_2026-08.csv');
     expect([...csv.bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
     const records = parseCsv(new TextDecoder().decode(csv.bytes));
     expect(records[0]!.slice(0, 7)).toEqual(['Event ID', 'Date', 'Line', 'Area', 'Code', 'Equipment description', 'Stopped at']);
@@ -319,7 +322,7 @@ test.describe('desktop', () => {
     expect((await rowsOf(xl.bytes, 'Events')).length).toBe(1 + total);
   });
 
-  test('saved views on Overview: save the filters, reset, apply, rename, delete; the shared filters follow', async ({ page }) => {
+  test('saved views on the Dashboard: save the filters, reset, apply, rename, delete; the shared filters follow', async ({ page }) => {
     await signInAndWait(page, 'manager');
     await page.goto('/#/overview');
     await expect(page.getByTestId('filter-bar')).toBeVisible();
@@ -327,10 +330,12 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('views-empty')).toBeVisible();
     await page.getByTestId('views-btn').click();
 
-    await page.getByTestId('fb-preset').selectOption('last30');
-    await page.getByTestId('fb-filters-pill').click();
+    await pickPeriod(page, 'last30');
+    await closePanel(page);
+    await openType(page);
     await page.getByTestId('fb-fail').click();
     await page.getByTestId('fb-cls-MEC').click();
+    await closePanel(page);
     await page.getByTestId('views-btn').click();
     await page.getByTestId('views-name').fill('   ');
     await page.getByTestId('views-save').click();
@@ -352,17 +357,17 @@ test.describe('desktop', () => {
     await expect(page).not.toHaveURL(/fail=1/);
     await page.getByTestId('views-btn').click();
     await page.getByTestId('views-apply').click();
-    await expect(page).toHaveURL(/#\/overview\?.*fail=1/);
+    await expect(page).toHaveURL(/#\/dashboard\?.*fail=1/);
     await expect(page).toHaveURL(/cls=MEC/);
     await expect(page).toHaveURL(/r=last30/);
-    await expect(page.getByTestId('fb-preset')).toHaveValue('last30');
+    await expect(page.getByTestId('scope-period')).toContainText('Last 30 days');
     await expect(page.getByTestId('fb-chip-fail')).toBeVisible();
     await expect(page.getByTestId('views-btn-panel')).toHaveCount(0); // the panel closes after applying
     // the other Analyze tabs follow (shared filters)
     await page.goto('/#/pareto');
     await expect(page.getByTestId('fb-chip-fail')).toBeVisible();
-    await expect(page.getByTestId('fb-preset')).toHaveValue('last30');
-    // a view saved on Overview is not listed on Pareto
+    await expect(page.getByTestId('scope-period')).toContainText('Last 30 days');
+    // a view saved on the Dashboard is not listed on Pareto
     await page.getByTestId('views-btn').click();
     await expect(page.getByTestId('views-row')).toHaveCount(0);
     await page.getByTestId('views-btn').click();
@@ -393,23 +398,26 @@ test.describe('desktop', () => {
     await page.getByTestId('views-save').click();
     await expect(page.getByTestId('views-row')).toHaveCount(1);
     await page.keyboard.press('Escape');
-    await page.getByTestId('fb-preset').selectOption('last7');
+    await pickPeriod(page, 'last7');
+    await closePanel(page);
     await expect(page).toHaveURL(/r=last7/);
     await page.goto('/#/overview');
     await page.goto('/#/reliability');
     await page.getByTestId('views-btn').click();
     await expect(page.getByTestId('views-row')).toHaveCount(1);
     await page.getByTestId('views-apply').click();
-    await expect(page.getByTestId('fb-preset')).toHaveValue('last90');
+    await expect(page.getByTestId('scope-period')).toContainText('Last 90 days');
     await expect(page).not.toHaveURL(/r=last7/);
   });
 
-  test('saved views on Event Explorer: filters go into the view and come back; the address holds them', async ({ page }) => {
+  test('saved views on Event Explorer: the shared scope and the page\'s own search go into the view and come back; the address holds them', async ({ page }) => {
     await signInAndWait(page, 'manager');
     await page.goto('/#/events');
     await expect(page.getByTestId('event-table')).toBeVisible();
     await page.getByTestId('failure-only').click();
-    await page.getByTestId('filter-crit').selectOption('INC');
+    await openType(page);
+    await page.getByTestId('fb-crit-INC').click();
+    await closePanel(page);
     await page.getByTestId('event-search').fill('belt');
     const shown = await settledCount(page);
     await page.getByTestId('views-btn').click();
@@ -423,7 +431,7 @@ test.describe('desktop', () => {
     await page.getByTestId('views-btn').click();
     await page.getByTestId('views-apply').click();
     await expect(page.getByTestId('failure-only')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('filter-crit')).toHaveValue('INC');
+    await expect(page.getByTestId('fb-chip-crit-INC')).toBeVisible();
     await expect(page.getByTestId('event-search')).toHaveValue('belt');
     await expect(page.getByTestId('tile-shown')).toContainText(shown);
     // the filters live in the address (so Back and a reload keep them)
@@ -518,7 +526,7 @@ for (const size of [{ width: 360, height: 740 }, { width: 390, height: 844 }]) {
       expect((await noSidewaysScroll(page)).ok).toBe(true);
     });
 
-    test('Overview: the Views panel fits, saves and applies a view', async ({ page }) => {
+    test('Dashboard: the Views panel fits, saves and applies a view', async ({ page }) => {
       await signInAndWait(page, 'manager');
       await page.goto('/#/overview');
       await expect(page.getByTestId('filter-bar')).toBeVisible();
@@ -537,16 +545,18 @@ for (const size of [{ width: 360, height: 740 }, { width: 390, height: 844 }]) {
       expect((await noSidewaysScroll(page)).ok).toBe(true);
     });
 
-    test('Event Explorer: Views and Export sit under the header, fit, and export works', async ({ page }) => {
+    test('Event Explorer: Views and Export sit under the scope pills, fit, and export works', async ({ page }) => {
       await signInAndWait(page, 'manager');
       await page.goto('/#/events');
       await expect(page.getByTestId('event-cards')).toBeVisible();
-      await expect(page.getByTestId('ev-tools')).toBeVisible();
+      await expect(page.getByTestId('scope-tools')).toBeVisible();
+      await expect(page.getByTestId('scope-tools').getByTestId('export-btn')).toBeVisible();
       for (const id of ['views-btn', 'export-btn']) expect((await page.getByTestId(id).boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
       await page.getByTestId('export-btn').click();
       await panelFits(page, 'export-btn-panel');
       const csv = await grab(page, () => page.getByTestId('export-btn-csv').click());
-      expect(csv.name).toBe('ACC-downtime-events_2026.csv');
+      // the default period is the last 90 days: the file is named by its two dates (ISO, as in every file)
+      expect(csv.name).toMatch(/^ACC-downtime-events_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$/);
       await page.getByTestId('views-btn').click();
       await panelFits(page, 'views-btn-panel');
       expect((await noSidewaysScroll(page)).ok).toBe(true);

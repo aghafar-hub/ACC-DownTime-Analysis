@@ -3,7 +3,7 @@
 // Desktop: a sticky row of chips under the top bar, each opening a small panel; the active filters follow as removable
 // chips. Phone: a row of pills and the orange 'Filters · N' pill, which open the filter sheet (sticky Reset and
 // 'Show N events'). Drawn into the shell's scope slot (ScopeSlot.tsx) so it spans the page under the top bar.
-import { useId, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import type { ClassificationCode, EventRow, Startup } from '../api/types';
 import { matchKey, type CalcSettings, type DateRange } from '../calc';
@@ -117,6 +117,13 @@ function PeriodFields({ src, m, chips }: { src: ScopeSource; m: Model; chips?: b
   const id = (n: string) => `sb-${n}-${uid}`;
   const years = src.startup?.years ?? [];
   const range = src.range;
+  // the phone's row of presets scrolls sideways: bring the chosen one into view when the sheet opens
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const row = rowRef.current;
+    const on = row?.querySelector<HTMLElement>('.sb-opt--on');
+    if (chips && row && on && on.offsetLeft + on.offsetWidth > row.clientWidth) row.scrollLeft = on.offsetLeft - 16;
+  }, [chips]);
   const setPreset = (p: RangePreset) => set({
     preset: p,
     year: p === 'year' ? (f.year ?? years[0] ?? null) : f.year,
@@ -126,7 +133,7 @@ function PeriodFields({ src, m, chips }: { src: ScopeSource; m: Model; chips?: b
   });
   return (
     <div className="sb-period">
-      <div className={chips ? 'sb-chiprow sb-chiprow--scroll' : 'sb-presets'} role="group" aria-label={t('Period')}>
+      <div ref={rowRef} className={chips ? 'sb-chiprow sb-chiprow--scroll' : 'sb-presets'} role="group" aria-label={t('Period')}>
         {PRESET_ORDER.filter((p) => RANGE_PRESETS.includes(p)).map((p) => (
           <button key={p} type="button" className={f.preset === p ? 'sb-opt sb-opt--on' : 'sb-opt'} aria-pressed={f.preset === p} onClick={() => setPreset(p)} data-testid={`fb-preset-${p}`}>
             {f.preset === p && <Icon name="check" size={14} />}{t(PRESET_LABELS[p])}
@@ -478,7 +485,7 @@ function PhoneBar({ src, m, eventCount, hideCompare, views, exportMenu }: BarPro
             <TypeGroupsField m={m} />
           </div>
           <details className="sb-sec sb-details">
-            <summary data-testid="fb-more">{t('More filters')}</summary>
+            <summary data-testid="fb-more">{t('More filters')} <Icon name="chevronDown" size={18} /></summary>
             <MoreFields src={src} m={m} stacked />
           </details>
           {clash && <p className="sb-clash" role="status">{t(clash)}</p>}

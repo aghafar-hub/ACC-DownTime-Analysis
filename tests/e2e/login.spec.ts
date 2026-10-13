@@ -112,7 +112,7 @@ test.describe('desktop 1280x720', () => {
     await expect(page.getByTestId('login-password')).toHaveAttribute('aria-invalid', 'true');
     await page.getByTestId('login-password').fill(PASSWORD);
     await page.getByTestId('login-submit').click();
-    await expect(page.getByTestId('page-title')).toHaveText('Overview');
+    await expect(page.getByTestId('page-title')).toHaveText('Dashboard');
   });
 
   test('five wrong passwords lock the account and the lockout message is shown', async ({ page }) => {

@@ -96,8 +96,8 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('rb-tpl-custom')).toHaveAttribute('aria-pressed', 'true');
     // period presets and the custom range
     await page.getByTestId('rb-tpl-monthly').click();
-    await expect(page.getByTestId('rb-period-text')).toContainText('1 Sep 2026 – 30 Sep 2026');
-    await expect(page.getByTestId('rb-period-text')).toContainText('1 Aug 2026 – 31 Aug 2026');
+    await expect(page.getByTestId('rb-period-text')).toContainText('1–30 Sep 2026');
+    await expect(page.getByTestId('rb-period-text')).toContainText('1–31 Aug 2026');
     await page.getByTestId('rb-period-thismonth').click();
     await expect(page.getByTestId('rb-period-text')).toContainText('1 Oct 2026');
     await page.getByTestId('rb-period-ytd').click();
@@ -105,8 +105,8 @@ test.describe('desktop', () => {
     await page.getByTestId('rb-period-custom').click();
     await page.getByTestId('rb-from').fill('2026-03-01');
     await page.getByTestId('rb-to').fill('2026-03-31');
-    await expect(page.getByTestId('rb-period-text')).toContainText('1 Mar 2026 – 31 Mar 2026');
-    await expect(page.getByTestId('rb-period-text')).toContainText('1 Feb 2026 – 28 Feb 2026');
+    await expect(page.getByTestId('rb-period-text')).toContainText('1–31 Mar 2026');
+    await expect(page.getByTestId('rb-period-text')).toContainText('1–28 Feb 2026');
     await page.getByTestId('rb-compare').click();
     await expect(page.getByTestId('rb-compare')).toHaveAttribute('aria-checked', 'false');
     await expect(page.getByTestId('rb-sum-compare')).toHaveText('No comparison');
@@ -164,6 +164,25 @@ test.describe('desktop', () => {
     await page.getByTestId('rb-reset-filters').click();
     await expect(page.getByTestId('rb-active')).toHaveCount(0);
     expect(await events()).toBe(all);
+  });
+
+  test('Use current dashboard filters copies the shared scope (period, line, area, type) into the setup and names what a report cannot filter', async ({ page }) => {
+    await signInAndWait(page, 'manager');
+    await page.goto('/#/dashboard?r=month&m=2026-08&line=L.1&area=K.1&cls=MEC&fail=1&reason=belt');
+    await expect(page.getByTestId('scope-period')).toContainText('Aug 2026');
+    await page.getByTestId('rail-link-reports').click();
+    await expect(page.getByTestId('builder')).toBeVisible();
+    await expect(page.getByTestId('rb-active')).toHaveCount(0);
+    await page.getByTestId('rb-use-dash').click();
+    await expect(page.getByTestId('rb-period-custom')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('rb-from')).toHaveValue('2026-08-01');
+    await expect(page.getByTestId('rb-to')).toHaveValue('2026-08-31');
+    for (const id of ['line-L.1', 'area-K.1', 'cls-MEC', 'fail']) await expect(page.getByTestId(`rb-chip-${id}`)).toBeVisible();
+    await expect(page.getByTestId('rb-use-dash-note')).toContainText('Not in a report: reason');
+    await expect(page.getByTestId('rb-period-text')).toContainText('1–31 Aug 2026');
+    await expect(page.getByTestId('rb-compare')).toHaveAttribute('aria-checked', 'true');
+    // the setup is in the address like any other
+    await expect(page).toHaveURL(/p=custom.*from=2026-08-01.*to=2026-08-31/);
   });
 
   test('the setup is kept in the URL: reload restores it, a copied link opens it, Edit setup comes back to it', async ({ page }) => {
@@ -260,7 +279,7 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('rpt-cover-filters')).toHaveText('Line L.1 - Area K.1 - Equipment NO.SUCH');
   });
 
-  test('numbers equal the Overview and the Reliability page for the same filters', async ({ page }) => {
+  test('numbers equal the Dashboard and the Reliability page for the same filters', async ({ page }) => {
     await openReport(page, 'manager', 'tpl=custom&p=lastmonth&cmp=1&line=L.1&area=K.1&s=summary');
     const stop = await kpiNumber(page, 'stoppage');
     const fails = await kpiNumber(page, 'failures');
