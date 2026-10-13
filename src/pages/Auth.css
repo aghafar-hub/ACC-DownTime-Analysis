@@ -205,7 +205,6 @@
 .auth-link:focus-visible,
 .auth-submit:focus-visible,
 .auth-secondary:focus-visible,
-.auth-demo-row button:focus-visible,
 .auth-remember input:focus-visible {
   outline: 3px solid var(--tk-accent, #1e5bb8);
   outline-offset: 2px;
@@ -324,35 +323,6 @@
   color: var(--tk-text-muted, #5f6d82);
 }
 
-/* mock-mode demo accounts */
-.auth-demo {
-  margin-top: 16px;
-  text-align: center;
-}
-.auth-demo p {
-  font-size: 12px;
-  color: var(--tk-text-muted, #5f6d82);
-  margin-bottom: var(--space-2);
-}
-.auth-demo-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-2);
-}
-.auth-demo-row button {
-  min-height: 44px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1.5px solid var(--auth-field-border);
-  background: transparent;
-  color: var(--tk-text-primary, #0f1b2d);
-  font: 600 13px var(--sans);
-  cursor: pointer;
-}
-.auth-demo-row button:hover {
-  border-color: var(--auth-orange);
-}
 
 .auth-footer {
   margin-top: 28px;

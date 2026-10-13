@@ -2,9 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { describeError } from '../api';
 import { useAuth } from '../auth/AuthContext';
-import { IS_MOCK } from '../config';
 import { t } from '../i18n/t';
-import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '../mock/demoAccounts';
 import { ArrowIcon, AuthShell, EmailField, PasswordField } from './AuthParts';
 import './Auth.css';
 
@@ -80,19 +78,6 @@ export default function Login() {
       </form>
 
       <p className="auth-access">{t('Need access? Contact your administrator')}</p>
-
-      {IS_MOCK && (
-        <div className="auth-demo" data-testid="demo-accounts">
-          <p>{t('Demo mode with made-up data. Tap a role to fill the form.')}</p>
-          <div className="auth-demo-row">
-            {DEMO_ACCOUNTS.map((a) => (
-              <button key={a.email} type="button" onClick={() => { setEmail(a.email); setPassword(DEMO_PASSWORD); }}>
-                {t(a.label)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       <p className="auth-footer">{t('Arabian Cement Company')}</p>
     </AuthShell>
