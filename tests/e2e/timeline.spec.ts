@@ -58,16 +58,16 @@ test.describe('timeline (desktop)', () => {
     await expect(page).toHaveURL(/date=2026-10-10/);
     await page.getByTestId('tl-next').click();
     await expect(page.getByTestId('tl-date')).toHaveValue('2026-10-11');
-    // week: Monday to Sunday containing the date, day ticks
+    // week: Saturday to Friday containing the date, day ticks
     await page.getByTestId('tl-week').click();
     await expect(page).toHaveURL(/span=week/);
     await expect(page.locator('.tl-tick')).toHaveCount(7);
-    await expect(page.locator('.tl-tick').first()).toHaveText('Mon 5 Oct');
-    await expect(page.getByTestId('chart-summary')).toContainText('from Mon 5 Oct to Sun 11 Oct 2026');
+    await expect(page.locator('.tl-tick').first()).toHaveText('Sat 10 Oct');
+    await expect(page.getByTestId('chart-summary')).toContainText('from Sat 10 Oct to Fri 16 Oct 2026');
     expect(await bars(page).count()).toBeGreaterThanOrEqual(14);
     await page.getByTestId('tl-prev').click();
     await expect(page.getByTestId('tl-date')).toHaveValue('2026-10-04');
-    await expect(page.getByTestId('chart-summary')).toContainText('from Mon 28 Sep to Sun 4 Oct 2026');
+    await expect(page.getByTestId('chart-summary')).toContainText('from Sat 3 Oct to Fri 9 Oct 2026');
     // a week with no stops shows a message, Latest event brings the data back
     await page.getByTestId('tl-date').fill('2020-01-06');
     await expect(page.getByTestId('tl-empty')).toBeVisible();

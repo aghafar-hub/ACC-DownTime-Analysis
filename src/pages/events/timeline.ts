@@ -29,9 +29,14 @@ export function weekdayIndex(date: string): number {
   return (((Math.floor(ms / MS_DAY) + 3) % 7) + 7) % 7;
 }
 
-/** Day: the date itself (24 h). Week: the Monday-to-Sunday week that contains the date (7 days). */
+/** The plant's week starts on Saturday (Monday = 0 ... Saturday = 5). */
+export const WEEK_START = 5;
+/** Days since the most recent Saturday (0 on a Saturday, 6 on a Friday). */
+export const daysSinceWeekStart = (date: string): number => (weekdayIndex(date) - WEEK_START + 7) % 7;
+
+/** Day: the date itself (24 h). Week: the Saturday-to-Friday week that contains the date (7 days). */
 export function windowFor(span: TimelineSpan, date: string): TlWindow {
-  const fromDate = span === 'day' ? date : addDays(date, -weekdayIndex(date));
+  const fromDate = span === 'day' ? date : addDays(date, -daysSinceWeekStart(date));
   const days = span === 'day' ? 1 : 7;
   const fromMs = parseDate(fromDate) ?? 0;
   return { span, fromDate, toDate: addDays(fromDate, days - 1), days, fromMs, toMs: fromMs + days * MS_DAY };

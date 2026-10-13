@@ -14,15 +14,17 @@ const known = new Set(areas.map((a) => a.area_id));
 const DAY = windowFor('day', '2026-07-26');
 
 describe('windowFor', () => {
-  it('Day is 24 h of the date, Week is the Monday-Sunday week containing it', () => {
+  it('Day is 24 h of the date, Week is the Saturday-Friday week containing it', () => {
     expect(DAY.toMs - DAY.fromMs).toBe(86_400_000);
     expect(DAY.toDate).toBe('2026-07-26');
     expect(weekdayIndex('2026-07-26')).toBe(6); // a Sunday
     const w = windowFor('week', '2026-07-26');
-    expect(w.fromDate).toBe('2026-07-20');
-    expect(w.toDate).toBe('2026-07-26');
+    expect(w.fromDate).toBe('2026-07-25'); // Saturday
+    expect(w.toDate).toBe('2026-07-31'); // Friday
     expect(w.toMs - w.fromMs).toBe(7 * 86_400_000);
-    expect(windowFor('week', '2026-07-20').fromDate).toBe('2026-07-20');
+    expect(windowFor('week', '2026-07-25').fromDate).toBe('2026-07-25'); // a Saturday starts its own week
+    expect(windowFor('week', '2026-07-31').fromDate).toBe('2026-07-25'); // a Friday ends it
+    expect(windowFor('week', '2026-07-24').fromDate).toBe('2026-07-18');
   });
   it('shifts a day or a week, across month ends', () => {
     expect(shiftDate('day', '2026-07-31', 1)).toBe('2026-08-01');
@@ -36,7 +38,7 @@ describe('windowFor', () => {
   });
   it('has hour ticks for a day and day ticks for a week', () => {
     expect(ticksFor(DAY, 700)).toHaveLength(24);
-    expect(ticksFor(windowFor('week', '2026-07-26'), 800).map((k) => k.label)[0]).toBe('Mon 20 Jul');
+    expect(ticksFor(windowFor('week', '2026-07-26'), 800).map((k) => k.label)[0]).toBe('Sat 25 Jul');
     expect(trackWidth('day', 100)).toBe(24 * 28);
     expect(trackWidth('day', 1200)).toBe(1200);
   });
@@ -182,7 +184,7 @@ describe('overlaps and texts', () => {
     expect(summaryText(bars, DAY)).toBe('4 stops in 3 areas on 26 Jul 2026, 8.0 area-hours; longest: K.1 200.B1 4.0 h');
     expect(summaryText([], DAY)).toBe('No stops on 26 Jul 2026.');
     expect(summaryText([rm], DAY)).toContain('1 stop in 1 area');
-    expect(summaryText(bars, windowFor('week', '2026-07-26'))).toContain('from Mon 20 Jul to Sun 26 Jul 2026');
+    expect(summaryText(bars, windowFor('week', '2026-07-26'))).toContain('from Sat 25 Jul to Fri 31 Jul 2026');
   });
   it('builds the table rows in area order', () => {
     const t = tableRows(layoutRows(bars, areas, lines, false));
