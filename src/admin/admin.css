@@ -298,3 +298,12 @@ button.adm-card:focus-visible {
 .adm-access-row .field-hint {
   flex: 1 0 100%;
 }
+
+/* Settings: one summary line (last change, View only badge) instead of tiles */
+.set-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 0 0 12px;
+}

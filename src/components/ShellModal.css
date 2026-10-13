@@ -142,3 +142,42 @@
     padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   }
 }
+
+/* drawer: the box in place beside the page (no shade), its body scrolls, the footer stays in view */
+.sm-box--drawer {
+  max-height: none;
+  height: 100%;
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(8, 15, 28, 0.1);
+}
+.sm-box--drawer .sm-head {
+  padding: 14px 16px;
+}
+.sm-box--drawer .sm-icon {
+  display: none;
+}
+.sm-box--drawer .sm-body {
+  padding: 14px 16px;
+}
+.sm-box--drawer .sm-section {
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.sm-box--drawer .sm-foot {
+  justify-content: flex-start;
+  padding: 12px 16px;
+}
+.sm-box--drawer .kv {
+  grid-template-columns: minmax(96px, 36%) 1fr;
+}
+.sm-foot-note {
+  margin-inline-start: auto;
+  font-size: 12px;
+  color: var(--shell-text-secondary);
+}
+.sm-box--drawer .form-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+.sm-box--drawer .form-grid .span-2 {
+  grid-column: span 1;
+}

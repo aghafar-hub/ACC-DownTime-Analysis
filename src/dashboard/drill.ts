@@ -10,6 +10,12 @@ export interface DrillState {
   years: number[];
   /** where the ids came from, for the chip: 'Pareto bar', 'Dashboard' ... */
   source: string;
+  /** the period the chart counted (its window): the banner clips the records' hours to it, like the bar */
+  range?: { from: string; to: string };
+  /** the page the drill came from (address and query), for 'Back to Pareto' */
+  back?: { pathname: string; search: string };
+  /** what the chart showed for these events: hours in the window as the chart counts them (overlaps once) */
+  bar?: { hours: number };
 }
 
 export function readDrill(state: unknown): DrillState | null {

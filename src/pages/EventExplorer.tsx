@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { EventRow } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -18,15 +18,20 @@ import { t } from '../i18n/t';
 import { ValidationBanner } from '../validate/ValidationBanner';
 import { Icon } from '../icons';
 import { useTheme } from '../theme/ThemeContext';
-import { duration, hours, num, shortTs } from '../util/format';
-import { rangeText } from '../util/dates';
+import { duration, hours, num } from '../util/format';
+import { rangeText, timeText, tsShort, tsText } from '../util/dates';
+import { classColor } from '../charts/palette';
+import { InScopeSlot } from '../components/ScopeSlot';
+import { DRAWER_QUERY, useMediaQuery } from '../hooks/useMediaQuery';
+import { pageForPath } from '../navigation';
+import { drillFigures, drillMatch, drillPageName, drillShortText, drillSummaryText, hoursText } from './events/drillBanner';
 import { useValidationOptional } from '../validate/ValidationContext';
 import EventBadges from './events/EventBadges';
 import { buildOwnerLookup } from './events/crossArea';
 import { hasOpenProblemFlags } from '../calc/flags';
 import {
-  activeCount, applyFilters, describeExplorerFilters, EMPTY, parseExplorerFilters, scopeRows, serializeExplorerFilters, EXPLORER_KEYS, SHOWN_PARAM,
-  type Filters, type Show, type Sort,
+  activeCount, applyFilters, describeExplorerFilters, EMPTY, nextSort, parseExplorerFilters, recordStatus, scopeRows, serializeExplorerFilters, sortDirOf, sortKeyOf,
+  EXPLORER_KEYS, SHOWN_PARAM, type Filters, type RecordStatus, type Show, type Sort, type SortKey,
 } from './events/explorerFilters';
 import ExportMenu from '../components/ExportMenu';
 import ViewsMenu from '../views/ViewsMenu';
@@ -38,19 +43,79 @@ import { CSV_MIME } from '../export/csv';
 import EventDetail from './events/EventDetail';
 import TimelineView from './events/TimelineView';
 import './events/timeline.css';
+import './events/records.css';
 import '../components/ui.css';
-import StickyTableWrap from '../components/StickyTableWrap';
+import StickyTableWrap, { stuckTop } from '../components/StickyTableWrap';
+
+const SORT_WORDS: Record<SortKey, [string, string]> = {
+  stop: ['Oldest first', 'Newest first'],
+  area: ['Area A to Z', 'Area Z to A'],
+  code: ['Code A to Z', 'Code Z to A'],
+  reason: ['Reason A to Z', 'Reason Z to A'],
+  class: ['Class A to Z', 'Class Z to A'],
+  dur: ['Shortest first', 'Longest first'],
+  freq: ['Continuations first', 'New stops first'],
+  status: ['OK first', 'Needs attention first'],
+};
+/** 'Newest first', 'Area A to Z' ... */
+export const sortLabel = (s: Sort): string => t(SORT_WORDS[sortKeyOf(s)][sortDirOf(s) === 'asc' ? 0 : 1]);
 
 function SortField({ f, set, id }: { f: Filters; set: (p: Partial<Filters>) => void; id: string }) {
+  const base: Sort[] = ['stop_desc', 'stop_asc', 'dur_desc'];
+  const options = base.includes(f.sort) ? base : [...base, f.sort];
   return (
     <div className="field">
       <label htmlFor={`${id}-sort`}>{t('Sort')}</label>
       <select id={`${id}-sort`} className="select" value={f.sort} onChange={(e) => set({ sort: e.target.value as Sort })} data-testid="filter-sort">
-        <option value="stop_desc">{t('Newest first')}</option>
-        <option value="stop_asc">{t('Oldest first')}</option>
-        <option value="dur_desc">{t('Longest first')}</option>
+        {options.map((o) => <option key={o} value={o}>{sortLabel(o)}</option>)}
       </select>
     </div>
+  );
+}
+
+/** A sortable column heading: a button with an arrow; aria-sort says the order to assistive technology. */
+function SortTh({ k, label, sort, onSort, num: isNum }: { k: SortKey; label: string; sort: Sort; onSort: (k: SortKey) => void; num?: boolean }) {
+  const on = sortKeyOf(sort) === k;
+  const dir = sortDirOf(sort);
+  return (
+    <th scope="col" className={isNum ? 'num' : undefined} aria-sort={on ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'} data-testid={`th-${k}`}>
+      <button type="button" className={on ? 'sortbtn ev-sort ev-sort--on' : 'sortbtn ev-sort'} onClick={() => onSort(k)} data-testid={`sort-${k}`}>
+        {label}
+        <span className="ev-sort-arrow" aria-hidden="true">{on ? (dir === 'asc' ? '↑' : '↓') : '↕'}</span>
+      </button>
+    </th>
+  );
+}
+
+const STATUS_CHIP: Record<RecordStatus, { cls: string; sym: string; word: string }> = {
+  ok: { cls: 'badge--success', sym: '✓', word: 'OK' },
+  edited: { cls: 'badge--accent', sym: '✎', word: 'Edited' },
+  check: { cls: 'badge--warning', sym: '▲', word: 'To check' },
+  blocked: { cls: 'badge--danger', sym: '◆', word: 'Left out' },
+  void: { cls: '', sym: '⊘', word: 'Void' },
+};
+/** One chip for where the record stands (a colour, a symbol and a word). */
+function StatusChip({ e }: { e: EventRow }) {
+  const st = recordStatus(e);
+  const c = STATUS_CHIP[st];
+  return <span className={`badge ${c.cls}`.trim()} data-testid="status-chip" data-status={st}><span aria-hidden="true">{c.sym}</span> {t(c.word)}</span>;
+}
+
+/** '06:40' and, when the stop ran past midnight, '+1 day'. */
+function endText(e: EventRow): { time: string; days: number } {
+  const a = e.stop_ts.slice(0, 10);
+  const b = e.start_ts.slice(0, 10);
+  const days = a && b && b > a ? Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000) : 0;
+  return { time: timeText(e.start_ts), days };
+}
+
+/** The classification as a coloured dot and its code; the full name in the tooltip. */
+function ClassMark({ code, name, dark }: { code: string; name?: string; dark: boolean }) {
+  return (
+    <span className="ev-cls" title={name ? `${code} · ${name}` : code}>
+      <i className="ev-dot" style={{ background: classColor(dark, code) }} aria-hidden="true" />
+      <span className="badge--class ev-cls-code">{code || '-'}</span>
+    </span>
   );
 }
 
@@ -94,7 +159,8 @@ export default function EventExplorer() {
   const { st, startup } = sc;
   const validation = useValidationOptional();
   const { canEdit, user } = useAuth();
-  const { T } = useTheme();
+  const { T, dark } = useTheme();
+  const wide = useMediaQuery(DRAWER_QUERY);
   const mobile = useIsMobile();
   const location = useLocation();
   const navigate = useNavigate();
@@ -189,6 +255,7 @@ export default function EventExplorer() {
   useEffect(() => {
     if (lastPageKey.current === pageKey) return;
     lastPageKey.current = pageKey;
+    setOpenId(null); // a record of another list does not stay open
     if (params.has(SHOWN_PARAM)) setShown(PAGE_SIZE);
   }, [pageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -295,8 +362,57 @@ export default function EventExplorer() {
     <CountChip on={sc.filters.failureOnly} onClick={() => sc.setFilters({ failureOnly: !sc.filters.failureOnly })} testid="failure-only">{t('Failures only')}</CountChip>
   );
 
+  // ---- the drill-through context: where the list came from and whether it adds up to the bar
+  const figures = useMemo(() => (drill && drillRows ? drillFigures(drillRows, drill) : null), [drill, drillRows]);
+  const drillLine = drill ? (figures ? drillSummaryText(drill, figures) : t('Loading…')) : '';
+  const match = drill && figures ? drillMatch(figures, drill) : null;
+  const backTo = drill?.back && pageForPath(drill.back.pathname) ? drill.back : null;
+  const goBack = () => backTo && navigate({ pathname: backTo.pathname, search: backTo.search });
+  const removeDrill = () => navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null });
+
+  // ---- sorting from the column headings (the same order key as the Sort field: kept in the address)
+  const onSort = (k: SortKey) => set({ sort: nextSort(liveFilters().sort, k) });
+  const classNames = useMemo(() => new Map(startup?.classifications.map((c) => [c.code, c.name]) ?? []), [startup]);
+  // the dates carry the year only when the list spans more than one year
+  const multiYear = useMemo(() => {
+    let lo = '', hi = '';
+    for (const e of filtered) {
+      const y = e.stop_ts.slice(0, 4);
+      if (!lo || y < lo) lo = y;
+      if (!hi || y > hi) hi = y;
+    }
+    return lo !== hi;
+  }, [filtered]);
+  const startText = (e: EventRow) => (multiYear ? tsText(e.stop_ts) : tsShort(e.stop_ts));
+  const totalFreq = useMemo(() => filtered.reduce((n, e) => n + (e.is_void ? 0 : e.freq), 0), [filtered]);
+
+  // ---- the record drawer (wide screens, list view): beside the table, under the sticky bars
+  const drawerOn = wide && !mobile && view === 'list' && !!open;
+  const [drawerTop, setDrawerTop] = useState(124);
+  useLayoutEffect(() => {
+    if (!drawerOn) return undefined;
+    const fit = () => setDrawerTop(Math.round(stuckTop()) + 12);
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [drawerOn]);
+  const openIndex = open ? filtered.findIndex((e) => e.event_id === open.event_id) : -1;
+  const position = openIndex >= 0 ? t('{i} of {n}', { i: num(openIndex + 1), n: num(filtered.length) }) : undefined;
+  const detail = open ? (
+    <EventDetail
+      key={open.event_id}
+      row={open}
+      startup={startup}
+      canEdit={canEdit('events')}
+      onClose={() => setOpenId(null)}
+      onChanged={replaceEvent}
+      drawer={drawerOn}
+      position={position}
+    />
+  ) : null;
+
   return (
-    <div className="page" data-testid="page-events">
+    <div className={drawerOn ? 'page ev-page ev-page--drawer' : 'page ev-page'} data-testid="page-events">
       <ScopeBar
         src={{
           filters: sc.filters, setFilters: sc.setFilters, reset, startup, range: sc.range, compareMode: cmpMode,
@@ -322,14 +438,41 @@ export default function EventExplorer() {
       />
       <ValidationBanner />
       {st.error || (st.loading && !st.data) ? <DataStatus state={st} onRetry={st.reload} what={t('master data')} /> : <DataStatus state={sc.state} onRetry={sc.reload} what={t('events')} />}
-      {drill && (
-        <div className="callout" role="status" data-testid="drill-chip">
-          <Icon name="filter" size={16} />
-          <span data-testid="drill-text">{t('Showing {n} events from {label}', { n: num(drill.eventIds?.length ?? drill.rowIds?.length ?? 0), label: drill.label })}</span>
-          <button type="button" className="btn btn-sm" onClick={() => navigate({ pathname: location.pathname, search: location.search }, { replace: true, state: null })} data-testid="drill-remove" aria-label={t('Remove the filter: {label}', { label: drill.label })}>
-            <Icon name="close" size={14} /> {t('Remove')}
-          </button>
-        </div>
+      {drill && !mobile && (
+        <section className="ev-drill" aria-label={t('Opened from a chart')} data-testid="drill-chip">
+          <span className="ev-drill-from">{t('From')}</span>
+          <span className="ev-drill-text" data-testid="drill-text">
+            <b>{drillPageName(drill)}</b> <span aria-hidden="true">›</span> {drillLine}
+          </span>
+          {match === 'match' && (
+            <span className="badge badge--success" data-testid="drill-match" data-match="yes"><span aria-hidden="true">✓</span> {t('matches the bar')}</span>
+          )}
+          {match === 'differs' && (
+            <span className="badge badge--info" data-testid="drill-match" data-match="no" title={t('The chart counts time that overlaps in one area once; the records list each stop with its own time.')}>
+              <span aria-hidden="true">ℹ</span> {t('the bar shows {h} (overlaps counted once)', { h: hoursText(drill.bar!.hours) })}
+            </span>
+          )}
+          <span className="ev-drill-actions">
+            {backTo && (
+              <button type="button" className="btn btn-sm" onClick={goBack} data-testid="drill-back"><Icon name="arrowLeft" size={14} /> {t('Back to {page}', { page: drillPageName(drill) })}</button>
+            )}
+            <button type="button" className="btn btn-sm" onClick={removeDrill} data-testid="drill-remove" aria-label={t('Remove the filter: {label}', { label: drill.label })}>
+              <Icon name="close" size={14} /> {t('Show all records')}
+            </button>
+          </span>
+        </section>
+      )}
+      {drill && mobile && (
+        <InScopeSlot>
+          <div className="ev-drill-chip" role="status" data-testid="drill-chip">
+            <span className="ev-drill-chip-text" data-testid="drill-text">
+              {t('From {page}', { page: drillPageName(drill) })}: <b>{figures ? drillShortText(drill, figures) : t('Loading…')}</b>
+            </span>
+            <button type="button" className="ev-drill-chip-x" onClick={removeDrill} data-testid="drill-remove" aria-label={t('Remove the filter: {label}', { label: drill.label })}>
+              <Icon name="close" size={18} />
+            </button>
+          </div>
+        </InScopeSlot>
       )}
 
       {exportNote && (
@@ -348,11 +491,11 @@ export default function EventExplorer() {
       {!mobile ? (
         <>
           {view === 'list' && (
-          <div className="tiles" data-testid="event-tiles">
-            <Tile icon="list" label={t('Events shown')} value={num(filtered.length)} sub={drill ? t('of {n} in the opened events', { n: num(total) }) : t('of {n} in {period}', { n: num(total), period: periodName })} testid="tile-shown" />
-            <Tile icon="clock" label={t('Stoppage hours shown')} value={hours(stats.sec)} sub={t('area-hours, not voided or left out')} testid="tile-hours" />
-            <Tile icon="alert" label={t('Failures shown')} value={num(stats.failures)} tone={stats.failures ? T.danger : undefined} sub={t('not voided or left out')} testid="tile-failures" />
-            <Tile icon="info" label={t('Rows with data issues')} value={num(stats.issues)} tone={stats.issues ? T.warning : undefined} sub={t('{n} edited · {v} voided in this period', { n: facts.edited, v: facts.voided })} testid="tile-issues" />
+          <div className="tiles ev-tiles" data-testid="event-tiles">
+            <Tile icon="list" label={t('Events shown')} value={num(filtered.length)} sub={drill ? t('of {n} in the opened events', { n: num(total) }) : t('of {n} in {period}', { n: num(total), period: periodName })} testid="tile-shown" compact />
+            <Tile icon="clock" label={t('Stoppage hours shown')} value={hours(stats.sec)} sub={t('area-hours, not voided or left out')} testid="tile-hours" compact />
+            <Tile icon="alert" label={t('Failures shown')} value={num(stats.failures)} tone={stats.failures ? T.danger : undefined} sub={t('not voided or left out')} testid="tile-failures" compact />
+            <Tile icon="info" label={t('Rows with data issues')} value={num(stats.issues)} tone={stats.issues ? T.warning : undefined} sub={t('{n} edited · {v} voided in this period', { n: facts.edited, v: facts.voided })} testid="tile-issues" compact />
           </div>
           )}
           <section className="card ev-tools-card" aria-label={t('Find in these records')} data-testid="filters">
@@ -371,9 +514,10 @@ export default function EventExplorer() {
       ) : (
         <>
           <div className="phone-summary" data-testid="phone-summary">
-            <b>{num(filtered.length)}</b> {t('events')}
+            <span><b>{num(filtered.length)}</b> {t('events')} · <b>{hoursText(stats.sec / 3600)}</b></span>
             <span><span aria-hidden="true">◆</span> {num(stats.failures)} {t('failures')}</span>
-            <span><span aria-hidden="true">▲</span> {num(stats.issues)} {t('with issues')}</span>
+            <span><span aria-hidden="true">▲</span> {num(stats.issues)} {t('to check')}</span>
+            <span className="ev-phone-sort">{sortLabel(f.sort)}</span>
           </div>
           <div className="field" style={{ marginBottom: 8 }}>
             <label htmlFor="ev-search" className="field-label">{t('Search')}</label>
@@ -412,7 +556,8 @@ export default function EventExplorer() {
         </div>
       )}
       {dataReady && view === 'list' && (
-        <div style={{ marginTop: 12 }}>
+        <div className={drawerOn ? 'ev-split ev-split--open' : 'ev-split'} style={{ marginTop: 12 }}>
+          <div className="ev-main">
           {filtered.length === 0 ? (
             <div className="callout" role="status" data-testid="no-results">
               <Icon name="info" size={16} />
@@ -420,70 +565,96 @@ export default function EventExplorer() {
               <button type="button" className="btn btn-sm" onClick={reset}>{t('Reset filters')}</button>
             </div>
           ) : !mobile ? (
-            <StickyTableWrap testid="event-table">
-              <table className="data-table">
+            <StickyTableWrap className="ev-table" testid="event-table">
+              <table className="data-table ev-dense">
                 <thead>
                   <tr>
-                    <th scope="col">{t('Stopped at')}</th>
-                    <th scope="col">{t('Area')}</th>
-                    <th scope="col">{t('Code')}</th>
-                    <th scope="col">{t('Class')}</th>
-                    <th scope="col" className="num">{t('Duration')}</th>
-                    <th scope="col">{t('Reason')}</th>
-                    <th scope="col">{t('Status')}</th>
+                    <SortTh k="stop" label={t('Started')} sort={f.sort} onSort={onSort} />
+                    <SortTh k="area" label={t('Area')} sort={f.sort} onSort={onSort} />
+                    <SortTh k="code" label={t('Code')} sort={f.sort} onSort={onSort} />
+                    <SortTh k="reason" label={t('Reason')} sort={f.sort} onSort={onSort} />
+                    <SortTh k="class" label={t('Class')} sort={f.sort} onSort={onSort} />
+                    <SortTh k="dur" label={t('Hours')} sort={f.sort} onSort={onSort} num />
+                    <SortTh k="freq" label={t('Freq')} sort={f.sort} onSort={onSort} num />
+                    <SortTh k="status" label={t('Status')} sort={f.sort} onSort={onSort} />
                   </tr>
                 </thead>
                 <tbody>
-                  {visible.map((e) => (
-                    <tr key={e.event_id} className={e.is_void ? 'row--void' : undefined} data-testid="event-row" data-event-id={e.event_id}>
-                      <td className="nowrap">
-                        <button type="button" className="row-link" onClick={() => setOpenId(e.event_id)} aria-label={t('Open event {id}', { id: e.event_id })}>{shortTs(e.stop_ts)}</button>
-                      </td>
-                      <td className="nowrap">{e.area_id}<div className="muted" style={{ fontSize: 12 }}>{areaName.get(e.area_id)}</div></td>
-                      <td className="mono nowrap">{e.code_raw || '-'}</td>
-                      <td><span className="badge badge--class">{e.classification}</span></td>
-                      <td className="num">{duration(e.duration_s)}</td>
-                      <td>{e.reason_raw || <span className="muted">{t('(blank)')}</span>}{e.description && <div className="muted" style={{ fontSize: 12.5 }}>{e.description}</div>}</td>
-                      <td><div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}><EventBadges row={e} owners={owners} /></div></td>
-                    </tr>
-                  ))}
+                  {visible.map((e) => {
+                    const end = endText(e);
+                    const isOpen = open?.event_id === e.event_id;
+                    return (
+                      <tr
+                        key={e.event_id} className={`ev-row${e.is_void ? ' row--void' : ''}${isOpen ? ' is-open' : ''}`} data-testid="event-row" data-event-id={e.event_id}
+                        aria-selected={isOpen || undefined} onClick={(ev) => { if (!(ev.target as HTMLElement).closest('button, a')) setOpenId(e.event_id); }}
+                      >
+                        <td className="nowrap">
+                          <button type="button" className="row-link ev-open" onClick={() => setOpenId(e.event_id)} aria-label={t('Open event {id}', { id: e.event_id })} title={tsText(e.stop_ts)}>{startText(e)}</button>
+                          <div className="ev-sub">{t('to {time}', { time: end.time })}{end.days > 0 && <> · {end.days === 1 ? t('+1 day') : t('+{n} days', { n: end.days })}</>}</div>
+                        </td>
+                        <td className="nowrap" title={areaName.get(e.area_id)}>{e.area_id}</td>
+                        <td className="mono nowrap ev-code">{e.code_raw || '-'}</td>
+                        <td className="ev-reason">
+                          <div className="ev-clip" title={e.reason_raw ?? undefined}>{e.reason_raw || <span className="muted">{t('(blank)')}</span>}</div>
+                          {e.description && <div className="ev-sub ev-clip" title={e.description}>{e.description}</div>}
+                        </td>
+                        <td className="nowrap"><ClassMark code={e.classification} name={classNames.get(e.classification)} dark={dark} /></td>
+                        <td className="num" title={duration(e.duration_s)}>{(e.duration_s / 3600).toFixed(1)} h</td>
+                        <td className="num">{e.freq}</td>
+                        <td><div className="ev-badges"><StatusChip e={e} />{!drawerOn && <EventBadges row={e} maxFlags={1} owners={owners} />}</div></td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
+                <tfoot>
+                  <tr className="ev-total" data-testid="event-total">
+                    <th scope="row" colSpan={5}>{t('Total')} · {filtered.length === 1 ? t('1 event') : t('{n} events', { n: num(filtered.length) })}</th>
+                    <td className="num" data-testid="event-total-hours">{hoursText(stats.sec / 3600)}</td>
+                    <td className="num">{num(totalFreq)}</td>
+                    <td className="muted">{t('not voided or left out')}</td>
+                  </tr>
+                </tfoot>
               </table>
             </StickyTableWrap>
           ) : (
-            <div className="event-cards" data-testid="event-cards">
-              {visible.map((e) => (
-                <button key={e.event_id} type="button" className={e.is_void ? 'event-card event-card--void' : 'event-card'} onClick={() => setOpenId(e.event_id)} data-testid="event-card" data-event-id={e.event_id}>
-                  <div className="event-card-top">
-                    <span className="event-card-code">{e.area_id} · {e.code_raw || 'N/A'}</span>
-                    <span className="badge badge--class">{e.classification}</span>
-                  </div>
-                  <div className="event-card-line mono">{shortTs(e.stop_ts)} · {duration(e.duration_s)}</div>
-                  <div className="event-card-line">{e.reason_raw || t('(blank)')}</div>
-                  <div className="event-card-badges"><EventBadges row={e} maxFlags={2} owners={owners} /></div>
-                </button>
-              ))}
+            <div className="event-cards ev-cards" data-testid="event-cards">
+              {visible.map((e) => {
+                const end = endText(e);
+                const name = classNames.get(e.classification);
+                return (
+                  <button key={e.event_id} type="button" className={e.is_void ? 'event-card ev-card event-card--void' : 'event-card ev-card'} onClick={() => setOpenId(e.event_id)} data-testid="event-card" data-event-id={e.event_id}>
+                    <span className="ev-card-row">
+                      <span className="ev-card-when">{startText(e)}–{end.time}{end.days > 0 && <span className="ev-card-plus"> ({end.days === 1 ? t('+1 day') : t('+{n} days', { n: end.days })})</span>}</span>
+                      <span className="ev-card-h"><b>{(e.duration_s / 3600).toFixed(1)}</b> h</span>
+                    </span>
+                    <span className="ev-card-what">{e.area_id} · <b className="mono">{e.code_raw || 'N/A'}</b> · {e.reason_raw || t('(blank)')}</span>
+                    <span className="ev-card-chips">
+                      <span className="badge ev-cls-chip" title={e.classification} data-class={e.classification}><i className="ev-dot" style={{ background: classColor(dark, e.classification) }} aria-hidden="true" />{name ?? e.classification}</span>
+                      <StatusChip e={e} />
+                      <EventBadges row={e} maxFlags={1} owners={owners} />
+                      <span className="ev-card-go" aria-hidden="true"><Icon name="chevronRight" size={18} /></span>
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           )}
-          <ShowMore shown={visible.length} total={filtered.length} onMore={() => setShown(shown + PAGE_SIZE)} />
+          <ShowMore shown={visible.length} total={filtered.length} onMore={() => setShown(shown + PAGE_SIZE)} onAll={() => setShown(filtered.length)} />
           {filtered.length > 0 && (
             <p className="status-line" style={{ marginTop: 8 }} data-testid="list-count">
-              {t('Showing {a} of {b} matching events.', { a: num(visible.length), b: num(filtered.length) })}
+              {t('Showing {a} of {b} matching events.', { a: num(visible.length), b: num(filtered.length) })} {t('Sorted: {how}.', { how: sortLabel(f.sort) })}
             </p>
+          )}
+          </div>
+          {drawerOn && (
+            <aside className="ev-drawer" style={{ top: drawerTop, height: `calc(100vh - ${drawerTop + 16}px)` }} aria-label={t('Record')} data-testid="event-drawer">
+              {detail}
+            </aside>
           )}
         </div>
       )}
 
-      {open && (
-        <EventDetail
-          key={open.event_id}
-          row={open}
-          startup={startup}
-          canEdit={canEdit('events')}
-          onClose={() => setOpenId(null)}
-          onChanged={replaceEvent}
-        />
-      )}
+      {!drawerOn && detail}
     </div>
   );
 }

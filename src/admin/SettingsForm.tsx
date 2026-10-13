@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { tsText } from '../util/dates';
 import { api } from '../api';
 import type { Setting } from '../api/types';
@@ -11,7 +11,11 @@ import { BASIS_FORMULA, changedSettings, groups, SETTING_FALLBACKS, validateSett
 import './admin.css';
 
 /** The editable settings. Saved together with one call: all or nothing. */
-export default function SettingsForm({ settings, canEdit, onSaved, groupIds }: { settings: Setting[]; canEdit: boolean; onSaved: (text: string) => void; groupIds?: string[] }) {
+export default function SettingsForm({ settings, canEdit, onSaved, groupIds, badge }: {
+  settings: Setting[]; canEdit: boolean; onSaved: (text: string) => void; groupIds?: string[];
+  /** shown at the end of the summary line (the View only badge) */
+  badge?: ReactNode;
+}) {
   const stored = useMemo(() => ({ ...SETTING_FALLBACKS, ...Object.fromEntries(settings.map((s) => [s.key, s.value])) }) as Record<string, string>, [settings]);
   const meta = useMemo(() => new Map(settings.map((s) => [s.key, s])), [settings]);
   const [draft, setDraft] = useState<Record<string, string>>({});
@@ -76,12 +80,13 @@ export default function SettingsForm({ settings, canEdit, onSaved, groupIds }: {
 
   return (
     <div data-testid="settings-form">
-      <section className="card" aria-label={t('Last change')}>
-        <p style={{ margin: 0 }} data-testid="last-changed">
-          <Icon name="clock" size={15} style={{ verticalAlign: '-2px', marginInlineEnd: 6 }} />
+      <p className="status-line set-summary" data-testid="settings-summary">
+        <Icon name="clock" size={14} />
+        <span data-testid="last-changed">
           {last ? t('Last changed {when} by {who}.', { when: tsText(String(last.updated_at)), who: who(last.updated_by) }) : t('No setting has been changed yet. These are the starting values.')}
-        </p>
-      </section>
+        </span>
+        {badge}
+      </p>
       {error && <div className="callout callout--danger" role="alert" data-testid="server-error"><Icon name="alert" size={16} /><span>{error}</span></div>}
       {shown && Object.keys(problems).length > 0 && <div className="callout callout--warning" role="alert" data-testid="settings-problems"><Icon name="alert" size={16} /><span>{t('Fix the marked settings first. Nothing was saved.')}</span></div>}
       {groups().filter((g) => !groupIds || groupIds.includes(g.id)).map((g) => (

@@ -79,6 +79,25 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('page-users')).toBeVisible();
   });
 
+  test('R3 clean-up: no access sentence, no low-value tiles, one summary line; View only as a small badge', async ({ page }) => {
+    await signInAndWait(page, 'admin');
+    for (const sub of ['calculations', 'security']) {
+      await page.goto(`/#/settings/${sub}`);
+      await expect(page.getByTestId('settings-summary')).toBeVisible();
+      await expect(page.getByTestId('settings-summary')).toContainText(/Last changed|No setting has been changed yet/);
+      await expect(page.getByTestId(`settings-${sub}`)).not.toContainText('Your access to this page');
+      await expect(page.getByTestId(`settings-${sub}`)).not.toContainText('Settings on record');
+      await expect(page.getByTestId('fact-settings')).toHaveCount(0);
+      await expect(page.getByTestId('fact-last-changed')).toHaveCount(0);
+      await expect(page.getByTestId('access-level')).toHaveCount(0); // Edit access: nothing to say
+    }
+    await page.goto('/#/settings/appearance');
+    await expect(page.getByTestId('settings-appearance').locator('.tiles')).toHaveCount(0);
+    await expect(page.getByTestId('fact-theme')).toHaveText(/^In use: .+\.$/);
+    await page.goto('/#/settings/users');
+    await expect(page.getByTestId('page-users')).not.toContainText('Your access to this page');
+  });
+
   test('the last subtab is remembered', async ({ page }) => {
     await signInAndWait(page, 'admin');
     await page.goto('/#/settings/security');
@@ -105,7 +124,7 @@ test.describe('desktop', () => {
     await page.getByTestId('settings-btn').click();
     expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(['Appearance', 'Notifications', 'Users and access']);
     await subTabs(page).filter({ hasText: 'Users and access' }).click();
-    await expect(page.getByTestId('access-level')).toContainText('view only');
+    await expect(page.getByTestId('access-level')).toHaveText('View only');
     await expect(page.getByTestId('user-row').first()).toBeVisible();
     await expect(page.getByTestId('add-user')).toHaveCount(0);
     await page.goto('/#/settings/security');

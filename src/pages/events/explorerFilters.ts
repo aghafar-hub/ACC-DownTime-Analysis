@@ -4,12 +4,17 @@
 // and the order. Both live in the address, so Back, a reload or a saved view restore the same list. Pure.
 import type { EventRow, Startup } from '../../api/types';
 import { applyFilters as applyRowFilters, buildIndex, emptyFilter, matchKey, parseSettings, type DateRange, type MasterIndex } from '../../calc';
-import { hasOpenProblemFlags } from '../../calc/flags';
+import { hasOpenProblemFlags, isBlockingFlag, openFlagsOf } from '../../calc/flags';
 import { activeCount as sharedCount, type DashFilters } from '../../dashboard/filters';
 import { t } from '../../i18n/t';
 
 export type Show = 'all' | 'issues' | 'edited' | 'void';
-export type Sort = 'stop_desc' | 'stop_asc' | 'dur_desc';
+/** The sortable columns of the list: Started, Area, Code, Reason, Class, Hours, Freq, Status. */
+export type SortKey = 'stop' | 'area' | 'code' | 'reason' | 'class' | 'dur' | 'freq' | 'status';
+export type SortDir = 'asc' | 'desc';
+/** A column and a direction: 'stop_desc' (newest first, the default), 'dur_desc' (longest first), 'area_asc' ... */
+export type Sort = `${SortKey}_${SortDir}`;
+export const SORT_KEYS: SortKey[] = ['stop', 'area', 'code', 'reason', 'class', 'dur', 'freq', 'status'];
 /** The page's own choices (the scope is the shared filter set). */
 export interface Filters { q: string; show: Show; sort: Sort }
 export const EMPTY: Filters = { q: '', show: 'all', sort: 'stop_desc' };
@@ -75,10 +80,66 @@ export function applyFilters(rows: readonly EventRow[], f: Filters, startup: Sta
     }
     return true;
   });
-  if (f.sort === 'stop_desc') out.sort((a, b) => b.stop_ts.localeCompare(a.stop_ts) || a.area_id.localeCompare(b.area_id));
-  else if (f.sort === 'stop_asc') out.sort((a, b) => a.stop_ts.localeCompare(b.stop_ts) || a.area_id.localeCompare(b.area_id));
-  else out.sort((a, b) => b.duration_s - a.duration_s);
+  return sortRows(out, f.sort);
   return out;
+}
+
+// ---------------------------------------------------------------- order
+
+/** One word for where a record stands, worst last: OK, edited, to check (▲ open), left out (◆ open), void. */
+export type RecordStatus = 'ok' | 'edited' | 'check' | 'blocked' | 'void';
+const STATUS_RANK: Record<RecordStatus, number> = { ok: 0, edited: 1, check: 2, blocked: 3, void: 4 };
+export function recordStatus(e: EventRow): RecordStatus {
+  if (e.is_void) return 'void';
+  const open = openFlagsOf(e);
+  if (open.some(isBlockingFlag)) return 'blocked';
+  if (hasOpenProblemFlags(e)) return 'check';
+  if (e.edited) return 'edited';
+  return 'ok';
+}
+
+export const sortKeyOf = (s: Sort): SortKey => s.slice(0, s.lastIndexOf('_')) as SortKey;
+export const sortDirOf = (s: Sort): SortDir => (s.endsWith('_asc') ? 'asc' : 'desc');
+
+/** The order a column starts in when its heading is clicked: newest, longest, most and worst first; words A to Z. */
+export function firstDir(key: SortKey): SortDir {
+  return key === 'stop' || key === 'dur' || key === 'freq' || key === 'status' ? 'desc' : 'asc';
+}
+
+/** A click on a column heading: the same column turns round, another column starts in its natural order. */
+export function nextSort(cur: Sort, key: SortKey): Sort {
+  if (sortKeyOf(cur) === key) return `${key}_${sortDirOf(cur) === 'asc' ? 'desc' : 'asc'}`;
+  return `${key}_${firstDir(key)}`;
+}
+
+const text = (v: string | null | undefined): string => (v ?? '').trim().toLowerCase();
+/** Blank text sorts after any text, whatever the direction. */
+function byText(a: string, b: string, dir: number): number {
+  if (!a !== !b) return a ? -1 : 1;
+  return dir * a.localeCompare(b);
+}
+
+/**
+ * The rows in the order of a column. Ties fall back to the newest stop first, then the area, then the record id, so
+ * the order is the same on every run (stable for the export, the paging and the tests). Pure; returns a new array.
+ */
+export function sortRows(rows: readonly EventRow[], sort: Sort): EventRow[] {
+  const key = sortKeyOf(sort);
+  const dir = sortDirOf(sort) === 'asc' ? 1 : -1;
+  const cmp = (a: EventRow, b: EventRow): number => {
+    switch (key) {
+      case 'stop': return dir * a.stop_ts.localeCompare(b.stop_ts);
+      case 'area': return dir * a.area_id.localeCompare(b.area_id);
+      case 'code': return byText(text(a.code_raw), text(b.code_raw), dir);
+      case 'reason': return byText(text(a.reason_raw), text(b.reason_raw), dir);
+      case 'class': return byText(text(a.classification), text(b.classification), dir);
+      case 'dur': return dir * (a.duration_s - b.duration_s);
+      case 'freq': return dir * (a.freq - b.freq);
+      case 'status': return dir * (STATUS_RANK[recordStatus(a)] - STATUS_RANK[recordStatus(b)]);
+      default: return 0;
+    }
+  };
+  return [...rows].sort((a, b) => cmp(a, b) || b.stop_ts.localeCompare(a.stop_ts) || a.area_id.localeCompare(b.area_id) || a.event_id.localeCompare(b.event_id));
 }
 
 /** The filters in words, for the export's info sheet (dates stay ISO, as in every file): 'Period 2026-08-01 to 2026-08-31, Line L.1, Area CR, search "belt"'. */
@@ -115,7 +176,7 @@ export const SHOWN_PARAM = 'n';
 export const hasExplorerParams = (sp: URLSearchParams): boolean => EXPLORER_KEYS.some((k) => sp.has(k));
 
 const SHOWS: Show[] = ['all', 'issues', 'edited', 'void'];
-const SORTS: Sort[] = ['stop_desc', 'stop_asc', 'dur_desc'];
+const isSort = (v: string | null): v is Sort => !!v && /^[a-z]+_(asc|desc)$/.test(v) && SORT_KEYS.includes(v.slice(0, v.lastIndexOf('_')) as SortKey);
 
 /** Only non-default values are written, so the defaults are an empty query. */
 export function serializeExplorerFilters(f: Filters): URLSearchParams {
@@ -129,10 +190,10 @@ export function serializeExplorerFilters(f: Filters): URLSearchParams {
 /** The page's choices a query describes; anything missing or not valid is the default. */
 export function parseExplorerFilters(sp: URLSearchParams): Filters {
   const show = sp.get('show') as Show | null;
-  const sort = sp.get('sort') as Sort | null;
+  const sort = sp.get('sort');
   return {
     q: sp.get('q') ?? '',
     show: show && SHOWS.includes(show) ? show : 'all',
-    sort: sort && SORTS.includes(sort) ? sort : 'stop_desc',
+    sort: isSort(sort) ? sort : 'stop_desc',
   };
 }

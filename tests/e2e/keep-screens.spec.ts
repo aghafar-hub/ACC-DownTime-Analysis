@@ -42,7 +42,8 @@ for (const theme of THEMES) {
       // a record with an unknown code: the confirmation sheet
       await pickFlag('unknown_code');
       const warnRow = page.getByTestId(rowSel).filter({ has: page.locator('xpath=self::*[@data-blocking="no"]') }).first();
-      await warnRow.getByTestId('v-keep-btn').click();
+      if (!vp.phone) await warnRow.getByTestId('v-more').click();
+      await (vp.phone ? warnRow.getByTestId('v-keep-btn') : page.getByTestId('v-keep-btn')).click();
       await expect(page.getByTestId('keep-modal')).toBeVisible();
       await shot('2-sheet-warning');
       await page.getByTestId('keep-apply').click();
@@ -52,7 +53,8 @@ for (const theme of THEMES) {
       // a blocking record: the sheet says it is still left out of the numbers
       await page.getByTestId('v-reset').click();
       await pickFlag('missing_classification');
-      await page.getByTestId(rowSel).first().getByTestId('v-keep-btn').click();
+      if (!vp.phone) await page.getByTestId(rowSel).first().getByTestId('v-more').click();
+      await (vp.phone ? page.getByTestId(rowSel).first().getByTestId('v-keep-btn') : page.getByTestId('v-keep-btn')).click();
       await expect(page.getByTestId('keep-sentence')).toContainText('still left out of the numbers');
       await shot('3-sheet-blocking');
       await page.getByTestId('keep-apply').click();

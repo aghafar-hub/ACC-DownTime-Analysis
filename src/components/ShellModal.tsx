@@ -9,8 +9,10 @@ import './ShellModal.css';
 // subtitle and an optional badge; a scrolling body of section cards; a footer
 // that stays in view. Drawn on <body> so the shade covers everything; full
 // screen on a phone; Esc, the close button and the phone's Back all close it.
+// variant 'drawer': the same box drawn in place as a panel beside the page (Event records on a wide screen); no shade,
+// the page stays usable, Esc and the close button close it.
 export default function ShellModal({
-  icon, title, subtitle, badge, onClose, footer, width = 720, testid, children,
+  icon, title, subtitle, badge, onClose, footer, width = 720, testid, children, variant = 'modal',
 }: {
   icon?: string;
   title: string;
@@ -21,28 +23,31 @@ export default function ShellModal({
   width?: number;
   testid?: string;
   children: ReactNode;
+  variant?: 'modal' | 'drawer';
 }) {
-  useBackClose(true, onClose);
+  const drawer = variant === 'drawer';
+  useBackClose(!drawer, onClose);
   const boxRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     boxRef.current?.focus({ preventScroll: true });
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    // a popup opened over the drawer (Keep as entered) handles its own Escape
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !(drawer && document.querySelector('.sm-shade')) && onClose();
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
       prev?.focus?.({ preventScroll: true });
     };
-  }, [onClose]);
-  return createPortal(
-    <div className="sm-shade" onClick={onClose}>
+  }, [onClose, drawer]);
+  const box = (
       <div
-        className="sm-box"
+        className={drawer ? 'sm-box sm-box--drawer' : 'sm-box'}
         role="dialog"
-        aria-modal="true"
+        aria-modal={drawer ? 'false' : 'true'}
         aria-label={title}
         data-testid={testid}
-        style={{ maxWidth: width }}
+        data-variant={variant}
+        style={drawer ? undefined : { maxWidth: width }}
         tabIndex={-1}
         ref={boxRef}
         onClick={(e) => e.stopPropagation()}
@@ -65,6 +70,11 @@ export default function ShellModal({
         <div className="sm-body">{children}</div>
         {footer && <div className="sm-foot">{footer}</div>}
       </div>
+  );
+  if (drawer) return box;
+  return createPortal(
+    <div className="sm-shade" onClick={onClose}>
+      {box}
     </div>,
     document.body,
   );

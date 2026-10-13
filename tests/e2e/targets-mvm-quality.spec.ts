@@ -234,6 +234,10 @@ test.describe('data quality scorecard', () => {
     const errors = watchConsole(page);
     await as(page, 'engineer');
     await page.goto('/#/validate');
+    // folded by default: the summary line is visible, the table opens under it
+    await expect(page.getByTestId('quality-summary')).toHaveText(/^\d+\.\d% clean · [\d,]+ to check · [\d,]+ left out \([\d.<,]+ h\) · \d+ months?$/);
+    await expect(page.getByTestId('quality-table')).toBeHidden();
+    await page.getByTestId('quality-details').locator('summary').click();
     await expect(page.getByTestId('quality-table')).toBeVisible();
     const rows = page.getByTestId('quality-row');
     expect(await rows.count()).toBeGreaterThan(0);

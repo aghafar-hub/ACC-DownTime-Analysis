@@ -228,3 +228,28 @@
   font-size: 13.5px;
   color: var(--tk-text-secondary);
 }
+
+/* R3: compact history rows; long file names end in an ellipsis (full name and batch id in the tooltip) */
+.up-history-table td {
+  padding-top: 6px;
+  padding-bottom: 6px;
+  vertical-align: middle;
+}
+.up-file-cell {
+  max-width: 280px;
+}
+.up-fname {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-card-title.up-fname {
+  flex: 1 1 auto;
+}
+.up-history-table .up-history-link {
+  white-space: nowrap;
+  min-height: 32px;
+  padding: 4px 0;
+}

@@ -1,6 +1,5 @@
 import { InstallCard } from '../../components/InstallGuide';
 import ThemePicker from '../../components/ThemePicker';
-import { Tile } from '../../components/Tile';
 import { t } from '../../i18n/t';
 import { useTheme } from '../../theme/ThemeContext';
 import AppVersionCard from '../../update/AppVersionCard';
@@ -12,12 +11,9 @@ export default function Appearance() {
   const { themeName } = useTheme();
   return (
     <div data-testid="settings-appearance">
-      <div className="tiles">
-        <Tile icon="palette" label={t('Theme on this device')} value={t(themeName)} testid="fact-theme" />
-      </div>
       <section className="card" data-testid="appearance-section">
         <h2>{t('Appearance')}</h2>
-        <p style={{ marginBottom: 12 }}>{t('Pick the theme that suits where you work. It is kept on this device.')}</p>
+        <p style={{ marginBottom: 12 }}>{t('Pick the theme that suits where you work. It is kept on this device.')} <span data-testid="fact-theme">{t('In use: {name}.', { name: t(themeName) })}</span></p>
         <ThemePicker />
       </section>
       <InstallCard />

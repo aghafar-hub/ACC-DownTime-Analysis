@@ -35,7 +35,7 @@ test.describe('upload flow', () => {
     const errors = watchConsole(page);
     await signInAndWait(page, 'engineer');
     await openUpload(page);
-    await expect(page.getByTestId('access-level')).toContainText('can edit');
+    await expect(page.getByTestId('access-level')).toHaveCount(0); // Edit access needs no note
     const before = Number(((await page.getByTestId('fact-batches').textContent()) ?? '').replace(/\D/g, '')) || 0;
     expect(before).toBeGreaterThan(5);
 
@@ -136,6 +136,27 @@ test.describe('upload flow', () => {
     await expect(page.getByTestId('late-section')).toHaveCount(0);
 
     expect(errors, 'console errors').toEqual([]);
+  });
+
+  test('history: names instead of user ids, long file names end in an ellipsis with the full name in the tooltip', async ({ page }) => {
+    // the administrator may read the user list: the uploader's name
+    await signInAndWait(page, 'admin');
+    await openUpload(page);
+    const row = page.getByTestId('history-row').first();
+    await expect(row.locator('td').nth(1)).toHaveText('Demo Engineer');
+    await expect(page.getByTestId('history-table')).not.toContainText('U-DEMO');
+    const fileCell = row.locator('.up-fname');
+    await expect(fileCell).toHaveAttribute('title', /^Downtime-\d{4}-synthetic\.xlsx\nB-/);
+    expect(await fileCell.evaluate((el) => [getComputedStyle(el).textOverflow, getComputedStyle(el).whiteSpace].join(' '))).toBe('ellipsis nowrap');
+    // compact rows: one line each
+    const h = await page.getByTestId('history-row').evaluateAll((els) => Math.max(...els.map((e) => e.getBoundingClientRect().height)));
+    expect(h).toBeLessThan(52);
+    // the engineer uploaded them and sees 'You' (someone without the user list sees 'Another user': unit test)
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('sign-out').click();
+    await signInAndWait(page, 'engineer');
+    await page.goto('/#/upload');
+    await expect(page.getByTestId('history-row').first().locator('td').nth(1)).toHaveText('You');
   });
 
   test('a row that differs from the stored one is shown and kept as stored', async ({ page }) => {

@@ -24,6 +24,11 @@ const monthOf = (shown: string): string => {
   if (!m) throw new Error(`not a date: ${shown}`);
   return `${m[3]}-${String(MONTHS.indexOf(m[2]!) + 1).padStart(2, '0')}`;
 };
+/** A desktop row's menu action (Keep as entered, Void): open the row's ⋯ menu, then choose the item (drawn on <body>). */
+const rowAction = async (page: Page, row: ReturnType<Page['locator']>, testid: 'v-keep-btn' | 'v-void-btn') => {
+  await row.getByTestId('v-more').click();
+  await page.getByTestId(testid).click();
+};
 /** Seconds in "2 h 05 min (7500 s)" of the open record. */
 const detailSeconds = async (page: Page) => num((await page.getByTestId('detail-duration').textContent())!.match(/\((\d+) s\)/)![1]);
 
@@ -59,6 +64,7 @@ test.describe('validate (desktop)', () => {
       } else {
         await expect(page.getByTestId('v-fix-btn')).toHaveCount(0);
         await expect(page.getByTestId('v-void-btn')).toHaveCount(0);
+        await expect(page.getByTestId('v-more')).toHaveCount(0);
         await expect(page.getByTestId('v-tick')).toHaveCount(0);
         await expect(page.getByTestId('v-recheck')).toHaveCount(0);
         // everything is readable: the popup opens with the problems explained and no Edit button
@@ -354,7 +360,7 @@ test.describe('validate (desktop)', () => {
     await expect(page.getByTestId('v-tick')).toHaveCount(0);
     const row = rows(page).first();
     const id = (await row.getAttribute('data-event-id'))!;
-    await row.getByTestId('v-void-btn').click();
+    await rowAction(page, row, 'v-void-btn');
     await expect(page.getByTestId('confirm-void')).toBeVisible();
     await page.getByTestId('confirm-void').click();
     await expect(page.getByTestId('error-note')).toBeVisible();
@@ -470,7 +476,7 @@ test.describe('validate (desktop)', () => {
     const n = await all.count();
     for (let i = 0; i < n; i++) {
       const r = all.nth(i);
-      if ((await r.getByTestId('v-flag').count()) === 1) return r;
+      if ((await r.getByTestId('v-flag').count()) === 1 && (await r.getByTestId('v-flag-more').count()) === 0) return r;
     }
     throw new Error('no single-problem row');
   }
@@ -489,7 +495,7 @@ test.describe('validate (desktop)', () => {
     const subtitleTotal0 = num(await page.getByTestId('page-subtitle').textContent());
 
     await page.getByTestId('v-search').fill(id);
-    await page.locator(`[data-event-id="${id}"]`).getByTestId('v-keep-btn').click();
+    await rowAction(page, page.locator(`[data-event-id="${id}"]`), 'v-keep-btn');
     const modal = page.getByTestId('keep-modal');
     await expect(modal).toBeVisible();
     await expect(page.getByTestId('keep-flag-box')).toHaveCount(1);
@@ -574,7 +580,7 @@ test.describe('validate (desktop)', () => {
 
     await page.goto('/#/validate');
     await page.getByTestId('v-search').fill(id);
-    await page.locator(`[data-event-id="${id}"]`).getByTestId('v-keep-btn').click();
+    await rowAction(page, page.locator(`[data-event-id="${id}"]`), 'v-keep-btn');
     await expect(page.getByTestId('keep-sentence')).toHaveText('Nothing in the record changes. It will stop being listed. It is still left out of the numbers.');
     await page.getByTestId('keep-apply').click();
     await expect(page.getByTestId('keep-result')).toContainText('Kept 1 of 1');
@@ -624,7 +630,7 @@ test.describe('validate (desktop)', () => {
     let refusedId = '';
     for (let i = 0; i < (await only.count()); i++) {
       const r = only.nth(i);
-      if ((await r.getByTestId('v-flag').count()) === 1 && !picks.includes((await r.getAttribute('data-event-id'))!)) {
+      if ((await r.getByTestId('v-flag').count()) === 1 && (await r.getByTestId('v-flag-more').count()) === 0 && !picks.includes((await r.getAttribute('data-event-id'))!)) {
         await r.getByTestId('v-tick').check();
         refusedId = (await r.getAttribute('data-event-id'))!;
         break;
@@ -658,7 +664,7 @@ test.describe('validate (desktop)', () => {
     await chip(page, 'unknown_code').click();
     const row = await singleProblemRow(page, 'no');
     const id = (await row.getAttribute('data-event-id'))!;
-    await row.getByTestId('v-keep-btn').click();
+    await rowAction(page, row, 'v-keep-btn');
     await page.getByTestId('keep-note').fill('Checked for the viewer test');
     await page.getByTestId('keep-apply').click();
     await expect(page.getByTestId('keep-result')).toBeVisible();
@@ -673,6 +679,7 @@ test.describe('validate (desktop)', () => {
     await page.goto('/#/validate');
     await expect(page.getByTestId('v-count-kept')).toBeVisible({ timeout: 20000 });
     await expect(page.getByTestId('v-keep-btn')).toHaveCount(0);
+    await expect(page.getByTestId('v-more')).toHaveCount(0);
     await expect(page.getByTestId('v-tick')).toHaveCount(0);
     await expect(page.getByTestId('v-keep-open')).toHaveCount(0);
     await page.getByTestId('v-view-kept').click();
@@ -819,3 +826,57 @@ for (const width of [360, 390]) {
     });
   });
 }
+
+test.describe('validate (R3, desktop: one-line rows, actions menu, month table folded)', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  test('each record is one line with Fix and a menu holding Fix, Keep as entered and Void', async ({ page }) => {
+    await stubFonts(page);
+    const errors = watchConsole(page);
+    await openValidate(page, 'engineer');
+    const row = page.getByTestId('v-row').first();
+    await expect(row).toBeVisible();
+    // one line: no row taller than a button row, the table fits without scrolling sideways
+    const heights = await page.getByTestId('v-row').evaluateAll((els) => els.slice(0, 20).map((e) => e.getBoundingClientRect().height));
+    expect(Math.max(...heights)).toBeLessThan(60);
+    const fits = await page.getByTestId('v-table').evaluate((el) => el.scrollWidth <= el.clientWidth + 1);
+    expect(fits).toBe(true);
+    // Fix is the only visible button; the rest is in the menu
+    await expect(row.getByTestId('v-fix-btn')).toBeVisible();
+    await expect(row.getByTestId('v-void-btn')).toHaveCount(0);
+    const more = row.getByTestId('v-more');
+    await expect(more).toHaveAttribute('aria-haspopup', 'menu');
+    await more.click();
+    await expect(more).toHaveAttribute('aria-expanded', 'true');
+    const panel = page.getByTestId('v-more-panel');
+    await expect(panel.getByRole('menuitem')).toHaveText([/^Fix/, /^Keep as entered/, /^Void/]);
+    await expect(page.getByTestId('v-menu-fix')).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('v-keep-btn')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(more).toBeFocused();
+    // Void from the menu opens the record in void mode
+    await more.click();
+    await page.getByTestId('v-void-btn').click();
+    await expect(page.getByTestId('confirm-void')).toBeVisible();
+    await page.keyboard.press('Escape');
+    // what to do: one line, the full text in the tooltip
+    const fix = row.getByTestId('v-fix');
+    await expect(fix).toHaveAttribute('title', /.{10,}/);
+    expect(await fix.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('nowrap');
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  test('Data quality by month is folded under one summary line', async ({ page }) => {
+    await stubFonts(page);
+    await openValidate(page, 'viewer');
+    await expect(page.getByTestId('quality-summary')).toBeVisible();
+    await expect(page.getByTestId('quality-summary')).toContainText('clean');
+    await expect(page.getByTestId('quality-table')).toBeHidden();
+    await page.getByTestId('quality-details').locator('summary').click();
+    await expect(page.getByTestId('quality-table')).toBeVisible();
+    // a viewer reads the list: no Fix, no menu
+    await expect(page.getByTestId('v-fix-btn')).toHaveCount(0);
+    await expect(page.getByTestId('v-more')).toHaveCount(0);
+  });
+});
