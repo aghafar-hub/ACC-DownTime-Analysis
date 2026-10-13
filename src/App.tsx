@@ -17,7 +17,6 @@ import { useVisiblePages } from './hooks/useVisiblePages';
 import { t } from './i18n/t';
 import MoreSheet, { OPEN_MORE_EVENT } from './mobile/MoreSheet';
 import ScrollKeeper from './mobile/ScrollKeeper';
-import UpdatePrompt from './mobile/UpdatePrompt';
 import ChangePassword from './pages/ChangePassword';
 import EventExplorer from './pages/EventExplorer';
 import Login from './pages/Login';
@@ -33,6 +32,7 @@ import Validate from './pages/Validate';
 import { NotificationsProvider } from './notifications/NotificationsContext';
 import { ValidationProvider } from './validate/ValidationContext';
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
+import UpdateBanner from './update/UpdateBanner';
 import './App.css';
 
 // Signed in: the shell (left rail, top bar, page tabs, phone bottom bar) around the page.
@@ -81,7 +81,6 @@ function ShellLayout() {
         {mobile && <InstallBanner />}
       </div>
       <SaveBlockedToast />
-      <UpdatePrompt />
     </div>
     </NotificationsProvider>
     </ValidationProvider>
@@ -140,6 +139,7 @@ export default function App() {
   return (
     <HashRouter>
       <ThemeProvider>
+        <UpdateBanner />
         <EnvRibbon />
         <AuthProvider>
           <Routes>

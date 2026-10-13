@@ -3,10 +3,11 @@ import ThemePicker from '../../components/ThemePicker';
 import { Tile } from '../../components/Tile';
 import { t } from '../../i18n/t';
 import { useTheme } from '../../theme/ThemeContext';
+import AppVersionCard from '../../update/AppVersionCard';
 import '../../components/ui.css';
 import '../admin.css';
 
-/** Settings > Appearance: the theme picker and the install card. Everyone sees it, whatever their role. */
+/** Settings > Appearance: the theme picker, the install card and the app version. Everyone sees it, whatever their role. */
 export default function Appearance() {
   const { themeName } = useTheme();
   return (
@@ -20,6 +21,7 @@ export default function Appearance() {
         <ThemePicker />
       </section>
       <InstallCard />
+      <AppVersionCard />
     </div>
   );
 }

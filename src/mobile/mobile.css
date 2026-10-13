@@ -84,45 +84,6 @@
 .more-mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
 [dir='rtl'] .more-back svg { transform: none !important; }
 
-/* New-version prompt (UpdatePrompt.tsx) */
-.update-toast {
-  position: fixed;
-  z-index: 2100;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 24px;
-  width: min(460px, calc(100% - 24px));
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 10px 10px 14px;
-  border-radius: 14px;
-  background: #111827;
-  color: #fff;
-  font: 500 13.5px var(--sans);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
-}
-.update-toast span {
-  flex: 1;
-}
-.update-toast button {
-  border: 0;
-  background: none;
-  color: #9dc1ff;
-  font: 700 14px var(--sans);
-  padding: 8px 6px;
-  cursor: pointer;
-}
-.update-toast .update-toast-x {
-  color: #9ca3af;
-  padding: 8px 4px;
-}
-@media (max-width: 860px) {
-  .update-toast {
-    bottom: calc(var(--bottom-nav-h) + 14px);
-  }
-}
-
 /* Keyboard open (viewport.ts): the bottom bar steps aside so the form
    and its buttons get the room. */
 @media (max-width: 860px) {

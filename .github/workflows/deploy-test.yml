@@ -64,6 +64,9 @@ jobs:
           if grep -rl "Demo-Pass-1234" dist >/dev/null 2>&1; then
             echo "The build contains demo accounts. VITE_API_URL was not applied."; exit 1
           fi
+          if grep -rlE "__accTestUpdate|acc:update-ready" dist >/dev/null 2>&1; then
+            echo "The build contains the update-banner test hook. It must only exist in the demo build."; exit 1
+          fi
 
       - uses: actions/upload-pages-artifact@v3
         with:

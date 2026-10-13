@@ -11,3 +11,16 @@ interface ImportMetaEnv {
   /** Shows a "not live data" ribbon on a test copy. */
   readonly VITE_ENV_LABEL?: string;
 }
+
+/** Short git commit of this build, or 'dev' (vite.config.ts `define`). */
+declare const __APP_BUILD__: string;
+/** Build date, YYYY-MM-DD. */
+declare const __APP_BUILD_DATE__: string;
+
+interface Window {
+  /** Demo build only (no VITE_API_URL): flips the "new version waiting" state so tests can see the banner. */
+  __accTestUpdate?: (() => void) & {
+    onApply?: () => void;
+    onCheck?: () => Promise<'found' | 'none' | 'error' | 'unavailable'>;
+  };
+}
