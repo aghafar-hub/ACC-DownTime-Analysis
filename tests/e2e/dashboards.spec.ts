@@ -312,6 +312,67 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
+  test('R1 scope bar: equipment follows the areas (with cross-area causes) and out-of-scope choices are pruned when the line changes', async ({ page }) => {
+    const errors = watchConsole(page);
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    await open(page, '/dashboard', 'page-overview');
+    const allCodes = async () => {
+      await page.getByTestId('fb-code').click();
+      const n = await page.getByTestId('fb-code-opt').count();
+      await closePanel(page);
+      return n;
+    };
+    // area K.1 narrows the equipment list
+    await page.getByTestId('fb-area').click();
+    await page.locator('[data-testid="fb-area-opt"][data-value="K.1"]').click();
+    await closePanel(page);
+    await page.getByTestId('fb-code').click();
+    await expect(page.getByTestId('fb-code-search')).toBeVisible();
+    const code = await page.getByTestId('fb-code-opt').first().getAttribute('data-value');
+    await page.getByTestId('fb-code-opt').first().click();
+    await closePanel(page);
+    await expect(page.getByTestId(`fb-chip-code-${code}`)).toBeVisible();
+    await expect(page.getByTestId('fb-code')).toContainText(code!);
+    // K.1 is on line L.1: choosing only L.2 drops the area and its equipment
+    await page.getByTestId('fb-line').click();
+    await page.locator('[data-testid="fb-line-opt"][data-value="L.2"]').click();
+    await closePanel(page);
+    await expect(page.getByTestId('fb-chip-line-L.2')).toBeVisible();
+    await expect(page.getByTestId('fb-chip-area-K.1')).toHaveCount(0);
+    await expect(page.getByTestId(`fb-chip-code-${code}`)).toHaveCount(0);
+    await expect(page.getByTestId('fb-code')).toContainText('All');
+    expect(page.url()).not.toContain('area=K.1');
+    // the areas offered are the line's
+    await page.getByTestId('fb-area').click();
+    await expect(page.locator('[data-testid="fb-area-opt"][data-value="K.1"]')).toHaveCount(0);
+    await closePanel(page);
+    expect(await allCodes()).toBeGreaterThan(0);
+    // the Type panel: Incidental / Planned / Other over the classifications
+    await openType(page);
+    await page.getByTestId('fb-group-planned').click();
+    await closePanel(page);
+    await expect(page.getByTestId('scope-type')).toContainText('Type: Planned');
+    await expect(page.getByTestId('fb-chip-cls-PL')).toBeVisible();
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
+  test('R1 data status strip: what the data covers, records to check (to Validate) and the last upload', async ({ page }) => {
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    for (const p of ['dashboard', 'pareto', 'events']) {
+      await page.goto(`/#/${p}`);
+      await expect(page.getByTestId('data-status')).toBeVisible({ timeout: 20000 });
+      await expect(page.getByTestId('fb-coverage')).toContainText(/Data covers \d{1,2} [A-Z][a-z]{2} \d{4} – \d{1,2} [A-Z][a-z]{2} \d{4}/);
+      await expect(page.getByTestId('data-status-upload')).toContainText(/Last upload \d{1,2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}/);
+    }
+    await expect(page.getByTestId('data-status-check')).toContainText(/\d+ records to check/);
+    await page.getByTestId('data-status-check').click();
+    await expect(page.getByTestId('page-validate')).toBeVisible();
+    // not on pages outside Analyze and Event records
+    await expect(page.getByTestId('data-status')).toHaveCount(0);
+  });
+
   test('every page has a takeaway sentence built from its numbers', async ({ page }) => {
     await page.goto('/');
     await signInAndWait(page, 'engineer');

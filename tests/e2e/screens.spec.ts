@@ -39,11 +39,15 @@ for (const theme of THEMES) {
         await expect(page.getByTestId('fb-sheet')).toBeVisible();
         await shot('2b-filters-sheet');
         await page.getByTestId('fb-sheet-close').click();
+        await expect(page.getByTestId('fb-sheet')).toHaveCount(0);
       } else {
         await page.getByTestId('scope-type').click();
         await shot('2b-type-panel');
         await page.keyboard.press('Escape');
+        await expect(page.getByTestId('scope-type-panel')).toHaveCount(0);
       }
+      // closing a panel steps the history back a moment later (so the phone's Back closes panels): let it land first
+      await page.waitForTimeout(400);
 
       // Event records follow the shared period: the whole year has edited rows
       await page.goto('/#/events?r=year&y=2026');
