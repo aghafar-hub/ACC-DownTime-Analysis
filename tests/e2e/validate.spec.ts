@@ -17,6 +17,13 @@ const rows = (page: Page) => page.locator('[data-testid="v-row"], [data-testid="
 const blockedCount = async (page: Page) => num(await page.getByTestId('v-count-blocked').textContent());
 const chip = (page: Page, flag: string) => page.getByTestId(`v-chip-${flag}`);
 const chipCount = async (page: Page, flag: string) => ((await chip(page, flag).count()) ? num(await chip(page, flag).locator('b').textContent()) : 0);
+/** 'YYYY-MM' of a timestamp as the app shows it ('26 Aug 2026 14:05'). */
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthOf = (shown: string): string => {
+  const m = /(\d{1,2}) ([A-Z][a-z]{2}) (\d{4})/.exec(shown);
+  if (!m) throw new Error(`not a date: ${shown}`);
+  return `${m[3]}-${String(MONTHS.indexOf(m[2]!) + 1).padStart(2, '0')}`;
+};
 /** Seconds in "2 h 05 min (7500 s)" of the open record. */
 const detailSeconds = async (page: Page) => num((await page.getByTestId('detail-duration').textContent())!.match(/\((\d+) s\)/)![1]);
 
@@ -126,7 +133,7 @@ test.describe('validate (desktop)', () => {
     const first = rows(page).first();
     const id = (await first.getAttribute('data-event-id'))!;
     const stop = (await first.locator('.row-link').textContent())!;
-    const month = stop.slice(0, 7);
+    const month = monthOf(stop);
     const blocked0 = await blockedCount(page);
     const badge0 = num(await page.getByTestId('validate-badge-rail').textContent());
 
@@ -552,7 +559,7 @@ test.describe('validate (desktop)', () => {
     await chip(page, 'missing_classification').click();
     const row = await singleProblemRow(page, 'yes');
     const id = (await row.getAttribute('data-event-id'))!;
-    const month = (await row.locator('.row-link').textContent())!.slice(0, 7);
+    const month = monthOf((await row.locator('.row-link').textContent())!);
     await page.getByTestId('v-reset').click();
     const blocked0 = await blockedCount(page);
     const kept0 = await keptCount(page);
