@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { IS_MOCK } from '../config';
 import { t } from '../i18n/t';
 import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '../mock/demoAccounts';
+import { ArrowIcon, AuthShell, EmailField, PasswordField } from './AuthParts';
 import './Auth.css';
 
 export default function Login() {
@@ -16,6 +17,7 @@ export default function Login() {
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -32,49 +34,67 @@ export default function Login() {
     }
   }
 
-  return (
-    <div className="auth-page">
-      <div className="auth-card-wrap">
-        <div className="auth-brand">
-          <img src={`${import.meta.env.BASE_URL}brand/acc-logo-full.png`} alt={t('ACC Downtime Analysis')} className="auth-logo" />
-          <p className="auth-tagline">{t('Downtime Analysis')}</p>
-        </div>
+  const errId = error ? 'login-error' : undefined;
 
-        <form className="auth-card" onSubmit={handleSubmit} data-testid="login-form">
-          {notice && !error && <p className="auth-notice" role="status" data-testid="login-notice">{notice}</p>}
-          <label>
-            {t('Email')}
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus autoComplete="username" name="email" data-testid="login-email" />
-          </label>
-          <label>
-            {t('Password')}
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="current-password" name="password" data-testid="login-password" />
-          </label>
+  return (
+    <AuthShell>
+      <p className="auth-eyebrow">{t('ACC DOWN TIME ANALYSIS')}</p>
+      <h1 className="auth-title">{t('Welcome back')}</h1>
+      <p className="auth-subtitle">{t('Sign in to your workspace')}</p>
+
+      <form className="auth-form" onSubmit={handleSubmit} data-testid="login-form">
+        {notice && !error && <p className="auth-notice" role="status" data-testid="login-notice">{notice}</p>}
+        <EmailField
+          label={t('Email address')} value={email} onChange={setEmail} autoFocus name="email" autoComplete="username"
+          placeholder={t('you@company.com')} testid="login-email" describedBy={errId} invalid={!!error}
+        />
+        <PasswordField
+          label={t('Password')} value={password} onChange={setPassword} name="password" autoComplete="current-password"
+          testid="login-password" describedBy={errId} invalid={!!error}
+        />
+        <div className="auth-row">
           <label className="auth-remember">
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} data-testid="login-keep" />
-            {t('Keep me signed in')}
+            {t('Remember this device')}
           </label>
-          {error && <p className="auth-error" role="alert" data-testid="login-error">{error}</p>}
-          <button type="submit" className="tap-scale" disabled={submitting} data-testid="login-submit">
-            {submitting ? t('Signing in…') : t('Sign in')}
+          <button
+            type="button" className="auth-link" aria-expanded={forgotOpen} aria-controls="forgot-help"
+            onClick={() => setForgotOpen((o) => !o)} data-testid="login-forgot"
+          >
+            {t('Forgot password?')}
           </button>
-        </form>
-
-        {IS_MOCK && (
-          <div className="auth-demo" data-testid="demo-accounts">
-            <p>{t('Demo mode with made-up data. Tap a role to fill the form.')}</p>
-            <div className="auth-demo-row">
-              {DEMO_ACCOUNTS.map((a) => (
-                <button key={a.email} type="button" onClick={() => { setEmail(a.email); setPassword(DEMO_PASSWORD); }}>
-                  {t(a.label)}
-                </button>
-              ))}
-            </div>
-          </div>
+        </div>
+        {forgotOpen && (
+          <p className="auth-help" id="forgot-help" role="note" data-testid="login-forgot-help">
+            {t('Ask your administrator to reset your password. They can issue a temporary one from Settings > Users.')}
+          </p>
         )}
+        {/* always present so a screen reader hears the message when it appears */}
+        <div aria-live="assertive" role="alert" id="login-error-live" className="auth-live">
+          {error && <p className="auth-error" id="login-error" data-testid="login-error">{error}</p>}
+        </div>
+        <button type="submit" className="auth-submit tap-scale" disabled={submitting} data-testid="login-submit">
+          {submitting ? t('Signing in…') : t('Sign in')}
+          {!submitting && <ArrowIcon />}
+        </button>
+      </form>
 
-        <p className="auth-footer">{t('Arabian Cement Company · Sokhna Plant')}</p>
-      </div>
-    </div>
+      <p className="auth-access">{t('Need access? Contact your administrator')}</p>
+
+      {IS_MOCK && (
+        <div className="auth-demo" data-testid="demo-accounts">
+          <p>{t('Demo mode with made-up data. Tap a role to fill the form.')}</p>
+          <div className="auth-demo-row">
+            {DEMO_ACCOUNTS.map((a) => (
+              <button key={a.email} type="button" onClick={() => { setEmail(a.email); setPassword(DEMO_PASSWORD); }}>
+                {t(a.label)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p className="auth-footer">{t('Arabian Cement Company')}</p>
+    </AuthShell>
   );
 }

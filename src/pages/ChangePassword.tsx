@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { describeError } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { t } from '../i18n/t';
+import { ArrowIcon, AuthShell, PasswordField } from './AuthParts';
 import './Auth.css';
 
 const MIN_LENGTH = 10; // the server checks the configured minimum as well
@@ -33,27 +34,29 @@ export default function ChangePassword() {
     }
   }
 
+  const errId = error ? 'cp-error' : undefined;
+
   return (
-    <div className="auth-page">
-      <form className="auth-card" onSubmit={handleSubmit} data-testid="change-password-form">
-        <h1>{t('Choose your own password')}</h1>
-        <p className="auth-hint">{t('You signed in with a temporary password. Choose a new one to continue.')}</p>
-        <label>
-          {t('Temporary password')}
-          <input type="password" value={current} onChange={(e) => setCurrent(e.target.value)} required autoFocus autoComplete="current-password" data-testid="cp-current" />
-        </label>
-        <label>
-          {t('New password')}
-          <input type="password" value={next} onChange={(e) => setNext(e.target.value)} required autoComplete="new-password" data-testid="cp-new" />
-        </label>
-        <label>
-          {t('Confirm new password')}
-          <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required autoComplete="new-password" data-testid="cp-confirm" />
-        </label>
-        {error && <p className="auth-error" role="alert" data-testid="cp-error">{error}</p>}
-        <button type="submit" disabled={submitting} data-testid="cp-submit">{submitting ? t('Saving…') : t('Save password')}</button>
+    <AuthShell>
+      <p className="auth-eyebrow">{t('ACC DOWN TIME ANALYSIS')}</p>
+      <h1 className="auth-title">{t('Choose your own password')}</h1>
+      <p className="auth-subtitle">{t('You signed in with a temporary password. Choose a new one to continue.')}</p>
+
+      <form className="auth-form" onSubmit={handleSubmit} data-testid="change-password-form">
+        <PasswordField label={t('Temporary password')} value={current} onChange={setCurrent} autoFocus autoComplete="current-password" testid="cp-current" describedBy={errId} />
+        <PasswordField label={t('New password')} value={next} onChange={setNext} autoComplete="new-password" testid="cp-new" describedBy={errId} />
+        <PasswordField label={t('Confirm new password')} value={confirm} onChange={setConfirm} autoComplete="new-password" testid="cp-confirm" describedBy={errId} />
+        <div aria-live="assertive" role="alert" className="auth-live">
+          {error && <p className="auth-error" id="cp-error" data-testid="cp-error">{error}</p>}
+        </div>
+        <button type="submit" className="auth-submit tap-scale" disabled={submitting} data-testid="cp-submit">
+          {submitting ? t('Saving…') : t('Save password')}
+          {!submitting && <ArrowIcon />}
+        </button>
         <button type="button" className="auth-secondary" onClick={() => logout()}>{t('Sign out')}</button>
       </form>
-    </div>
+
+      <p className="auth-footer">{t('Arabian Cement Company')}</p>
+    </AuthShell>
   );
 }

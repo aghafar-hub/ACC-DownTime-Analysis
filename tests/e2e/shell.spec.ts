@@ -27,10 +27,10 @@ test.describe('desktop', () => {
 
   test('login screen has the brand, the fields and the footer', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('img', { name: 'ACC Downtime Analysis' })).toBeVisible();
+    await expect(page.getByRole('img', { name: 'Arabian Cement Company' })).toBeVisible();
     await expect(page.getByTestId('login-keep')).toBeChecked();
     await expect(page.getByTestId('login-submit')).toHaveText('Sign in');
-    await expect(page.getByText('Arabian Cement Company · Sokhna Plant')).toBeVisible();
+    await expect(page.locator('.auth-footer')).toHaveText('Arabian Cement Company');
   });
 
   test('a wrong password shows one plain message, then the right one works', async ({ page }) => {
