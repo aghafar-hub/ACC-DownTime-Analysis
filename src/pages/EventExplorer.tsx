@@ -25,7 +25,7 @@ import EventBadges from './events/EventBadges';
 import { buildOwnerLookup } from './events/crossArea';
 import { hasOpenProblemFlags } from '../calc/flags';
 import {
-  activeCount, applyFilters, describeExplorerFilters, EMPTY, parseExplorerFilters, scopeRows, serializeExplorerFilters, totalActive, EXPLORER_KEYS, SHOWN_PARAM,
+  activeCount, applyFilters, describeExplorerFilters, EMPTY, parseExplorerFilters, scopeRows, serializeExplorerFilters, EXPLORER_KEYS, SHOWN_PARAM,
   type Filters, type Show, type Sort,
 } from './events/explorerFilters';
 import ExportMenu from '../components/ExportMenu';
@@ -219,7 +219,8 @@ export default function EventExplorer() {
   const dataReady = drill ? multi.ready : sc.ready;
   const periodName = sc.range ? rangeText(sc.range) : '';
   const ownOn = activeCount(f) + (qText.trim() ? 1 : 0);
-  const filtersOn = totalActive(f, shared) + (qText.trim() ? 1 : 0);
+  // anything to reset: the page's own choices or any shared filter, period or comparison other than the default
+  const canReset = ownOn > 0 || f.sort !== 'stop_desc' || serializeFilters(sc.filters).toString() !== '';
   // Reset: the page's own choices and the shared scope
   const reset = () => {
     setQText('');
@@ -363,7 +364,7 @@ export default function EventExplorer() {
                 <span className="field-label">{t('Failures')}</span>
                 {failureChip}
               </div>
-              <button type="button" className="btn" onClick={reset} disabled={filtersOn === 0} data-testid="reset-filters">{t('Reset filters')}</button>
+              <button type="button" className="btn" onClick={reset} disabled={!canReset} data-testid="reset-filters">{t('Reset filters')}</button>
             </div>
           </section>
         </>
@@ -381,7 +382,7 @@ export default function EventExplorer() {
           <ChipRow label={t('Quick filters')}>
             {failureChip}
             <FiltersPill count={activeCount(f)} label={t('Show and order')} onClick={() => setSheet(true)} testid="filters-pill" />
-            {filtersOn > 0 && <button type="button" className="chip" onClick={reset} data-testid="reset-filters">{t('Reset')}</button>}
+            {canReset && <button type="button" className="chip" onClick={reset} data-testid="reset-filters">{t('Reset')}</button>}
           </ChipRow>
           {sheet && (
             <BottomSheet

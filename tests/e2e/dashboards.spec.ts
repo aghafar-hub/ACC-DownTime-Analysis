@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { noSidewaysScroll, signInAndWait, smallTargets, smallText, stubFonts, watchConsole } from './helpers';
+import { closePanel, noSidewaysScroll, openType, pickPeriod, signInAndWait, smallTargets, smallText, stubFonts, watchConsole } from './helpers';
 
 /** The first number in a text (tiles also carry a label). */
 const num = (s: string | null): number => Number(((s ?? '').match(/-?[\d,]+(\.\d+)?/)?.[0] ?? 'NaN').replace(/,/g, ''));
@@ -47,9 +47,8 @@ test.describe('dashboards (desktop)', () => {
     const allAreas = num(await page.getByTestId('kpi-total-hours-value').textContent());
     expect(allAreas).toBeGreaterThan(0);
 
-    await expect(page.getByTestId('fb-panel')).toHaveCount(0); // the panel is collapsed by default
-    await page.getByTestId('fb-filters-pill').click();
-    await expect(page.getByTestId('fb-panel')).toBeVisible();
+    // one sticky scope bar: each chip opens its own small panel
+    await expect(page.getByTestId('scope-note')).toContainText('Shared by Dashboard, Losses, Repeated failures, Reliability, Event records');
     await page.getByTestId('fb-area').click();
     const before = await page.getByTestId('fb-area-opt').count();
     await page.keyboard.press('Escape');
@@ -66,32 +65,36 @@ test.describe('dashboards (desktop)', () => {
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('fb-active')).toBeVisible();
     await expect(page.getByTestId('fb-badge')).toHaveText('2');
+    await expect(page.getByTestId('fb-line')).toContainText('Line:');
+    await expect(page.getByTestId('fb-line')).not.toContainText('All');
     const areaHours = num(await page.getByTestId('kpi-total-hours-value').textContent());
     expect(areaHours).toBeLessThan(allAreas);
     await expect(page.getByTestId('fb-count')).toContainText('events in scope');
     await expect(page.getByTestId('fb-coverage')).toContainText('Data covers');
 
     // preset change resolves to one displayed range
-    await page.getByTestId('fb-preset').selectOption('last30');
+    await pickPeriod(page, 'last30');
+    await closePanel(page);
     await expect(page.getByTestId('fb-range')).toContainText('(30 days)');
+    await expect(page.getByTestId('scope-period')).toContainText('Last 30 days');
 
     const url = page.url();
     expect(url).toContain('area=');
     await page.reload();
     await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
     expect(page.url()).toBe(url);
-    await expect(page.getByTestId('fb-preset')).toHaveValue('last30');
+    await expect(page.getByTestId('scope-period')).toContainText('Last 30 days');
     await expect(page.getByTestId('fb-active')).toBeVisible();
 
-    // shared across the four tabs
-    await page.getByRole('link', { name: 'Pareto', exact: true }).first().click();
+    // shared across the Analyze pages
+    await page.getByTestId('rail-link-pareto').click();
     await expect(page.getByTestId('page-pareto')).toBeVisible();
     await expect(page.getByTestId('fb-active')).toBeVisible();
-    await expect(page.getByTestId('fb-preset')).toHaveValue('last30');
+    await expect(page.getByTestId('scope-period')).toContainText('Last 30 days');
 
     await page.getByTestId('fb-reset').click();
     await expect(page.getByTestId('fb-active')).toHaveCount(0);
-    await expect(page.getByTestId('fb-preset')).toHaveValue('last90');
+    await expect(page.getByTestId('scope-period')).toContainText('Last 90 days');
     expect(page.url()).not.toContain('area=');
     expect(errors, errors.join('\n')).toEqual([]);
   });
@@ -100,16 +103,21 @@ test.describe('dashboards (desktop)', () => {
     await page.goto('/');
     await signInAndWait(page, 'engineer');
     await open(page, '/overview', 'page-overview');
-    await page.getByTestId('fb-preset').selectOption('year');
+    await pickPeriod(page, 'year');
     await page.getByTestId('fb-year').selectOption('2025');
     await expect(page.getByTestId('fb-range')).toContainText('31 Dec 2025');
-    await page.getByTestId('fb-preset').selectOption('month');
+    await expect(page.getByTestId('scope-period')).toContainText('Period: 2025');
+    await pickPeriod(page, 'month');
     await page.getByTestId('fb-month').fill('2026-03');
-    await expect(page.getByTestId('fb-range')).toContainText('1 Mar 2026 – 31 Mar 2026');
-    await page.getByTestId('fb-preset').selectOption('custom');
+    await expect(page.getByTestId('fb-range')).toContainText('1–31 Mar 2026');
+    await expect(page.getByTestId('scope-period')).toContainText('Period: Mar 2026');
+    // the native date fields show the date in words beside them
+    await pickPeriod(page, 'custom');
     await page.getByTestId('fb-from').fill('2025-11-15');
     await page.getByTestId('fb-to').fill('2026-01-20');
     await expect(page.getByTestId('fb-range')).toContainText('15 Nov 2025 – 20 Jan 2026');
+    await expect(page.getByTestId('scope-period-panel')).toContainText('15 Nov 2025');
+    await closePanel(page);
     // a range over two years loads both years and still shows numbers
     await expect(page.getByTestId('kpi-total-hours-value')).toContainText('h');
     await expect(page.getByTestId('chart-monthly-stack')).toBeVisible();
@@ -254,17 +262,23 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     await page.goto('/');
     await signInAndWait(page, 'engineer');
     await open(page, '/overview', 'page-overview');
-    await page.getByTestId('fb-preset').selectOption('last30');
+    await pickPeriod(page, 'last30');
+    await closePanel(page);
+    await page.getByTestId('scope-compare').click();
     await page.getByTestId('fb-cmp-none').click();
-    await page.getByTestId('fb-filters-pill').click();
+    await closePanel(page);
+    await expect(page.getByTestId('scope-compare')).toContainText('None');
+    await openType(page);
     await page.getByTestId('fb-cls-MEC').click();
     await page.getByTestId('fb-cls-ELE').click();
     await page.getByTestId('fb-fail').click();
+    await closePanel(page);
     await expect(page.getByTestId('fb-badge')).toHaveText('2');
-    for (const [link, id] of [['Pareto', 'pareto'], ['Repeated Failures', 'repeats'], ['Reliability', 'reliability'], ['Overview', 'overview']] as const) {
-      await page.getByRole('link', { name: link, exact: true }).first().click();
+    await expect(page.getByTestId('scope-type')).toContainText('MEC, ELE +1');
+    for (const id of ['pareto', 'repeats', 'reliability', 'overview'] as const) {
+      await page.getByTestId(`rail-link-${id}`).click();
       await expect(page.getByTestId(`page-${id}`)).toBeVisible();
-      await expect(page.getByTestId('fb-preset')).toHaveValue('last30');
+      await expect(page.getByTestId('scope-period')).toContainText('Last 30 days');
       await expect(page.getByTestId('fb-chip-cls-MEC')).toBeVisible();
       await expect(page.getByTestId('fb-chip-cls-ELE')).toBeVisible();
       await expect(page.getByTestId('fb-chip-fail')).toBeVisible();
@@ -279,19 +293,21 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     await expect(page.getByTestId('fb-badge')).toHaveText('1');
     const chip = await page.getByTestId('fb-chip-cls-MEC').boundingBox();
     expect(chip!.height).toBeGreaterThanOrEqual(43.5);
-    await page.getByRole('link', { name: 'Pareto', exact: true }).first().click();
+    await page.getByTestId('rail-link-pareto').click();
     await expect(page.getByTestId('fb-chip-cls-MEC')).toBeVisible();
-    // Event Explorer keeps its own filters: the shared chips are not there
-    await page.goto('/#/events');
+    // Event records share the same scope: the chips are there, and the list follows them
+    await page.getByTestId('rail-link-events').click();
     await expect(page.getByTestId('page-events')).toBeVisible();
-    await expect(page.getByTestId('fb-chip-cls-MEC')).toHaveCount(0);
-    await page.goto('/#/pareto');
+    await expect(page.getByTestId('fb-chip-cls-MEC')).toBeVisible();
+    await expect(page.getByTestId('scope-period')).toContainText('Last 30 days');
+    await expect(page.getByTestId('event-row').first().locator('.badge--class')).toHaveText('MEC');
+    await page.getByTestId('rail-link-pareto').click();
     await expect(page.getByTestId('fb-chip-cls-MEC')).toBeVisible();
     await page.getByTestId('fb-reset').click();
     await expect(page.getByTestId('fb-active')).toHaveCount(0);
     await expect(page.getByTestId('fb-badge')).toHaveCount(0);
-    await expect(page.getByTestId('fb-preset')).toHaveValue('last90');
-    await page.getByRole('link', { name: 'Reliability', exact: true }).first().click();
+    await expect(page.getByTestId('scope-period')).toContainText('Last 90 days');
+    await page.getByTestId('rail-link-reliability').click();
     await expect(page.getByTestId('fb-active')).toHaveCount(0);
     expect(errors, errors.join('\n')).toEqual([]);
   });
@@ -562,7 +578,7 @@ test.describe('Phase 4: more charts (desktop)', () => {
     await open(page, '/reliability', 'page-reliability');
     const before = num(await page.getByTestId('chart-when-heat').getByTestId('heat-grand-total').textContent());
     const areas = await page.getByTestId('area-row').count();
-    await page.getByTestId('fb-filters-pill').click();
+    await openType(page);
     await page.getByTestId('fb-cls-MEC').click();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('fb-chip-cls-MEC')).toBeVisible();
@@ -627,7 +643,10 @@ for (const width of [360, 390]) {
       // the Filters chip opens a sheet with all fields; the count of active filters shows on the chip
       await page.getByTestId('fb-filters-pill').click();
       await expect(page.getByTestId('fb-sheet')).toBeVisible();
+      await page.getByTestId('fb-more').click();
       expect(await smallTargets(page)).toEqual([]);
+      expect(await smallText(page)).toEqual([]);
+      expect((await noSidewaysScroll(page)).ok).toBe(true);
       await page.getByTestId('fb-cls-MEC').click();
       await page.getByTestId('fb-sheet-apply').click();
       await expect(page.getByTestId('fb-filters-pill')).toContainText('1');
@@ -681,6 +700,7 @@ for (const width of [360, 390]) {
       expect(await smallTargets(page)).toEqual([]);
       // the compact filter bar: remove a chip with a 44 px target
       await page.getByTestId('fb-filters-pill').click();
+      await page.getByTestId('fb-more').click();
       await page.getByTestId('fb-cls-PRO').click();
       await page.getByTestId('fb-sheet-apply').click();
       const chip = await page.getByTestId('fb-chip-cls-PRO').boundingBox();

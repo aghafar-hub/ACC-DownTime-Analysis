@@ -400,6 +400,7 @@ function PhoneBar({ src, m, eventCount, hideCompare, views, exportMenu }: BarPro
         </button>
       </div>
       {clash && <div className="callout callout--warning fb-clash" role="status" data-testid="fb-clash"><Icon name="alert" size={16} /><span>{t(clash)}</span></div>}
+      {n > 0 && <InScopeSlot info><div className="scope-info scope-info--phone"><ActiveChips src={src} m={m} /></div></InScopeSlot>}
       {open && (
         <BottomSheet
           title={t('Filters')}

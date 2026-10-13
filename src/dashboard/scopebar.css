@@ -60,7 +60,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  min-height: 40px;
+  min-height: 44px;
   max-width: 280px;
   padding: 0 7px 0 10px;
   box-sizing: border-box;
@@ -105,7 +105,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 10px;
   border: 0;
   border-radius: 8px;
@@ -118,7 +118,7 @@
   background: color-mix(in srgb, var(--tk-accent) 10%, transparent);
 }
 .scope-bar .pm > .btn {
-  min-height: 40px;
+  min-height: 44px;
   padding-inline: 12px;
   background: var(--tk-card-bg);
 }
@@ -154,13 +154,19 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 8px;
+  margin-top: 6px;
+}
+.scope-info--phone {
+  padding: 0 16px 8px;
+}
+.scope-info--phone .sb-active {
+  margin-top: 0;
 }
 .sb-tag {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 32px;
+  min-height: 44px;
   padding: 0 10px;
   border: 1px solid color-mix(in srgb, var(--tk-brand) 55%, var(--tk-border));
   border-radius: 999px;
@@ -216,7 +222,7 @@
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
-  min-height: 36px;
+  min-height: 44px;
   padding: 0 12px;
   border: 1px solid var(--tk-border);
   border-radius: 999px;
