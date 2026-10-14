@@ -107,8 +107,11 @@ export default function MonthCompare({ dash, page, compact = false }: {
 
   const choose = (patch: Partial<MonthPair>) => {
     if (!pair) return;
-    const next = { ...pair, ...patch };
-    setSp((cur) => { const n = new URLSearchParams(cur); n.set(MONTH_PAIR_PARAM, monthPairText(next)); return n; }, { replace: true });
+    // two quick choices (Month A, then Month B) come before a new render: start from the address as it is now
+    const h = window.location.hash;
+    const live = h.startsWith('#/') ? new URLSearchParams(h.includes('?') ? h.slice(h.indexOf('?') + 1) : '') : null;
+    const next = { ...((live && parseMonthPair(live)) ?? pair), ...patch };
+    setSp((cur) => { const n = new URLSearchParams(live ?? cur); n.set(MONTH_PAIR_PARAM, monthPairText(next)); n.delete('cmp'); return n; }, { replace: true });
   };
 
   const id = `${page}-mvm`;

@@ -188,11 +188,14 @@ test.describe('month vs month', () => {
     await a.selectOption(opts[2]!);
     await b.selectOption(opts[3] ?? opts[1]!);
     await expect(page).toHaveURL(new RegExp(`mvm=${opts[2]}%2C${opts[3] ?? opts[1]}|mvm=${opts[2]},${opts[3] ?? opts[1]}`));
-    const stoppageA = num(await rows.first().getByTestId('mvm-a').textContent());
-    const stoppageB = num(await rows.first().getByTestId('mvm-b').textContent());
     await page.reload();
     await expect(page.getByTestId('overview-mvm')).toHaveAttribute('data-open', 'yes'); // the pair in the address opens it
     await expect(page.getByTestId('overview-mvm-a')).toHaveValue(opts[2]!);
+    await expect(page.getByTestId('overview-mvm-b')).toHaveValue(opts[3] ?? opts[1]!);
+    // read after the reload: the table is drawn from the address alone (no earlier pair still on screen)
+    const first = page.getByTestId('overview-mvm').getByTestId('mvm-row').first();
+    const stoppageA = num(await first.getByTestId('mvm-a').textContent());
+    const stoppageB = num(await first.getByTestId('mvm-b').textContent());
 
     // the same numbers as the Overview with its range set to each single month
     for (const [month, want] of [[opts[2]!, stoppageA], [opts[3] ?? opts[1]!, stoppageB]] as const) {
