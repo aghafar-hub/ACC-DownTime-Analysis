@@ -21,7 +21,8 @@ async function openUpload(page: Page, phone = false) {
   if (phone) {
     await page.goto('/#/upload');
   } else {
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Upload' }).click();
+    await page.getByTestId('rail-link-data').click(); // Data is one rail item; Upload is its tab
+    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Upload/ }).click();
   }
   await expect(page.getByTestId('page-upload')).toBeVisible();
 }
@@ -106,7 +107,8 @@ test.describe('upload flow', () => {
     await expect(page.getByTestId('event-row').first()).toContainText('131.BC110');
 
     // the same file again: everything already stored is skipped; the one late row skipped before is still late
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Upload' }).click();
+    await page.getByTestId('rail-link-data').click(); // Data is one rail item; Upload is its tab
+    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Upload/ }).click();
     await page.getByTestId('file-input').setInputFiles(await file(monthRows()));
     await expect(page.getByTestId('review')).toBeVisible();
     await expect(page.getByTestId('count-identical')).toContainText('7');
@@ -344,7 +346,8 @@ test.describe('upload flow', () => {
       await expect(page.getByTestId('event-row')).toHaveCount(1);
     }
     // the same file again: nothing is new, nothing is lost
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Upload' }).click();
+    await page.getByTestId('rail-link-data').click(); // Data is one rail item; Upload is its tab
+    await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Upload/ }).click();
     await page.getByTestId('file-input').setInputFiles(await file(rows, 'problems.xlsx', { overrides: [[2, 'STOPPAGE CLASIFICATION', null]] }));
     await expect(page.getByTestId('count-identical')).toContainText('5');
     await expect(page.getByTestId('count-new')).toContainText('0');
