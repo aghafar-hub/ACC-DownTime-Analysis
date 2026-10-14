@@ -72,6 +72,7 @@ Conventions
 - `buildPareto(entries, topN)` / `pareto(items, spec, topN)`: descending, `sharePct` and `cumulativePct` against the complete total, `Others` bar (`isOthers`), 80% `referenceIndex`, `eventIds` per bar. `topN`: 5 | 10 | 20 | 'all'. Zero values are dropped; ties sort by label.
 - Event-based builders (input: chains; only `isFailure` chains are used, except `classificationPareto`). Cause = the head row. Measure `hours` = all rows of the chain clipped to the window; `count` = events that started in the window.
   - `equipmentPareto(chains, index, opts)` -> `{own, otherAreas, unassigned, areaLevel, unknown}`. Own-stop rule: `own` holds events whose code belongs to the stopped area (any area of the code). Other areas' codes go to `otherAreas`, codes in no area to `unassigned`, N/A to `areaLevel`, codes outside the master to `unknown`.
+  - `areaLevelStops(chains, index, {window, attribution})` -> `{byArea, classes, events, failures}`: EVERY N/A event of any classification (the failure buckets above only see N/A failures; the plant writes whole-area stops as CIR with Failure NO), hours = owned time in the window, by area and by the head's classification. Shown as the Pareto page's 'Area-level stops (N/A)' card.
   - `reasonPareto` (by `matchKey`; `splitByClassification`), `reasonParetoForEquipment`, `areaPareto`, `classificationPareto({failureOnly})`.
 
 ## repeats.ts

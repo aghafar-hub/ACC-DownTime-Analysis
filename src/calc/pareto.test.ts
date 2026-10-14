@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildFailureEvents, type ChainedEvent } from './events';
 import { createRowFactory, fixtureIndex, type RowSpec } from './fixtures';
 import {
-  areaPareto, buildPareto, classificationPareto, equipmentPareto, pareto, reasonPareto, reasonParetoForEquipment,
+  areaLevelStops, areaPareto, buildPareto, classificationPareto, equipmentPareto, pareto, reasonPareto, reasonParetoForEquipment,
   type ParetoEntry,
 } from './pareto';
 
@@ -178,5 +178,27 @@ describe('reason, area and classification Paretos', () => {
     expect(all.total).toBe(17.5);
     const failures = classificationPareto(chains, { measure: 'hours', failureOnly: true });
     expect(failures.bars.map((b) => b.key)).toEqual(['MEC', 'ELE']);
+  });
+});
+
+describe('areaLevelStops: every N/A stop, whatever its classification', () => {
+  const chains = chainsOf([
+    { area: 'K.1', code: 'N/A', cls: 'CIR', failure: false, stop: '2026-03-02 08:00', start: '2026-03-02 11:00' }, // 3 h, not a failure
+    { area: 'K.1', code: 'N/A', cls: 'CIR', failure: false, stop: '2026-03-03 08:00', start: '2026-03-03 09:00' }, // 1 h
+    { area: 'RM.1', code: 'NA', cls: 'PL', failure: false, stop: '2026-03-04 08:00', start: '2026-03-04 10:00' }, // 2 h, planned
+    { area: 'RM.1', code: 'N/A', stop: '2026-03-05 08:00', start: '2026-03-05 08:30' }, // 0.5 h, a failure (fixture default)
+    { area: 'K.1', code: '100.A1', cls: 'CIR', failure: false, stop: '2026-03-06 08:00', start: '2026-03-06 12:00' }, // has a code: not area-level
+  ]);
+  const r = areaLevelStops(chains, idx, {});
+  it('counts N/A stops of any class by area, failures included', () => {
+    expect(r.byArea.bars.map((b) => [b.key, b.value])).toEqual([['K.1', 4], ['RM.1', 2.5]]);
+    expect(r.events).toBe(4);
+    expect(r.failures).toBe(1);
+  });
+  it('splits them by classification, largest hours first', () => {
+    expect(r.classes.map((c) => [c.code, c.events, c.hours])).toEqual([['CIR', 2, 4], ['PL', 1, 2], [chains.find((c) => c.isFailure && c.area_id === 'RM.1')!.head.classification, 1, 0.5]]);
+  });
+  it('the failure buckets only see the N/A failure', () => {
+    expect(equipmentPareto(chains, idx, { measure: 'hours' }).areaLevel.total).toBe(0.5);
   });
 });

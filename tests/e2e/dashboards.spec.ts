@@ -213,6 +213,18 @@ test.describe('dashboards (desktop)', () => {
     // the four separate panels
     for (const id of ['bucket-other', 'bucket-area', 'bucket-unknown']) await expect(page.getByTestId(id)).toBeVisible();
 
+    // area-level (N/A): every classification, not only failures; the records button opens exactly those stops
+    const area = page.getByTestId('bucket-area');
+    const naCount = num((await area.getByTestId('bucket-area-count').textContent())!);
+    if (naCount > 0) {
+      await expect(area.getByTestId('bucket-area-classes')).toContainText(/[A-Z]{2,3} [\d,.]+ h/);
+      await expect(area.getByTestId('bucket-area-failures')).toBeVisible();
+      await area.getByTestId('bucket-area-open').click();
+      expect(await drillCount(page)).toBe(naCount);
+      await page.goBack();
+      await expect(page.getByTestId('page-pareto')).toBeVisible();
+    }
+
     // "Stopped by other areas": each code says where it is listed and which area stopped; hours and events as before
     const other = page.getByTestId('bucket-other');
     const details = other.getByTestId('bucket-detail');

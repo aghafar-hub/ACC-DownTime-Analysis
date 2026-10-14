@@ -183,6 +183,43 @@ export function equipmentPareto(chains: ChainedEvent[], index: MasterIndex, o: C
   };
 }
 
+export interface AreaLevelStops {
+  /** every N/A (whole area stopped) event of any classification, by area; hours are the time it owns in the window */
+  byArea: ParetoResult;
+  /** the same events by the classification of their head row, largest hours first */
+  classes: { code: string; events: number; hours: number }[];
+  /** events behind the hours (time in the window) */
+  events: number;
+  /** of which failure events (also in the failure buckets) */
+  failures: number;
+}
+
+/**
+ * All area-level (N/A) stops, whatever their classification. The failure Pareto only sees N/A failures, and in the plant's
+ * data N/A stops are written as CIR with Failure NO, so this shows the whole-area time the failure view leaves out.
+ */
+export function areaLevelStops(chains: ChainedEvent[], index: MasterIndex, o: { window?: DateRange; attribution?: Attribution }): AreaLevelStops {
+  const all = analysableChains(chains).filter((c) => rowCode(c.head, index).kind === 'area_level');
+  const opts: ChainParetoOptions = { measure: 'hours', window: o.window, attribution: o.attribution };
+  const attr = attributionFor(chains, opts);
+  const byArea = chainPareto(all, opts, (c) => c.area_id, (c) => c.area_id, attr);
+  const counted = new Set(byArea.bars.flatMap((b) => b.eventIds));
+  const w = windowOf(o);
+  const cls = new Map<string, { events: number; hours: number }>();
+  let failures = 0;
+  for (const c of all) {
+    if (!counted.has(c.id)) continue;
+    const k = c.head.classification || '(blank)';
+    const e = cls.get(k) ?? { events: 0, hours: 0 };
+    e.events += 1;
+    e.hours += chainValue(c, 'hours', w, attr);
+    cls.set(k, e);
+    if (c.isFailure) failures += 1;
+  }
+  const classes = [...cls.entries()].map(([code, v]) => ({ code, ...v })).sort((a, b) => b.hours - a.hours || a.code.localeCompare(b.code));
+  return { byArea, classes, events: counted.size, failures };
+}
+
 export interface ReasonParetoOptions extends ChainParetoOptions {
   /** keep the same text under different classifications as separate bars */
   splitByClassification?: boolean;

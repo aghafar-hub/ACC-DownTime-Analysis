@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { areasOf, type ParetoBar, type ParetoResult } from '../calc';
+import { areasOf, type AreaLevelStops, type ParetoBar, type ParetoResult } from '../calc';
 import { Tile } from '../components/Tile';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { areaModel, classModel, equipmentModel, lineModel, reasonForEquipmentModel, reasonModel, reasonMonthModel } from '../dashboard/models';
@@ -42,6 +42,52 @@ function Bucket({ title, note, result, testid, onOpen, detail }: { title: string
           ))}
           {result.entryCount > bars.length && <li><span className="muted">{t('and {n} more', { n: result.entryCount - bars.length })}</span><span /></li>}
         </ul>
+      )}
+    </section>
+  );
+}
+
+/**
+ * N/A stops of every classification. The failure buckets beside it only see N/A failures; the plant writes whole-area
+ * stops as CIR with Failure NO, so without this card they would read 0 h while the areas were stopped for many hours.
+ */
+function AreaLevelCard({ data, onOpen }: { data: AreaLevelStops; onOpen: (label: string, ids: string[]) => void }) {
+  const title = t('Area-level stops (N/A)');
+  const bars = data.byArea.bars.slice(0, 5);
+  const all = data.byArea.bars.flatMap((b) => b.eventIds);
+  return (
+    <section className="card" data-testid="bucket-area">
+      <h2>{title}</h2>
+      <p className="chart-sub">{t('The whole area stopped; no equipment code. Every classification is counted here.')}</p>
+      <p style={{ margin: '6px 0 0', fontSize: 13 }}>
+        <b data-testid="bucket-area-total" className="mono">{fh(data.byArea.total)} h</b> · <span data-testid="bucket-area-count">{fint(data.events)}</span> {t('stops')}
+        {data.classes.length > 0 && <span className="muted" data-testid="bucket-area-classes"> · {data.classes.map((c) => `${c.code} ${fh(c.hours)} h`).join(', ')}</span>}
+      </p>
+      {data.events > 0 && (
+        <p className="muted" style={{ margin: '4px 0 0', fontSize: 12 }} data-testid="bucket-area-failures">
+          {data.failures === 0
+            ? t('None of them is a failure, so they are not in the failure Pareto above.')
+            : t('{n} of them are failures; those are also in "Not counted as own".', { n: fint(data.failures) })}
+        </p>
+      )}
+      {bars.length === 0 ? <p className="muted" style={{ fontSize: 13 }}>{t('None in this range.')}</p> : (
+        <ul className="bucket-list">
+          {bars.map((b) => (
+            <li key={b.key}>
+              <span>
+                <button type="button" className="row-btn mono" onClick={() => onOpen(`${title}: ${b.label}`, b.eventIds)}>{b.label}</button>
+                <span className="muted bucket-detail"> · {t('{n} stops', { n: fint(b.eventIds.length) })}</span>
+              </span>
+              <b>{fh(b.value)} h</b>
+            </li>
+          ))}
+          {data.byArea.entryCount > bars.length && <li><span className="muted">{t('and {n} more areas', { n: data.byArea.entryCount - bars.length })}</span><span /></li>}
+        </ul>
+      )}
+      {all.length > 0 && (
+        <button type="button" className="btn btn-sm" style={{ marginTop: 8 }} onClick={() => onOpen(title, all)} data-testid="bucket-area-open">
+          {t('Open {n} records', { n: fint(all.length) })}
+        </button>
       )}
     </section>
   );
@@ -131,7 +177,7 @@ export default function Pareto() {
               </div>
               <div className="bucket-grid" data-testid="buckets">
                 <Bucket title={t('Stopped by other areas')} note={t('The code belongs to another area only; not counted above so a cause is never counted twice.')} result={eq.hours.otherAreas} testid="bucket-other" onOpen={open(t('the bucket'))} detail={otherDetail} />
-                <Bucket title={t('Area-level (N/A)')} note={t('The whole area stopped; no equipment code.')} result={eq.hours.areaLevel} testid="bucket-area" onOpen={open(t('the bucket'))} />
+                <AreaLevelCard data={eq.areaLevel} onOpen={open(t('the bucket'))} />
                 <Bucket title={t('Unknown code')} note={t('The code is not in the equipment master.')} result={eq.hours.unknown} testid="bucket-unknown" onOpen={open(t('the bucket'))} />
                 <Bucket title={t('Code in no area')} note={t('The code exists but is not assigned to any area.')} result={eq.hours.unassigned} testid="bucket-unassigned" onOpen={open(t('the bucket'))} />
               </div>

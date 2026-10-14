@@ -2,9 +2,9 @@
 // their own beyond joining calc outputs (tests compare every headline number with a direct calc call).
 import {
   areaMonthAvailability, areaPareto, availabilityByArea, failureStartHeatmap, linePareto, mtbfMttrQuadrants, rankAreas, reasonMonthHeatmap, buildPareto, classificationPareto, dailySeries, daysInRange, monthlyHoursByClassification, compareTotal, avail, durationHistogram, equipmentMonthHeatmap,
-  equipmentPareto, equipmentReasonHeatmap, topHeatmapRows, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
+  areaLevelStops, equipmentPareto, equipmentReasonHeatmap, topHeatmapRows, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
   reasonParetoForEquipment, resolvedKey, rollingFailureCounts, rowCode, yearOverYear,
-  type AreaAvailability, type AreaKpis, type AreaMonthAvailability, type AreaRank, type QuadrantResult, type ClassMonthPoint, type DayPoint, type Metric, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
+  type AreaAvailability, type AreaKpis, type AreaLevelStops, type AreaMonthAvailability, type AreaRank, type QuadrantResult, type ClassMonthPoint, type DayPoint, type Metric, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
   type KpiChanges, type KpiOk, type LongEvent, type MonthPoint, type ParetoBar, type ParetoMeasure, type ParetoResult, type RepeatResult,
   type RollingPoint, type TopN, type YoyMonth,
 } from '../calc';
@@ -186,6 +186,8 @@ export function monthly(ctx: DashCtx, areaId?: string): MonthPoint[] {
 export interface EquipmentModel {
   hours: EquipmentParetoResult;
   count: EquipmentParetoResult;
+  /** every N/A stop of the scope, any classification (the buckets above only see failures) */
+  areaLevel: AreaLevelStops;
 }
 
 export function equipmentModel(ctx: DashCtx): EquipmentModel | null {
@@ -195,6 +197,7 @@ export function equipmentModel(ctx: DashCtx): EquipmentModel | null {
   return {
     hours: equipmentPareto(chains, ctx.master.index, { measure: 'hours', window, attribution: ctx.scope.attribution }),
     count: equipmentPareto(chains, ctx.master.index, { measure: 'count', window }),
+    areaLevel: areaLevelStops(ctx.scope.chains, ctx.master.index, { window, attribution: ctx.scope.attribution }),
   };
 }
 
