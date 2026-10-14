@@ -1,0 +1,146 @@
+/* The (i) button and its explanation dialog: the KPI tiles and every chart and table card. */
+.info-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: var(--tk-text-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.info-btn:hover {
+  color: var(--tk-accent);
+}
+.info-btn:focus-visible,
+.info-close:focus-visible {
+  outline: 2px solid var(--tk-accent);
+  outline-offset: 2px;
+}
+.info-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(8, 15, 28, 0.55);
+}
+.info-box {
+  width: min(100%, 440px);
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 14px 18px 8px;
+  background: var(--tk-card-bg);
+  color: var(--tk-text-primary);
+  border: 1px solid var(--tk-border);
+  border-radius: 12px;
+  box-shadow: var(--elevation-2);
+}
+.info-box:focus {
+  outline: none;
+}
+.info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.info-title {
+  margin: 0;
+  font: 700 16px var(--font-display);
+}
+.info-close {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--tk-border);
+  background: none;
+  color: var(--tk-text-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.info-p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--tk-text-secondary);
+}
+
+
+/* chart help: the sections of the dialog */
+.info-sec {
+  margin: 0 0 10px;
+}
+.info-h {
+  margin: 4px 0 4px;
+  font: 700 13px var(--sans);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--tk-text-primary);
+}
+.info-formula {
+  margin: 0 0 6px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--tk-accent);
+  background: var(--tk-card-sub-bg);
+  border-radius: 4px;
+  font: 600 13.5px/1.45 var(--mono);
+  color: var(--tk-text-primary);
+  overflow-wrap: anywhere;
+}
+.info-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--tk-text-secondary);
+}
+.info-list li + li {
+  margin-top: 4px;
+}
+.info-example {
+  color: var(--tk-text-primary);
+  font-weight: 600;
+}
+
+/* the (i) beside a card title */
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.card-title-row > h2 {
+  margin: 0;
+  min-width: 0;
+}
+.dcard-title-text {
+  font: inherit;
+  margin: 0;
+}
+.info-btn--card {
+  margin: -11px -8px -11px -4px;
+}
+
+/* phone: the explanation is a sheet from the bottom */
+@media (max-width: 600px) {
+  .info-shade {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .info-box {
+    width: 100%;
+    max-height: 85vh;
+    border-radius: 16px 16px 0 0;
+    border-bottom: 0;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+}

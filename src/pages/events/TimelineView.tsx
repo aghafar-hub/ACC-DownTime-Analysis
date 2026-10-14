@@ -120,6 +120,7 @@ export default function TimelineView({
 
       <ChartCard
         testid="chart-timeline"
+        help={{ id: 'events-timeline' }}
         title={t('Stops by area')}
         subtitle={`${windowLabel(win)} · ${t('plant time')} · ${year ?? ''}`}
         summary={summary}

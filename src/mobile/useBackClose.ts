@@ -7,7 +7,8 @@ import { useEffect, useRef } from 'react';
 // the top one.
 // One stack for the shell and the embedded module apps (separate bundles),
 // kept on window so Back always closes only the sheet on top.
-const w = window as unknown as { __accBackStack?: string[] };
+// (no window under Node: the unit tests import modules that use this hook without rendering them)
+const w = (typeof window === 'undefined' ? {} : window) as unknown as { __accBackStack?: string[] };
 const stack: string[] = (w.__accBackStack ||= []);
 
 export function useBackClose(open: boolean, close: () => void) {

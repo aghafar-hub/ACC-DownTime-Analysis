@@ -8,6 +8,7 @@ import HBars, { type HRow } from '../charts/HBars';
 import QuadrantChart from '../charts/QuadrantChart';
 import ScaleHeatmap, { type ScaleRow } from '../charts/ScaleHeatmap';
 import { t } from '../i18n/t';
+import AlsoOnDashboard from './AlsoOnDashboard';
 import { fh, fh2, fint, fpct, monthAxisLabels, monthLabel, NOT_UPLOADED_FOOT, partialNote } from './format';
 import { areaReliabilityModel } from './models';
 import { targetNumber, type TargetStatus } from './targets';
@@ -121,14 +122,14 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
     <>
       <div className="chart-grid chart-grid--even" data-testid="area-rank-grid">
         <ChartCard
-          title={t('MTBF by area')} subtitle={t('Operating hours per failure. Lowest first: the area that fails most often relative to its running time is on top.')} testid="chart-area-mtbf"
+          title={t('MTBF by area')} subtitle={t('Operating hours per failure. Lowest first: the area that fails most often relative to its running time is on top.')} testid="chart-area-mtbf" help={{ id: 'area-mtbf', vars: ranked(m.mtbf)[0] ? { a: ranked(m.mtbf)[0]!.area_id, v: fh(ranked(m.mtbf)[0]!.value!) } : {} }}
           summary={`${barSummary(m.mtbf, t('lowest MTBF'))}${targetSummary(m.mtbf, 'mtbf')}`} legend={[{ label: t('MTBF (h)'), color: BAR }, ...(tg.mtbfH !== null ? [{ label: t('Target {x} h', { x: targetNumber(tg.mtbfH) }), color: 'var(--tk-text-primary)', symbol: 'dash' as const }] : [])]}
           table={withStatus([t('Area'), t('MTBF h')], tableOf(m.mtbf, fh), statusCol(m.mtbf, 'mtbf', tg.mtbfH), t('Status'))}
         >
           {(w) => <HBars rows={mtbfRows} width={w} format={(n) => `${fh(n)} h`} refLine={tg.mtbfH !== null ? { value: tg.mtbfH, label: t('Target {x} h', { x: targetNumber(tg.mtbfH) }) } : undefined} ariaLabel={t('Bars of MTBF by area, lowest first. {s}', { s: barSummary(m.mtbf, t('lowest MTBF')) })} openLabel={t('Open events')} onRow={open} />}
         </ChartCard>
         <ChartCard
-          title={t('MTTR by area')} subtitle={t('Mean restoration time of failure events. Highest first: the slowest area to recover is on top.')} testid="chart-area-mttr"
+          title={t('MTTR by area')} subtitle={t('Mean restoration time of failure events. Highest first: the slowest area to recover is on top.')} testid="chart-area-mttr" help={{ id: 'area-mttr', vars: ranked(m.mttr)[0] ? { a: ranked(m.mttr)[0]!.area_id, v: fh2(ranked(m.mttr)[0]!.value!) } : {} }}
           summary={`${barSummary(m.mttr, t('highest MTTR'))}${targetSummary(m.mttr, 'mttr')}`} legend={[{ label: t('MTTR (h)'), color: BAR }, ...(tg.mttrH !== null ? [{ label: t('Target {x} h', { x: targetNumber(tg.mttrH) }), color: 'var(--tk-text-primary)', symbol: 'dash' as const }] : [])]}
           table={withStatus([t('Area'), t('MTTR h')], tableOf(m.mttr, fh2), statusCol(m.mttr, 'mttr', tg.mttrH), t('Status'))}
         >
@@ -137,44 +138,7 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
       </div>
 
       <ChartCard
-        title={t('MTBF against MTTR by area')} subtitle={t('One point per area. The dashed lines are the medians of the areas shown and split the plot into four quadrants.')} testid="chart-area-quadrant"
-        summary={quadSummary}
-        legend={[{ label: t('Area'), color: BAR, symbol: 'circle' }, { label: t('Worst quadrant (low MTBF, high MTTR)'), color: 'var(--tk-danger)', symbol: 'diamond' }, { label: t('Median'), color: 'var(--tk-text-primary)', symbol: 'dash' }]}
-        table={{ head: [t('Area'), t('MTBF h'), t('MTTR h'), t('Quadrant')], rows: q.points.map((p) => [p.area_id, fh(p.mtbf), fh2(p.mttr), quadrantWords(p.quadrant)]) }}
-        footnote={`${t('The axes start near the smallest value, not at zero.')}${q.excluded.length ? ` ${t('Not plotted (no failures, so MTBF and MTTR are not defined): {a}.', { a: q.excluded.map((x) => x.area_id).join(', ') })}` : ''}`}
-      >
-        {(w) => (
-          <QuadrantChart
-            width={w} height={w < 480 ? 340 : 380} xTitle={t('MTBF (hours)')} yTitle={t('MTTR (hours)')}
-            medianX={q.medianMtbf} medianY={q.medianMttr}
-            medianXLabel={q.medianMtbf !== null ? t('median {v} h', { v: fh(q.medianMtbf) }) : undefined} medianYLabel={q.medianMttr !== null ? t('median {v} h', { v: fh2(q.medianMttr) }) : undefined}
-            worstLabel={worstLabel} ariaLabel={`${t('Scatter chart of MTBF against MTTR per area with median lines.')} ${quadSummary}`}
-            points={q.points.map((p) => ({
-              key: p.area_id, label: p.area_id, x: p.mtbf, y: p.mttr, worst: p.quadrant === 'worst',
-              details: [{ label: t('MTBF'), value: `${fh(p.mtbf)} h` }, { label: t('MTTR'), value: `${fh2(p.mttr)} h` }, { label: t('Failure events'), value: fint(p.failureEvents) }, { label: t('Quadrant'), value: quadrantWords(p.quadrant) }],
-            }))}
-            openLabel={t('Open events')} onPoint={onOpen ? (p) => onOpen(`${t('the point of area')} ${p.label}`, m.failureIds.get(p.key) ?? []) : undefined}
-          />
-        )}
-      </ChartCard>
-
-      <ChartCard
-        title={t('Availability by area and month (basis {b})', { b: basis })} subtitle={t('Each cell is the availability of one area in one month. Fixed scale {a} to {b} %; the last column is the whole range.', { a: AVAIL_MIN, b: AVAIL_MAX })} testid="chart-area-month-heat"
-        summary={avSummary}
-        table={{ head: [t('Area'), ...av.months.map((_x, i) => colFull(i)), t('Range')], rows: av.areas.map((a) => [a.area_id, ...a.values.map(fmtAv), fmtAv(m.overallAvailability.get(a.area_id) ?? { available: false, code: 'no_data', reason: '' })]) }}
-        footnote={[partialAny ? av.months.filter((x) => x.partial).map((x) => `* ${partialNote(x)}.`).join(' ') : '', av.months.some((x) => x.notUploaded) ? `${t('n/u')} = ${t(NOT_UPLOADED_FOOT)}` : ''].filter(Boolean).join(' ') || undefined}
-      >
-        {() => (
-          <ScaleHeatmap
-            cols={av.months.map((x, i) => ({ key: x.month, label: colLabel(i), title: x.notUploaded ? `${monthLabel(x.month)} (${t('Not uploaded')})` : x.partial ? `${monthLabel(x.month)} (${t('partial month')})` : monthLabel(x.month) }))}
-            rows={avRows} min={AVAIL_MIN} max={AVAIL_MAX} caption={t('Availability by area and month')} rowHead={t('Area')} summaryHead={t('Range')}
-            legendFormat={(n) => `${n}%`} below={t('under {x}% (strongest shade)', { x: AVAIL_MIN })}
-          />
-        )}
-      </ChartCard>
-
-      <ChartCard
-        title={t('Failures per 1,000 operating hours by area')} subtitle={t('Failure rate adjusted for running time, highest first. The dashed line is all areas together (total failures over total operating hours, not an average of the bars).')} testid="chart-area-rate"
+        title={t('Failures per 1,000 operating hours by area')} subtitle={t('Failure rate adjusted for running time, highest first. The dashed line is all areas together (total failures over total operating hours, not an average of the bars).')} testid="chart-area-rate" help={{ id: 'area-rate', vars: topRate ? { a: topRate.area_id, v: fh2(topRate.value!) } : {} }}
         summary={rateSummary}
         legend={[{ label: t('Area'), color: BAR }, ...(overall !== null ? [{ label: t('All areas together'), color: 'var(--tk-text-primary)', symbol: 'dash' as const }] : [])]}
         table={{ head: [t('Area'), t('Failures per 1,000 h')], rows: [...tableOf(m.rate.rows, fh2), ...(overall !== null ? [[t('All areas together'), fh2(overall)]] : [])] }}
@@ -188,6 +152,45 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
           ) : <p className="muted">{t('No failure rate can be calculated for these areas.')}</p>
         )}
       </ChartCard>
+      <AlsoOnDashboard title={t('MTBF against MTTR by area')} testid="dup-area-quadrant">
+        <ChartCard
+          title={t('MTBF against MTTR by area')} subtitle={t('One point per area. The dashed lines are the medians of the areas shown and split the plot into four quadrants.')} testid="chart-area-quadrant" help={{ id: 'area-quadrant' }}
+          summary={quadSummary}
+          legend={[{ label: t('Area'), color: BAR, symbol: 'circle' }, { label: t('Worst quadrant (low MTBF, high MTTR)'), color: 'var(--tk-danger)', symbol: 'diamond' }, { label: t('Median'), color: 'var(--tk-text-primary)', symbol: 'dash' }]}
+          table={{ head: [t('Area'), t('MTBF h'), t('MTTR h'), t('Quadrant')], rows: q.points.map((p) => [p.area_id, fh(p.mtbf), fh2(p.mttr), quadrantWords(p.quadrant)]) }}
+          footnote={`${t('The axes start near the smallest value, not at zero.')}${q.excluded.length ? ` ${t('Not plotted (no failures, so MTBF and MTTR are not defined): {a}.', { a: q.excluded.map((x) => x.area_id).join(', ') })}` : ''}`}
+        >
+          {(w) => (
+            <QuadrantChart
+              width={w} height={w < 480 ? 340 : 380} xTitle={t('MTBF (hours)')} yTitle={t('MTTR (hours)')}
+              medianX={q.medianMtbf} medianY={q.medianMttr}
+              medianXLabel={q.medianMtbf !== null ? t('median {v} h', { v: fh(q.medianMtbf) }) : undefined} medianYLabel={q.medianMttr !== null ? t('median {v} h', { v: fh2(q.medianMttr) }) : undefined}
+              worstLabel={worstLabel} ariaLabel={`${t('Scatter chart of MTBF against MTTR per area with median lines.')} ${quadSummary}`}
+              points={q.points.map((p) => ({
+                key: p.area_id, label: p.area_id, x: p.mtbf, y: p.mttr, worst: p.quadrant === 'worst',
+                details: [{ label: t('MTBF'), value: `${fh(p.mtbf)} h` }, { label: t('MTTR'), value: `${fh2(p.mttr)} h` }, { label: t('Failure events'), value: fint(p.failureEvents) }, { label: t('Quadrant'), value: quadrantWords(p.quadrant) }],
+              }))}
+              openLabel={t('Open events')} onPoint={onOpen ? (p) => onOpen(`${t('the point of area')} ${p.label}`, m.failureIds.get(p.key) ?? []) : undefined}
+            />
+          )}
+        </ChartCard>
+      </AlsoOnDashboard>
+      <AlsoOnDashboard title={t('Availability by area and month (basis {b})', { b: basis })} testid="dup-area-month-heat">
+        <ChartCard
+          title={t('Availability by area and month (basis {b})', { b: basis })} subtitle={t('Each cell is the availability of one area in one month. Fixed scale {a} to {b} %; the last column is the whole range.', { a: AVAIL_MIN, b: AVAIL_MAX })} testid="chart-area-month-heat" help={{ id: 'area-month-heat', vars: { b: basis } }}
+          summary={avSummary}
+          table={{ head: [t('Area'), ...av.months.map((_x, i) => colFull(i)), t('Range')], rows: av.areas.map((a) => [a.area_id, ...a.values.map(fmtAv), fmtAv(m.overallAvailability.get(a.area_id) ?? { available: false, code: 'no_data', reason: '' })]) }}
+          footnote={[partialAny ? av.months.filter((x) => x.partial).map((x) => `* ${partialNote(x)}.`).join(' ') : '', av.months.some((x) => x.notUploaded) ? `${t('n/u')} = ${t(NOT_UPLOADED_FOOT)}` : ''].filter(Boolean).join(' ') || undefined}
+        >
+          {() => (
+            <ScaleHeatmap
+              cols={av.months.map((x, i) => ({ key: x.month, label: colLabel(i), title: x.notUploaded ? `${monthLabel(x.month)} (${t('Not uploaded')})` : x.partial ? `${monthLabel(x.month)} (${t('partial month')})` : monthLabel(x.month) }))}
+              rows={avRows} min={AVAIL_MIN} max={AVAIL_MAX} caption={t('Availability by area and month')} rowHead={t('Area')} summaryHead={t('Range')}
+              legendFormat={(n) => `${n}%`} below={t('under {x}% (strongest shade)', { x: AVAIL_MIN })}
+            />
+          )}
+        </ChartCard>
+      </AlsoOnDashboard>
     </>
   );
 }

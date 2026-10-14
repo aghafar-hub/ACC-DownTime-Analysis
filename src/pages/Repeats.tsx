@@ -4,7 +4,6 @@ import { useMemo, useRef, useState } from 'react';
 import { dateText } from '../util/dates';
 import type { RepeatGroup } from '../calc';
 import { ChartCard } from '../charts/ChartKit';
-import CartesianChart, { type CartCategory } from '../charts/CartesianChart';
 import HeatmapTable from '../charts/HeatmapTable';
 import ScatterChart from '../charts/ScatterChart';
 import TimelineChart from '../charts/TimelineChart';
@@ -13,9 +12,10 @@ import { ACCENT } from '../charts/palette';
 import { BottomSheet, PAGE_SIZE, ShowMore } from '../components/PhoneParts';
 import { Tile } from '../components/Tile';
 import DashTop from '../dashboard/DashTop';
-import { dayLabel, dayShort, fh, fh2, fint } from '../dashboard/format';
+import { fh, fh2, fint } from '../dashboard/format';
 import { repeatsTakeaway } from '../dashboard/takeaways';
-import { eventsOfEquipment, repeatsModel, rolling } from '../dashboard/models';
+import { eventsOfEquipment, repeatsModel } from '../dashboard/models';
+import ChartInfo from '../help/ChartInfo';
 import { EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import { useDash } from '../dashboard/useDash';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -62,7 +62,6 @@ export default function Repeats() {
   const [sel, setSel] = useState<string | null>(null);
   const [heatMeasure, setHeatMeasure] = useState<'hours' | 'count'>('hours');
   const [heat2Measure, setHeat2Measure] = useState<'hours' | 'count'>('count');
-  const [roll, setRoll] = useState<'30' | '90'>('30');
   const [sheet, setSheet] = useState(false);
   const timelineRef = useRef<HTMLDivElement>(null);
 
@@ -81,7 +80,6 @@ export default function Repeats() {
   const repeatCodes = useMemo(() => new Set(groups.map((g) => g.equipmentId)), [groups]);
   const selCode = sel ?? groups[0]?.equipmentId ?? model?.scatter[0]?.code ?? '';
   const events = useMemo(() => (ctx && selCode ? eventsOfEquipment(ctx, selCode) : []), [ctx, selCode]);
-  const rollPts = useMemo(() => (ctx ? rolling(ctx, roll === '30' ? 30 : 90) : []), [ctx, roll]);
 
   const res = model?.result;
   const equipCount = new Set(res?.groups.map((g) => g.equipmentId)).size;
@@ -119,7 +117,7 @@ export default function Repeats() {
       summary={events.length ? t('{n} failure events for {c}; total {h} h.', { n: events.length, c: selCode, h: fh(events.reduce((s, e) => s + e.durationS / 3600, 0)) }) : t('No failure events for this code in the range.')}
       controls={events.length ? <button type="button" className="btn btn-sm" onClick={() => drill(t('the timeline of {c}', { c: selCode }), { eventIds: events.map((e) => e.id) })} data-testid="timeline-open">{t('Open {n} events', { n: events.length })}</button> : undefined}
       table={{ head: [t('Start'), t('Hours'), t('Reason'), t('Area')], rows: events.map((e) => [e.startDate, fh2(e.durationS / 3600), e.head.reason_raw?.trim() || t('(blank)'), e.area_id]) }}
-      testid="chart-timeline"
+      testid="chart-timeline" help={{ id: 'repeat-timeline' }}
     >
       {(w) => win && events.length > 0 ? (
         <TimelineChart events={events.map((e) => ({ id: e.id, startMs: e.startMs, endMs: e.endMs, hours: e.durationS / 3600, reason: e.head.reason_raw?.trim() ?? '', area: e.area_id }))}
@@ -129,7 +127,6 @@ export default function Repeats() {
     </ChartCard>
   );
 
-  const rcats: CartCategory[] = rollPts.map((p) => ({ key: p.date, label: dayShort(p.date), note: dayLabel(p.date) }));
   const heat = heatMeasure === 'hours' ? model?.heatMonthHours : model?.heatMonthCount;
   const heatFull = heatMeasure === 'hours' ? model?.heatAll.monthHours : model?.heatAll.monthCount;
   const heat2Full = heat2Measure === 'hours' ? model?.heatAll.reasonHours : model?.heatAll.reasonCount;
@@ -155,7 +152,7 @@ export default function Repeats() {
       {model && res && !empty && (
         <>
           <section className="card" data-testid="repeat-table-card">
-            <h2>{t('Investigation table')}</h2>
+            <div className="card-title-row"><h2>{t('Investigation table')}</h2><ChartInfo help={{ id: 'repeat-table', vars: { n: settings?.repeatMinEvents, d: settings?.repeatWindowDays, ...(groups[0] ? { c: groups[0].equipmentId, r: groups[0].reasonLabel, h: fh(groups[0].totalHours), o: fint(groups[0].occurrences), a: fh2(groups[0].avgHours) } : {}) } }} title={t('Investigation table')} /></div>
             <p className="chart-sub" style={{ marginBottom: 8 }}>{t('Select a row to see the failure timeline of that equipment. N/A and blank reasons are excluded. The small timeline shows when each occurrence happened across the range.')}</p>
             {groups.length === 0 ? <p className="muted" data-testid="repeat-none">{t('No repeated failures in this range.')}</p> : !mobile ? (
               <StickyTableWrap>
@@ -225,7 +222,7 @@ export default function Repeats() {
 
           <div className="chart-grid">
             <ChartCard
-              title={t('Equipment by month')} subtitle={t('Failure events by the equipment code of the cause; the largest 15 codes. N/A (area-level) is excluded.')} testid="chart-heat-month"
+              title={t('Equipment by month')} subtitle={t('Failure events by the equipment code of the cause; the largest 15 codes. N/A (area-level) is excluded.')} testid="chart-heat-month" help={{ id: 'repeat-heat-month' }}
               summary={heat ? t('{n} codes shown, {t} {u} in total.', { n: heat.rows.length, t: fmtM(heatMeasure)(heat.total), u: heatMeasure === 'hours' ? 'h' : t('events') }) : ''}
               controls={<Toggle value={heatMeasure} options={[{ value: 'hours', label: t('Hours') }, { value: 'count', label: t('Count') }]} onChange={setHeatMeasure} label={t('Measure')} testid="heat-month-measure" />}
               legend={[{ label: t('Darker = more'), color: ACCENT }]}
@@ -233,7 +230,7 @@ export default function Repeats() {
               {() => heat ? <HeatmapTable map={heat} full={heatFull} format={fmtM(heatMeasure)} caption={t('Equipment by month')} rowHead={t('Code')} shortCol={(l) => l.slice(2).replace('-', '/')} /> : null}
             </ChartCard>
             <ChartCard
-              title={t('Equipment by reason')} subtitle={t('Top codes against top reasons. N/A (area-level) is excluded.')} testid="chart-heat-reason"
+              title={t('Equipment by reason')} subtitle={t('Top codes against top reasons. N/A (area-level) is excluded.')} testid="chart-heat-reason" help={{ id: 'repeat-heat-reason' }}
               summary={heat2 ? t('{n} codes and {c} reasons shown.', { n: heat2.rows.length, c: heat2.cols.length }) : ''}
               controls={<Toggle value={heat2Measure} options={[{ value: 'hours', label: t('Hours') }, { value: 'count', label: t('Count') }]} onChange={setHeat2Measure} label={t('Measure')} testid="heat-reason-measure" />}
               legend={[{ label: t('Darker = more'), color: ACCENT }]}
@@ -243,7 +240,7 @@ export default function Repeats() {
           </div>
 
           <ChartCard
-            title={t('Frequency against average duration')} subtitle={t('One point per equipment code (own-stop rule). Bigger = more total hours; codes with the same count are spread a little sideways. Tap a point for details.')} testid="chart-scatter"
+            title={t('Frequency against average duration')} subtitle={t('One point per equipment code (own-stop rule). Bigger = more total hours; codes with the same count are spread a little sideways. Tap a point for details.')} testid="chart-scatter" help={{ id: 'repeat-scatter' }}
             summary={t('{n} equipment codes with failures; {k} of them have a repeated failure (diamonds, labelled first).', { n: model.scatter.length, k: model.scatter.filter((p) => repeatCodes.has(p.code)).length })}
             legend={[{ label: t('Has a repeated failure'), color: 'var(--tk-danger)', symbol: 'diamond' }, { label: t('Other equipment codes'), color: 'var(--tk-accent)', symbol: 'circle' }]}
             table={{ head: [t('Code'), t('Failures'), t('Avg h'), t('Total h')], rows: [...model.scatter].sort((a, b) => b.count - a.count).map((p) => [p.code, fint(p.count), fh2(p.avgHours), fh(p.totalHours)]) }}
@@ -255,15 +252,6 @@ export default function Repeats() {
                 selected={selCode} onPoint={(p) => select(p.key)} openLabel={t('Show timeline')} highlight={repeatCodes} jitter height={w < 520 ? 320 : 360}
               />
             )}
-          </ChartCard>
-
-          <ChartCard
-            title={t('Rolling failure trend')} subtitle={t('Failure events that started in the last {n} days, for each day', { n: roll })} testid="chart-rolling"
-            summary={rollPts.length ? t('Latest {n}-day count: {c}. Highest: {m}.', { n: roll, c: rollPts[rollPts.length - 1]!.count, m: Math.max(...rollPts.map((p) => p.count)) }) : t('No data.')}
-            controls={<Toggle value={roll} options={[{ value: '30', label: t('30 days') }, { value: '90', label: t('90 days') }]} onChange={setRoll} label={t('Rolling window')} testid="roll-window" />}
-            table={{ head: [t('Date'), t('Failures')], rows: rollPts.map((p) => [p.date, p.count]) }}
-          >
-            {(w) => <CartesianChart categories={rcats} series={[{ key: 'r', label: t('Failures in last {n} days', { n: roll }), color: 'var(--tk-danger)', type: 'line', values: rollPts.map((p) => p.count), format: fint }]} width={w} height={240} yFormat={(n) => `${n}`} ariaLabel={t('Line chart of the rolling {n}-day failure count', { n: roll })} />}
           </ChartCard>
         </>
       )}

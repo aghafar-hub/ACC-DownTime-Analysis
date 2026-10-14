@@ -17,6 +17,7 @@ import type { DashFilters } from '../filters';
 import type { DashCtx } from '../scope';
 import { getTargets, targetsOfArea, targetStatus } from '../targets';
 import { useAreaTargetMap } from '../useAreaTargetMap';
+import ChartInfo from '../../help/ChartInfo';
 import { OpenLink, type OpenFn } from './DashCard';
 
 const pct1 = (n: number): string => `${(Math.round(n * 10) / 10).toFixed(1)}%`;
@@ -95,6 +96,7 @@ export function AreasSection({ ctx, filters, onOpen }: { ctx: DashCtx; filters: 
           <span className="dsec-chev" aria-hidden="true"><Icon name={open ? 'chevronDown' : 'chevronRight'} size={16} /></span>
           <span className="dsec-text"><b className="dsec-title">{t('Areas')}</b><span className="dsec-sum">{sub}</span></span>
         </button>
+        <ChartInfo help={{ id: 'dash-areas', vars: { b: basis } }} title={t('Areas')} />
         {showAll}
       </div>
       {open && (

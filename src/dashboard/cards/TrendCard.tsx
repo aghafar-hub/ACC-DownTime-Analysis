@@ -115,6 +115,7 @@ export default function TrendCard({ ctx, filters, dark, classNames, onOpen }: { 
   return (
     <DashCard
       id="trend" testid="chart-monthly-stack" span="wide" title={t('How is stoppage moving month to month?')} subtitle={sub}
+      help={{ id: 'trend', vars: peak ? { slot: slotLabel(peak, grain), h: fh(peak.total) } : {} }}
       controls={(
         <>
           <Seg value={grain} options={[{ value: 'day', label: t('Daily') }, { value: 'month', label: t('Monthly') }]} onChange={setGrain} label={t('Daily or monthly')} testid="trend-grain" />

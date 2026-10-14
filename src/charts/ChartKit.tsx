@@ -1,6 +1,7 @@
 // Shared chart plumbing: measuring, tooltips that work with mouse and touch, the card with its legend and
 // "View as table" toggle. Charts are small SVG components; colours are theme tokens only.
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
+import ChartInfo, { type HelpRef } from '../help/ChartInfo';
 import { t } from '../i18n/t';
 import './charts.css';
 
@@ -238,9 +239,11 @@ export function DataTable({ table, caption }: { table: ChartTable; caption: stri
  * name) and a "View as table" toggle. The chart is a render prop that receives the measured width.
  */
 export function ChartCard({
-  title, subtitle, summary, legend, table, controls, children, footnote, testid, minHeight,
+  title, subtitle, summary, legend, table, controls, children, footnote, testid, minHeight, help,
 }: {
   title: string;
+  /** the (i) explanation (src/help/chartHelp.ts) */
+  help?: HelpRef;
   subtitle?: ReactNode;
   summary: string;
   legend?: LegendItem[];
@@ -258,7 +261,7 @@ export function ChartCard({
     <section className="card chart-card" aria-labelledby={`t-${titleId}`} data-testid={testid}>
       <header className="chart-head">
         <div className="chart-head-text">
-          <h2 id={`t-${titleId}`}>{title}</h2>
+          {help ? <div className="card-title-row"><h2 id={`t-${titleId}`}>{title}</h2><ChartInfo help={help} title={title} /></div> : <h2 id={`t-${titleId}`}>{title}</h2>}
           {subtitle && <p className="chart-sub">{subtitle}</p>}
         </div>
         <div className="chart-head-controls">

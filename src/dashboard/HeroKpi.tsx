@@ -6,9 +6,10 @@ import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { useBackClose } from '../mobile/useBackClose';
 import type { KpiInfo } from './kpiInfo';
+import '../help/help.css';
 
 /** A small centred dialog with the explanation; Escape, the Close button, the backdrop and Back close it. */
-function InfoDialog({ info, onClose }: { info: KpiInfo; onClose: () => void }) {
+function InfoDialog({ info, onClose, testid = 'kpi-info' }: { info: KpiInfo; onClose: () => void; testid?: string }) {
   useBackClose(true, onClose);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -23,27 +24,42 @@ function InfoDialog({ info, onClose }: { info: KpiInfo; onClose: () => void }) {
   }, [onClose]);
   return createPortal(
     <div className="info-shade" onClick={onClose}>
-      <div className="info-box" role="dialog" aria-modal="true" aria-label={info.title} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()} data-testid="kpi-info">
+      <div className="info-box" role="dialog" aria-modal="true" aria-label={info.title} tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()} data-testid={testid} data-help-id={info.id}>
         <div className="info-head">
           <p className="info-title">{info.title}</p>
           <button type="button" className="info-close" onClick={onClose} aria-label={t('Close')} data-testid="kpi-info-close"><Icon name="close" size={16} /></button>
         </div>
         {info.paragraphs.map((p) => <p key={p} className="info-p">{p}</p>)}
+        {info.sections?.map((sec) => (
+          <section key={sec.heading} className="info-sec" data-testid={`info-sec-${sec.kind}`}>
+            <h3 className="info-h">{sec.heading}</h3>
+            {sec.kind === 'formula'
+              ? sec.items.map((x) => <p key={x} className="info-formula" data-testid="info-formula">{x}</p>)
+              : sec.items.length === 1 ? <p className={sec.kind === 'example' ? 'info-p info-example' : 'info-p'}>{sec.items[0]}</p>
+                : <ul className="info-list">{sec.items.map((x) => <li key={x}>{x}</li>)}</ul>}
+          </section>
+        ))}
       </div>
     </div>,
     document.body,
   );
 }
 
-export function InfoButton({ info, testid }: { info: KpiInfo; testid?: string }) {
+export function InfoButton({ info, testid, dialogTestid, className, title: name }: {
+  /** the text, or a function that builds it when the dialog opens (live numbers) */
+  info: KpiInfo | (() => KpiInfo); testid?: string; dialogTestid?: string; className?: string;
+  /** what the button explains (its accessible name), when `info` is a function */
+  title?: string;
+}) {
   const [open, setOpen] = useState(false);
+  const title = name ?? (typeof info === 'function' ? null : info.title);
   return (
     <>
-      <button type="button" className="info-btn" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-expanded={open}
-        aria-label={t('How is {k} calculated?', { k: info.title })} data-testid={testid}>
+      <button type="button" className={className ? `info-btn ${className}` : 'info-btn'} onClick={(e) => { e.stopPropagation(); setOpen(true); }} aria-haspopup="dialog" aria-expanded={open}
+        aria-label={title ? t('How is {k} calculated?', { k: title }) : t('How is this calculated?')} data-testid={testid}>
         <Icon name="info" size={16} />
       </button>
-      {open && <InfoDialog info={info} onClose={() => setOpen(false)} />}
+      {open && <InfoDialog info={typeof info === 'function' ? info() : info} onClose={() => setOpen(false)} testid={dialogTestid} />}
     </>
   );
 }

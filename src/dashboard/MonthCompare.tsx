@@ -189,7 +189,7 @@ export default function MonthCompare({ dash, page, compact = false }: {
     </button>
   ) : (
     <button type="button" className="more-head" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen((x) => !x)} data-testid={`${id}-toggle`}>
-      <span>{t('Month vs month')} {pair && <small>{la} {t('and')} {lb}</small>}</span>
+      <span className="dup-text"><span className="dup-title">{t('Month vs month')} {pair && <small>{la} {t('and')} {lb}</small>}</span> <small className="dup-note" data-testid={`${id}-also`}>{t('Also on the Dashboard')}</small></span>
       <Icon name={open ? 'chevronUp' : 'chevronDown'} size={16} />
     </button>
   );
@@ -270,13 +270,13 @@ export default function MonthCompare({ dash, page, compact = false }: {
                   {(!model.hasA || !model.hasB) && <p className="chart-foot" data-testid="mvm-nodata">{t('A month without data shows no figures and no change.')}</p>}
                   <div className="chart-grid" style={{ marginTop: 12 }}>
                     <ChartCard
-                      title={t('Stoppage hours by area')} subtitle={perDay ? t('Month A (solid) against month B (striped), hours stopped per area and day with data') : t('Month A (solid) against month B (striped), hours stopped per area')} testid="chart-mvm-hours"
+                      title={t('Stoppage hours by area')} subtitle={perDay ? t('Month A (solid) against month B (striped), hours stopped per area and day with data') : t('Month A (solid) against month B (striped), hours stopped per area')} testid="chart-mvm-hours" help={{ id: 'mvm-hours' }}
                       summary={sumOf(hoursSeries, hFmt, hUnit)} legend={legend} table={tableOf(hoursSeries, hFmt, perDay ? 2 : 1)}
                     >
                       {(w) => <CartesianChart categories={cats} series={hoursSeries} width={w} ariaLabel={t('Grouped bars of stoppage hours by area, month A against month B. {s}', { s: sumOf(hoursSeries, hFmt, hUnit) })} yFormat={(n) => `${n}`} rotateLabels maxBarWidth={18} />}
                     </ChartCard>
                     <ChartCard
-                      title={t('Failure count by area')} subtitle={perDay ? t('Month A (solid) against month B (striped), failures per area and day with data') : t('Month A (solid) against month B (striped), failures per area')} testid="chart-mvm-count"
+                      title={t('Failure count by area')} subtitle={perDay ? t('Month A (solid) against month B (striped), failures per area and day with data') : t('Month A (solid) against month B (striped), failures per area')} testid="chart-mvm-count" help={{ id: 'mvm-count' }}
                       summary={sumOf(countSeries, cFmt, cUnit)} legend={legend} table={tableOf(countSeries, cFmt, perDay ? 2 : 0)}
                     >
                       {(w) => <CartesianChart categories={cats} series={countSeries} width={w} ariaLabel={t('Grouped bars of failure count by area, month A against month B. {s}', { s: sumOf(countSeries, cFmt, cUnit) })} yFormat={(n) => `${n}`} rotateLabels maxBarWidth={18} />}

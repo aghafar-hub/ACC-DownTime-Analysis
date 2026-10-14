@@ -1,6 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 import { closePanel, noSidewaysScroll, openType, pickPeriod, signInAndWait, smallTargets, smallText, stubFonts, watchConsole } from './helpers';
 
+/** A chart that repeats a Dashboard card is folded on the other pages: open it (closed on every visit). */
+async function expandDup(page: Page, testid: string) {
+  const sec = page.getByTestId(testid);
+  await expect(sec).toBeVisible();
+  if ((await sec.getAttribute('data-open')) !== 'yes') await sec.getByTestId(`${testid}-toggle`).click();
+  await expect(sec).toHaveAttribute('data-open', 'yes');
+}
+
 /** The first number in a text (tiles also carry a label). */
 const num = (s: string | null): number => Number(((s ?? '').match(/-?[\d,]+(\.\d+)?/)?.[0] ?? 'NaN').replace(/,/g, ''));
 
@@ -260,9 +268,13 @@ test.describe('dashboards (desktop)', () => {
     await page.getByTestId('reason-split-split').click();
     const split = await page.getByTestId('pareto-reason-hours').getByTestId('chart-summary').textContent();
     expect(split).not.toBe(merged);
+    // 'Reasons for one equipment code' lives on the Equipment view now (after the Pareto charts, before the buckets)
+    await expect(page.getByTestId('pareto-reason-equipment')).toHaveCount(0);
+    await page.getByTestId('sub-equipment').click();
     await expect(page.getByTestId('pareto-reason-equipment')).toBeVisible();
     await page.getByTestId('sub-area').click();
     await expect(page.getByTestId('pareto-area-hours')).toBeVisible();
+    await expandDup(page, 'dup-pareto-class');
     await expect(page.getByTestId('pareto-class')).toBeVisible();
   });
 
@@ -285,8 +297,9 @@ test.describe('dashboards (desktop)', () => {
     await expect(page.getByTestId('timeline-mark').first()).toBeVisible();
     await expect(page.getByTestId('heatmap').first()).toBeVisible();
     await expect(page.getByTestId('scatter')).toBeVisible();
-    await page.getByTestId('roll-window-90').click();
-    await expect(page.getByTestId('chart-rolling')).toContainText('90');
+    // the rolling failure trend was removed (owner, 14 Oct)
+    await expect(page.getByTestId('chart-rolling')).toHaveCount(0);
+    await expect(page.getByTestId('roll-window')).toHaveCount(0);
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
@@ -622,8 +635,10 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     await expect(tabs.getByRole('tab')).toHaveText(['Areas', 'Timing', 'Trends', 'Longest']);
     for (const tab of await tabs.getByRole('tab').all()) expect((await tab.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
     await expect(page.getByTestId('rel-tab-areas')).toHaveAttribute('aria-selected', 'true');
-    // Areas: the availability trend and the By area table, nothing of the other tabs
+    // Areas: the By area table and, folded (the Dashboard has it), the availability trend; nothing of the other tabs
     await expect(page.getByTestId('areas-block').getByRole('heading', { name: 'Areas', exact: true })).toBeVisible();
+    await expect(page.getByTestId('chart-availability')).toHaveCount(0);
+    await expandDup(page, 'dup-area-trend');
     await expect(page.getByTestId('chart-availability')).toBeVisible();
     await expect(page.getByTestId('trend-areas')).toBeVisible();
     expect(await page.getByTestId('area-row').count()).toBeGreaterThan(1);
@@ -637,6 +652,8 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     // Trends: monthly MTBF, MTTR, rate and year over year
     await page.getByTestId('rel-tab-trends').click();
     await expect(page).toHaveURL(/tab=trends/);
+    await expect(page.getByTestId('chart-mttr')).toHaveCount(0);
+    await expandDup(page, 'dup-rel-mttr');
     for (const id of ['chart-mtbf', 'chart-mttr', 'chart-rate', 'chart-yoy']) await expect(page.getByTestId(id)).toBeVisible();
     // keyboard: arrows move between the tabs
     await page.getByTestId('rel-tab-trends').focus();
@@ -684,6 +701,8 @@ test.describe('Phase 4: more charts (desktop)', () => {
     await signInAndWait(page, 'engineer');
     await open(page, '/pareto', 'page-pareto');
     await page.getByTestId('sub-area').click();
+    await expandDup(page, 'dup-pareto-class');
+    await expandDup(page, 'dup-pareto-class-count');
     for (const id of ['pareto-line-hours', 'pareto-line-count', 'pareto-area-hours', 'pareto-area-count', 'pareto-class', 'pareto-class-count']) {
       await expect(page.getByTestId(id)).toBeVisible();
       await tableWorks(page, id);
@@ -721,10 +740,15 @@ test.describe('Phase 4: more charts (desktop)', () => {
     await page.goto('/');
     await signInAndWait(page, 'engineer');
     await open(page, '/reliability', 'page-reliability');
-    const ids = ['chart-availability', 'area-table-card', 'chart-area-mtbf', 'chart-area-mttr', 'chart-area-quadrant', 'chart-area-month-heat', 'chart-area-rate'];
+    // the By area table first; the charts that repeat a Dashboard card are folded at the end, closed on every visit
+    const ids = ['area-table-card', 'chart-area-mtbf', 'chart-area-mttr', 'chart-area-rate', 'dup-area-quadrant', 'dup-area-month-heat', 'dup-area-trend'];
     const order = await page.locator(ids.map((i) => `[data-testid="${i}"]`).join(',')).evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
     expect(order).toEqual(ids);
-    // the new charts sit inside the Areas block; the new section is its own block after it
+    for (const id of ['dup-area-quadrant', 'dup-area-month-heat', 'dup-area-trend']) await expect(page.getByTestId(id)).toHaveAttribute('data-open', 'no');
+    for (const id of ['chart-area-quadrant', 'chart-area-month-heat', 'chart-availability']) await expect(page.getByTestId(id)).toHaveCount(0);
+    await expandDup(page, 'dup-area-quadrant');
+    await expandDup(page, 'dup-area-month-heat');
+    // the charts sit inside the Areas block
     for (const id of ['chart-area-mtbf', 'chart-area-mttr', 'chart-area-quadrant', 'chart-area-month-heat', 'chart-area-rate']) {
       await expect(page.getByTestId('areas-block').getByTestId(id)).toBeVisible();
     }
@@ -732,6 +756,10 @@ test.describe('Phase 4: more charts (desktop)', () => {
     await expect(page.getByTestId('when-block').getByRole('heading', { name: 'When failures start' })).toBeVisible();
     await page.getByTestId('rel-tab-areas').click();
     await expect(page.getByTestId('area-table')).toBeVisible();
+    // back on the tab: folded again (not remembered)
+    await expect(page.getByTestId('dup-area-quadrant')).toHaveAttribute('data-open', 'no');
+    await expandDup(page, 'dup-area-quadrant');
+    await expandDup(page, 'dup-area-month-heat');
 
     // ranked bars: MTBF lowest first, MTTR highest first, no figure shown as zero
     const tableValues = async (id: string) => {
@@ -755,7 +783,7 @@ test.describe('Phase 4: more charts (desktop)', () => {
     // the bars equal the By area table
     const mtbfRows = await tableValues('chart-area-mtbf');
     for (const [area, v] of mtbfRows) {
-      const cell = await page.locator(`[data-testid="area-row"][data-area="${area}"] td`).nth(4).textContent();
+      const cell = await page.locator(`[data-testid="area-row"][data-area="${area}"] td`).nth(5).textContent();
       expect(cell === 'None recorded' ? 'no failures' : cell).toBe(v);
     }
     for (const id of ['chart-area-mtbf', 'chart-area-mttr']) await expect(page.getByTestId(id).locator('rect.chart-hit').first()).toBeVisible();
@@ -786,7 +814,7 @@ test.describe('Phase 4: more charts (desktop)', () => {
     // its "Range" column equals the By area table
     const first = await heat.locator('tbody tr').first().getAttribute('data-area');
     const rangeCell = await heat.locator('tbody tr').first().locator('td').last().textContent();
-    const tbl = await page.locator(`[data-testid="area-row"][data-area="${first}"] td`).nth(3).textContent();
+    const tbl = await page.locator(`[data-testid="area-row"][data-area="${first}"] td`).nth(4).textContent();
     expect(rangeCell!.replace('▾ ', '')).toBe(tbl);
     await tableWorks(page, 'chart-area-month-heat');
 
@@ -839,6 +867,7 @@ test.describe('Phase 4: more charts (desktop)', () => {
     await expect.poll(async () => num(await page.getByTestId('chart-when-heat').getByTestId('heat-grand-total').textContent())).toBeLessThan(before);
     await page.getByTestId('rel-tab-areas').click();
     await expect(page.getByTestId('area-table')).toBeVisible();
+    await expandDup(page, 'dup-area-month-heat');
     expect(await page.getByTestId('chart-area-month-heat').locator('tbody tr').count()).toBe(areas);
   });
 
@@ -925,13 +954,14 @@ for (const width of [360, 390]) {
       await page.goto('/');
       await signInAndWait(page, 'engineer');
       await open(page, '/overview?r=month&m=2026-08', 'page-overview');
-      const boxes = await Promise.all(['total-hours', 'failure-count', 'availability', 'mttr', 'mtbf'].map((id) => page.getByTestId(`kpi-${id}`).boundingBox()));
+      const boxes = await Promise.all(['total-hours', 'failure-count', 'availability', 'mttr', 'mtbf', 'running-hours'].map((id) => page.getByTestId(`kpi-${id}`).boundingBox()));
       expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThan(2);
       expect(Math.abs(boxes[2]!.y - boxes[3]!.y)).toBeLessThan(2);
       expect(boxes[2]!.y).toBeGreaterThan(boxes[0]!.y + 40);
-      // MTBF takes the whole last row
+      // MTBF and Running hours share the last row
       expect(boxes[4]!.y).toBeGreaterThan(boxes[2]!.y + 40);
-      expect(boxes[4]!.width).toBeGreaterThan(boxes[0]!.width * 1.8);
+      expect(Math.abs(boxes[4]!.y - boxes[5]!.y)).toBeLessThan(2);
+      expect(Math.abs(boxes[4]!.width - boxes[0]!.width)).toBeLessThan(2);
       // the cards one under the other, in the same order as on a desktop
       const cards = await page.locator('[data-dash-card]').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { id: e.getAttribute('data-dash-card'), x: r.x, y: r.y }; }));
       expect(cards.map((c) => c.id)).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'planned-allowance', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);
@@ -993,6 +1023,8 @@ for (const width of [360, 390]) {
       await open(page, '/pareto', 'page-pareto');
       await page.getByTestId('sub-area').click();
       await expect(page.getByTestId('pareto-line-hours')).toBeVisible();
+      await checks('pareto areas, folded');
+      await expandDup(page, 'dup-pareto-class-count');
       await expect(page.getByTestId('pareto-class-count')).toBeVisible();
       await checks('pareto areas');
       await page.getByTestId('sub-reason').click();
@@ -1001,6 +1033,9 @@ for (const width of [360, 390]) {
       await checks('pareto reasons');
 
       await open(page, '/reliability', 'page-reliability');
+      await checks('reliability, folded');
+      await expandDup(page, 'dup-area-quadrant');
+      await expandDup(page, 'dup-area-month-heat');
       for (const id of ['chart-area-mtbf', 'chart-area-mttr', 'chart-area-quadrant', 'chart-area-month-heat', 'chart-area-rate']) {
         await page.getByTestId(id).scrollIntoViewIfNeeded();
         await expect(page.getByTestId(id).getByTestId('chart-summary')).toBeVisible();
@@ -1013,6 +1048,7 @@ for (const width of [360, 390]) {
         await checks(`reliability ${tab}`);
       }
       await page.getByTestId('rel-tab-areas').click();
+      await expandDup(page, 'dup-area-quadrant');
       // touch alternative to click-to-drill: tap a quadrant point, the pinned tooltip has the button
       const pt = page.getByTestId('chart-area-quadrant').getByTestId('quadrant-point').first();
       await pt.scrollIntoViewIfNeeded();

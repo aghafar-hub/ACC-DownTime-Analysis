@@ -8,6 +8,7 @@ import { cutPareto } from './models';
 import { paretoHonestText } from './dashModels';
 import { Toggle } from './parts';
 import PopMenu, { MenuHeading, MenuItem } from '../components/PopMenu';
+import type { ChartHelpId } from '../help/chartHelp';
 
 const TOPS: { value: string; label: string }[] = [
   { value: '5', label: 'Top 5' }, { value: '10', label: 'Top 10' }, { value: '20', label: 'Top 20' }, { value: 'all', label: 'All' },
@@ -15,8 +16,10 @@ const TOPS: { value: string; label: string }[] = [
 
 /** One Pareto: Top N toggle, chart, table view, click-through. `all` is the complete Pareto (topN 'all'). */
 export default function ParetoCard({
-  title, subtitle, all, what, unit, fmt, testid, onOpen, controls, footnote, labelOf, onAction,
+  title, subtitle, all, what, unit, fmt, testid, onOpen, controls, footnote, labelOf, onAction, help,
 }: {
+  /** the (i) text; the live example is the largest bar against the complete total */
+  help?: ChartHelpId;
   title: string; subtitle?: ReactNode; all: ParetoResult | null; what: string; unit: string; fmt: (n: number) => string; testid: string;
   onOpen: (label: string, eventIds: string[]) => void; controls?: ReactNode; footnote?: ReactNode;
   labelOf?: (bar: ParetoBar) => string;
@@ -28,9 +31,12 @@ export default function ParetoCard({
   const result = useMemo(() => (all ? cutPareto(all, topN) : null), [all, topN]);
   const honest = all ? paretoHonestText(all, topN === 'all' ? all.entryCount : topN, what) : '';
   const summary = result ? `${paretoSummary(result, what, unit, fmt)}${honest ? ` ${honest}.` : ''}` : t('No data in this range.');
+  const first = all?.bars.find((b) => !b.isOthers);
+  const u = unit === 'h' ? ' h' : ` ${unit}`;
+  const helpRef = help ? { id: help, vars: first && all ? { top: labelOf ? labelOf(first) : first.label, v: `${fmt(first.value)}${u}`, t: `${fmt(all.total)}${u}`, p: `${first.sharePct.toFixed(1)}%` } : {} } : undefined;
   return (
     <ChartCard
-      title={title} subtitle={subtitle} summary={summary} testid={testid}
+      title={title} subtitle={subtitle} summary={summary} testid={testid} help={helpRef}
       legend={[{ label: t('Bar: {u}', { u: unit }), color: 'var(--tk-accent)' }, { label: t('Cumulative %'), color: 'var(--tk-text-primary)', symbol: 'line' }, { label: t('80% line'), color: 'var(--tk-text-primary)', symbol: 'dash' }, { label: t('Others (merged)'), color: 'var(--tk-accent)', symbol: 'hatch' }]}
       controls={<>{controls}{onAction && result && result.bars.some((b) => !b.isOthers) && (
         // the bar menu: "Create action" from one of the bars shown (keyboard and mouse; the tooltip has the same button for a tap)

@@ -4,6 +4,7 @@
 import { useId, type ReactNode } from 'react';
 import { PaintSwatch } from '../../charts/paint';
 import type { Paint } from '../../charts/palette';
+import ChartInfo, { type HelpRef } from '../../help/ChartInfo';
 import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
 import { num } from '../../util/format';
@@ -79,8 +80,10 @@ export function OpenLink({ spec, onOpen, label, testid = 'card-open', className 
 }
 
 export default function DashCard({
-  id, title, subtitle, controls, headLink, legend, summary, scope, open, onOpen, span = 'half', children, testid, footExtra, className,
+  id, title, subtitle, controls, headLink, legend, summary, scope, open, onOpen, span = 'half', children, testid, footExtra, className, help,
 }: {
+  /** the (i) explanation (src/help/chartHelp.ts) */
+  help?: HelpRef;
   /** the card's place in the order ('trend', 'class' ...) */
   id: string;
   title: string;
@@ -104,7 +107,9 @@ export default function DashCard({
   return (
     <section className={`card dcard dcard--${span}${className ? ` ${className}` : ''}`} aria-labelledby={`${hid}-t`} aria-describedby={`${hid}-s`} data-testid={testid} data-dash-card={id}>
       <header className={`dcard-head${controls ? ' dcard-head--ctl' : ''}`}>
-        <h2 id={`${hid}-t`} className="dcard-title">{title}</h2>
+        {help
+          ? <div className="dcard-title card-title-row"><h2 id={`${hid}-t`} className="dcard-title-text">{title}</h2><ChartInfo help={help} title={title} /></div>
+          : <h2 id={`${hid}-t`} className="dcard-title">{title}</h2>}
         {headLink && <div className="dcard-headlink">{headLink}</div>}
         {subtitle && <p className="dcard-sub">{subtitle}</p>}
         {controls && <div className="dcard-controls">{controls}</div>}

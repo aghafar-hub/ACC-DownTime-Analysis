@@ -2,9 +2,21 @@
 import { t } from '../i18n/t';
 import type { Targets } from './targets';
 
-export type HeroId = 'total-hours' | 'failure-count' | 'availability' | 'mttr' | 'mtbf';
+export type HeroId = 'total-hours' | 'failure-count' | 'availability' | 'mttr' | 'mtbf' | 'running-hours';
 
-export interface KpiInfo { title: string; paragraphs: string[] }
+/** The numbers of the Running hours tile, for its live example. */
+export interface RunningExample { perDay: string; scheduled: string; stopped: string; running: string; days: number; areas: number; notUploaded: string[] }
+
+/** A part of the explanation: what it shows, the formulas, how it is calculated, a live example. */
+export interface InfoSection { kind: 'what' | 'formula' | 'how' | 'example'; heading: string; items: string[] }
+
+export interface KpiInfo {
+  title: string;
+  paragraphs: string[];
+  sections?: InfoSection[];
+  /** the help text's key (chart help) */
+  id?: string;
+}
 
 const BASIS_TEXT = {
   A: 'Basis A: scheduled time minus all stops, divided by scheduled time.',
@@ -12,8 +24,12 @@ const BASIS_TEXT = {
   C: 'Basis C: scheduled time minus planned and other (circumstantial) stops is the time the area was expected to run. Availability is that time minus failure stops, divided by it.',
 } as const;
 
-export function kpiInfo(id: HeroId, basis: 'A' | 'B' | 'C', targets?: Targets): KpiInfo {
+export function kpiInfo(id: HeroId, basis: 'A' | 'B' | 'C', targets?: Targets, running?: RunningExample): KpiInfo {
   const info = baseInfo(id, basis);
+  if (id === 'running-hours' && running) {
+    info.paragraphs.push(t('Here: {h} h × {d} days × {a} areas = {T} h scheduled − {S} h stopped = {R} h running.', { h: running.perDay, d: running.days, a: running.areas, T: running.scheduled, S: running.stopped, R: running.running })
+      + (running.notUploaded.length ? ` ${t('Not uploaded, left out: {m}.', { m: running.notUploaded.join(', ') })}` : ''));
+  }
   if (id === 'availability' && targets?.availabilityPct != null) {
     info.paragraphs.push(t('Target: {x}%, set in Settings. The card says whether the availability is on target (at or above it) or below it.', { x: targets.availabilityPct }));
   }
@@ -62,6 +78,16 @@ function baseInfo(id: HeroId, basis: 'A' | 'B' | 'C'): KpiInfo {
           t('Mean time between failures: the operating hours of all areas in scope added up (area-hours: scheduled time minus every stop, overlaps counted once) divided by the number of failure events that started in the range.'),
           t('The same rule is used on every page, in reports and in exports. MTBF per area (that area\'s operating hours divided by its failure events) is in the Areas table and on the Reliability page.'),
           t('With no failure in the range the MTBF is not defined, never infinite or zero.'),
+        ],
+      };
+    case 'running-hours':
+      return {
+        title: t('Running hours'),
+        paragraphs: [
+          t('The hours the areas in scope were not stopped: scheduled time minus every recorded stop, added up over the areas (area-hours).'),
+          t('Running hours = T − stopped hours. T = scheduled hours per day (24 h unless Settings say otherwise) × days in the period × areas; months not uploaded are left out. Stopped hours = planned + incidental + other, overlapping stops in one area counted once.'),
+          t('It is derived from the stop records, NOT measured run hours from the plant: an area with no record is counted as running, and an unrecorded stop is counted as running time.'),
+          t('Higher is better. The change is against the comparison period; when that period is only partly covered it is compared per day.'),
         ],
       };
     case 'mttr':

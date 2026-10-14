@@ -10,6 +10,8 @@ import { Tile } from '../components/Tile';
 import { useIsMobile } from '../hooks/useIsMobile';
 import AreasBlock from '../dashboard/AreasBlock';
 import MonthCompare from '../dashboard/MonthCompare';
+import AlsoOnDashboard from '../dashboard/AlsoOnDashboard';
+import ChartInfo from '../help/ChartInfo';
 import DashTop from '../dashboard/DashTop';
 import { fh, fh2, fint, monthAxisLabels, monthLabel, monthMissing, MTBF_ALL_LABEL, MTBF_ALL_SUB, partialNote } from '../dashboard/format';
 import { reliabilityTakeaway } from '../dashboard/takeaways';
@@ -67,6 +69,11 @@ export default function Reliability() {
   const gapCount = (s: CartSeries) => s.values.filter((v) => v === null).length;
   const gapNote = (s: CartSeries) => (gapCount(s) ? t('{n} months have no value (gaps): no failures, no data or not uploaded. Hover or tap a month for the reason.', { n: gapCount(s) }) : undefined);
   const areaLabel = areaId || t('all areas (area-hours)');
+  // the latest month with a value: the live example in the (i) of the monthly charts
+  const lastOf = (pick: (m: (typeof months)[number]) => Metric) => [...months].reverse().find((m) => pick(m).available) ?? null;
+  const lastMtbf = lastOf((m) => m.mtbfHours);
+  const lastMttr = lastOf((m) => m.mttrHours);
+  const lastRate = lastOf((m) => m.failureRatePer1000h);
 
   const hist = model?.histogram;
   const bandOf = (fromMin: number, toMin: number | null): 'short' | 'medium' | 'long' => {
@@ -172,7 +179,7 @@ export default function Reliability() {
             <section aria-labelledby="when-heading" data-testid="when-block">
               <h2 className="dash-section-title" id="when-heading">{t('When failures start')}</h2>
               <ChartCard
-                title={t('Failure starts by hour and weekday')} subtitle={t('Failure events chained as failures, by the plant-local time the stop began. Each cell is one hour of one weekday over the whole range.')} testid="chart-when-heat"
+                title={t('Failure starts by hour and weekday')} subtitle={t('Failure events chained as failures, by the plant-local time the stop began. Each cell is one hour of one weekday over the whole range.')} testid="chart-when-heat" help={{ id: 'when-heat' }}
                 summary={startSummary}
                 controls={<Toggle value={startMeasure} options={[{ value: 'count', label: t('Count') }, { value: 'hours', label: t('Hours') }]} onChange={setStartMeasure} label={t('Measure')} testid="when-measure" />}
                 legend={[{ label: t('Darker = more'), color: ACCENT }]}
@@ -183,7 +190,7 @@ export default function Reliability() {
               </ChartCard>
             </section>
               <div className="chart-grid">
-                <ChartCard title={t('Failure duration distribution')} subtitle={t('Failure events by total duration; colours and labels mark short, medium and long')} testid="chart-histogram"
+                <ChartCard title={t('Failure duration distribution')} subtitle={t('Failure events by total duration; colours and labels mark short, medium and long')} testid="chart-histogram" help={{ id: 'histogram', vars: hist ? { n: fint(hist.eventCount), s: fint(hist.bands[0]!.count), m: fint(hist.bands[1]!.count), l: fint(hist.bands[2]!.count) } : {} }}
                   summary={hist ? t('{n} failure events. Short {s}, medium {m}, long {l}.', { n: fint(hist.eventCount), s: fint(hist.bands[0]!.count), m: fint(hist.bands[1]!.count), l: fint(hist.bands[2]!.count) }) : ''}
                   legend={[
                     { label: t('Short (up to {m} min)', { m: ctx.master.settings.durationShortMaxMin }), color: BAND_COLOR.short },
@@ -208,23 +215,25 @@ export default function Reliability() {
               </select>
             </div>
             <div className="chart-grid chart-grid--even">
-              <ChartCard title={t('Monthly MTBF')} subtitle={t('Operating hours per failure, {a}', { a: areaLabel })} testid="chart-mtbf"
+              <ChartCard title={t('Monthly MTBF')} subtitle={t('Operating hours per failure, {a}', { a: areaLabel })} testid="chart-mtbf" help={{ id: 'mtbf-month', vars: lastMtbf ? { m: monthLabel(lastMtbf.month), o: fh(lastMtbf.operatingHours.available ? lastMtbf.operatingHours.value : 0), n: fint(lastMtbf.failureCount), v: fh(lastMtbf.mtbfHours.available ? lastMtbf.mtbfHours.value : 0) } : {} }}
                 summary={`${t('{n} of {m} months have an MTBF.', { n: months.length - gapCount(mtbf), m: months.length })}`} footnote={gapNote(mtbf)}
                 table={seriesTable(cats, [mtbf], t('Month'), (_s, n) => fh(n))}>
                 {(w) => <CartesianChart categories={cats} series={[mtbf]} width={w} ariaLabel={t('Line chart of monthly MTBF')} zeroBased />}
               </ChartCard>
-              <ChartCard title={t('Mean restoration time')} subtitle={t('Mean duration of failure events that started in the month')} testid="chart-mttr"
-                summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(mttr), m: months.length })} footnote={gapNote(mttr)}
-                table={seriesTable(cats, [mttr], t('Month'), (_s, n) => fh2(n))}>
-                {(w) => <CartesianChart categories={cats} series={[mttr]} width={w} ariaLabel={t('Line chart of monthly mean restoration time')} yFormat={(n) => `${n}`} />}
-              </ChartCard>
-              <ChartCard title={t('Failures per 1,000 operating hours')} subtitle={t('Failure rate adjusted for exposure, {a}', { a: areaLabel })} testid="chart-rate"
+              <ChartCard title={t('Failures per 1,000 operating hours')} subtitle={t('Failure rate adjusted for exposure, {a}', { a: areaLabel })} testid="chart-rate" help={{ id: 'rate-month', vars: lastRate ? { m: monthLabel(lastRate.month), o: fh(lastRate.operatingHours.available ? lastRate.operatingHours.value : 0), n: fint(lastRate.failureCount), v: fh2(lastRate.failureRatePer1000h.available ? lastRate.failureRatePer1000h.value : 0) } : {} }}
                 summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(rate), m: months.length })} footnote={gapNote(rate)}
                 table={seriesTable(cats, [rate], t('Month'), (_s, n) => fh2(n))}>
                 {(w) => <CartesianChart categories={cats} series={[rate]} width={w} ariaLabel={t('Line chart of failures per 1,000 operating hours')} yFormat={(n) => `${n}`} />}
               </ChartCard>
             </div>
-            <ChartCard title={t('Year over year, by month')} subtitle={t('{a} against {b}, {m}', { a: model.yoyYear, b: model.yoyYear - 1, m: yoyLabels[yoyMetric] })} testid="chart-yoy"
+            <AlsoOnDashboard title={t('Mean restoration time')} testid="dup-rel-mttr">
+            <ChartCard title={t('Mean restoration time')} subtitle={t('Mean duration of failure events that started in the month')} testid="chart-mttr" help={{ id: 'mttr-month', vars: lastMttr ? { m: monthLabel(lastMttr.month), h: fh(lastMttr.mttrHours.available ? lastMttr.mttrHours.value * lastMttr.failureCount : 0), n: fint(lastMttr.failureCount), v: fh2(lastMttr.mttrHours.available ? lastMttr.mttrHours.value : 0) } : {} }}
+              summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(mttr), m: months.length })} footnote={gapNote(mttr)}
+              table={seriesTable(cats, [mttr], t('Month'), (_s, n) => fh2(n))}>
+              {(w) => <CartesianChart categories={cats} series={[mttr]} width={w} ariaLabel={t('Line chart of monthly mean restoration time')} yFormat={(n) => `${n}`} />}
+            </ChartCard>
+            </AlsoOnDashboard>
+            <ChartCard title={t('Year over year, by month')} subtitle={t('{a} against {b}, {m}', { a: model.yoyYear, b: model.yoyYear - 1, m: yoyLabels[yoyMetric] })} testid="chart-yoy" help={{ id: 'yoy' }}
               controls={<Toggle value={yoyMetric} options={(Object.keys(yoyLabels) as YoyMetric[]).map((v) => ({ value: v, label: yoyLabels[v] }))} onChange={setYoyMetric} label={t('Measure')} testid="yoy-measure" />}
               summary={t('Months without data in either year are left out.')} legend={yseries.map((s) => ({ label: s.label, color: s.color }))} footnote={yoyFoot}
               table={seriesTable(ycats, yseries, t('Month'), (_s, n) => yfmt(n))}>
@@ -235,7 +244,7 @@ export default function Reliability() {
           {tab === 'longest' && (
             <div role="tabpanel" id="rel-tab-longest-panel" aria-labelledby="rel-tab-longest" data-testid="rel-panel-longest">
             <section className="card" data-testid="longest-card">
-              <h2>{t('Longest events')}</h2>
+              <div className="card-title-row"><h2>{t('Longest events')}</h2><ChartInfo help={{ id: 'longest', vars: longest[0] ? { h: fh2(longest[0].hours) } : {} }} title={t('Longest events')} /></div>
               <p className="chart-sub" style={{ marginBottom: 8 }}>{t('Ranked by chained event: a stop that continues over several rows counts once, with all its rows.')}</p>
               {longest.length === 0 ? <p className="muted">{t('No failure events in this range.')}</p> : (
                 <div className="table-wrap">

@@ -116,6 +116,7 @@ export function FailMttrCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: 
   const selIds = useMemo(() => (s?.window ? failureIdsStarted(ctx, s.window) : []), [ctx, s]);
   if (!m) return null;
   const withData = m.months.filter((x) => x.failures !== null);
+  const lastFail = [...withData].reverse().find((x) => x.mttr !== null) ?? null;
   const summary = withData.length
     ? t('{n} months. Failures from {a} to {b} per month; MTTR from {c} to {d} h.', {
       n: m.months.length, a: fint(Math.min(...withData.map((x) => x.failures!))), b: fint(Math.max(...withData.map((x) => x.failures!))),
@@ -125,6 +126,7 @@ export function FailMttrCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: 
   return (
     <DashCard
       id="fail-mttr" testid="chart-fail-mttr" title={t('Are we failing more, or repairing slower?')}
+      help={{ id: 'fail-mttr', vars: lastFail && lastFail.failures && lastFail.mttr !== null ? { m: monthText(lastFail.key), h: fh(lastFail.mttr * lastFail.failures), n: fint(lastFail.failures), mttr: fh2(lastFail.mttr) } : {} }}
       subtitle={t('Failures and repair time by month · shared months, separate scales')}
       legend={[{ kind: 'paint', paint: { color: 'var(--dt-inc)', pattern: 'solid' }, label: t('Failures (count)') }, { kind: 'line', color: 'var(--dt-pl)', label: t('MTTR (h)'), marker: true }]}
       summary={summary} scope={scopeText(m.range, filters, 'failures')} open={{ ids, label: t('Failures by month') }} onOpen={onOpen}
@@ -160,6 +162,7 @@ export function AttentionCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters:
   return (
     <DashCard
       id="attention" testid="chart-quadrant" title={t('Which areas need attention?')}
+      help={{ id: 'attention', vars: q.medianMtbf !== null && q.medianMttr !== null ? { mb: fh(q.medianMtbf), mr: fh2(q.medianMttr) } : {} }}
       subtitle={t('MTBF vs MTTR by area · dashed lines = median of {n} areas', { n: q.points.length })}
       legend={[{ kind: 'dot', color: 'var(--tk-danger)', label: t('Needs attention') }, { kind: 'dot', color: 'var(--tk-accent)', hollow: true, label: t('Other areas') }]}
       summary={summary} scope={scopeText(eff, filters, 'failures')} open={{ ids, label: t('Failures of all areas') }} onOpen={onOpen}
@@ -200,7 +203,8 @@ export function RepeatsCard({ ctx, filters, onOpen, onAll }: { ctx: DashCtx; fil
   return (
     <DashCard
       id="repeats" testid="chart-repeats" title={t('What keeps failing again?')}
-      subtitle={t('Repeated failures · same code + reason, {n}+ times in {d} days · dots = days', { n: s.repeatMinEvents, d: s.repeatWindowDays })}
+      help={{ id: 'repeats', vars: { n: s.repeatMinEvents, d: s.repeatWindowDays, ...(m.failureHours > 0 ? { h: fh(m.hours), t: fh(m.failureHours), p: `${share.toFixed(1)}%` } : {}) } }}
+      subtitle={t('Repeated failures · same code + reason, {n}+ times in {d} days', { n: s.repeatMinEvents, d: s.repeatWindowDays })}
       headLink={<button type="button" className="dcard-link" onClick={onAll} data-testid="repeats-all">{t('All {n}', { n: m.listed })} <span aria-hidden="true">›</span></button>}
       summary={summary} scope={scopeText(m.window, filters, 'failures')} open={{ ids: m.ids, label: t('Repeated failures') }} onOpen={onOpen}
     >
@@ -263,6 +267,7 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
   return (
     <DashCard
       id="heat" testid="chart-avail-heat" title={t('Is any area slipping over time?')}
+      help={{ id: 'heat', vars: { b: ctx.master.settings.availabilityBasis } }}
       subtitle={t('Availability heatmap, area × month (basis {b}, %){s}', { b: ctx.master.settings.availabilityBasis, s: sortName ? ` · ${t('worst {m} first', { m: sortName })}` : '' })}
       headLink={mobile && m.rows.length > 6 ? <button type="button" className="dcard-link" onClick={() => setAll((v) => !v)} aria-expanded={all} data-testid="heat-all">{all ? t('Worst 6') : t('All {n}', { n: m.rows.length })} <span aria-hidden="true">›</span></button> : undefined}
       legend={tg !== null ? [
@@ -344,6 +349,7 @@ export function DailyCard({ ctx, model, filters, dark, onOpen }: { ctx: DashCtx;
   return (
     <DashCard
       id="daily" testid="chart-daily" span="full" title={t('Which days were worst?')}
+      help={{ id: 'daily', vars: peak ? { d: dayText(peak.date), h: fh(peak.downtimeHours) } : {} }}
       subtitle={t('Daily stopped hours (area-h) by type · {p} · line = {k}-day average of all types', { p: periodText(range), k: ROLLING_DAYS })}
       legend={[...paints.map((p) => ({ kind: 'paint' as const, paint: p, label: mobile ? p.short : p.label })), { kind: 'line', color: 'var(--tk-text-primary)', label: t('{k}-day average', { k: ROLLING_DAYS }) }]}
       summary={summary} scope={scopeText(range, filters, 'none')} open={{ ids, label: t('Daily stoppage {p}', { p: periodText(range) }) }} onOpen={onOpen}

@@ -112,3 +112,18 @@ warning); P3 event-level filters keep whole events; P4 one MTBF rule, 'MTBF · a
 different areas within 10 min merged, bursts (< 1 h in one area) shown apart; P6 'Not uploaded' months instead of
 0 h / 100 %; P7 per-day comparison when the comparison period is covered < 90 %. Rules: src/calc/README.md and
 docs/architecture-and-build-plan.md section 8.
+
+## Owner changes (14 Oct)
+- Charts that repeat a Dashboard card are folded on the other pages, closed on every visit (src/dashboard/AlsoOnDashboard.tsx:
+  title, 'Also on the Dashboard', chevron, 44 px, built only when opened): Pareto › Classifications by hours / by frequency;
+  Reliability › Areas: MTBF against MTTR, Availability by area and month, Availability trend per area; Reliability › Trends:
+  Mean restoration time; Reliability › Month vs month (already folded, now says so). The Dashboard is unchanged.
+- KPI row: sixth tile 'Running hours' = operating hours of computeKpis (T − stopped hours, area-hours; derived, not measured),
+  change against the comparison (higher = better), monthly sparkline (models.ts runningHours, dashModels kpiSparks).
+- (i) on every chart and table card (ChartCard / DashCard `help`, ParetoCard `help`, tables, Actions summary cards): the KPI
+  (i) button and dialog (src/dashboard/HeroKpi.tsx, a bottom sheet on phones) with what it shows, the formula, how it is
+  calculated and a live example. All texts: src/help/chartHelp.ts, keyed by chart id.
+- Pareto: 'Reasons for one equipment code' is on the Equipment view. Repeated failures: no rolling failure trend.
+- Reliability › By area: Area, Operating h, Stopped h, Failure h (failure events' hours, P1, = Areas Pareto), Failures,
+  Availability, MTBF h, MTTR h; target status inside the cells; Stopped h / Failure h / Failures open the split by
+  classification (src/dashboard/areaBreakdown.ts, BreakdownCell.tsx; parts rounded so they add up to the cell).

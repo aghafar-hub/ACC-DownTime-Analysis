@@ -3,10 +3,10 @@
 import {
   areaMonthAvailability, areaPareto, availabilityByArea, failureStartHeatmap, linePareto, mtbfMttrQuadrants, rankAreas, reasonMonthHeatmap, buildPareto, classificationPareto, dailySeries, daysInRange, monthlyHoursByClassification, compareTotal, avail, durationHistogram, equipmentMonthHeatmap,
   areaLevelStops, equipmentPareto, equipmentReasonHeatmap, topHeatmapRows, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
-  reasonParetoForEquipment, resolvedKey, rollingFailureCounts, rowCode, yearOverYear,
+  reasonParetoForEquipment, resolvedKey, rowCode, yearOverYear,
   type AreaAvailability, type AreaKpis, type AreaLevelStops, type AreaMonthAvailability, type AreaRank, type QuadrantResult, type ClassMonthPoint, type DayPoint, type Metric, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
   type KpiChanges, type KpiOk, type LongEvent, type MonthPoint, type ParetoBar, type ParetoMeasure, type ParetoResult, type RepeatResult,
-  type RollingPoint, type TopN, type YoyMonth,
+  type TopN, type YoyMonth,
 } from '../calc';
 import type { CompareMode } from './filters';
 import { areaTargetStatuses, belowTargetCount, getTargets, kpiTargetStatuses, type KpiTargetStatuses, type Targets } from './targets';
@@ -41,6 +41,38 @@ export interface OverviewModel {
   status: KpiTargetStatuses;
   /** areas below the availability target ("N of M areas below target"); null while that target is off */
   belowTarget: { below: string[]; total: number } | null;
+  /** running (operating) hours of the scope: derived, T minus the recorded stops */
+  running: RunningHours | null;
+}
+
+/**
+ * Running hours on the KPI row: the operating hours of computeKpis, i.e. scheduled time T (24 h x days x areas, months
+ * not uploaded left out) minus the recorded stopped hours (overlaps once), in area-hours. Derived, never measured.
+ */
+export interface RunningHours {
+  value: Metric;
+  /** T, area-hours */
+  scheduledHours: number;
+  /** PL + INC + CIR, area-hours */
+  stoppedHours: number;
+  areas: number;
+  /** days of the window with data (months not uploaded left out) */
+  days: number;
+  notUploaded: string[];
+  /** against the comparison period; higher is better (null without a comparison) */
+  change: Change | null;
+}
+
+export function runningHours(kpi: KpiOk, changes: KpiChanges | null): RunningHours {
+  return {
+    value: kpi.total.operatingHours,
+    scheduledHours: kpi.total.scheduledHours,
+    stoppedHours: kpi.total.downtimeHours,
+    areas: kpi.areas.length,
+    days: kpi.coveredDays,
+    notUploaded: kpi.notUploaded,
+    change: changes?.operatingHours ?? null,
+  };
 }
 
 export const ROLLING_DAYS = 7;
@@ -75,6 +107,7 @@ export function overviewModel(ctx: DashCtx): OverviewModel {
     targets,
     status,
     belowTarget: availability ? belowTargetCount(availability.areas, targets) : null,
+    running: kpi ? runningHours(kpi, cmp?.changes ?? null) : null,
   };
 }
 
@@ -321,10 +354,6 @@ export function repeatsModel(ctx: DashCtx): RepeatsModel | null {
     heatReasonCount: topHeatmapRows(heatAll.reasonCount, 12),
     heatAll,
   };
-}
-
-export function rolling(ctx: DashCtx, days: 30 | 90): RollingPoint[] {
-  return ctx.win.effective ? rollingFailureCounts(ctx.scope.failureChains, ctx.win.effective, days) : [];
 }
 
 /** Failure events of one equipment code inside the window, oldest first. */

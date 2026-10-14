@@ -8,6 +8,9 @@ import HeatmapTable from '../charts/HeatmapTable';
 import { ACCENT } from '../charts/palette';
 import { EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import ParetoCard from '../dashboard/ParetoCard';
+import AlsoOnDashboard from '../dashboard/AlsoOnDashboard';
+import ChartInfo from '../help/ChartInfo';
+import type { ChartHelpId } from '../help/chartHelp';
 import DashTop from '../dashboard/DashTop';
 import { fh, fint } from '../dashboard/format';
 import { paretoTakeaway } from '../dashboard/takeaways';
@@ -21,12 +24,12 @@ import '../dashboard/dashboard.css';
 
 type Sub = 'equipment' | 'reason' | 'area';
 
-function Bucket({ title, note, result, testid, onOpen, detail }: { title: string; note: string; result: ParetoResult; testid: string; onOpen: (label: string, ids: string[]) => void; detail?: (b: ParetoBar) => string }) {
+function Bucket({ title, note, result, testid, onOpen, detail, help }: { title: string; note: string; result: ParetoResult; testid: string; onOpen: (label: string, ids: string[]) => void; detail?: (b: ParetoBar) => string; help: ChartHelpId }) {
   const bars = result.bars.slice(0, 5);
   const blank = t('(blank code)');
   return (
     <section className="card" data-testid={testid}>
-      <h2>{title}</h2>
+      <div className="card-title-row"><h2>{title}</h2><ChartInfo help={{ id: help }} title={title} /></div>
       <p className="chart-sub">{note}</p>
       <p style={{ margin: '6px 0 0', fontSize: 13 }}><b data-testid={`${testid}-total`} className="mono">{fh(result.total)} h</b> · {fint(result.bars.reduce((s, b) => s + b.eventIds.length, 0))} {t('events')}</p>
       {bars.length === 0 ? <p className="muted" style={{ fontSize: 13 }}>{t('None in this range.')}</p> : (
@@ -57,7 +60,7 @@ function AreaLevelCard({ data, onOpen }: { data: AreaLevelStops; onOpen: (label:
   const all = data.byArea.bars.flatMap((b) => b.eventIds);
   return (
     <section className="card" data-testid="bucket-area">
-      <h2>{title}</h2>
+      <div className="card-title-row"><h2>{title}</h2><ChartInfo help={{ id: 'bucket-area' }} title={title} /></div>
       <p className="chart-sub">{t('The whole area stopped; no equipment code. Every classification is counted here.')}</p>
       <p style={{ margin: '6px 0 0', fontSize: 13 }}>
         <b data-testid="bucket-area-total" className="mono">{fh(data.byArea.total)} h</b> · <span data-testid="bucket-area-count">{fint(data.events)}</span> {t('stops')}
@@ -118,7 +121,7 @@ export default function Pareto() {
   }, [ctx]);
   const codes = useMemo(() => (eq ? eq.count.own.bars.map((b) => b.key).sort() : []), [eq]);
   const code = eqCode && codes.includes(eqCode) ? eqCode : (eq?.hours.own.bars[0]?.key ?? '');
-  const reasonEq = useMemo(() => (ctx && sub === 'reason' && code ? reasonForEquipmentModel(ctx, code, split, eqMeasure) : null), [ctx, sub, code, split, eqMeasure]);
+  const reasonEq = useMemo(() => (ctx && sub === 'equipment' && code ? reasonForEquipmentModel(ctx, code, split, eqMeasure) : null), [ctx, sub, code, split, eqMeasure]);
   const areaH = useMemo(() => (ctx && sub === 'area' ? areaModel(ctx, 'hours') : null), [ctx, sub]);
   const areaC = useMemo(() => (ctx && sub === 'area' ? areaModel(ctx, 'count') : null), [ctx, sub]);
   const cls = useMemo(() => (ctx && sub === 'area' ? classModel(ctx, 'hours', !classAll) : null), [ctx, sub, classAll]);
@@ -172,30 +175,12 @@ export default function Pareto() {
           {sub === 'equipment' && (
             <>
               <div className="chart-grid">
-                <ParetoCard title={t('Equipment by failure hours')} subtitle={t('Own-stop rule: only codes that belong to the stopped area')} all={eq.hours.own} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-eq-hours" onOpen={open(t('the Pareto bar'))} onAction={act('equipment', t('Equipment by failure hours'))} />
-                <ParetoCard title={t('Equipment by failure frequency')} subtitle={t('Failure events that started in the range')} all={eq.count.own} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-eq-count" onOpen={open(t('the Pareto bar'))} onAction={act('equipment', t('Equipment by failure frequency'))} />
-              </div>
-              <div className="bucket-grid" data-testid="buckets">
-                <Bucket title={t('Stopped by other areas')} note={t('The code belongs to another area only; not counted above so a cause is never counted twice.')} result={eq.hours.otherAreas} testid="bucket-other" onOpen={open(t('the bucket'))} detail={otherDetail} />
-                <AreaLevelCard data={eq.areaLevel} onOpen={open(t('the bucket'))} />
-                <Bucket title={t('Unknown code')} note={t('The code is not in the equipment master.')} result={eq.hours.unknown} testid="bucket-unknown" onOpen={open(t('the bucket'))} />
-                <Bucket title={t('Code in no area')} note={t('The code exists but is not assigned to any area.')} result={eq.hours.unassigned} testid="bucket-unassigned" onOpen={open(t('the bucket'))} />
-              </div>
-            </>
-          )}
-          {sub === 'reason' && (
-            <>
-              <div style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span className="field-label">{t('Same reason text under different classifications')}</span>
-                <Toggle value={split ? 'split' : 'merge'} options={[{ value: 'merge', label: t('Merge') }, { value: 'split', label: t('Split by classification') }]} onChange={(v) => setSplit(v === 'split')} label={t('Reason grouping')} testid="reason-split" />
-              </div>
-              <div className="chart-grid">
-                <ParetoCard title={t('Reasons by failure hours')} all={reasons?.hours ?? null} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-reason-hours" onOpen={open(t('the Pareto bar'))} onAction={act('reason', t('Reasons by failure hours'))} />
-                <ParetoCard title={t('Reasons by failure frequency')} all={reasons?.count ?? null} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-reason-count" onOpen={open(t('the Pareto bar'))} onAction={act('reason', t('Reasons by failure frequency'))} />
+                <ParetoCard title={t('Equipment by failure hours')} subtitle={t('Own-stop rule: only codes that belong to the stopped area')} all={eq.hours.own} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-eq-hours" help="pareto-eq-hours" onOpen={open(t('the Pareto bar'))} onAction={act('equipment', t('Equipment by failure hours'))} />
+                <ParetoCard title={t('Equipment by failure frequency')} subtitle={t('Failure events that started in the range')} all={eq.count.own} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-eq-count" help="pareto-eq-count" onOpen={open(t('the Pareto bar'))} onAction={act('equipment', t('Equipment by failure frequency'))} />
               </div>
               <ParetoCard
                 title={t('Reasons for one equipment code')} subtitle={t('Why does {c} fail?', { c: code || '-' })} all={reasonEq} what={t('failures')} unit={eqMeasure === 'hours' ? 'h' : t('events')} fmt={eqMeasure === 'hours' ? fh : fint}
-                testid="pareto-reason-equipment" onOpen={open(t('the Pareto bar'))} onAction={act('reason', t('Reasons for {c}', { c: code }), code)}
+                testid="pareto-reason-equipment" help="pareto-reason-equipment" onOpen={open(t('the Pareto bar'))} onAction={act('reason', t('Reasons for {c}', { c: code }), code)}
                 controls={(
                   <>
                     <div className="field" style={{ minWidth: 150 }}>
@@ -208,6 +193,24 @@ export default function Pareto() {
                   </>
                 )}
               />
+              <div className="bucket-grid" data-testid="buckets">
+                <Bucket title={t('Stopped by other areas')} note={t('The code belongs to another area only; not counted above so a cause is never counted twice.')} result={eq.hours.otherAreas} testid="bucket-other" help="bucket-other" onOpen={open(t('the bucket'))} detail={otherDetail} />
+                <AreaLevelCard data={eq.areaLevel} onOpen={open(t('the bucket'))} />
+                <Bucket title={t('Unknown code')} note={t('The code is not in the equipment master.')} result={eq.hours.unknown} testid="bucket-unknown" help="bucket-unknown" onOpen={open(t('the bucket'))} />
+                <Bucket title={t('Code in no area')} note={t('The code exists but is not assigned to any area.')} result={eq.hours.unassigned} testid="bucket-unassigned" help="bucket-unassigned" onOpen={open(t('the bucket'))} />
+              </div>
+            </>
+          )}
+          {sub === 'reason' && (
+            <>
+              <div style={{ marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span className="field-label">{t('Same reason text under different classifications')}</span>
+                <Toggle value={split ? 'split' : 'merge'} options={[{ value: 'merge', label: t('Merge') }, { value: 'split', label: t('Split by classification') }]} onChange={(v) => setSplit(v === 'split')} label={t('Reason grouping')} testid="reason-split" />
+              </div>
+              <div className="chart-grid">
+                <ParetoCard title={t('Reasons by failure hours')} all={reasons?.hours ?? null} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-reason-hours" help="pareto-reason-hours" onOpen={open(t('the Pareto bar'))} onAction={act('reason', t('Reasons by failure hours'))} />
+                <ParetoCard title={t('Reasons by failure frequency')} all={reasons?.count ?? null} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-reason-count" help="pareto-reason-count" onOpen={open(t('the Pareto bar'))} onAction={act('reason', t('Reasons by failure frequency'))} />
+              </div>
               {reasonMonth && (() => {
                 const heat = rmMeasure === 'hours' ? reasonMonth.hours : reasonMonth.count;
                 const heatAll = rmMeasure === 'hours' ? reasonMonth.hoursAll : reasonMonth.countAll;
@@ -215,7 +218,7 @@ export default function Pareto() {
                 const u = rmMeasure === 'hours' ? 'h' : t('events');
                 return (
                   <ChartCard
-                    title={t('Reasons by month')} subtitle={t('Failure events by the reason of the event; the largest 12 reasons against the months of the range')} testid="chart-heat-reason-month"
+                    title={t('Reasons by month')} subtitle={t('Failure events by the reason of the event; the largest 12 reasons against the months of the range')} testid="chart-heat-reason-month" help={{ id: 'reason-month' }}
                     summary={heat.rows.length ? t('{n} of {m} reasons shown, {t} {u} in total across {c} months.', { n: heat.rows.length, m: heatAll.rows.length, t: f(heat.total), u, c: heat.cols.length }) : t('No failure events in this range.')}
                     controls={<Toggle value={rmMeasure} options={[{ value: 'hours', label: t('Hours') }, { value: 'count', label: t('Count') }]} onChange={setRmMeasure} label={t('Measure')} testid="heat-reason-month-measure" />}
                     legend={[{ label: t('Darker = more'), color: ACCENT }]}
@@ -229,22 +232,28 @@ export default function Pareto() {
             </>
           )}
           {sub === 'area' && (
+            <>
             <div className="chart-grid">
-              <ParetoCard title={t('Lines by failure hours')} subtitle={t('Failure events by the line of the stopped area (area-hours)')} all={lineH} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-line-hours" onOpen={open(t('the Pareto bar'))} onAction={act('line', t('Lines by failure hours'))} />
-              <ParetoCard title={t('Lines by failure frequency')} all={lineC} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-line-count" onOpen={open(t('the Pareto bar'))} />
-              <ParetoCard title={t('Areas by failure hours')} subtitle={t('Failure events by stopped area (area-hours)')} all={areaH} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-area-hours" onOpen={open(t('the Pareto bar'))} onAction={act('area', t('Areas by failure hours'))} />
-              <ParetoCard title={t('Areas by failure frequency')} all={areaC} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-area-count" onOpen={open(t('the Pareto bar'))} />
-              <ParetoCard
-                title={t('Classifications by hours')} subtitle={classAll ? t('All events, including planned (PL) and other (CIR)') : t('Failure events only')} all={cls} what={t('hours')} unit="h" fmt={fh}
-                testid="pareto-class" onOpen={open(t('the Pareto bar'))}
-                controls={<Toggle value={classAll ? 'all' : 'fail'} options={[{ value: 'all', label: t('All events') }, { value: 'fail', label: t('Failures only') }]} onChange={(v) => setClassAll(v === 'all')} label={t('Classification scope')} testid="class-scope" />}
-              />
-              <ParetoCard
-                title={t('Classifications by frequency')} subtitle={classAll ? t('All events, including planned (PL) and other (CIR)') : t('Failure events only')} all={clsCount} what={t('events')} unit={t('events')} fmt={fint}
-                testid="pareto-class-count" onOpen={open(t('the Pareto bar'))}
-                controls={<Toggle value={classAll ? 'all' : 'fail'} options={[{ value: 'all', label: t('All events') }, { value: 'fail', label: t('Failures only') }]} onChange={(v) => setClassAll(v === 'all')} label={t('Classification scope')} testid="class-count-scope" />}
-              />
+              <ParetoCard title={t('Lines by failure hours')} subtitle={t('Failure events by the line of the stopped area (area-hours)')} all={lineH} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-line-hours" help="pareto-line-hours" onOpen={open(t('the Pareto bar'))} onAction={act('line', t('Lines by failure hours'))} />
+              <ParetoCard title={t('Lines by failure frequency')} all={lineC} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-line-count" help="pareto-line-count" onOpen={open(t('the Pareto bar'))} />
+              <ParetoCard title={t('Areas by failure hours')} subtitle={t('Failure events by stopped area (area-hours)')} all={areaH} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-area-hours" help="pareto-area-hours" onOpen={open(t('the Pareto bar'))} onAction={act('area', t('Areas by failure hours'))} />
+              <ParetoCard title={t('Areas by failure frequency')} all={areaC} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-area-count" help="pareto-area-count" onOpen={open(t('the Pareto bar'))} />
             </div>
+            <AlsoOnDashboard title={t('Classifications by hours')} testid="dup-pareto-class">
+                <ParetoCard
+                  title={t('Classifications by hours')} subtitle={classAll ? t('All events, including planned (PL) and other (CIR)') : t('Failure events only')} all={cls} what={t('hours')} unit="h" fmt={fh}
+                  testid="pareto-class" help="pareto-class-hours" onOpen={open(t('the Pareto bar'))}
+                  controls={<Toggle value={classAll ? 'all' : 'fail'} options={[{ value: 'all', label: t('All events') }, { value: 'fail', label: t('Failures only') }]} onChange={(v) => setClassAll(v === 'all')} label={t('Classification scope')} testid="class-scope" />}
+                />
+            </AlsoOnDashboard>
+            <AlsoOnDashboard title={t('Classifications by frequency')} testid="dup-pareto-class-count">
+                <ParetoCard
+                  title={t('Classifications by frequency')} subtitle={classAll ? t('All events, including planned (PL) and other (CIR)') : t('Failure events only')} all={clsCount} what={t('events')} unit={t('events')} fmt={fint}
+                  testid="pareto-class-count" help="pareto-class-count" onOpen={open(t('the Pareto bar'))}
+                  controls={<Toggle value={classAll ? 'all' : 'fail'} options={[{ value: 'all', label: t('All events') }, { value: 'fail', label: t('Failures only') }]} onChange={(v) => setClassAll(v === 'all')} label={t('Classification scope')} testid="class-count-scope" />}
+                />
+            </AlsoOnDashboard>
+            </>
           )}
         </>
       )}

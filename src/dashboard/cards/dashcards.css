@@ -22,12 +22,20 @@
   gap: 12px;
   margin-bottom: 16px;
 }
-@container dash (min-width: 980px) {
+/* six tiles: one row on a wide page, two rows of three on a narrow desktop or tablet, three rows of two on a phone */
+@container dash (min-width: 1180px) {
   .krow {
-    grid-template-columns: 1.45fr 1fr 1.2fr 0.95fr 1.15fr;
+    grid-template-columns: 1.4fr 0.95fr 1.2fr 0.95fr 1.1fr 1.1fr;
+    gap: 10px;
+  }
+  .krow .ktile {
+    padding: 10px 12px;
+  }
+  .krow .ktile-value {
+    font-size: 27px;
   }
 }
-@container dash (min-width: 640px) and (max-width: 979.98px) {
+@container dash (min-width: 640px) and (max-width: 1179.98px) {
   .krow {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }

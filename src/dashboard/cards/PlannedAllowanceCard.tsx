@@ -34,7 +34,7 @@ export default function PlannedAllowanceCard({ ctx, filters, onOpenRows }: { ctx
   const lines = filters.lineIds.length ? filters.lineIds.join(', ') : t('All lines');
   return (
     <DashCard
-      id="planned-allowance" testid="chart-planned-allowance" span="full"
+      id="planned-allowance" testid="chart-planned-allowance" span="full" help={{ id: 'planned-allowance' }}
       title={t('Planned hours vs allowance (year to date)')}
       subtitle={t('Planned stop hours used {s} {y} against the allowance of those months, per area (Settings › Actions & targets)', { s: span, y: year })}
       legend={[

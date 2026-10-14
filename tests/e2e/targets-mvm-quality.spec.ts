@@ -110,7 +110,10 @@ test.describe('targets', () => {
     const rows = page.getByTestId('area-row');
     const n = await rows.count();
     expect(n).toBeGreaterThan(1);
-    await expect(page.getByTestId('area-table').locator('th', { hasText: 'MTBF status' })).toBeVisible();
+    // no separate status columns: the status (symbol + words) sits in the Availability, MTBF and MTTR cells
+    await expect(page.getByTestId('area-table').locator('th', { hasText: 'status' })).toHaveCount(0);
+    await expect(page.getByTestId('area-table').locator('thead th')).toHaveText(['Area', 'Operating h', 'Stopped h', 'Failure h', 'Failures', 'Availability (B)', 'MTBF h', 'MTTR h']);
+    await expect(rows.first().locator('td').nth(5).getByTestId('status-mtbf')).toBeVisible();
     await expect(page.getByTestId('status-availability')).toHaveCount(n);
     await expect(page.getByTestId('status-mtbf')).toHaveCount(n);
     await expect(page.getByTestId('status-mttr')).toHaveCount(n);
