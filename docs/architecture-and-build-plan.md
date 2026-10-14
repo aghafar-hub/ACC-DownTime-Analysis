@@ -35,7 +35,7 @@ the ACC Reliability Platform but does not run inside it.
 | # | Topic | Decision |
 |---|---|---|
 | 1 | Source | Monthly cumulative workbook (older months stay in the sheet). The sheet resets each year; the app keeps all years. |
-| 2 | Classifications | PRO Production, MEC Mechanical, ELE Electrical, AUT Automation, PL Planned, CIR Circumstantial. Case-insensitive. |
+| 2 | Classifications | PRO Production, MEC Mechanical, ELE Electrical, AUT Automation, PL Planned, CIR CIR. Case-insensitive. |
 | 3 | Sheet values | Freq, Criticality and Failure are **read from the sheet** (cached values), never recalculated. Duration is calculated by the app. |
 | 4 | Equipment code `N/A` | Valid. Means the whole area stopped. |
 | 5 | Old data | Never updated. Differences produce warnings with the sheet row number. The user decides per late row: add or skip. |

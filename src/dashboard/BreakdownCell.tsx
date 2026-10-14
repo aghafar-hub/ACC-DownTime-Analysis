@@ -8,7 +8,7 @@ import { t } from '../i18n/t';
 import { roundParts, sharePcts, type Split } from './areaBreakdown';
 
 const CLASS_NAME: Record<string, string> = {
-  PRO: 'Production', MEC: 'Mechanical', ELE: 'Electrical', AUT: 'Automation', PL: 'Planned', CIR: 'Circumstantial', Other: 'Other',
+  PRO: 'Production', MEC: 'Mechanical', ELE: 'Electrical', AUT: 'Automation', PL: 'Planned', CIR: 'CIR', Other: 'Other',
 };
 
 export default function BreakdownCell({ split, text, decimals, unit, title, testid }: {
