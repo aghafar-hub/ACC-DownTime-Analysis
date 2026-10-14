@@ -427,7 +427,7 @@
 }
 .dcard-open:focus-visible,
 .dcard-link:focus-visible,
-.seg-btn:focus-visible {
+.dseg-btn:focus-visible {
   outline: 2px solid var(--tk-accent);
   outline-offset: 2px;
 }
@@ -453,7 +453,7 @@
 }
 
 /* segmented control */
-.seg {
+.dseg {
   display: inline-flex;
   padding: 3px;
   gap: 2px;
@@ -461,7 +461,7 @@
   background: var(--tk-card-sub-bg);
   border: 1px solid var(--tk-border2);
 }
-.seg-btn {
+.dseg-btn {
   min-height: 32px;
   padding: 0 12px;
   border: 0;
@@ -472,24 +472,24 @@
   cursor: pointer;
   white-space: nowrap;
 }
-.seg-btn[aria-pressed='true'] {
+.dseg-btn[aria-pressed='true'] {
   background: var(--tk-card-bg);
   color: var(--tk-text-primary);
   font-weight: 700;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 @media (max-width: 860px) {
-  .seg-btn {
+  .dseg-btn {
     min-height: 44px;
     min-width: 44px;
     padding: 0 10px;
     font-size: 14px;
   }
-  .seg--wide {
+  .dseg--wide {
     display: flex;
     width: 100%;
   }
-  .seg--wide .seg-btn {
+  .dseg--wide .dseg-btn {
     flex: 1 1 0;
     padding: 0 4px;
   }
@@ -504,10 +504,10 @@
     margin-top: 8px;
     justify-content: flex-start;
   }
-  .dcard-controls > .seg:not(.seg--wide) {
+  .dcard-controls > .dseg:not(.dseg--wide) {
     flex: 1 1 0;
   }
-  .dcard-controls > .seg:not(.seg--wide) .seg-btn {
+  .dcard-controls > .dseg:not(.dseg--wide) .dseg-btn {
     flex: 1 1 0;
   }
   .dcard {

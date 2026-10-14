@@ -55,9 +55,9 @@ export function Seg<T extends string>({ value, options, onChange, label, testid,
   wide?: boolean;
 }) {
   return (
-    <div className={wide ? 'seg seg--wide' : 'seg'} role="group" aria-label={label} data-testid={testid}>
+    <div className={wide ? 'dseg dseg--wide' : 'dseg'} role="group" aria-label={label} data-testid={testid}>
       {options.map((o) => (
-        <button key={o.value} type="button" className="seg-btn" aria-pressed={o.value === value} onClick={() => onChange(o.value)} data-testid={testid ? `${testid}-${o.value}` : undefined}>
+        <button key={o.value} type="button" className="dseg-btn" aria-pressed={o.value === value} onClick={() => onChange(o.value)} data-testid={testid ? `${testid}-${o.value}` : undefined}>
           {o.label}
         </button>
       ))}

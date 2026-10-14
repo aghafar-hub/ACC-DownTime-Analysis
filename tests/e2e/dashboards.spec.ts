@@ -10,10 +10,10 @@ async function open(page: Page, path: string, testid: string) {
   await expect(page.getByTestId('chart-summary').first().or(page.getByTestId('no-data'))).toBeVisible({ timeout: 20000 });
 }
 
-/** 'Showing 1,234 events from ...' on Event records: the number. */
+/** The drill banner on Event records ('From: … · 1,234 events (…), 12.3 h'): the number of events. */
 async function drillCount(page: Page): Promise<number> {
   await expect(page.getByTestId('drill-text')).toBeVisible({ timeout: 20000 });
-  return num((await page.getByTestId('drill-text').textContent())!.match(/Showing ([\d,]+)/)![1]!);
+  return num((await page.getByTestId('drill-text').textContent())!.match(/([\d,]+) (?:events?|records?)\b/)![1]!);
 }
 
 /** Remove every record of one month from the in-memory demo API, then reload the data: the month becomes 'Not uploaded'. */
