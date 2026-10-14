@@ -13,8 +13,8 @@ async function openInbox(page: Page, role: 'admin' | 'engineer' | 'viewer' | 'ma
   await expect(page.getByTestId('action-card').first()).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   if (via === 'rail') {
-    // opening the panel marks what is in it as seen; the rail link leaves them new
-    await page.getByTestId('rail-link-notifications').click();
+    // opening the panel marks what is in it as seen; going straight to the page leaves them new
+    await page.goto('/#/notifications');
   } else {
     await page.getByTestId('bell-btn').click();
     await expect(page.getByTestId('notif-panel')).toBeVisible();
@@ -38,7 +38,8 @@ test.describe('desktop', () => {
     await expect(page).toHaveURL(/#\/notifications$/);
     await expect(page.getByTestId('page-title')).toHaveText('Notifications');
     await expect(page.getByTestId('breadcrumb')).toContainText('Act');
-    await expect(page.getByTestId('rail-link-notifications')).toHaveClass(/sidebar-link--active/);
+    // reached from the bell only: the rail has no Notifications link
+    await expect(page.getByTestId('rail-link-notifications')).toHaveCount(0);
     const total = await rows(page).count();
     await expect(page.getByTestId('nx-tab-all')).toContainText(String(total));
     for (const [tab, cat] of [['reliability', 'Reliability'], ['data-quality', 'Data quality'], ['actions', 'Actions']] as const) {
@@ -104,7 +105,8 @@ test.describe('desktop', () => {
 
   test('a viewer: the inbox without derived items and without Create action', async ({ page }) => {
     await signInAndWait(page, 'viewer');
-    await page.getByTestId('rail-link-notifications').click();
+    await page.getByTestId('bell-btn').click();
+    await page.getByTestId('notif-see-all').click();
     await expect(page.getByTestId('page-notifications')).toBeVisible();
     await expect(rows(page).first()).toBeVisible();
     await expect(page.locator('[data-testid=nx-row][data-kind=action]')).toHaveCount(0);

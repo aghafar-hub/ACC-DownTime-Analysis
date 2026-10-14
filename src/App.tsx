@@ -107,8 +107,11 @@ function ShellLayout() {
         <TopBar />
         <PageTabs />
         <div className="scope-slot" ref={setSlotBar} />
-        <div className="scope-info-slot" ref={setSlotInfo} />
-        {scoped && <DataStatusStrip />}
+        {/* the scope note and range, and the data status, share one thin band */}
+        <div className="scope-meta">
+          <div className="scope-info-slot" ref={setSlotInfo} />
+          {scoped && <DataStatusStrip />}
+        </div>
         <OfflineBanner />
         <main className="shell-page-content" id="main">
           <PageLoadBoundary resetKey={location.pathname}>

@@ -606,3 +606,65 @@
 .sb-details[open] > summary svg {
   transform: rotate(180deg);
 }
+
+/* One thin band under the sticky chips: the scope note and range on the left, the data status on the right (desktop);
+   it wraps to two short lines when the screen is narrow or filters are active. */
+.scope-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  background: var(--tk-info-bar-bg);
+  border-bottom: 1px solid var(--tk-border);
+}
+.scope-meta:not(:has(> *:not(:empty))) {
+  display: none;
+}
+.scope-meta > .scope-info-slot {
+  flex: 1 1 420px;
+  min-width: 0;
+  background: transparent;
+}
+.scope-meta > .scope-info-slot:not(:empty) {
+  border-bottom: 0;
+}
+.scope-meta > .ds-strip {
+  flex: 0 1 auto;
+  border-bottom: 0;
+  background: transparent;
+  padding-block: 5px;
+}
+.scope-meta .scope-info {
+  padding: 5px 24px;
+}
+.scope-meta .sb-info {
+  justify-content: flex-start;
+  gap: 2px 14px;
+}
+.scope-meta .sb-note {
+  cursor: help;
+  white-space: nowrap;
+}
+.scope-meta .sb-active {
+  margin-top: 4px;
+}
+/* the Analyze pages and Event records start right under the band */
+.app-shell-right:has(.scope-info-slot:not(:empty)) .shell-page-content {
+  padding-top: 14px;
+}
+@media (max-width: 860px) {
+  /* phone: "Data to 11 Oct · 68 to check" on the left, Views on the right, one row */
+  .scope-meta > .ds-strip {
+    order: -1;
+    flex: 1 1 auto;
+    padding: 4px 0 4px max(16px, var(--safe-l, 0px));
+  }
+  .scope-meta > .scope-info-slot {
+    flex: 0 1 auto;
+  }
+  .scope-meta .scope-info--phone {
+    padding: 4px max(16px, var(--safe-r, 0px)) 4px 8px;
+  }
+  .scope-meta .scope-info--phone:has(.sb-active) {
+    flex-basis: 100%;
+  }
+}

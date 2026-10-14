@@ -44,15 +44,18 @@ test.describe('validate (desktop)', () => {
   for (const [role, fixes] of [['viewer', false], ['manager', false], ['engineer', true], ['admin', true]] as [Role, boolean][]) {
     test(`${role}: sees the Validate tab and ${fixes ? 'can fix records' : 'reads only'}`, async ({ page }) => {
       await signInAndWait(page, role);
-      // Validate lives in the Data section: the rail lists it (with its count) right after Event Explorer
-      const railLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Validate/ });
+      // Validate lives in the Data section: ONE rail item (with the count) opens Event Explorer; Validate is its tab
+      const railLink = page.getByTestId('rail-link-data');
       await expect(railLink).toBeVisible();
       await railLink.click();
+      await expect(page.getByTestId('page-events')).toBeVisible();
       await expect(railLink).toHaveClass(/sidebar-link--active/);
+      const tabs = page.getByRole('navigation', { name: 'Pages' });
+      expect((await tabs.getByRole('link').allTextContents()).map((x) => x.replace(/[◆\d,\s]+$/, '').trim()).slice(0, 2)).toEqual(['Event Explorer', 'Validate']);
+      await tabs.getByRole('link', { name: /^Validate/ }).click();
       await expect(page.getByTestId('page-validate')).toBeVisible();
+      await expect(railLink).toHaveClass(/sidebar-link--active/);
       await expect(rows(page).first()).toBeVisible();
-      const names = await page.locator('[data-section="data"] .sidebar-link-label').allTextContents();
-      expect(names.indexOf('Validate')).toBe(names.indexOf('Event Explorer') + 1);
       const badge = page.getByTestId('validate-badge-rail');
       await expect(badge).toBeVisible();
       await expect(badge).toContainText('◆');
@@ -458,7 +461,7 @@ test.describe('validate (desktop)', () => {
     await expect(page.getByTestId('page-validate')).toBeVisible();
     await expect(page.getByTestId('v-count-blocked')).toBeVisible({ timeout: 20000 });
     await expect(rows(page).first()).toBeVisible();
-    await expect(page.getByTestId('rail-link-validate')).toHaveClass(/sidebar-link--active/);
+    await expect(page.getByTestId('rail-link-data')).toHaveClass(/sidebar-link--active/);
     // beside the icon rail the Data page tabs show, Validate lit
     await expect(page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Validate/ })).toHaveClass(/module-tab--active/);
     await expect(page.getByTestId('validate-badge-tab')).toBeVisible();

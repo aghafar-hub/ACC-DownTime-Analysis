@@ -5,13 +5,14 @@ import { closePanel, noSidewaysScroll, openType, PASSWORD, pickPeriod, signIn, s
 
 const ANALYZE = ['Dashboard', 'Pareto', 'Repeated Failures', 'Reliability'];
 const ANALYZE_RAIL = ['Dashboard', 'Pareto & Contributors', 'Repeated Failures', 'Reliability Trends'];
-const DATA_VIEW = ['Event Explorer', 'Validate'];
-// the left rail: every page the role may open, grouped under Analyze / Data / Setup
+// the left rail: every page the role may open, grouped under Analyze / Data / Setup; Data is ONE item (its pages are
+// the tabs under the top bar) and Notifications is reached from the bell
+const DATA_RAIL = ['Events & data'];
 const RAIL: Record<Role, Record<string, string[]>> = {
-  admin: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions', 'Notifications'], Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
-  manager: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions', 'Notifications'], Data: DATA_VIEW, Setup: ['Master Data'] },
-  engineer: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions', 'Notifications'], Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
-  viewer: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions', 'Notifications'], Data: DATA_VIEW },
+  admin: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions'], Data: DATA_RAIL, Setup: ['Master Data'] },
+  manager: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions'], Data: DATA_RAIL, Setup: ['Master Data'] },
+  engineer: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions'], Data: DATA_RAIL, Setup: ['Master Data'] },
+  viewer: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions'], Data: DATA_RAIL },
 };
 
 test.describe('desktop', () => {
@@ -124,8 +125,13 @@ test.describe('desktop', () => {
       ['Upload', 'page-upload'],
       ['Master Data', 'page-master'],
     ];
+    const dataPages = ['Event Explorer', 'Validate', 'Upload'];
     for (const [label, id] of pages) {
-      await nav.getByRole('link', { name: label }).first().click();
+      if (dataPages.includes(label)) {
+        // one rail item for Data; its pages are the tabs under the top bar
+        await page.getByTestId('rail-link-data').click();
+        await page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: new RegExp(`^${label}`) }).click();
+      } else await nav.getByRole('link', { name: label }).first().click();
       await expect(page.getByTestId(id)).toBeVisible({ timeout: 20000 });
       await expect(page.getByText('Built in the next step')).toHaveCount(0);
     }
@@ -143,7 +149,7 @@ test.describe('desktop', () => {
 
   test('Event Explorer: list, paging, filters, year switch', async ({ page }) => {
     await signInAndWait(page, 'viewer');
-    await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Event Explorer' }).click();
+    await page.getByTestId('rail-link-data').click();
     await expect(page.getByTestId('event-row')).toHaveCount(50);
     await page.getByTestId('show-more').click();
     await expect(page.getByTestId('event-row')).toHaveCount(100);

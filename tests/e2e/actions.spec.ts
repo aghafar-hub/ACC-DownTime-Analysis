@@ -37,7 +37,7 @@ test.describe('desktop', () => {
   test('Actions is in the Act section of the rail with the overdue count; the board has a column per status', async ({ page }) => {
     await signInAndWait(page, 'admin');
     await expect(page.getByTestId('rail-section-act')).toHaveText('Act');
-    await expect(page.getByTestId('rail-link-notifications')).toBeVisible();
+    await expect(page.getByTestId('rail-link-notifications')).toHaveCount(0); // the bell opens the inbox
     await page.getByTestId('rail-link-actions').click();
     await expect(page.getByTestId('page-title')).toHaveText('Actions');
     await expect(page.getByTestId('breadcrumb')).toContainText('Act');

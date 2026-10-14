@@ -40,13 +40,16 @@ export function Tile({ icon, label, value, sub, tone, onClick, testid, compact }
 }
 
 /** Page header: a title (a <p>, never an <h1>), a one-line subtitle with live numbers, controls on the right. */
-export function PageHeader({ title, subtitle, right, testid, big }: { title: string; subtitle?: ReactNode; right?: ReactNode; testid?: string; big?: boolean }) {
+/** `compact`: the title is only for screen readers (the top bar names the page) and the subtitle is the one visible line. */
+const SR_ONLY = { position: 'absolute', width: 1, height: 1, margin: -1, padding: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap', border: 0 } as const;
+
+export function PageHeader({ title, subtitle, right, testid, big, compact }: { title: string; subtitle?: ReactNode; right?: ReactNode; testid?: string; big?: boolean; compact?: boolean }) {
   const { T, s } = useTheme();
   return (
-    <div data-testid={testid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+    <div data-testid={testid} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: compact ? '4px 10px' : 10, flexWrap: 'wrap', marginBottom: compact ? 8 : 12 }}>
       <div style={{ minWidth: 0, flex: '1 1 240px' }}>
-        <p data-testid="page-title" style={{ ...s.sectionTitle, margin: 0, ...(big ? { fontSize: 26 } : null) }}>{title}</p>
-        {subtitle && <p data-testid="page-subtitle" style={{ fontSize: big ? 14 : 12.5, color: T.textSecondary, margin: big ? '4px 0 0' : '2px 0 0' }}>{subtitle}</p>}
+        <p data-testid="page-title" style={compact ? SR_ONLY : { ...s.sectionTitle, margin: 0, ...(big ? { fontSize: 26 } : null) }}>{title}</p>
+        {subtitle && <p data-testid="page-subtitle" style={{ fontSize: compact ? 14 : big ? 14 : 12.5, color: T.textSecondary, margin: compact ? 0 : big ? '4px 0 0' : '2px 0 0' }}>{subtitle}</p>}
       </div>
       {right && <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>{right}</div>}
     </div>

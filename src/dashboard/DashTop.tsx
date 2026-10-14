@@ -15,7 +15,7 @@ export default function DashTop({ title, takeaway, right, dash, eventCount, hide
   return (
     <>
       <ScopeBar src={scopeFromDash(dash)} eventCount={eventCount} hideCompare={hideCompare} />
-      <PageHeader title={title} subtitle={<span className="takeaway" data-testid="takeaway">{takeaway}</span>} right={right} />
+      <PageHeader compact title={title} subtitle={<span className="takeaway" data-testid="takeaway">{takeaway}</span>} right={right} />
       {belowTakeaway}
       <ValidationBanner />
       <DashStatus dash={dash} />

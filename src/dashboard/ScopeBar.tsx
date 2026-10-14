@@ -360,7 +360,7 @@ function DesktopBar({ src, m, eventCount, hideCompare, views, exportMenu, extra 
     <InScopeSlot info>
     <div className="scope-info" data-testid="scope-info">
       <div className="sb-info">
-        <p className="sb-note" data-testid="scope-note"><Icon name="link" size={14} /> {t(SCOPE_NOTE)}</p>
+        <span className="sb-note" data-testid="scope-note" title={t(SCOPE_NOTE)} aria-label={t(SCOPE_NOTE)} role="note"><Icon name="link" size={14} /> {t('Shared filters')}</span>
         <p className="sb-scope" data-testid="fb-scope">
           {range && <span data-testid="fb-range">{rangeText(range)} ({t('{n} days', { n: days(range) })})</span>}
           {eventCount !== null && <span data-testid="fb-count"><b>{fint(eventCount)}</b> {t('events in scope')}</span>}

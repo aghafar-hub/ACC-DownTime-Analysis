@@ -47,8 +47,18 @@ async function layoutChecks(page: Page, inShell: boolean) {
   const b = await banner(page).boundingBox();
   expect(b).not.toBeNull();
   const vw = page.viewportSize()!.width;
-  expect(b!.y).toBeLessThanOrEqual(0.5); // at the very top
-  expect(Math.round(b!.width)).toBe(vw); // full width
+  const vh = page.viewportSize()!.height;
+  const desktop = vw > 860;
+  if (desktop) {
+    // a one-line popup in the bottom-right corner, over the app
+    expect(b!.width).toBeLessThan(vw);
+    expect(b!.x + b!.width).toBeLessThanOrEqual(vw - 16);
+    expect(b!.y + b!.height).toBeLessThanOrEqual(vh - 16);
+    expect(b!.height).toBeLessThanOrEqual(64);
+  } else {
+    expect(b!.y).toBeLessThanOrEqual(0.5); // at the very top
+    expect(Math.round(b!.width)).toBe(vw); // full width
+  }
   const sw = await noSidewaysScroll(page);
   expect(sw.ok, `scrollWidth ${sw.scrollWidth} > ${sw.innerWidth}`).toBe(true);
   for (const id of ['update-reload', 'update-later']) {
@@ -67,7 +77,7 @@ async function layoutChecks(page: Page, inShell: boolean) {
   });
   expect(small).toEqual([]);
   expect(await smallTargets(page).then((l) => l.filter((x) => x.includes('update-banner')))).toEqual([]);
-  if (inShell) {
+  if (inShell && !desktop) {
     const top = (await page.locator('.shell-topbar').boundingBox())!;
     expect(top.y).toBeGreaterThanOrEqual(b!.y + b!.height - 1); // the top bar starts under the banner
     const h = await page.evaluate(() => parseFloat(document.documentElement.style.getPropertyValue('--update-banner-h')));
@@ -123,7 +133,7 @@ test.describe('login screen', () => {
 test.describe('inside the app', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
-  test('desktop: pushes the app down, Later returns on the next check, form-open message', async ({ page }) => {
+  test('desktop: a popup over the app (nothing moves), Later returns on the next check, form-open message', async ({ page }) => {
     await stubFonts(page);
     const errors = watchConsole(page);
     await signInAndWait(page, 'admin');
@@ -131,12 +141,11 @@ test.describe('inside the app', () => {
     await flip(page);
     await expect(banner(page)).toBeVisible();
     await layoutChecks(page, true);
-    expect((await page.locator('.shell-topbar').boundingBox())!.y).toBeGreaterThan(topBefore);
-    // the top bar stays below the banner after scrolling
+    expect((await page.locator('.shell-topbar').boundingBox())!.y).toBe(topBefore); // the app does not move
+    // it stays in its corner while the page scrolls
+    const before = (await banner(page).boundingBox())!;
     await page.evaluate(() => window.scrollTo(0, 400));
-    const b = (await banner(page).boundingBox())!;
-    const tb = (await page.locator('.shell-topbar').boundingBox())!;
-    expect(tb.y).toBeGreaterThanOrEqual(b.y + b.height - 1);
+    expect((await banner(page).boundingBox())!.y).toBeCloseTo(before.y, 0);
     await page.evaluate(() => window.scrollTo(0, 0));
     await shot(page, 'shell-desktop-acc-light');
 

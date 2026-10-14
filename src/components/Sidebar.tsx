@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Icon } from '../icons';
 import { useRail } from '../hooks/useRail';
 import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
-import { NOTIFICATIONS_PATH, pageLabel, pagesInSection, SECTIONS, sectionLabel } from '../navigation';
+import { pageForPath, pageLabel, pagesInSection, SECTIONS, sectionLabel } from '../navigation';
 import { ActionsBadge } from '../actions/ActionsContext';
-import { NotificationsNavBadge } from '../notifications/NotificationsContext';
 import ValidateBadge from '../validate/NavBadge';
 import './Sidebar.css';
 
@@ -16,6 +15,7 @@ import './Sidebar.css';
 export default function Sidebar() {
   const pages = useVisiblePages();
   const { pinned } = useRail();
+  const activePage = pageForPath(useLocation().pathname);
   const base = import.meta.env.BASE_URL;
   const mode = pinned ? 'pinned' : 'icons';
   // choosing a page closes the open rail at once, even with the pointer still on it; it opens again after the pointer
@@ -38,31 +38,35 @@ export default function Sidebar() {
         <div className="sidebar-nav">
           {SECTIONS.map((sec) => {
             const items = pagesInSection(pages, sec.id);
-            // the Notifications inbox is for everyone: the Act section always has it
-            if (items.length === 0 && sec.id !== 'act') return null;
+            if (items.length === 0) return null;
+            // Data (Event Explorer, Validate, Upload) is ONE rail item; its pages are the tabs under the top bar
+            const one = sec.id === 'data';
+            const first = items[0]!;
+            const inData = activePage?.group === 'data';
             return (
               <section key={sec.id} className="sidebar-section" aria-labelledby={`sidebar-sec-${sec.id}`} data-section={sec.id}>
                 <h2 className="sidebar-section-title" id={`sidebar-sec-${sec.id}`} data-testid={`rail-section-${sec.id}`}>{sectionLabel(sec.id)}</h2>
                 <ul className="sidebar-section-list">
-                  {items.map((p) => (
+                  {one ? (
+                    <li>
+                      <NavLink
+                        to={first.path} className={inData ? 'sidebar-link sidebar-link--active' : 'sidebar-link'} aria-current={inData ? 'page' : undefined}
+                        title={pinned ? undefined : sectionLabel('data')} data-testid="rail-link-data"
+                      >
+                        <span className="sidebar-link-icon"><Icon name="list" size={18} /></span>
+                        <span className="sidebar-link-label">{t('Events & data')}</span>
+                        {items.some((p) => p.id === 'validate') && <ValidateBadge testid="validate-badge-rail" />}
+                      </NavLink>
+                    </li>
+                  ) : items.map((p) => (
                     <li key={p.id}>
                       <NavLink to={p.path} className={({ isActive }) => (isActive ? 'sidebar-link sidebar-link--active' : 'sidebar-link')} title={pinned ? undefined : pageLabel(p)} data-testid={`rail-link-${p.id}`}>
                         <span className="sidebar-link-icon"><Icon name={p.icon} size={18} /></span>
                         <span className="sidebar-link-label">{pageLabel(p)}</span>
-                        {p.id === 'validate' && <ValidateBadge testid="validate-badge-rail" />}
                         {p.id === 'actions' && <ActionsBadge testid="actions-badge-rail" />}
                       </NavLink>
                     </li>
                   ))}
-                  {sec.id === 'act' && (
-                    <li>
-                      <NavLink to={NOTIFICATIONS_PATH} className={({ isActive }) => (isActive ? 'sidebar-link sidebar-link--active' : 'sidebar-link')} title={pinned ? undefined : t('Notifications')} data-testid="rail-link-notifications">
-                        <span className="sidebar-link-icon"><Icon name="bell" size={18} /></span>
-                        <span className="sidebar-link-label">{t('Notifications')}</span>
-                        <NotificationsNavBadge testid="notif-badge-rail" />
-                      </NavLink>
-                    </li>
-                  )}
                 </ul>
               </section>
             );

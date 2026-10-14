@@ -92,24 +92,55 @@
   }
 }
 
-/* The banner pushes the app down by --update-banner-h (set by the banner).
+/* Phone: the banner pushes the app down by --update-banner-h (set by the banner).
    It already covers the status-bar inset, so the top bar drops its own. */
-html.has-update-banner {
-  --topbar-h: 54px;
-}
-html.has-update-banner .shell-topbar {
-  top: var(--update-banner-h, 0px);
-  padding-top: 0;
-}
-html.has-update-banner .app-shell,
-html.has-update-banner .app-shell-right,
-html.has-update-banner .auth-page,
-html.has-update-banner .auth-hero {
-  min-height: calc(100svh - var(--update-banner-h, 0px));
-}
 @media (max-width: 860px) {
+  html.has-update-banner {
+    --topbar-h: 54px;
+  }
+  html.has-update-banner .shell-topbar {
+    top: var(--update-banner-h, 0px);
+    padding-top: 0;
+  }
+  html.has-update-banner .app-shell,
+  html.has-update-banner .app-shell-right,
+  html.has-update-banner .auth-page,
+  html.has-update-banner .auth-hero {
+    min-height: calc(100svh - var(--update-banner-h, 0px));
+  }
   html.has-update-banner .module-tabs {
     top: calc(var(--topbar-h) + var(--update-banner-h, 0px));
+  }
+}
+
+/* Desktop: a small one-line popup floating in the bottom-right corner, over the app (nothing moves and the search
+   in the top bar stays free) */
+@media (min-width: 861px) {
+  .update-region {
+    position: fixed;
+    top: auto;
+    right: max(24px, var(--safe-r, 0px));
+    bottom: 24px;
+    width: max-content;
+    max-width: min(680px, calc(100vw - 32px));
+    z-index: 1200;
+  }
+  .update-banner {
+    flex-wrap: nowrap;
+    gap: 12px;
+    padding: 6px 8px 6px 16px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  }
+  .update-banner-text {
+    flex: 1 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .update-banner button {
+    padding: 0 14px;
+    white-space: nowrap;
   }
 }
 
