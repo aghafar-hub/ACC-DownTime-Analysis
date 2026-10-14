@@ -250,7 +250,8 @@ test('a busy lock gives the busy error on writes, and the lock is always release
   env.lockState.busy = false;
   assert.equal(env.call('saveSettings', admin.token, { changes: { lockout_minutes: '10' } }).status, 'ok');
   assert.equal(env.lockState.held, 0);
-  assert.ok(env.lockState.tryCalls.every((ms) => ms === 30000));
+  // 30 s for every write; the activity note (1.6.0) only tries briefly and skips when the lock is busy
+  assert.ok(env.lockState.tryCalls.every((ms) => ms === 30000 || ms === env.run('ACTIVITY_LOCK_WAIT_MS_')));
 });
 
 test('changePassword returns a fresh session and keeps GOOD_PASSWORD style rules', () => {

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ACCESS_DENIED_EVENT, api, SESSION_EXPIRED_EVENT } from '../api';
-import type { Access, AccessLevel, Session, SessionUser, TabId } from '../api/types';
+import type { Access, AccessLevel, ActivityHint, Session, SessionUser, TabId } from '../api/types';
 import { ApiError } from '../api/types';
 import { forgetDashFilters } from '../dashboard/sharedFilters';
 import { clearDataCaches } from '../data/cache';
@@ -14,6 +14,25 @@ import { store } from '../storagePrefix';
 // a new sign-in. The server decides what is allowed; this only hides.
 const SESSION_KEY = 'session';
 const REFRESH_MS = 2 * 60 * 1000;
+
+/**
+ * The 2-minute access check is also the heartbeat of Settings > Active users (backend 1.6.0): it says which address is
+ * open and whether this is a phone or a desktop. Nothing personal; the server keeps the latest per person only.
+ */
+export function activityHint(): ActivityHint {
+  const hint: ActivityHint = {};
+  try {
+    const path = (window.location.hash.replace(/^#/, '').split(/[?#]/)[0] || '/').slice(0, 80);
+    if (/^\/[A-Za-z0-9/_.-]*$/.test(path)) hint.page = path;
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches === true;
+    const narrow = window.matchMedia?.('(max-width: 767px)').matches === true;
+    const small = Math.min(window.screen?.width || 9999, window.screen?.height || 9999) < 600;
+    hint.device = narrow || (coarse && small) ? 'phone' : 'desktop';
+  } catch {
+    /* a hint is optional */
+  }
+  return hint;
+}
 
 interface Stored {
   token: string;
@@ -80,6 +99,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback((why?: string) => {
+    // a sign-out the person chose is written to the activity log (backend 1.6.0); an ended session is not
+    const tok = readStored()?.stored.token;
+    if (!why && tok) void api.logout(tok).catch(() => undefined);
     writeStored(null, remember.current);
     setStored(null);
     setNotice(why ?? null);
@@ -119,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!cur) return;
     const epoch = themeEpoch.current;
     try {
-      const r = await api.getMyAccess(cur.token);
+      const r = await api.getMyAccess(cur.token, activityHint());
       const now = storedRef.current;
       if (!now || now.token !== cur.token) return;
       // an older server sends no theme: keep what we have
@@ -136,7 +158,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) return;
     void refreshAccess();
-    const id = window.setInterval(() => void refreshAccess(), REFRESH_MS);
+    // the timer skips while the app is in the background (the check runs again when it comes back)
+    const id = window.setInterval(() => document.visibilityState !== 'hidden' && void refreshAccess(), REFRESH_MS);
     const onVisible = () => document.visibilityState === 'visible' && void refreshAccess();
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener(ACCESS_DENIED_EVENT, refreshAccess);

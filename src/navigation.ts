@@ -93,7 +93,7 @@ export interface SettingsSub {
   label: string;
   /** Needs View on this tab; null means everyone sees it. */
   tab: TabId | null;
-  /** Only the Admin role (ROLE-ADMIN) sees it, whatever the tab access says (backend 1.5.0: Areas). */
+  /** Only the Admin role (ROLE-ADMIN) sees it, whatever the tab access says (backend 1.5.0: Areas; 1.6.0: Active users, Activity log). */
   adminOnly?: boolean;
   icon: string;
   blurb: string;
@@ -107,6 +107,8 @@ export const SETTINGS_SUBS: SettingsSub[] = [
   { id: 'areas', label: 'Areas', tab: null, adminOnly: true, icon: 'database', blurb: 'Switch areas on or off for the whole plant. An inactive area and its records are left out everywhere.' },
   { id: 'security', label: 'Security', tab: 'settings', icon: 'shield', blurb: 'Sign-in limits, sessions and passwords.' },
   { id: 'users', label: 'Users and access', tab: 'users', icon: 'users', blurb: 'Who can sign in and which pages they can open.' },
+  { id: 'active-users', label: 'Active users', tab: null, adminOnly: true, icon: 'clock', blurb: 'Who is using the app now, who was here today and when each person was last seen.' },
+  { id: 'activity-log', label: 'Activity log', tab: null, adminOnly: true, icon: 'history', blurb: 'Every change made in the app: who did what, and when. Newest first.' },
 ];
 
 export const settingsSubById = (id: string | undefined): SettingsSub | undefined => SETTINGS_SUBS.find((s) => s.id === id);

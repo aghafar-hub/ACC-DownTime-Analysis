@@ -3,7 +3,7 @@ import { noSidewaysScroll, PASSWORD, setTheme, signInAndWait, smallTargets, stub
 
 // Settings: the gear in the top bar and its subtabs (Appearance, Calculations, Security,
 // Users and access), by role. Runs against the mock build with made-up data.
-const SUBS = ['Appearance', 'Notifications', 'Calculations', 'Actions & targets', 'Areas', 'Security', 'Users and access'];
+const SUBS = ['Appearance', 'Notifications', 'Calculations', 'Actions & targets', 'Areas', 'Security', 'Users and access', 'Active users', 'Activity log'];
 const subTabs = (page: Page) => page.getByTestId('settings-tabs').getByRole('link');
 
 test.describe('desktop', () => {

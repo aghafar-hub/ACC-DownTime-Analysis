@@ -357,6 +357,46 @@ Good to know:
   app build against a 1.4.0 server keeps the theme on the device only and cannot switch areas ("Unknown action").
 - The exact rules are in `docs/wire-protocol.md` section 11.
 
+## 15. Who is online and the activity log (1.6.0)
+
+Version 1.6.0 adds two Settings subtabs for people with the Admin role only: **Active users** (who is using the app now, who was here
+today, when each person was last seen, their role, phone or desktop and the page they had open) and **Activity log** (every change made
+in the app, newest first, with filters, "Load more" and a CSV export). Every change in the app is now in `audit_log` with its old and
+new values where that makes sense (see `docs/wire-protocol.md` section 12.3); sign-outs and comments on actions are logged too.
+Nothing in your data changes. Do these steps in order; all of them are safe to repeat.
+
+1. **Paste these 12 files** into the Apps Script project, replacing the old content of each:
+   `Activity.js` (**new**: add it with **+** next to **Files > Script** and name it `Activity`), `Schema.js`, `Config.js`, `Access.js`,
+   `Code.js`, `Audit.js`, `Auth.js`, `Users.js`, `Master.js`, `Events.js`, `Upload.js`, `Actions.js`.
+   The other files (`Utils.js`, `Crypto.js`, `Settings.js`, `Setup.js`, `Notifications.js`) and `appsscript.json` did not change from
+   1.5.0: leave them alone. With the one-file bundle (option A2), run `node tools/bundle-apps-script.mjs` (it includes `Activity.js`)
+   and paste `ACC_Downtime_Backend.gs` over `Code.gs` instead.
+2. **Run `ensureSchema`.** It adds one sheet, `user_activity` (one row per person: `user_id`, `last_seen_at`, `last_page`, `device`,
+   `updated_at`), and never touches existing sheets, rows or columns. Until it has run the app works as before; the Active users list
+   then shows the last sign-in only.
+3. **No `seedDefaults` is needed**: there is no new setting or access row (the two subtabs follow the Admin role, not the tab access).
+   Running it does no harm.
+4. **Deploy a new version** as in section 10 (**Manage deployments**, pencil, **Version: New version**, **Deploy**). The web app
+   address stays the same, and no new permission is asked (the script cache it uses needs none).
+5. **Check.** Open the web app address with `?action=ping`: it must answer version `1.6.0`. Run **installCheck**: `user_activity` must
+   say `is ready`.
+
+Good to know:
+
+- **How "online" works.** The app already checks the person's access every 2 minutes while it is open and in front; from 1.6.0 that
+  check also says which page is open and whether it is a phone or a desktop. Every call a person makes counts as activity. To keep the
+  sheet quiet, the server writes a person's row at most once every 3 minutes and keeps the exact time in the script cache in between.
+  "Online now" means activity in the last 5 minutes. The page refreshes itself every minute.
+- **The activity log keeps everything.** Nothing is ever deleted from `audit_log`. Reading stays fast however long it gets: the server
+  reads from the bottom of the sheet (the newest rows) a block at a time and stops when a page of 100 is full; a date range ending in
+  the past jumps to its last day first. If the sheet ever becomes very large (hundreds of thousands of rows), you may move old rows to a
+  copy of the spreadsheet by hand; the app does not need them for anything else.
+- **Who.** Only the Admin role sees the two subtabs; the server refuses everyone else (`forbidden`), even someone with Edit on Users or
+  Settings. Passwords and tokens are never written to the log.
+- An older app build keeps working against 1.6.0 (it does not send the page or device). The new app build against a 1.5.0 server
+  shows the two subtabs with the message "Unknown action"; everything else works.
+- The exact rules are in `docs/wire-protocol.md` section 12.
+
 ## Good to know
 
 - **Access levels** are per tab: Hidden, View, Edit, from the role with optional

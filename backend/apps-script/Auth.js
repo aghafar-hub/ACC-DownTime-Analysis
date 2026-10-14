@@ -126,3 +126,14 @@ function changePassword_(session, current, next) {
   var keep = (p.exp - p.iat) > settingNum_('session_hours', 12) * 3600000;
   return buildSession_(updated, keep);
 }
+
+/**
+ * logout (1.6.0): writes the sign-out to the audit log. Sessions are signed tokens, so nothing else is stored; the app
+ * forgets its token. Best effort: a busy lock does not refuse the sign-out.
+ */
+function logout_(session) {
+  try {
+    withLock_(function () { auditLog_(session.user.user_id, 'logout', T.USERS, session.user.user_id, 'Signed out'); });
+  } catch (e) { /* the app signs out anyway */ }
+  return null;
+}

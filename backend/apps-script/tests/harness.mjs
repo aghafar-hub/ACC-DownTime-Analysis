@@ -151,6 +151,14 @@ export function createEnv({ hashRounds = 25, prepare = true, files = ALL_FILES()
   const errors = [];
   const lockState = { busy: false, held: 0, tryCalls: [] };
   const clock = { now: Date.parse('2026-10-12T08:00:00Z') };
+  // CacheService.getScriptCache(): a Map; cacheState.off = true makes the service unavailable (getScriptCache throws)
+  const cacheState = { data: new Map(), off: false, puts: 0 };
+  const scriptCache = {
+    get: (k) => (cacheState.data.has(k) ? cacheState.data.get(k) : null),
+    getAll: (keys) => Object.fromEntries(keys.filter((k) => cacheState.data.has(k)).map((k) => [k, cacheState.data.get(k)])),
+    put: (k, v) => { cacheState.puts++; cacheState.data.set(k, String(v)); },
+    remove: (k) => { cacheState.data.delete(k); },
+  };
 
   const sandbox = {
     SpreadsheetApp: { getActiveSpreadsheet: () => ss, openById: () => ss },
@@ -169,6 +177,9 @@ export function createEnv({ hashRounds = 25, prepare = true, files = ALL_FILES()
         releaseLock: () => { lockState.held--; },
       }),
     },
+    CacheService: {
+      getScriptCache: () => { if (cacheState.off) throw new Error('Cache is not available'); return scriptCache; },
+    },
     Logger: { log: (m) => { logs.push(String(m)); } },
     ContentService: {
       MimeType: { JSON: 'JSON' },
@@ -184,7 +195,7 @@ export function createEnv({ hashRounds = 25, prepare = true, files = ALL_FILES()
   const json = (x) => JSON.parse(JSON.stringify(x));
 
   const env = {
-    ctx, ss, props, logs, errors, lockState, clock, run, json,
+    ctx, ss, props, logs, errors, lockState, clock, cacheState, run, json,
     sheet: (name) => ss.getSheetByName(name),
     /** Typed rows of a table, as plain JSON. */
     rows: (table) => json(ctx.readTable_(table)),

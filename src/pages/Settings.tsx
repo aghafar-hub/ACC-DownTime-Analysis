@@ -24,11 +24,13 @@ const SUBS = {
   areas: lazyPage(() => import('../admin/settings/AreasActive')),
   security: lazyPage(() => import('../admin/settings/Security')),
   users: lazyPage(() => import('../admin/settings/UsersAccess')),
+  'active-users': lazyPage(() => import('../admin/settings/ActiveUsers')),
+  'activity-log': lazyPage(() => import('../admin/settings/ActivityLog')),
 };
 const subFor = (id: string) => SUBS[id as keyof typeof SUBS] ?? SUBS.appearance;
 const preloadSub = (id: string) => void subFor(id).preload().catch(() => undefined);
 
-/** The subtabs this person may open: Appearance always, Areas for Admins only, the rest need View on their tab. */
+/** The subtabs this person may open: Appearance always, Areas, Active users and Activity log for Admins only, the rest need View on their tab. */
 export function useVisibleSubs(): SettingsSub[] {
   const { canView, user } = useAuth();
   const admin = user?.role_id === 'ROLE-ADMIN';

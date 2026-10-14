@@ -3,7 +3,7 @@
 // normalisation, edit and void semantics, user administration and temporary
 // passwords. Data lives in memory only: a page reload starts again.
 import type {
-  Access, AccessLevel, AdminUser, Api, Area, ClassificationCode, Equipment, EquipmentAlias, EventChanges,
+  Access, AccessLevel, ActiveUser, AdminUser, Api, Area, AuditEntry, AuditGroup, DeviceKind, ClassificationCode, Equipment, EquipmentAlias, EventChanges,
   EventRow, Notification, NotificationCheckResult, NotificationPrefs, NotificationState, Reason, Session, SessionUser,
   TabId, UploadBatch, UploadRow,
 } from './types';
@@ -11,7 +11,8 @@ import {
   cleanSavedReports, notificationCandidates, oneLine, parseNotifSettings, uploadDoneCandidate, userEventCandidate, type Candidate,
 } from './mockNotifications';
 import { buildIndex, canonicalFlags, deriveEventFields, findArea, isKnownFlag, pruneAcceptedFlags, splitFlags, DERIVED_FLAGS, type MasterIndex } from '../calc';
-import { ApiError, NOTIFICATION_CATEGORY_OF, NOTIFICATION_TYPES, TAB_IDS } from './types';
+import { ApiError, AUDIT_GROUPS, NOTIFICATION_CATEGORY_OF, NOTIFICATION_TYPES, TAB_IDS } from './types';
+import { AUDIT_GROUP_ACTIONS, auditGroupOf } from './auditGroups';
 import { createActionStore } from './mockActions';
 import { buildSyntheticDb, fmtTs, type MockUser, type SyntheticDb } from '../mock/synthetic';
 import { codeKey, eventIdOf, fingerprintOf, isValidDate, matchKey, parseTs } from '../util/normalize';
@@ -110,6 +111,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
     if (!db) {
       db = buildSyntheticDb(opts.seed);
       seedHistory(db);
+      if (opts.demoActions) seedDemoActivity(db);
       if (opts.keepAccountThemes) {
         for (const [user_id, value] of Object.entries(readKeptThemes())) notifPrefs.push({ user_id, key: 'theme', value, updated_at: '' });
       }
@@ -118,17 +120,34 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
   };
 
   const p2 = (n: number, l = 2) => String(n).padStart(l, '0');
-  const nowTs = (): string => {
-    const d = new Date(now());
+  const tsOf = (ms: number): string => {
+    const d = new Date(ms);
     return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}.${p2(d.getMilliseconds(), 3)}`;
   };
+  const nowTs = (): string => tsOf(now());
   const setting = (key: string): string => get().settings.find((s) => s.key === key)?.value ?? '';
   const numSetting = (key: string, fallback: number): number => {
     const n = Number(setting(key));
     return Number.isFinite(n) && n > 0 ? n : fallback;
   };
   const audit = (userId: string | undefined, action: string, entity: string, entityId: string, detail: string) => {
-    get().audit_log.push({ at: nowTs(), user_id: userId, action, entity, entity_id: entityId, detail });
+    get().audit_log.push({ at: nowTs(), user_id: userId, action, entity, entity_id: entityId, detail: String(detail ?? '').slice(0, 500) });
+  };
+  /** Same as auditValue_ / auditChanges_ in backend/apps-script/Audit.js: 'field: old -> new; ...' of the fields that changed. */
+  const auditValue = (v: unknown, max = 60): string => {
+    if (v === true) return 'yes';
+    if (v === false) return 'no';
+    const t = v === null || v === undefined ? '' : String(v).replace(/\s+/g, ' ').trim();
+    if (!t) return '(blank)';
+    return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+  };
+  const auditChanges = (before: object | null | undefined, after: object, fields: string[], max = 60): string => {
+    const b = (before ?? {}) as Record<string, unknown>;
+    const a = after as Record<string, unknown>;
+    return fields
+      .filter((f) => a[f] !== undefined && auditValue(b[f], 500) !== auditValue(a[f], 500))
+      .map((f) => `${f}: ${auditValue(b[f], max)} -> ${auditValue(a[f], max)}`)
+      .join('; ');
   };
 
   // ------------------------------------------------------------ access
@@ -175,10 +194,105 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
     const user = get().users.find((u) => u.user_id === payload.uid);
     if (!user || !user.active) throw fail();
     if (payload.pv !== pwVersion(user)) throw new ApiError('Your password changed. Please sign in again.', 'unauthenticated');
+    noteActivity(user.user_id); // like the server: every signed-in call counts as activity
     if (user.must_change && !allowMustChange) {
       throw new ApiError('You must set a new password before you continue.', 'forbidden', true);
     }
     return { user, access: accessFor(user), iat: payload.iat ?? 0, exp: payload.exp };
+  }
+
+  function needAdmin(token: string): { user: MockUser; access: Access } {
+    const a = auth(token);
+    if (a.user.role_id !== 'ROLE-ADMIN') throw new ApiError('You do not have access to do this.', 'forbidden', true);
+    return a;
+  }
+
+  // ------------------------------------------------------------ who is online (backend/apps-script/Activity.js)
+  const ACTIVITY_ONLINE_MS = 5 * 60_000;
+  const activity = new Map<string, { s: number; p: string; d: DeviceKind | '' }>();
+  /** Demo mode only: people "seen" a fixed time before now, so the Active users page always has someone online. */
+  const demoSeen = new Map<string, { ago: number; p: string; d: DeviceKind }>();
+  function noteActivity(userId: string, hint?: unknown): void {
+    const cur = activity.get(userId) ?? { s: 0, p: '', d: '' as DeviceKind | '' };
+    if (hint && typeof hint === 'object' && !Array.isArray(hint)) {
+      const h = hint as Record<string, unknown>;
+      if (typeof h.page === 'string' && /^\/[A-Za-z0-9/_.-]{0,79}$/.test(h.page)) cur.p = h.page;
+      if (h.device === 'phone' || h.device === 'desktop') cur.d = h.device;
+    }
+    cur.s = now();
+    activity.set(userId, cur);
+  }
+
+  /** Demo mode only: a varied activity log of the last two weeks and a few people online. */
+  function seedDemoActivity(d: SyntheticDb): void {
+    const MIN = 60_000, H = 60 * MIN, DAY = 24 * H;
+    demoSeen.set('U-DEMO-MGR', { ago: 1 * MIN, p: '/pareto', d: 'phone' });
+    demoSeen.set('U-DEMO-ENG', { ago: 3 * MIN, p: '/validate', d: 'desktop' });
+    demoSeen.set('U-DEMO-VIEW', { ago: 2 * H + 10 * MIN, p: '/dashboard', d: 'phone' });
+    const evs = d.events.filter((e) => !e.is_void && e.event_date >= '2026-06-01').slice(0, 400);
+    const ev = (i: number) => evs[(i * 37) % Math.max(1, evs.length)]?.event_id ?? 'EV-0000000000000000';
+    const eq = d.equipment.slice(0, 20);
+    const code = (i: number) => eq[i % Math.max(1, eq.length)]?.equipment_id ?? '100.AA01';
+    const A = 'U-DEMO-ADMIN', M = 'U-DEMO-MGR', E = 'U-DEMO-ENG', V = 'U-DEMO-VIEW';
+    const rows: [number, string, string, string, string, string][] = [
+      [13 * DAY + 2 * H, A, 'login', 'users', A, 'Signed in'],
+      [13 * DAY + 2 * H - 5 * MIN, A, 'create_user', 'users', 'U-DEMO-VIEW', 'viewer@demo.test as ROLE-VIEW'],
+      [13 * DAY + 2 * H - 9 * MIN, A, 'set_tab_access', 'users', 'U-DEMO-ENG', 'upload: role default -> Edit'],
+      [12 * DAY + 5 * H, E, 'login', 'users', E, 'Signed in'],
+      [12 * DAY + 5 * H - 2 * MIN, E, 'upload_start', 'upload_batches', 'B-20261002-073000-1a2b', 'July_2026.xlsx'],
+      [12 * DAY + 5 * H - 3 * MIN, E, 'upload_chunk', 'upload_batches', 'B-20261002-073000-1a2b', 'Added 1000, identical 0, rejected 0'],
+      [12 * DAY + 5 * H - 4 * MIN, E, 'upload_chunk', 'upload_batches', 'B-20261002-073000-1a2b', 'Added 1000, identical 0, rejected 0'],
+      [12 * DAY + 5 * H - 5 * MIN, E, 'upload_chunk', 'upload_batches', 'B-20261002-073000-1a2b', 'Added 594, identical 12, rejected 0'],
+      [12 * DAY + 5 * H - 6 * MIN, E, 'upload_finish', 'upload_batches', 'B-20261002-073000-1a2b', 'File July_2026.xlsx. Read 2606, added 2594, identical 12, skipped 0, warnings 31. Decisions: late_month added 18, changed_row kept_stored 4'],
+      [12 * DAY + 5 * H - 6 * MIN - 2000, 'system', 'notification_check', 'notifications', '', 'Created 6, resolved 1, expired 0'],
+      [11 * DAY + 3 * H, V, 'login_failed', 'users', V, 'Wrong password (1 of 5)'],
+      [11 * DAY + 3 * H - 1 * MIN, V, 'login', 'users', V, 'Signed in'],
+      [10 * DAY + 6 * H, M, 'login', 'users', M, 'Signed in'],
+      [10 * DAY + 6 * H - 4 * MIN, M, 'save_setting', 'settings', 'availability_target_pct', '85 -> 88'],
+      [10 * DAY + 6 * H - 5 * MIN, M, 'save_setting', 'settings', 'repeat_window_days', '30 -> 45'],
+      [10 * DAY + 6 * H - 9 * MIN, M, 'save_area_targets', 'area_targets', '2026', 'K.1 availability_target_pct: 90 -> 92; planned_allowance_h_year: 240 -> 300'],
+      [9 * DAY + 4 * H, E, 'edit_event', 'events', ev(1), 'reason_raw: Belt torn -> Belt torn at tail pulley. Note: Reason completed from the shift report'],
+      [9 * DAY + 4 * H - 3 * MIN, E, 'edit_event', 'events', ev(2), 'classification: ELE -> MEC; criticality: NO_INC -> INC. Note: Wrong classification at source'],
+      [9 * DAY + 4 * H - 7 * MIN, E, 'void_event', 'events', ev(3), 'Note: Duplicate of another record'],
+      [9 * DAY + 4 * H - 9 * MIN, E, 'accept_event_flags', 'events', ev(4), 'Kept as entered: unlisted_reason. Note: New reason, to be added to the list'],
+      [8 * DAY + 2 * H, E, 'update_equipment', 'equipment', code(1), 'description: (blank) -> Kiln main drive; criticality: (blank) -> High'],
+      [8 * DAY + 2 * H - 2 * MIN, E, 'add_alias', 'equipment_aliases', `${code(2)}X`, `Points to ${code(2)}. Reason: typo in the sheet`],
+      [8 * DAY + 2 * H - 4 * MIN, E, 'add_reason', 'reasons', 'R-MEC-031', 'MEC: Gearbox oil leak'],
+      [8 * DAY + 2 * H - 6 * MIN, E, 'revalidate_events', 'events', '2026', 'Checked 2594, changed 37'],
+      [7 * DAY + 1 * H, A, 'deactivate_area', 'areas', 'AFR', 'Area switched off: AFR on L.1'],
+      [7 * DAY + 1 * H - 30 * MIN, A, 'activate_area', 'areas', 'AFR', 'Area switched on: AFR on L.1'],
+      [6 * DAY + 5 * H, M, 'create_action', 'actions', 'ACT-2026-101', 'Open: Replace the kiln tail seal'],
+      [6 * DAY + 5 * H - 5 * MIN, M, 'update_action', 'actions', 'ACT-2026-101', 'edit: assignee: (blank) -> Shift engineer; due_date: (blank) -> 2026-10-20'],
+      [6 * DAY + 5 * H - 8 * MIN, E, 'comment_action', 'actions', 'ACT-2026-101', 'Seal ordered, delivery on Thursday'],
+      [5 * DAY + 3 * H, A, 'update_user', 'users', 'U-DEMO-ENG', 'role_id: ROLE-VIEW -> ROLE-ENG'],
+      [5 * DAY + 3 * H - 2 * MIN, A, 'reset_password', 'users', 'U-DEMO-VIEW', 'Temporary password issued'],
+      [4 * DAY + 2 * H, M, 'save_contractors', 'contractors', 'RHI', 'RHI areas: CR, RM.1 -> CR, RM.1, RM.2'],
+      [3 * DAY + 6 * H, M, 'update_action', 'actions', 'ACT-2026-101', 'status: In progress -> Closed (Seal replaced and tested)'],
+      [3 * DAY + 6 * H - 1 * MIN, M, 'action_check', 'actions', '', 'Created 2, merged 1, effectiveness 0'],
+      [2 * DAY + 2 * H, A, 'notification_check', 'notifications', '', 'Created 3, resolved 2, expired 1'],
+      [2 * DAY + 1 * H, V, 'logout', 'users', V, 'Signed out'],
+      [1 * DAY + 4 * H, E, 'login', 'users', E, 'Signed in'],
+      [1 * DAY + 4 * H - 3 * MIN, E, 'edit_event', 'events', ev(5), 'start_ts: 2026-09-12 10:15:00.000 -> 2026-09-12 10:30:00.000. Note: Restart time from the control-room log'],
+      [1 * DAY + 4 * H - 6 * MIN, E, 'unvoid_event', 'events', ev(3), 'Note: The stop did happen'],
+      [5 * H, M, 'login', 'users', M, 'Signed in'],
+      [4 * H, M, 'save_setting', 'settings', 'target_mttr_h', '(none) -> 4'],
+      [2 * H + 15 * MIN, V, 'login', 'users', V, 'Signed in'],
+      [50 * MIN, E, 'login', 'users', E, 'Signed in'],
+      [20 * MIN, M, 'login', 'users', M, 'Signed in'],
+    ];
+    // the weeks before: everyone signs in on working days (so the log has more than one page)
+    for (let day = 15; day <= 45; day++) {
+      [A, M, E, V].forEach((u, k) => {
+        if ((day + k) % 7 === 5) return;
+        rows.push([day * DAY + (8 - k) * H, u, 'login', 'users', u, 'Signed in']);
+        if (k === 3 && day % 4 === 0) rows.push([day * DAY + (8 - k) * H - 40 * MIN, u, 'logout', 'users', u, 'Signed out']);
+      });
+      if (day % 6 === 0) rows.push([day * DAY + 5 * H, E, 'edit_event', 'events', ev(day), `description: (blank) -> Checked on site. Note: Completed after the walk-round`]);
+    }
+    const base = now();
+    rows.sort((x, y) => y[0] - x[0]).forEach(([ago, user_id, action, entity, entity_id, detail]) => {
+      d.audit_log.push({ at: tsOf(base - ago), user_id, action, entity, entity_id, detail });
+    });
   }
 
   function need(token: string, tabs: TabId[], level: 'View' | 'Edit'): { user: MockUser; access: Access } {
@@ -476,7 +590,9 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         field: 'accepted_flags', old_value: stored(accOld.join(',')), new_value: stored(accNew.join(',')), note: PRUNE_NOTE,
       });
     }
-    d.audit_log.push({ at, user_id: userId, action: 'editEvent', entity: 'events', entity_id: ev.event_id, detail: `Changed ${[...order, ...(pruned ? ['accepted_flags'] : [])].join(', ')}. ${why}` });
+    const pairs = order.map((f) => `${f}: ${auditValue(before[f], 40)} -> ${auditValue(ev[f as keyof EventRow], 40)}`);
+    if (pruned) pairs.push(`accepted_flags: ${auditValue(accOld.join(','), 40)} -> ${auditValue(accNew.join(','), 40)}`);
+    d.audit_log.push({ at, user_id: userId, action: 'edit_event', entity: 'events', entity_id: ev.event_id, detail: `${pairs.join('; ')}. Note: ${why}`.slice(0, 500) });
     return ev;
   }
 
@@ -517,7 +633,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       field: 'accepted_flags', old_value: stored(current.join(',')), new_value: stored(wanted.join(',')), note: why,
     });
     d.audit_log.push({
-      at, user_id: userId, action: 'acceptEventFlags', entity: 'events', entity_id: ev.event_id,
+      at, user_id: userId, action: 'accept_event_flags', entity: 'events', entity_id: ev.event_id,
       detail: `${wanted.length ? `Kept as entered: ${wanted.join(', ')}` : `Undid keep as entered (was: ${current.join(', ')})`}. Note: ${why}`,
     });
     return ev;
@@ -535,7 +651,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       edit_id: `ED-${at.replace(/\D/g, '').slice(0, 14)}-${++counter}`, event_id: ev.event_id, edited_at: at, edited_by: userId,
       field: 'is_void', old_value: isVoid ? 'FALSE' : 'TRUE', new_value: isVoid ? 'TRUE' : 'FALSE', note: String(note).trim(),
     });
-    d.audit_log.push({ at, user_id: userId, action: isVoid ? 'voidEvent' : 'restoreEvent', entity: 'events', entity_id: ev.event_id, detail: String(note).trim() });
+    d.audit_log.push({ at, user_id: userId, action: isVoid ? 'void_event' : 'unvoid_event', entity: 'events', entity_id: ev.event_id, detail: `Note: ${String(note).trim()}` });
     return ev;
   }
 
@@ -575,9 +691,13 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       }
       if (user.password !== password) {
         user.failed_attempts += 1;
-        if (user.failed_attempts >= numSetting('lockout_attempts', 5)) {
+        const limit = numSetting('lockout_attempts', 5);
+        if (user.failed_attempts >= limit) {
+          audit(user.user_id, 'login_locked', 'users', user.user_id, `Account locked after ${user.failed_attempts} wrong passwords`);
           user.locked_until = now() + numSetting('lockout_minutes', 15) * 60_000;
           user.failed_attempts = 0;
+        } else {
+          audit(user.user_id, 'login_failed', 'users', user.user_id, `Wrong password (${user.failed_attempts} of ${limit})`);
         }
         throw new ApiError(BAD_LOGIN, 'bad_credentials');
       }
@@ -585,6 +705,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       user.locked_until = undefined;
       user.last_login_at = nowTs();
       audit(user.user_id, 'login', 'users', user.user_id, 'Signed in');
+      noteActivity(user.user_id);
       const hours = keepSignedIn ? numSetting('session_hours_keep', 720) : numSetting('session_hours', 12);
       return clone(makeSession(user, hours * 3_600_000));
     },
@@ -596,11 +717,16 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       if (next === current) throw new ApiError('The new password must be different from the current one.', 'bad_request');
       a.user.password = next;
       a.user.must_change = false;
-      audit(a.user.user_id, 'changePassword', 'users', a.user.user_id, 'Password changed');
+      audit(a.user.user_id, 'change_password', 'users', a.user.user_id, 'Password changed by the user');
       return clone(makeSession(a.user, a.exp - a.iat));
     },
-    async getMyAccess(token) {
+    async logout(token) {
       const a = auth(token, true);
+      audit(a.user.user_id, 'logout', 'users', a.user.user_id, 'Signed out');
+    },
+    async getMyAccess(token, activityHint) {
+      const a = auth(token, true);
+      noteActivity(a.user.user_id, activityHint);
       return clone({ user: sessionUser(a.user), access: a.access, must_change: a.user.must_change, theme: accountTheme(a.user.user_id) });
     },
 
@@ -644,11 +770,11 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         batch_id: id, uploaded_by: a.user.user_id, uploaded_at: t, file_name: String(fileName ?? ''), file_hash: String(fileHash ?? ''),
         rows_read: 0, rows_added: 0, rows_identical: 0, rows_skipped: 0, warning_count: 0, status: 'Started',
       });
-      audit(a.user.user_id, 'uploadStart', 'upload_batches', id, `Upload of ${fileName} started`);
+      audit(a.user.user_id, 'upload_start', 'upload_batches', id, String(fileName ?? ''));
       return { batch_id: id };
     },
     async uploadChunk(token, batchId, rows) {
-      need(token, ['upload'], 'Edit');
+      const a = need(token, ['upload'], 'Edit');
       const d = get();
       const batch = d.upload_batches.find((b) => b.batch_id === batchId);
       if (!batch) throw new ApiError('That upload was not found.', 'not_found');
@@ -699,6 +825,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       }
       batch.rows_added += added;
       batch.rows_identical += identical;
+      audit(a.user.user_id, 'upload_chunk', 'upload_batches', batch.batch_id, `Added ${added}, identical ${identical}, rejected ${rejected.length}`);
       return { added, identical, rejected };
     },
     async uploadFinish(token, batchId, summary, warnings) {
@@ -715,7 +842,10 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       batch.rows_skipped = Number(summary?.rows_skipped) || 0;
       batch.warning_count = n;
       batch.status = 'Completed';
-      audit(a.user.user_id, 'uploadFinish', 'upload_batches', batchId, `${batch.rows_added} rows added, ${batch.rows_identical} identical`);
+      const decided = new Map<string, number>();
+      for (const w of warnings ?? []) if (w.resolution) decided.set(`${w.type} ${w.resolution}`, (decided.get(`${w.type} ${w.resolution}`) ?? 0) + 1);
+      const decisions = [...decided.keys()].sort().map((k) => `${k} ${decided.get(k)}`).join(', ');
+      audit(a.user.user_id, 'upload_finish', 'upload_batches', batchId, `File ${auditValue(batch.file_name, 120)}. Read ${batch.rows_read}, added ${batch.rows_added}, identical ${batch.rows_identical}, skipped ${batch.rows_skipped}, warnings ${n}${decisions ? `. Decisions: ${decisions}` : ''}`);
       safely(() => { runChecks(batch); });
       safely(() => { actionStore.runChecks(); }); // after the alerts, so a new long stop already has its notification
       return clone(batch);
@@ -755,7 +885,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         ev.duration_s = rec.duration_s;
         changed++;
       }
-      audit(a.user.user_id, 'revalidateEvents', 'events', year === undefined || year === null ? 'all' : String(year), `Checked ${checked}, changed ${changed}`);
+      audit(a.user.user_id, 'revalidate_events', 'events', year === undefined || year === null ? 'all' : String(year), `Checked ${checked}, changed ${changed}`);
       return { checked, changed };
     },
 
@@ -784,6 +914,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       if (row.status !== 'Active' && row.status !== 'Retired') throw new ApiError('Status must be Active or Retired.', 'bad_request');
       for (const ar of areaIds ?? []) if (!d.areas.some((x) => x.area_id === ar)) throw new ApiError(`The area "${ar}" does not exist.`, 'bad_request');
       const at = d.equipment.findIndex((e) => e.equipment_id === id);
+      const beforeEq = at >= 0 ? { ...d.equipment[at], areas: d.equipment_areas.filter((x) => x.equipment_id === id).map((x) => x.area_id).sort().join(', ') || '(none)' } : null;
       const description = String(row.description ?? '').trim() || undefined;
       const criticality = String(row.criticality ?? '').trim() || undefined;
       const missing: string[] = [];
@@ -799,7 +930,11 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       else d.equipment.push({ ...next, created_at: nowTs() });
       d.equipment_areas = d.equipment_areas.filter((x) => x.equipment_id !== id);
       for (const ar of new Set(areaIds ?? [])) d.equipment_areas.push({ equipment_id: id, area_id: ar });
-      audit(a.user.user_id, 'saveEquipment', 'equipment', id, at >= 0 ? 'Equipment changed' : 'Equipment added');
+      const areasText = [...new Set(areaIds ?? [])].sort().join(', ') || '(none)';
+      audit(a.user.user_id, beforeEq ? 'update_equipment' : 'add_equipment', 'equipment', id, beforeEq
+        ? auditChanges(beforeEq, { description: description ?? '', equipment_type: row.equipment_type, criticality: criticality ?? '', parent_id: row.parent_id, status: row.status, areas: areasText },
+          ['description', 'equipment_type', 'criticality', 'parent_id', 'status', 'areas']) || 'No change'
+        : `${description ?? '(no description)'}. Areas: ${areasText}`);
     },
     async saveArea(token, row) {
       const a = need(token, ['master'], 'Edit');
@@ -814,9 +949,12 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       if (next.active !== wasActive && a.user.role_id !== 'ROLE-ADMIN') {
         throw new ApiError('Only an Admin can switch an area on or off (Settings > Areas).', 'forbidden', true);
       }
+      const beforeArea = at >= 0 ? { ...d.areas[at] } : null;
       if (at >= 0) d.areas[at] = { ...d.areas[at], ...next };
       else d.areas.push(next);
-      audit(a.user.user_id, 'saveArea', 'areas', id, at >= 0 ? 'Area changed' : 'Area added');
+      audit(a.user.user_id, beforeArea ? 'update_area' : 'add_area', 'areas', id, beforeArea
+        ? auditChanges(beforeArea, next, ['name', 'line_id', 'sort_order', 'active', 'in_downtime_sheet', 'notes']) || 'No change'
+        : `${next.name} on ${next.line_id}`);
     },
     async setAreaActive(token, areaId, active) {
       const a = auth(token);
@@ -848,8 +986,11 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       }
       const next: Reason = { ...row, reason_id: id, match_key: mk };
       const at = d.reasons.findIndex((r) => r.reason_id === id);
+      const beforeReason = at >= 0 ? { ...d.reasons[at] } : null;
       if (at >= 0) d.reasons[at] = next; else d.reasons.push(next);
-      audit(a.user.user_id, 'saveReason', 'reasons', id, at >= 0 ? 'Reason changed' : 'Reason added');
+      audit(a.user.user_id, beforeReason ? 'update_reason' : 'add_reason', 'reasons', id, beforeReason
+        ? auditChanges(beforeReason, next, ['classification', 'text_as_listed', 'order_no', 'active']) || 'No change'
+        : `${next.classification}: ${auditValue(next.text_as_listed, 120)}`);
     },
     async saveAlias(token, row) {
       const a = need(token, ['master'], 'Edit');
@@ -860,8 +1001,10 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       if (d.equipment.some((e) => e.equipment_id === alias)) throw new ApiError('That alias is already a real equipment code.', 'conflict');
       const next: EquipmentAlias = { alias, equipment_id: row.equipment_id, reason: row.reason };
       const at = d.aliases.findIndex((x) => codeKey(x.alias) === alias);
+      const was = at >= 0 ? d.aliases[at]!.equipment_id : '';
       if (at >= 0) d.aliases[at] = next; else d.aliases.push(next);
-      audit(a.user.user_id, 'saveAlias', 'equipment_aliases', alias, `Alias points to ${row.equipment_id}`);
+      audit(a.user.user_id, at >= 0 ? 'update_alias' : 'add_alias', 'equipment_aliases', alias,
+        `Points to ${row.equipment_id}${was && was !== row.equipment_id ? ` (was ${was})` : ''}${next.reason ? `. Reason: ${auditValue(next.reason, 80)}` : ''}`);
     },
     async deleteAlias(token, alias) {
       const a = need(token, ['master'], 'Edit');
@@ -869,8 +1012,8 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       const k = codeKey(alias);
       const at = d.aliases.findIndex((x) => codeKey(x.alias) === k);
       if (at < 0) throw new ApiError('That alias was not found.', 'not_found');
-      d.aliases.splice(at, 1);
-      audit(a.user.user_id, 'deleteAlias', 'equipment_aliases', k, 'Alias deleted');
+      const gone = d.aliases.splice(at, 1)[0]!;
+      audit(a.user.user_id, 'delete_alias', 'equipment_aliases', k, `Was pointing to ${gone.equipment_id}`);
     },
     async saveSettings(token, changes) {
       const a = need(token, ['settings'], 'Edit');
@@ -904,11 +1047,13 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       }
       for (const [k, v] of Object.entries(changes ?? {})) {
         const s = d.settings.find((x) => x.key === k)!;
-        s.value = k === 'actions_closers' ? actionStore.cleanClosers(String(v ?? '')) : String(v ?? '').trim();
+        const value = k === 'actions_closers' ? actionStore.cleanClosers(String(v ?? '')) : String(v ?? '').trim();
+        if (value === s.value) continue; // like the server: an unchanged value is not written or logged
+        audit(a.user.user_id, 'save_setting', 'settings', k, `${s.value} -> ${value}`);
+        s.value = value;
         s.updated_by = a.user.user_id;
         s.updated_at = nowTs();
       }
-      audit(a.user.user_id, 'saveSettings', 'settings', Object.keys(changes ?? {}).join(','), 'Settings changed');
     },
 
     // --- users
@@ -930,7 +1075,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         password: temp, must_change: true, active: true, failed_attempts: 0, created_at: nowTs(), overrides: {},
       };
       d.users.push(user);
-      audit(a.user.user_id, 'createUser', 'users', user.user_id, `User ${email} created`);
+      audit(a.user.user_id, 'create_user', 'users', user.user_id, `${email} as ${user.role_id}`);
       userEvent('created', a.user, user);
       return clone({ user: adminUser(user), temp_password: temp });
     },
@@ -942,6 +1087,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       if (user.user_id === a.user.user_id && (changes.active === false || (changes.role_id && changes.role_id !== user.role_id))) {
         throw new ApiError('You cannot deactivate yourself or change your own role.', 'conflict');
       }
+      const beforeUser = { display_name: user.display_name, role_id: user.role_id, active: user.active };
       if (changes.display_name !== undefined) {
         if (!String(changes.display_name).trim()) throw new ApiError('Please enter a name.', 'bad_request');
         user.display_name = String(changes.display_name).trim();
@@ -952,7 +1098,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         user.role_id = changes.role_id;
       }
       if (changes.active !== undefined) user.active = !!changes.active;
-      audit(a.user.user_id, 'updateUser', 'users', userId, 'User changed');
+      audit(a.user.user_id, 'update_user', 'users', userId, auditChanges(beforeUser, { display_name: user.display_name, role_id: user.role_id, active: user.active }, ['display_name', 'role_id', 'active']) || 'No change');
       return clone(adminUser(user));
     },
     async resetPassword(token, userId) {
@@ -964,7 +1110,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       user.must_change = true;
       user.failed_attempts = 0;
       user.locked_until = undefined;
-      audit(a.user.user_id, 'resetPassword', 'users', userId, 'Password reset');
+      audit(a.user.user_id, 'reset_password', 'users', userId, 'Temporary password issued');
       userEvent('password_reset', a.user, user);
       return { temp_password: temp };
     },
@@ -981,8 +1127,10 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       if (user.user_id === a.user.user_id && (clean.users ?? roleLevel(user.role_id, 'users')) !== 'Edit') {
         throw new ApiError('You cannot take away your own access to Users.', 'conflict');
       }
+      const was = user.overrides;
       user.overrides = clean;
-      audit(a.user.user_id, 'setUserTabAccess', 'users', userId, 'Tab access changed');
+      audit(a.user.user_id, 'set_tab_access', 'users', userId, TAB_IDS.filter((t) => was[t] !== clean[t])
+        .map((t) => `${t}: ${was[t] ?? 'role default'} -> ${clean[t] ?? 'role default'}`).join('; ') || 'No change');
       return clone(adminUser(user));
     },
 
@@ -1080,7 +1228,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       const a = need(token, ['settings'], 'Edit');
       const res = runChecks();
       safely(() => { actionStore.runChecks(); });
-      audit(a.user.user_id, 'runNotificationChecks', 'notifications', '', `Created ${res.created}, resolved ${res.resolved}, expired ${res.expired}`);
+      audit(a.user.user_id, 'notification_check', 'notifications', '', `Created ${res.created}, resolved ${res.resolved}, expired ${res.expired}`);
       return res;
     },
 
@@ -1118,8 +1266,88 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
     async runActionChecks(token) {
       const a = need(token, ['settings'], 'Edit');
       const res = actionStore.runChecks();
-      audit(a.user.user_id, 'runActionChecks', 'actions', '', `Created ${res.created}, merged ${res.merged}, effectiveness ${res.effectiveness}`);
+      audit(a.user.user_id, 'action_check', 'actions', '', `Created ${res.created}, merged ${res.merged}, effectiveness ${res.effectiveness}`);
       return res;
+    },
+
+    // --- admin only (backend 1.6.0)
+    async listActiveUsers(token) {
+      needAdmin(token);
+      const nowMs = now();
+      const nowText = tsOf(nowMs);
+      const pNow = parseTs(nowText) ?? 0;
+      const today = nowText.slice(0, 10);
+      const users: ActiveUser[] = get().users.map((u) => {
+        const act = activity.get(u.user_id);
+        const demo = demoSeen.get(u.user_id);
+        let seenMs = act?.s ?? 0;
+        let page = act?.p ?? '';
+        let device: DeviceKind | '' = act?.d ?? '';
+        if (demo && nowMs - demo.ago > seenMs) { seenMs = nowMs - demo.ago; page = demo.p; device = demo.d; }
+        let seen = seenMs ? tsOf(seenMs) : '';
+        if (u.last_login_at && u.last_login_at > seen) seen = u.last_login_at;
+        const t = seen ? parseTs(seen) : null;
+        return {
+          user_id: u.user_id, display_name: u.display_name, role_id: u.role_id, active: u.active,
+          last_seen_at: seen, last_page: page, device,
+          online: u.active && t !== null && pNow - t <= ACTIVITY_ONLINE_MS && pNow - t >= -60_000,
+          today: u.active && seen.slice(0, 10) === today,
+        };
+      }).sort((x, y) => (x.online !== y.online ? (x.online ? -1 : 1)
+        : x.last_seen_at !== y.last_seen_at ? (x.last_seen_at < y.last_seen_at ? 1 : -1) : x.display_name.localeCompare(y.display_name)));
+      return clone({
+        now: nowText, online_minutes: ACTIVITY_ONLINE_MS / 60_000, users,
+        online_count: users.filter((u) => u.online).length, today_count: users.filter((u) => u.today).length,
+      });
+    },
+    async listAuditLog(token, filter, cursor) {
+      needAdmin(token);
+      const bad = (m: string) => new ApiError(m, 'bad_request');
+      const f = (filter ?? {}) as Record<string, unknown>;
+      if (typeof f !== 'object' || Array.isArray(f)) throw bad('Filter is missing.');
+      for (const k of Object.keys(f)) if (!['user_id', 'group', 'from', 'to', 'q', 'limit'].includes(k)) throw bad(`Filter has an unknown field: ${oneLine(k, 40)}.`);
+      const userId = typeof f.user_id === 'string' ? f.user_id.trim() : '';
+      const group = f.group === undefined || f.group === null || f.group === '' ? '' : String(f.group);
+      if (group && !(AUDIT_GROUPS as readonly string[]).includes(group)) throw bad('Unknown kind of change.');
+      const from = f.from ? String(f.from) : '';
+      const to = f.to ? String(f.to) : '';
+      if ((from && !isValidDate(from)) || (to && !isValidDate(to))) throw bad('Dates must look like 2026-10-14.');
+      if (from && to && from > to) throw bad('The start date is after the end date.');
+      const q = typeof f.q === 'string' ? f.q.trim().toLowerCase() : '';
+      if (q.length > 100) throw bad('Search text is too long.');
+      const limit = f.limit === undefined || f.limit === null ? 100 : f.limit;
+      if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1 || limit > 200) throw bad('Page size must be a whole number from 1 to 200.');
+      let start: number | null = null;
+      if (cursor !== undefined && cursor !== null && cursor !== '') {
+        const m = /^r(\d{1,9})$/.exec(String(cursor));
+        if (!m) throw bad('The page marker is not valid. Start again from the top.');
+        start = Number(m[1]) - 2;
+      }
+      const log = get().audit_log;
+      const names = new Map(get().users.map((u) => [u.user_id, u.display_name.toLowerCase()]));
+      const minAt = from ? `${from} 00:00:00.000` : '';
+      const maxAt = to ? `${to} 23:59:59.999` : '';
+      const actions = group && group !== 'system' ? AUDIT_GROUP_ACTIONS[group as AuditGroup] : null;
+      const entries: AuditEntry[] = [];
+      let i = start === null ? log.length - 1 : Math.min(start, log.length - 1);
+      let scanned = 0;
+      for (; i >= 0 && entries.length < limit && scanned < 20_000; i--) {
+        const e = log[i]!;
+        scanned++;
+        if (minAt && e.at < minAt) { i = -1; break; }
+        if (maxAt && e.at > maxAt) continue;
+        if (userId && e.user_id !== userId) continue;
+        if (group === 'system' ? auditGroupOf(e.action) !== 'system' : actions && !actions.includes(e.action)) continue;
+        if (q && ![e.action, e.entity, e.entity_id, e.detail, e.user_id, names.get(e.user_id ?? '') ?? ''].join(' ').toLowerCase().includes(q)) continue;
+        entries.push({
+          at: e.at, user_id: e.user_id ?? '', action: e.action, entity: e.entity ?? '', entity_id: e.entity_id ?? '', detail: e.detail ?? '',
+          group: auditGroupOf(e.action),
+        });
+      }
+      return clone({
+        entries, next_cursor: i >= 0 ? `r${i + 2}` : null, scanned,
+        users: get().users.map((u) => ({ user_id: u.user_id, display_name: u.display_name })),
+      });
     },
   };
   return api;

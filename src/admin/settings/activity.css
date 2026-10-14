@@ -1,0 +1,79 @@
+/* Settings > Active users and Settings > Activity log (backend 1.6.0) */
+.au-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.au-count {
+  font-size: 13px;
+  padding: 4px 12px;
+}
+.au-updated {
+  flex: 1 1 200px;
+  margin: 0;
+}
+.au-when {
+  font-size: 12px;
+}
+.au-device {
+  white-space: nowrap;
+}
+
+.al-filters {
+  margin-bottom: 12px;
+}
+.al-search {
+  grid-column: span 2;
+}
+@media (max-width: 720px) {
+  .al-search {
+    grid-column: span 1;
+  }
+}
+.al-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.al-count {
+  flex: 1 1 220px;
+  margin: 0;
+}
+.al-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.al-what {
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--tk-text-primary);
+}
+.adm-card .al-what {
+  margin: 2px 0 4px;
+}
+.al-kind {
+  font-weight: 600;
+}
+.al-more {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0 4px;
+}
+@media (max-width: 860px) {
+  .al-buttons {
+    width: 100%;
+  }
+  .al-buttons > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .al-more .btn {
+    width: 100%;
+  }
+}

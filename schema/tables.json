@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "notes": [
     "Single source of truth for the database spreadsheet, the Apps Script backend and the TypeScript types.",
     "Timestamps are plain text 'YYYY-MM-DD HH:MM:SS.mmm' in plant-local time (no time zone). Dates are 'YYYY-MM-DD'.",
@@ -370,6 +370,18 @@
         {"name": "overhaul_months", "type": "text", "required": false, "description": "Comma-separated month numbers 1-12 with a planned overhaul"},
         {"name": "updated_at", "type": "timestamp", "required": false, "description": ""},
         {"name": "updated_by", "type": "text", "required": false, "description": ""}
+      ]
+    },
+    {
+      "name": "user_activity",
+      "description": "Who used the app and when (1.6.0): one row per user, upserted by the server at most once every 3 minutes per user. Shown to Admins in Settings > Active users.",
+      "key": ["user_id"],
+      "columns": [
+        {"name": "user_id", "type": "text", "required": true, "description": "References users.user_id"},
+        {"name": "last_seen_at", "type": "timestamp", "required": true, "description": "Plant-local time of the latest signed-in call written"},
+        {"name": "last_page", "type": "text", "required": false, "description": "The app address the person had open, e.g. /dashboard/overview (from the browser's 2-minute check-in)"},
+        {"name": "device", "type": "enum", "required": false, "enum": ["phone", "desktop"], "description": "From the browser: phone (small touch screen) or desktop"},
+        {"name": "updated_at", "type": "timestamp", "required": true, "description": "When this row was last written"}
       ]
     }
   ],

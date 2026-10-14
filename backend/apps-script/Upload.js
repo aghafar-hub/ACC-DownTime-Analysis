@@ -139,8 +139,13 @@ function uploadFinish_(session, batchId, summary, warnings) {
       rows_read: read, rows_added: added, rows_identical: identical, rows_skipped: skipped,
       warning_count: rows.length, status: 'Completed'
     });
+    // 1.6.0: the file name and the decisions taken in the review (late months added or skipped, changed rows ...)
+    var decided = {};
+    rows.forEach(function (w) { if (w.resolution) { var k = w.type + ' ' + w.resolution; decided[k] = (decided[k] || 0) + 1; } });
+    var decisions = Object.keys(decided).sort().map(function (k) { return k + ' ' + decided[k]; }).join(', ');
     auditLog_(session.user.user_id, 'upload_finish', T.BATCHES, batch.batch_id,
-      'Read ' + read + ', added ' + added + ', identical ' + identical + ', skipped ' + skipped + ', warnings ' + rows.length);
+      'File ' + auditValue_(batch.file_name, 120) + '. Read ' + read + ', added ' + added + ', identical ' + identical + ', skipped ' + skipped +
+      ', warnings ' + rows.length + (decisions ? '. Decisions: ' + decisions : ''));
     fresh = true;
     return readRowAt_(T.BATCHES, batch._row);
   });

@@ -479,7 +479,10 @@ function updateAction_(session, actionId, changes) {
     patch.updated_by = uid;
     updateRow_(T.ACTIONS, row._row, patch);
     appendRows_(T.ACTION_LOG, logs);
-    auditLog_(uid, 'update_action', T.ACTIONS, row.action_id, logs.map(function (l) { return l.kind + (l.to_status ? ' ' + l.from_status + ' -> ' + l.to_status : ''); }).join(', '));
+    auditLog_(uid, 'update_action', T.ACTIONS, row.action_id, logs.map(function (l) {
+      if (l.kind === 'status') return 'status: ' + (l.from_status || '(new)') + ' -> ' + l.to_status + (l.text ? ' (' + auditValue_(l.text, 80) + ')' : '');
+      return l.kind + ': ' + auditValue_(l.text, 200);
+    }).join('. '));
     Object.keys(patch).forEach(function (k) { row[k] = patch[k]; });
     return actionResult_(row);
   });
@@ -493,6 +496,7 @@ function addActionComment_(session, actionId, text) {
     var row = findActionOrThrow_(actionId);
     appendRow_(T.ACTION_LOG, actionLogRow_(row.action_id, uid, 'comment', '', '', body, stamp));
     updateRow_(T.ACTIONS, row._row, { updated_at: stamp, updated_by: uid });
+    auditLog_(uid, 'comment_action', T.ACTIONS, row.action_id, auditValue_(body, 160)); // 1.6.0
     row.updated_at = stamp;
     row.updated_by = uid;
     return actionResult_(row);
@@ -549,11 +553,14 @@ function saveContractors_(session, rows) {
         owner[a] = id;
       });
     });
+    var said = [];
     clean.forEach(function (c) {
       var ex = existing.filter(function (e) { return e.contractor_id === c.contractor_id; })[0];
       if (ex) updateRow_(T.CONTRACTORS, ex._row, c); else appendRow_(T.CONTRACTORS, c);
+      var what = ex ? auditChanges_(ex, c, ['name', 'areas', 'kind', 'active', 'sort_order', 'default_assignee'], 80) : 'added (' + c.kind + ', areas ' + auditValue_(c.areas, 80) + ')';
+      if (what) said.push(c.contractor_id + ' ' + what);
     });
-    auditLog_(uid, 'save_contractors', T.CONTRACTORS, clean.map(function (c) { return c.contractor_id; }).join(','), clean.length + ' contractor row(s) saved');
+    auditLog_(uid, 'save_contractors', T.CONTRACTORS, clean.map(function (c) { return c.contractor_id; }).join(','), said.join('. ') || 'No change');
     return sortContractors_(readTable_(T.CONTRACTORS).map(contractorOut_));
   });
 }
@@ -651,12 +658,17 @@ function saveAreaTargets_(session, year, rows) {
   withLock_(function () {
     var stamp = nowTs_();
     var existing = readTable_(T.AREA_TARGETS);
+    var said = [];
     clean.forEach(function (c) {
       c.updated_at = stamp;
       var ex = existing.filter(function (e) { return e.area_id === c.area_id && e.year === year; })[0];
       if (ex) updateRow_(T.AREA_TARGETS, ex._row, c); else appendRow_(T.AREA_TARGETS, c);
+      var fields = ['availability_target_pct', 'planned_allowance_h_year', 'overhaul_months', 'monthly_split'];
+      var what = auditChanges_(ex ? { availability_target_pct: ex.availability_target_pct === null ? '' : ex.availability_target_pct,
+        planned_allowance_h_year: ex.planned_allowance_h_year, overhaul_months: ex.overhaul_months, monthly_split: ex.monthly_split } : {}, c, fields, 40);
+      if (what) said.push(c.area_id + ' ' + what.replace(/monthly_split: [^;]*/, 'monthly split changed'));
     });
-    auditLog_(uid, 'save_area_targets', T.AREA_TARGETS, String(year), clean.map(function (c) { return c.area_id; }).join(','));
+    auditLog_(uid, 'save_area_targets', T.AREA_TARGETS, String(year), said.join('. ') || 'No change');
   });
   return getAreaTargets_(year);
 }

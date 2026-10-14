@@ -70,7 +70,17 @@ function saveEquipment_(session, row, areaIds) {
     deleteRows_(T.EQUIPMENT_AREAS, links.filter(function (l) { return wanted.indexOf(l.area_id) < 0; }).map(function (l) { return l._row; }));
     appendRows_(T.EQUIPMENT_AREAS, wanted.filter(function (a) { return have.indexOf(a) < 0; })
       .map(function (a) { return { equipment_id: id, area_id: a }; }));
-    auditLog_(actor_(session), existing ? 'update_equipment' : 'add_equipment', T.EQUIPMENT, id, 'Areas: ' + (wanted.join(', ') || '(none)'));
+    var areasText = wanted.slice().sort().join(', ') || '(none)';
+    var detail;
+    if (existing) {
+      var was = existing;
+      was.areas = have.slice().sort().join(', ') || '(none)';
+      detail = auditChanges_(was, { description: rec.description, equipment_type: rec.equipment_type, criticality: rec.criticality,
+        parent_id: rec.parent_id, status: rec.status, areas: areasText }, ['description', 'equipment_type', 'criticality', 'parent_id', 'status', 'areas']) || 'No change';
+    } else {
+      detail = (rec.description || '(no description)') + '. Areas: ' + areasText;
+    }
+    auditLog_(actor_(session), existing ? 'update_equipment' : 'add_equipment', T.EQUIPMENT, id, detail);
   });
   return null;
 }
@@ -97,7 +107,9 @@ function saveArea_(session, row) {
       throw apiError_(ERR.FORBIDDEN, 'Only an Admin can switch an area on or off (Settings > Areas).');
     }
     var how = upsertBy_(T.AREAS, 'area_id', rec);
-    auditLog_(actor_(session), how === 'added' ? 'add_area' : 'update_area', T.AREAS, rec.area_id, rec.name + ' on ' + rec.line_id);
+    auditLog_(actor_(session), how === 'added' ? 'add_area' : 'update_area', T.AREAS, rec.area_id, how === 'added'
+      ? rec.name + ' on ' + rec.line_id
+      : auditChanges_(before, rec, ['name', 'line_id', 'sort_order', 'active', 'in_downtime_sheet', 'notes']) || 'No change');
   });
   return null;
 }
@@ -159,7 +171,9 @@ function saveReason_(session, row) {
       order_no: order, active: row.active === undefined ? true : toBool_(row.active)
     };
     var how = upsertBy_(T.REASONS, 'reason_id', rec);
-    auditLog_(actor_(session), how === 'added' ? 'add_reason' : 'update_reason', T.REASONS, id, cls + ': ' + rec.match_key);
+    auditLog_(actor_(session), how === 'added' ? 'add_reason' : 'update_reason', T.REASONS, id, how === 'added'
+      ? cls + ': ' + auditValue_(rec.text_as_listed, 120)
+      : auditChanges_(existing, rec, ['classification', 'text_as_listed', 'order_no', 'active']) || 'No change');
   });
   return null;
 }
@@ -174,8 +188,10 @@ function saveAlias_(session, row) {
   var rec = { alias: alias, equipment_id: target, reason: cleanText_(row.reason, 'Reason', false) };
   withLock_(function () {
     if (!findBy_(T.EQUIPMENT, 'equipment_id', target)) throw apiError_(ERR.BAD_REQUEST, 'Unknown equipment code: ' + target + '.');
+    var was = findBy_(T.ALIASES, 'alias', alias);
     var how = upsertBy_(T.ALIASES, 'alias', rec);
-    auditLog_(actor_(session), how === 'added' ? 'add_alias' : 'update_alias', T.ALIASES, alias, 'Points to ' + target);
+    auditLog_(actor_(session), how === 'added' ? 'add_alias' : 'update_alias', T.ALIASES, alias, 'Points to ' + target +
+      (was && was.equipment_id !== target ? ' (was ' + was.equipment_id + ')' : '') + (rec.reason ? '. Reason: ' + auditValue_(rec.reason, 80) : ''));
   });
   return null;
 }
