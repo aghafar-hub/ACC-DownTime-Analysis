@@ -1,7 +1,8 @@
 // The report as pages: cover, table of contents, then the sections laid out on A4 pages. The page layout is measured in
 // the browser (every block is rendered once off screen, its height read) and decided by the pure paginate() function,
 // so what is on screen is exactly what is printed: the same fixed-size pages, header, footer and page numbers. On a
-// narrow screen the pages are scaled down to the width (CSS transform on screen only).
+// narrow screen the pages are scaled down to the width ('Fit', CSS transform on screen only); '100%' and the - / +
+// buttons or a pinch show them at a fixed size, scrolling sideways inside the preview only (PreviewZoom.tsx).
 import { tsText } from '../util/dates';
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMeasure } from '../charts/ChartKit';
@@ -12,6 +13,8 @@ import { anchorId, periodText, sectionBlocks, type Block, type SectionBlocks } f
 import type { ReportModel } from './model';
 import { paginate, type PageSpec, type Sizes, type TableSize } from './paginate';
 import ReportTableView from './ReportTableView';
+import { usePinchZoom, ZoomBar } from './PreviewZoom';
+import { scaleOf, type Zoom } from './previewZoom';
 import { SECTION_BY_ID, SECTION_GROUPS } from './sections';
 
 export const PAGE_W = 794;
@@ -131,6 +134,9 @@ export default function ReportDocument({ model, onLayout }: { model: ReportModel
   const [fontsTick, setFontsTick] = useState(0);
   const [layout, setLayout] = useState<{ pages: PageSpec[]; sizes: Sizes; token: object } | null>(null);
   const [wrapRef, wrapW] = useMeasure<HTMLDivElement>();
+  const [zoom, setZoom] = useState<Zoom>('fit');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const sheetsRef = useRef<HTMLDivElement>(null);
 
   // fonts arriving later change text widths: lay out again
   useEffect(() => {
@@ -182,7 +188,9 @@ export default function ReportDocument({ model, onLayout }: { model: ReportModel
     return () => { live = false; };
   }, [layout, wrapRef]);
 
-  const scale = wrapW > 0 ? Math.min(1, wrapW / PAGE_W) : 1;
+  const fit = wrapW > 0 ? Math.min(1, wrapW / PAGE_W) : 1;
+  const scale = scaleOf(zoom, fit);
+  usePinchZoom(scrollRef, sheetsRef, scale, setZoom);
   const byKey = useMemo(() => {
     const m = new Map<string, Block>();
     for (const s of sections) for (const b of s.blocks) m.set(b.key, b);
@@ -236,8 +244,13 @@ export default function ReportDocument({ model, onLayout }: { model: ReportModel
   }
 
   return (
+    <>
+    {/* outside .rpt-doc: the controls follow the app theme, the paper keeps its own light colours */}
+    {out.length > 0 && <ZoomBar zoom={zoom} scale={scale} onZoom={setZoom} />}
     <div className="rpt-doc" ref={wrapRef} data-testid="report" data-ready={layout && imagesReady && !measuring ? 'true' : 'false'} data-pages={layout ? total : undefined} data-sections={sections.length + (hasCover ? 1 : 0)}>
-      <div className="rpt-sheets">{out}</div>
+      <div className={zoom === 'fit' ? 'rpt-scroll' : 'rpt-scroll rpt-scroll--zoomed'} ref={scrollRef} data-testid="rpt-scroll">
+        <div className="rpt-sheets" ref={sheetsRef}>{out}</div>
+      </div>
       {/* off-screen copy used to measure; never printed */}
       {measuring && (
         <div className="rpt-measure rpt-page" ref={measureRef} aria-hidden="true">
@@ -248,5 +261,6 @@ export default function ReportDocument({ model, onLayout }: { model: ReportModel
         </div>
       )}
     </div>
+    </>
   );
 }

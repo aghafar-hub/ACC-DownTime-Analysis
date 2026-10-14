@@ -399,12 +399,12 @@
    the phone rule's `padding: 0 12px` above doesn't undo it. */
 .shell-topbar {
   padding-top: env(safe-area-inset-top, 0px);
-  padding-right: max(20px, env(safe-area-inset-right, 0px));
+  padding-right: max(20px, var(--safe-r, 0px));
 }
 @media (max-width: 860px) {
   .shell-topbar {
-    padding-left: max(12px, env(safe-area-inset-left, 0px));
-    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    padding-left: max(12px, var(--safe-l, 0px));
+    padding-right: max(12px, var(--safe-r, 0px));
   }
 }
 

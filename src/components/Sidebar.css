@@ -14,7 +14,7 @@
   z-index: 100;
   /* the column keeps its width; the fixed panel inside draws the rail */
   box-sizing: content-box;
-  padding-left: env(safe-area-inset-left, 0px);
+  padding-left: var(--safe-l, 0px);
   background: var(--shell-sidebar-bg, #0b1b2e);
 }
 .sidebar-rail--pinned {
@@ -25,7 +25,7 @@
   position: fixed;
   top: 0;
   bottom: var(--env-ribbon-h, 0px);
-  left: env(safe-area-inset-left, 0px);
+  left: var(--safe-l, 0px);
   width: var(--rail-w);
   display: flex;
   flex-direction: column;

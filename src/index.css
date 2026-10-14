@@ -44,6 +44,10 @@
 
   --glass-blur: 16px;
 
+  /* side safe areas (notched phones held sideways); everything that touches a screen edge pads by these */
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+
   --motion-fast: 120ms;
   --motion-base: 200ms;
   --motion-ease: cubic-bezier(0.4, 0, 0.2, 1);

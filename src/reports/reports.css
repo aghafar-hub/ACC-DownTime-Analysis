@@ -316,8 +316,72 @@
   min-width: 0;
   width: 100%;
 }
+/* the pages scroll sideways here (and only here) when they are wider than the screen (R4 zoom) */
+.rpt-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+  overscroll-behavior-x: contain;
+}
 .rpt-sheets {
   padding: 2px 0 24px;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+.rpt-zoom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin: 0 0 10px;
+  font-family: var(--sans);
+}
+.rpt-zoom-seg {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--tk-border);
+  border-radius: 10px;
+  background: var(--tk-card-sub-bg, var(--tk-card-bg));
+  margin-inline-end: auto;
+}
+.rpt-zoom button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--tk-text-primary);
+  font: 600 13.5px var(--sans);
+  cursor: pointer;
+}
+.rpt-zoom-seg button[aria-pressed='true'] {
+  background: var(--tk-card-bg);
+  border-color: var(--tk-accent);
+  color: var(--tk-accent);
+}
+.rpt-zoom .rpt-zoom-step {
+  border-color: var(--tk-border);
+  background: var(--tk-card-bg);
+  font-size: 20px;
+  line-height: 1;
+}
+.rpt-zoom button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.rpt-zoom button:focus-visible {
+  outline: 2px solid var(--tk-accent);
+  outline-offset: 2px;
+}
+.rpt-zoom-level {
+  min-width: 48px;
+  text-align: center;
+  font: 600 13px var(--mono);
+  color: var(--tk-text-secondary);
 }
 .rpt-frame {
   margin: 0 auto 18px;
@@ -907,6 +971,11 @@
   }
   body.report-printing .rpt-sheets {
     padding: 0;
+    width: auto;
+    transform: none !important;
+  }
+  body.report-printing .rpt-scroll {
+    overflow: visible !important;
   }
   body.report-printing .rpt-frame {
     width: 210mm !important;

@@ -91,7 +91,48 @@ export function useChartTip(boxRef: React.RefObject<HTMLElement | null>) {
   return { tip, bind, hide };
 }
 
+export interface Box { left: number; top: number; right: number; bottom: number }
+
+/**
+ * How far to move a tooltip so it stays on the screen: inside the left and right edges, under the sticky top bar and
+ * above the phone's bottom bar. Too tall for the room: its top edge wins (the start of the text stays readable).
+ */
+export function clampTipShift(tip: Box, view: Box, margin = 8): { dx: number; dy: number } {
+  let dx = 0;
+  if (tip.right > view.right - margin) dx = view.right - margin - tip.right;
+  if (tip.left + dx < view.left + margin) dx = view.left + margin - tip.left;
+  let dy = 0;
+  if (tip.bottom > view.bottom - margin) dy = view.bottom - margin - tip.bottom;
+  if (tip.top + dy < view.top + margin) dy = view.top + margin - tip.top;
+  return { dx: Math.round(dx), dy: Math.round(dy) };
+}
+
+/** The part of the window a tooltip may use: below the sticky bars at the top, above the bottom bar. */
+function tipRoom(): Box {
+  let top = 0;
+  let bottom = window.innerHeight;
+  for (const el of document.querySelectorAll<HTMLElement>('.update-banner, .shell-topbar, .scope-slot')) {
+    const r = el.getBoundingClientRect();
+    if (r.height > 0 && r.top <= top + 1 && getComputedStyle(el).position !== 'static') top = Math.max(top, r.bottom);
+  }
+  const nav = document.querySelector<HTMLElement>('.bottom-nav');
+  if (nav) {
+    const r = nav.getBoundingClientRect();
+    if (r.height > 0 && r.top < bottom) bottom = r.top;
+  }
+  return { left: 0, top, right: document.documentElement.clientWidth || window.innerWidth, bottom };
+}
+
 export function TipLayer({ tip, width }: { tip: TipState | null; width: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  // after it is drawn, nudge it back on screen (never under the bottom bar or past a screen edge)
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.translate = '';
+    const s = clampTipShift(el.getBoundingClientRect(), tipRoom());
+    if (s.dx || s.dy) el.style.translate = `${s.dx}px ${s.dy}px`;
+  }, [tip]);
   if (!tip) return null;
   const right = tip.x > width / 2;
   const style: React.CSSProperties = {
@@ -100,7 +141,7 @@ export function TipLayer({ tip, width }: { tip: TipState | null; width: number }
     pointerEvents: tip.pinned ? 'auto' : 'none',
   };
   return (
-    <div className={tip.pinned ? 'chart-tip chart-tip--pinned' : 'chart-tip'} style={style} role="status" data-testid="chart-tip">
+    <div ref={ref} className={tip.pinned ? 'chart-tip chart-tip--pinned' : 'chart-tip'} style={style} role="status" data-testid="chart-tip">
       {tip.node}
     </div>
   );

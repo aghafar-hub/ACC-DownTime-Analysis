@@ -8,6 +8,7 @@ import {
   type DiffUploadRow, type DiffWarning, type FieldChange, type LateMonth, type UploadDiff,
 } from '../calc';
 import { t } from '../i18n/t';
+import { deliverFile } from '../export/deliverFile';
 import { criticalityConflict, type ParsedFile } from './parseWorkbook';
 import { CHECK_TYPES, fieldName, INFO_CHECK_TYPES, resolutionLabel, warningLabel } from './warningText';
 
@@ -297,14 +298,7 @@ export function storedWarningsCsv(warnings: UploadWarning[]): string {
 }
 
 export function downloadText(filename: string, text: string, type = 'text/csv;charset=utf-8'): void {
-  const url = URL.createObjectURL(new Blob(['\ufeff', text], { type }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  void deliverFile(filename, `\ufeff${text}`, type);
 }
 
 export { fieldName };

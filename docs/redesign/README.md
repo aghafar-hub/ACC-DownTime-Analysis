@@ -73,6 +73,27 @@ useDrill), the banner text and the match check are pure (src/pages/events/drillB
 Landscape compact chrome; one-line update banner on phones; report preview Fit/100% (+ zoom there, pending owner
 decision on global pinch zoom); share-sheet fallback for PDF/Excel; 44 px on touch tablets (pointer: coarse); safe-area
 left/right; Pareto as horizontal bars on phones and tooltip clamped above the bottom nav; offline banner time.
+Status: implemented. Notes: landscape, side safe areas and touch targets live in one file, src/mobile/touch.css
+(loaded once from main.tsx; `html`-prefixed so later page CSS cannot undo them). Landscape = `(orientation: landscape)
+and (max-height: 500px)`: 48 px top bar and bottom bar (icon beside label), page chips scroll away, tighter scope bar,
+sheets at most 640 px wide and the visible height; it also covers phones wider than 860 px held sideways (they keep the
+desktop shell, with the short top bar). Side insets are the tokens `--safe-l` / `--safe-r` (index.css, env() values)
+used by the top bar, page, page chips, scope pills, data strip, bottom bar, sheets, update/offline/install banners and
+toasts; the bands' backgrounds still reach the edge. `pointer: coarse` gives every button, chip, tab, menu item, field
+and the page-tab / 'to check' links 44 px on any width (tablets keep the desktop layout). Update banner: one line on
+phones (<= 48 px plus the status-bar inset), the message ellipsised, Reload now and Later stay. Report preview: Fit /
+100% and - / + (25-200%) above the paper (src/reports/PreviewZoom.tsx, rules in previewZoom.ts); a two-finger pinch
+zooms only the preview (live CSS scale, applied on release around the fingers); global zoom stays blocked as before.
+Files: src/export/deliverFile.ts decides download vs share sheet (share only when navigator.canShare({files}) is true
+and the download is unreliable: iOS home-screen app, or no `<a download>`); used by report Excel/CSV, Event records
+Excel/CSV and the upload CSVs. If the tap expired while the file was made (NotAllowedError) the file waits in a one-line
+'Your file is ready · Share' prompt (src/export/SharePrompt.tsx). PDF stays the browser's print dialog (no file is made
+by the app; iOS offers Share / Save to Files there). Pareto at <= 600 px: rows (name, bar and value, cumulative % with
+the 80% line dashed), same `pareto-bar` targets and drill-through. Chart tooltips are nudged (clampTipShift in
+ChartKit.tsx) inside the screen edges, under the sticky bars and above the bottom bar. Offline banner: 'Offline · data
+from 14 Oct 2026 07:12' (last sync of the startup data, util/dates whenText). Tests: tests/e2e/r4.spec.ts (phone 360/390,
+landscape 844x390 incl. emulated 47 px notch insets, iPhone standalone share with a stubbed navigator.share, coarse
+1024x768 tablet on ten pages).
 
 ## R5 - performance
 Route-level code splitting; lazy older years (Validate counts); memo/caching of heavy models.

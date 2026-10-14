@@ -13,7 +13,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 14px;
-  padding: calc(8px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));
+  padding: calc(8px + env(safe-area-inset-top, 0px)) max(16px, var(--safe-r, 0px)) 8px max(16px, var(--safe-l, 0px));
   background: var(--shell-accent, #1e5bb8);
   color: var(--shell-accent-text, #fff);
   font: 500 14px/1.35 var(--sans);
@@ -64,18 +64,31 @@
   outline: 3px solid var(--shell-accent-text, #fff);
   outline-offset: 2px;
 }
+/* R4: one line on a phone, at most 48 px (plus the status-bar inset): the message truncates, both buttons stay. */
 @media (max-width: 860px) {
   .update-banner {
-    gap: 6px 10px;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: calc(2px + env(safe-area-inset-top, 0px)) max(8px, var(--safe-r, 0px)) 2px max(12px, var(--safe-l, 0px));
+    font-size: 13px;
   }
   .update-banner-text {
-    flex-basis: calc(100% - 40px);
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .update-banner-actions {
-    flex: 1 1 100%;
+    flex: 0 0 auto;
+    gap: 6px;
   }
   .update-banner button {
-    flex: 1;
+    padding: 0 12px;
+    white-space: nowrap;
+  }
+  .update-banner-later {
+    padding: 0 10px;
   }
 }
 

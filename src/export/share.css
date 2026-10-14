@@ -1,0 +1,63 @@
+/* SharePrompt.tsx: a one-line card above the phone's bottom bar (or the page bottom), inside the safe areas. */
+.share-prompt {
+  position: fixed;
+  z-index: 2100;
+  left: max(12px, var(--safe-l, 0px));
+  right: max(12px, var(--safe-r, 0px));
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  max-width: 520px;
+  margin-inline: auto;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 2px 12px;
+  border-radius: 14px;
+  background: var(--shell-card-bg, #fff);
+  color: var(--shell-text, #0f1b2d);
+  border: 1px solid var(--shell-accent, #1e5bb8);
+  box-shadow: var(--elevation-2);
+  font: 500 13.5px var(--sans);
+}
+.share-prompt > svg {
+  flex-shrink: 0;
+  color: var(--shell-accent, #1e5bb8);
+}
+.share-prompt-text {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.share-prompt-text span {
+  color: var(--shell-text-secondary, #4a5a70);
+}
+.share-prompt-go,
+.share-prompt-close {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 10px;
+  font: 700 14px var(--sans);
+  cursor: pointer;
+}
+.share-prompt-go {
+  padding: 0 16px;
+  border: 0;
+  background: var(--tk-brand, var(--shell-accent, #1e5bb8));
+  color: var(--tk-brand-text, #fff);
+}
+.share-prompt-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: var(--shell-text-secondary, #4a5a70);
+}
+@media (max-width: 860px) {
+  .share-prompt {
+    bottom: calc(var(--bottom-nav-h, 0px) + 12px);
+  }
+}

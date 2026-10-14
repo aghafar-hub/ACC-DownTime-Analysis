@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReportSectionId } from '../api/types';
 import PopMenu, { MenuItem } from '../components/PopMenu';
 import { buildReportWorkbook, buildSectionCsv } from '../export/reportExport';
-import { downloadFile } from '../export/files';
+import { deliverFile, deliveredText } from '../export/deliverFile';
 import { XLSX_MIME } from '../export/xlsx';
 import { CSV_MIME } from '../export/csv';
 import { t } from '../i18n/t';
@@ -17,6 +17,7 @@ import { SECTION_BY_ID, SECTION_GROUPS } from './sections';
 export const csvSectionIds = (sections: readonly ReportSectionId[]): ReportSectionId[] => sections.filter((s) => s !== 'cover' && s !== 'methodology');
 
 type Note = { text: string; bad: boolean } | null;
+
 
 export default function ReportExport({ sections, getModel, ready, testid }: {
   sections: readonly ReportSectionId[];
@@ -31,14 +32,14 @@ export default function ReportExport({ sections, getModel, ready, testid }: {
   useEffect(() => () => { alive.current = false; }, []);
   const none = sections.length === 0;
 
-  const run = async (work: () => string | null) => {
+  const run = async (work: () => Promise<string | null>) => {
     if (busy) return;
     setBusy(true);
     setNote({ text: t('Preparing the file…'), bad: false });
     await new Promise((r) => window.setTimeout(r, 30)); // let the note paint before the work
     let result: Note;
     try {
-      const msg = work();
+      const msg = await work();
       result = msg === null ? { text: t('The report data is not ready yet. Try again in a moment.'), bad: true } : { text: msg, bad: false };
     } catch {
       result = { text: t('The file could not be made. Try again.'), bad: true };
@@ -49,20 +50,18 @@ export default function ReportExport({ sections, getModel, ready, testid }: {
     }
   };
 
-  const excel = () => run(() => {
+  const excel = () => run(async () => {
     const model = getModel();
     if (!model) return null;
     const wb = buildReportWorkbook(model);
-    if (!downloadFile(wb.fileName, wb.bytes, XLSX_MIME)) return t('The browser did not start the download. Try again.');
-    return t('{name} downloaded: {n} sheets.', { name: wb.fileName, n: wb.sheets.length });
+    return deliveredText(await deliverFile(wb.fileName, wb.bytes, XLSX_MIME), t('{name} downloaded: {n} sheets.', { name: wb.fileName, n: wb.sheets.length }), wb.fileName);
   });
-  const csv = (id: ReportSectionId) => run(() => {
+  const csv = (id: ReportSectionId) => run(async () => {
     const model = getModel([id]);
     if (!model) return null;
     const out = buildSectionCsv(model, id);
     if (!out) return t('This section has no table to export.');
-    if (!downloadFile(out.fileName, out.text, CSV_MIME)) return t('The browser did not start the download. Try again.');
-    return t('{name} downloaded.', { name: out.fileName });
+    return deliveredText(await deliverFile(out.fileName, out.text, CSV_MIME), t('{name} downloaded.', { name: out.fileName }), out.fileName);
   });
 
   return (

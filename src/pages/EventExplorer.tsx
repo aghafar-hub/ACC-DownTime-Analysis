@@ -37,7 +37,8 @@ import ExportMenu from '../components/ExportMenu';
 import ViewsMenu from '../views/ViewsMenu';
 import { VIEW_PAGE_PATH, type SavedView } from '../views/savedViews';
 import { buildEventsWorkbook, eventsCsv, eventsFileName, eventsTable, EVENTS_EXPORT_CAP } from '../export/eventsExport';
-import { downloadFile, stampNow } from '../export/files';
+import { stampNow } from '../export/files';
+import { deliverFile, deliveredText } from '../export/deliverFile';
 import { XLSX_MIME } from '../export/xlsx';
 import { CSV_MIME } from '../export/csv';
 import EventDetail from './events/EventDetail';
@@ -315,13 +316,13 @@ export default function EventExplorer() {
       const ex = eventsTable(filtered, startup);
       const label = drill ? 'selection' : exportLabel(sc.filters, sc.range);
       const name = eventsFileName(label, kind);
-      const ok = kind === 'xlsx'
-        ? downloadFile(name, buildEventsWorkbook(ex, {
+      const result = kind === 'xlsx'
+        ? await deliverFile(name, buildEventsWorkbook(ex, {
           filters: describeExplorerFilters(f, startup, drill ? null : shared), by: user?.display_name || user?.email || '', on: stampNow(),
           scope: drill ? t('Events opened from {label}', { label: drill.label }) : t('Events from {a} to {b}', { a: sc.range?.from ?? '', b: sc.range?.to ?? '' }),
         }), XLSX_MIME)
-        : downloadFile(name, eventsCsv(ex), CSV_MIME);
-      if (!ok) setExportNote({ text: t('The browser did not start the download. Try again.'), capped: false });
+        : await deliverFile(name, eventsCsv(ex), CSV_MIME);
+      if (result !== 'downloaded' && result !== 'shared') setExportNote({ text: deliveredText(result, '', name), capped: false });
       else if (ex.capped) setExportNote({ text: t('{name}: the list has {n} events; the file holds the first {k}. Narrow the filters to export the rest.', { name, n: num(ex.matching), k: num(EVENTS_EXPORT_CAP) }), capped: true });
       else setExportNote({ text: t('{name}: {n} events exported.', { name, n: num(ex.exported) }), capped: false });
     } catch {

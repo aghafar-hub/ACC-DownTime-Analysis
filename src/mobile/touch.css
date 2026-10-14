@@ -1,0 +1,140 @@
+/* R4 - phone and touch chrome, in one place (loaded once from main.tsx, before any page's own CSS):
+   1. side safe areas: on a notched phone held sideways every full-width band keeps its content out of the
+      notch; the band's background still runs to the edge. --safe-l / --safe-r are env() insets (index.css).
+   2. landscape phones (short screens): a shorter top bar and bottom bar and a tighter scope bar, so the page
+      gets most of the height.
+   3. touch screens (pointer: coarse), phones AND tablets wider than 860 px: 44 px targets everywhere.
+   Rules start with `html` so they win over the same class in a page's CSS that loads later. */
+
+/* ---------------------------------------------------------------- 1. side safe areas */
+html .offline-banner {
+  padding-right: max(20px, var(--safe-r, 0px));
+}
+@media (max-width: 860px) {
+  html .mt-strip {
+    padding-left: max(16px, var(--safe-l, 0px));
+    padding-right: max(16px, var(--safe-r, 0px));
+    scroll-padding-inline: max(16px, var(--safe-l, 0px)) max(16px, var(--safe-r, 0px));
+  }
+  html .mt-name {
+    margin-left: max(16px, var(--safe-l, 0px));
+    margin-right: max(16px, var(--safe-r, 0px));
+  }
+  html .module-tabs-sub {
+    padding-left: max(16px, var(--safe-l, 0px));
+    padding-right: max(16px, var(--safe-r, 0px));
+  }
+  html .sb-pills {
+    padding-left: max(16px, var(--safe-l, 0px));
+    padding-right: max(16px, var(--safe-r, 0px));
+  }
+  html .scope-info--phone {
+    padding-left: max(16px, var(--safe-l, 0px));
+    padding-right: max(16px, var(--safe-r, 0px));
+  }
+  html .ds-strip {
+    padding-left: max(16px, var(--safe-l, 0px));
+    padding-right: max(16px, var(--safe-r, 0px));
+  }
+  html .offline-banner {
+    padding-left: max(12px, var(--safe-l, 0px));
+    padding-right: max(12px, var(--safe-r, 0px));
+  }
+  html .install-banner {
+    left: max(10px, var(--safe-l, 0px));
+    right: max(10px, var(--safe-r, 0px));
+  }
+  html .save-blocked-toast {
+    width: auto;
+    left: max(12px, var(--safe-l, 0px));
+    right: max(12px, var(--safe-r, 0px));
+    transform: none;
+  }
+}
+/* sheets (the phone's More, filters, page picker) on every width */
+html .module-sheet {
+  padding-left: max(12px, var(--safe-l, 0px));
+  padding-right: max(12px, var(--safe-r, 0px));
+}
+
+/* ---------------------------------------------------------------- 2. landscape phones */
+@media (orientation: landscape) and (max-height: 500px) {
+  html:root {
+    --topbar-h: calc(48px + env(safe-area-inset-top, 0px));
+    --desk-topbar-h: 48px;
+    --bottom-nav-h: calc(48px + var(--bottom-nav-pad));
+  }
+  html.has-update-banner:root {
+    --topbar-h: 48px;
+  }
+  html .shell-topbar {
+    height: var(--topbar-h);
+  }
+  html .shell-topbar-titles .shell-topbar-crumb {
+    display: none;
+  }
+  html .shell-topbar-title,
+  html .shell-topbar-module {
+    font-size: 16px;
+  }
+  html .shell-topbar-appicon {
+    width: 28px;
+    height: 28px;
+  }
+  /* bottom bar: icon beside its label, one 48 px row */
+  html .bottom-nav-item {
+    flex-direction: row;
+    gap: 6px;
+    height: 48px;
+  }
+  html .bottom-nav-badge {
+    top: -7px;
+  }
+  /* the page picker scrolls away with the page; the scope pills stay, with less air around them */
+  html .module-tabs {
+    position: static;
+    padding: 2px 0 4px;
+  }
+  html .mt-name {
+    margin-bottom: 4px;
+  }
+  html .scope-bar--phone {
+    padding: 2px 0;
+  }
+  html .scope-bar:not(.scope-bar--phone) {
+    padding-top: 4px;
+    padding-bottom: 2px;
+  }
+  html .scope-info--phone {
+    padding-top: 4px;
+  }
+  /* sheets: not wider than a phone held upright, and not taller than what is visible */
+  html .module-sheet {
+    max-width: 640px;
+    margin-inline: auto;
+    box-sizing: border-box;
+    max-height: calc(var(--app-vh, 100vh) - 16px);
+  }
+  html .install-banner {
+    left: auto;
+    width: min(460px, calc(100% - 20px - var(--safe-l, 0px) - var(--safe-r, 0px)));
+  }
+}
+
+/* ---------------------------------------------------------------- 3. touch screens: 44 px targets */
+@media (pointer: coarse) {
+  html :is(
+    button, select, summary, [role='tab'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='option'],
+    .btn, .btn-primary, .btn-brand, .btn-danger, .btn-sm, .chip, a.row-link, .module-tab, .ds-check,
+    input:not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='range']):not([type='file']), textarea
+  ):not(.rpt-page *):not(.sr-only):not(svg *) {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+  /* links that are controls: their box, not just the text line, takes the tap */
+  html :is(.module-tab, .ds-check) {
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+  }
+}

@@ -100,6 +100,14 @@ body.has-env-ribbon .app-shell-right {
     display: none;
   }
 }
-.app-shell-right {
-  padding-right: env(safe-area-inset-right, 0px);
+/* R4 side safe areas: each full-width band pads its own content (its background still reaches the edge);
+   on a desktop layout the rail already covers the left inset */
+.shell-page-content {
+  padding-right: max(2rem, var(--safe-r, 0px));
+}
+@media (max-width: 860px) {
+  .shell-page-content {
+    padding-left: max(16px, var(--safe-l, 0px));
+    padding-right: max(16px, var(--safe-r, 0px));
+  }
 }

@@ -1,8 +1,11 @@
 // Pareto: bars descending in ONE colour (accent), cumulative % line, 80% reference line. The "Others" bar is
 // hatched and outlined. Mouse: hover for the numbers, click to open the events. Touch: tap for the numbers and
 // a button to open the events. Keyboard: bars are buttons.
+// Phones (600 px and narrower) get the same Pareto drawn sideways: one row per item, the name on the left, the bar
+// and its value, then the cumulative share with the 80% line as a dashed mark (no rotated labels, no sideways scroll).
 import { useState, type ReactNode } from 'react';
 import type { ParetoBar, ParetoResult } from '../calc';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { t } from '../i18n/t';
 import { num } from '../util/format';
 import { HatchDefs, TipLayer, TipRows, useChartTip, useUid, type ChartTable } from './ChartKit';
@@ -10,6 +13,10 @@ import { ACCENT, AXIS, GRID, INK } from './palette';
 import { linear, niceTicks, axisNum } from './scale';
 
 const SLOT = 34;
+/** the sideways (rows) Pareto on phones */
+export const PHONE_QUERY = '(max-width: 600px)';
+const ROW = 30;
+const HEAD = 20;
 /** a card-coloured outline so a value label stays readable where a line crosses it */
 const HALO = { stroke: 'var(--tk-card-bg)', strokeWidth: 3, paintOrder: 'stroke' } as const;
 
@@ -54,6 +61,7 @@ export default function ParetoChart({
   const uid = useUid();
   const [box, setBox] = useState<HTMLDivElement | null>(null);
   const { tip, bind, hide } = useChartTip({ current: box } as React.RefObject<HTMLDivElement | null>);
+  const phone = useMediaQuery(PHONE_QUERY) && !isStatic;
   const bars = result.bars;
   const n = bars.length;
   if (n === 0) return <p className="muted" data-testid="pareto-empty">{t('Nothing to show for these filters.')}</p>;
@@ -100,6 +108,25 @@ export default function ParetoChart({
       )}
     </>
   );
+
+  if (phone) {
+    return (
+      <div ref={setBox} style={{ position: 'relative' }} data-testid="pareto-chart" data-layout="rows">
+        <ParetoRows result={result} width={width} format={format} valueLabel={valueLabel} ariaLabel={ariaLabel} uid={uid}
+          hit={(b, i, geo) => {
+            const label = `${b.label}: ${format(b.value)} ${valueLabel}, ${b.sharePct.toFixed(1)}% of total, cumulative ${b.cumulativePct.toFixed(1)}%`;
+            return (
+              <rect key={`hit${i}`} className="chart-hit chart-focusable" x={0} y={geo.y} width={width} height={geo.h}
+                tabIndex={0} role="button" aria-label={label} data-testid="pareto-bar" data-key={b.key}
+                onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && onBar) { e.preventDefault(); onBar(b); } }}
+                {...bind(node(b), onBar ? () => onBar(b) : undefined)} />
+            );
+          }}
+          onBackground={hide} />
+        <TipLayer tip={tip} width={width} />
+      </div>
+    );
+  }
 
   // the cumulative line runs through the named bars; the step to the merged Others point is dashed so it does not
   // read as one more ranked item. Its end is the true cumulative share (labelled).
@@ -160,5 +187,65 @@ export default function ParetoChart({
       </div>
       {!isStatic && <TipLayer tip={tip} width={Math.min(width, svgW)} />}
     </div>
+  );
+}
+
+/**
+ * The phone Pareto: one row per item (name left, bar, value right of the bar), then the cumulative share as a number
+ * over a thin track, with the reference share (80%) as a dashed line down the tracks. 'Others' is hatched; when it is
+ * larger than the biggest named item its bar is capped there with a break mark and its real number beside it.
+ */
+function ParetoRows({ result, width, format, valueLabel, ariaLabel, uid, hit, onBackground }: {
+  result: ParetoResult; width: number; format: (n: number) => string; valueLabel: string; ariaLabel: string; uid: string;
+  hit: (b: ParetoBar, i: number, geo: { y: number; h: number }) => ReactNode;
+  onBackground: () => void;
+}) {
+  const bars = result.bars;
+  const cumW = 62;
+  const valW = Math.max(40, Math.max(...bars.map((b) => format(b.value).length)) * 7.4 + 8);
+  const longest = Math.max(...bars.map((b) => b.label.length));
+  const labelW = Math.round(Math.min(width * 0.36, Math.max(64, Math.min(longest, 16) * 7.2 + 8)));
+  const fitChars = Math.max(4, Math.floor((labelW - 6) / 7.2));
+  const barX = labelW;
+  const barMax = Math.max(24, width - labelW - valW - cumW);
+  const own = bars.filter((b) => !b.isOthers).map((b) => b.value);
+  const maxOwn = own.length ? Math.max(...own) : 0;
+  const others = bars.find((b) => b.isOthers);
+  const clipped = !!others && maxOwn > 0 && others.value > maxOwn * 1.2;
+  const top = clipped ? maxOwn * 1.2 : Math.max(...bars.map((b) => b.value), 0);
+  const len = (b: ParetoBar): number => (top > 0 ? Math.max(1.5, (Math.min(b.value, top) / top) * barMax) : 0);
+  const cumX = width - cumW + 8;
+  const trackW = cumW - 12;
+  const refX = cumX + (result.referencePct / 100) * trackW;
+  const h = HEAD + bars.length * ROW + 4;
+  const refIdx = result.referenceIndex;
+  return (
+    <svg width={width} height={h} role="img" aria-label={ariaLabel} onClick={onBackground} data-testid="pareto-rows">
+      <title>{ariaLabel}</title>
+      <HatchDefs id={`r-${uid}`} color={ACCENT} />
+      <text x={0} y={13}>{t('Item')}</text>
+      <text x={barX} y={13}>{valueLabel}</text>
+      <text x={width} y={13} textAnchor="end">{t('Cum. %')}</text>
+      {bars.map((b, i) => {
+        const y = HEAD + i * ROW;
+        const mid = y + ROW / 2;
+        const l = len(b);
+        const ref = refIdx === i;
+        return (
+          <g key={b.key + i}>
+            <text x={0} y={mid + 4} className="chart-ink" fontWeight={ref ? 700 : undefined}>{short(b.isOthers ? t('Others') : b.label, fitChars)}</text>
+            <rect x={barX} y={mid - 7} width={l} height={14} rx={2}
+              fill={b.isOthers ? `url(#r-${uid})` : ACCENT} stroke={ACCENT} strokeWidth={b.isOthers ? 1.5 : 0} strokeDasharray={b.isOthers ? '4 2' : undefined} />
+            {clipped && b.isOthers && <path d={`M${barX + l - 12} ${mid - 9}l4 18M${barX + l - 7} ${mid - 9}l4 18`} stroke="var(--tk-card-bg)" strokeWidth="3" />}
+            <text x={barX + l + 5} y={mid + 4} className="chart-ink" {...HALO}>{format(b.value)}</text>
+            <text x={cumX} y={mid + 2} fontWeight={ref ? 700 : undefined} className={ref ? 'chart-ink' : undefined}>{`${b.cumulativePct.toFixed(1)}%`}</text>
+            <rect x={cumX} y={mid + 6} width={trackW} height={3} rx={1.5} fill={GRID} />
+            <rect x={cumX} y={mid + 6} width={(Math.min(100, b.cumulativePct) / 100) * trackW} height={3} rx={1.5} fill={INK} />
+          </g>
+        );
+      })}
+      <line x1={refX} x2={refX} y1={HEAD - 2} y2={h - 2} stroke={INK} strokeWidth="1.25" strokeDasharray="3 3" />
+      {bars.map((b, i) => hit(b, i, { y: HEAD + i * ROW, h: ROW }))}
+    </svg>
   );
 }

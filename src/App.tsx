@@ -32,6 +32,7 @@ import { NotificationsProvider } from './notifications/NotificationsContext';
 import { ValidationProvider } from './validate/ValidationContext';
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import UpdateBanner from './update/UpdateBanner';
+import SharePrompt from './export/SharePrompt';
 import './App.css';
 
 const Dashboard = DashboardPage.Component;
@@ -198,6 +199,7 @@ export default function App() {
       <ThemeProvider>
         <UpdateBanner />
         <EnvRibbon />
+        <SharePrompt />
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginRoute />} />
