@@ -90,10 +90,46 @@ function saveArea_(session, row) {
   };
   withLock_(function () {
     if (!findBy_(T.LINES, 'line_id', rec.line_id)) throw apiError_(ERR.BAD_REQUEST, 'Unknown line: ' + rec.line_id + '.');
+    // 1.5.0: switching an area on or off hides or shows all its records plant-wide, so only an Admin may change it
+    var before = findBy_(T.AREAS, 'area_id', rec.area_id);
+    var wasActive = before ? toBool_(before.active) : true;
+    if (rec.active !== wasActive && !isAdmin_(session)) {
+      throw apiError_(ERR.FORBIDDEN, 'Only an Admin can switch an area on or off (Settings > Areas).');
+    }
     var how = upsertBy_(T.AREAS, 'area_id', rec);
     auditLog_(actor_(session), how === 'added' ? 'add_area' : 'update_area', T.AREAS, rec.area_id, rec.name + ' on ' + rec.line_id);
   });
   return null;
+}
+
+function isAdmin_(session) { return !!session && session.user.role_id === 'ROLE-ADMIN'; }
+
+/**
+ * 1.5.0: switches one area on or off (Admin only, audited). An inactive area (active = FALSE) and every record of it are
+ * left out of every page, number and rule as if they did not exist; the records stay stored and come back when the
+ * area is switched on again. Returns the area as stored.
+ */
+function setAreaActive_(session, areaId, active) {
+  if (!isAdmin_(session)) throw apiError_(ERR.FORBIDDEN, 'Only an Admin can switch an area on or off.'); // also in ACTION_RULES
+  var id = cleanText_(areaId, 'Area code', true, 60);
+  if (typeof active !== 'boolean') throw apiError_(ERR.BAD_REQUEST, 'Active must be true or false.');
+  return withLock_(function () {
+    var row = findBy_(T.AREAS, 'area_id', id);
+    if (!row) throw apiError_(ERR.NOT_FOUND, 'Unknown area: ' + oneLine_(id, 60) + '.');
+    if (toBool_(row.active) !== active) {
+      updateRow_(T.AREAS, row._row, { active: active });
+      auditLog_(actor_(session), active ? 'activate_area' : 'deactivate_area', T.AREAS, id,
+        (active ? 'Area switched on: ' : 'Area switched off: ') + row.name + ' on ' + row.line_id);
+    }
+    return findBy_(T.AREAS, 'area_id', id);
+  });
+}
+
+/** Ids of the areas switched off (active = FALSE). Every rule leaves their records out (1.5.0). */
+function inactiveAreaIds_() {
+  var out = {};
+  readTable_(T.AREAS).forEach(function (a) { if (!toBool_(a.active)) out[a.area_id] = true; });
+  return out;
 }
 
 // ---------- reasons ----------

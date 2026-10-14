@@ -506,3 +506,41 @@ describe('reports tab and saved_reports in the mock', () => {
     expect(await code(a.getEvents(s.token, 2026))).toBe('forbidden');
   });
 });
+
+describe('areas switched on and off, and the theme with the account (backend 1.5.0) in the mock', () => {
+  it('demo data starts with every area active; only an Admin switches one, audited; getEvents still returns its records', async () => {
+    const a = createMockApi({ seed: 5, demoActions: true });
+    const admin = await a.login('admin@demo.test', DEMO_PASSWORD, false);
+    const st = await a.getStartup(admin.token);
+    expect(st.areas.every((x) => x.active)).toBe(true);
+    for (const r of ['manager', 'engineer', 'viewer']) {
+      const s = await a.login(`${r}@demo.test`, DEMO_PASSWORD, false);
+      expect(await code(a.setAreaActive(s.token, 'AFR', false)), r).toBe('forbidden');
+    }
+    const eng = await a.login('engineer@demo.test', DEMO_PASSWORD, false);
+    const afr = st.areas.find((x) => x.area_id === 'AFR')!;
+    expect(await code(a.saveArea(eng.token, { ...afr, active: false }))).toBe('forbidden');
+    const before = a.__db().audit_log.length;
+    expect((await a.setAreaActive(admin.token, 'AFR', false)).active).toBe(false);
+    expect(a.__db().audit_log.slice(before).map((x) => [x.action, x.entity_id])).toEqual([['deactivate_area', 'AFR']]);
+    // the records stay stored and are still served: the app leaves them out (src/data/activeAreas.ts)
+    expect((await a.getEvents(admin.token, 2026)).some((e) => e.area_id === 'AFR')).toBe(true);
+    // the rules leave AFR out: no alert or new draft about it
+    await a.runNotificationChecks(admin.token);
+    expect((await a.getNotifications(admin.token)).items.some((n) => n.area_id === 'AFR' && n.type !== 'action_due')).toBe(false);
+    const autoAfr = async () => (await a.listActions(admin.token)).actions.filter((x) => x.area_id === 'AFR' && x.created_by === 'system').length;
+    const n = await autoAfr();
+    await a.runActionChecks(admin.token);
+    expect(await autoAfr()).toBe(n);
+  });
+
+  it('the theme is validated and comes back at sign-in and with getMyAccess', async () => {
+    const a = createMockApi({ seed: 6 });
+    const v = await a.login('viewer@demo.test', DEMO_PASSWORD, false);
+    expect(v.theme).toBe('');
+    expect(await code(a.saveNotificationPrefs(v.token, { theme: 'Pink' }))).toBe('bad_request');
+    await a.saveNotificationPrefs(v.token, { theme: 'Warm Paper' });
+    expect((await a.getMyAccess(v.token)).theme).toBe('Warm Paper');
+    expect((await a.login('viewer@demo.test', DEMO_PASSWORD, false)).theme).toBe('Warm Paper');
+  });
+});

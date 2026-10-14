@@ -7,6 +7,7 @@ import { t, tn } from '../i18n/t';
 import { useValidationOptional } from '../validate/ValidationContext';
 import { formatStamp, parseStamp } from './age';
 import { deriveActionItems } from './derive';
+import { inactiveAreaIds } from '../data/activeAreas';
 import { storedTarget, type LinkEnv } from './links';
 import { buildFeed, restoreState, settleState, snoozeUntilStamp, stateMap, withState, type Feed } from './merge';
 import type { FeedItem } from './model';
@@ -186,15 +187,24 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   }, [rows]);
   const env = useMemo<LinkEnv>(() => ({ canView, years, yearOfEvent }), [canView, years, yearOfEvent]);
   const prefs = useMemo(() => parsePrefs(payload?.prefs), [payload?.prefs]);
+  // alerts about an area switched off are not shown (backend 1.5.0 leaves them out too; this also covers an area
+  // switched off since the last refresh). Overdue actions stay: the action itself is still on the Actions page.
+  const offKey = inactiveAreaIds(startup).join('|');
+  const storedItems = useMemo(() => {
+    const items = payload?.items ?? [];
+    if (!offKey) return items;
+    const off = new Set(offKey.split('|'));
+    return items.filter((n) => !(n.area_id && off.has(n.area_id) && n.type !== 'action_due'));
+  }, [payload?.items, offKey]);
   const feed = useMemo(
     () => buildFeed({
-      stored: payload?.items ?? [], state: payload?.state ?? [], prefs, derived, nowMs,
+      stored: storedItems, state: payload?.state ?? [], prefs, derived, nowMs,
       target: (n) => {
         const tg = storedTarget(n, env);
         return { link: tg.link, linkLabel: tg.label };
       },
     }),
-    [payload, prefs, derived, nowMs, env],
+    [payload, storedItems, prefs, derived, nowMs, env],
   );
 
   // ---------------------------------------------------------------- changes (optimistic, rolled back when refused)
@@ -294,10 +304,10 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   const value = useMemo<NotificationsState>(
     () => ({
       ...feed,
-      loaded: payload !== null, stale, prefs, stored: payload?.items ?? [], announcement, actionError, clearActionError,
+      loaded: payload !== null, stale, prefs, stored: storedItems, announcement, actionError, clearActionError,
       panelOpen, openPanel, closePanel, refresh, markSeen, ack, snooze, dismiss, savePrefs, lastSeenAt, markVisited,
     }),
-    [feed, payload, stale, prefs, announcement, actionError, clearActionError, panelOpen, openPanel, closePanel, refresh, markSeen, ack, snooze, dismiss, savePrefs, lastSeenAt, markVisited],
+    [feed, payload, storedItems, stale, prefs, announcement, actionError, clearActionError, panelOpen, openPanel, closePanel, refresh, markSeen, ack, snooze, dismiss, savePrefs, lastSeenAt, markVisited],
   );
   return <ctx.Provider value={value}>{children}</ctx.Provider>;
 }

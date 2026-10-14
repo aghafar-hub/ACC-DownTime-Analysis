@@ -28,7 +28,7 @@
         {"name": "name", "type": "text", "required": true, "description": "Display name"},
         {"name": "line_id", "type": "text", "required": true, "description": "References lines.line_id"},
         {"name": "sort_order", "type": "int", "required": true, "description": "Display order"},
-        {"name": "active", "type": "bool", "required": true, "description": "Shown in the app"},
+        {"name": "active", "type": "bool", "required": true, "description": "Shown in the app. FALSE (switched off by an Admin in Settings > Areas, backend 1.5.0) leaves the area and all its records out of every page, number, list and rule; the records stay stored"},
         {"name": "in_downtime_sheet", "type": "bool", "required": true, "description": "TRUE when the downtime sheet already uses this area as EQUIPMENT"},
         {"name": "notes", "type": "text", "required": false, "description": "Free note"}
       ]
@@ -286,7 +286,7 @@
       "key": ["user_id", "key"],
       "columns": [
         {"name": "user_id", "type": "text", "required": true, "description": "References users.user_id"},
-        {"name": "key", "type": "text", "required": true, "description": "alert_types (csv of notification types, blank = all) | watch_areas (csv of area ids, blank = all) | digest (none | daily | weekly) | last_seen_at (timestamp) | last_digest_at (timestamp, written by the server) | saved_views (JSON text, at most 20 saved views of the dashboards)"},
+        {"name": "key", "type": "text", "required": true, "description": "alert_types (csv of notification types, blank = all) | watch_areas (csv of area ids, blank = all) | digest (none | daily | weekly) | last_seen_at (timestamp) | last_digest_at (timestamp, written by the server) | saved_views (JSON text, at most 20 saved views of the dashboards) | saved_reports (JSON text, at most 20 report templates) | theme (one of the five theme names, blank = none; 1.5.0)"},
         {"name": "value", "type": "text", "required": false, "description": ""},
         {"name": "updated_at", "type": "timestamp", "required": true, "description": ""}
       ]

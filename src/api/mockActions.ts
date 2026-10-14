@@ -712,7 +712,9 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       const stamp = deps.nowTs();
       const res: ActionCheckResult = { created: 0, merged: 0, effectiveness: 0 };
       const d = deps.db();
-      const events = d.events.filter((e) => !e.is_void);
+      // backend 1.5.0: records of an area switched off are left out of every rule
+      const inactive = new Set(d.areas.filter((a) => !a.active).map((a) => a.area_id));
+      const events = d.events.filter((e) => !e.is_void && !inactive.has(e.area_id));
       let latest = '';
       for (const e of events) if (isValidDate(e.event_date) && e.event_date > latest) latest = e.event_date;
       const index = deps.index();
@@ -758,6 +760,7 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       }
       for (const a of actions) {
         if (a.status !== 'Closed' || a.scope_kind !== 'equipment' || a.effectiveness === 'Effective' || a.effectiveness === 'Not effective') continue;
+        if (a.area_id && inactive.has(a.area_id)) continue; // not judged while its area is switched off
         const e = effectivenessOf(x, a, st.effectDays);
         if (!e || e.verdict === a.effectiveness) continue;
         a.effectiveness = e.verdict;

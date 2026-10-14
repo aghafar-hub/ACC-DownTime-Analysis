@@ -78,7 +78,8 @@ function buildSession_(user, keep) {
   var token = signToken_({ uid: user.user_id, role: user.role_id, iat: iat, exp: exp, pv: pwVersion_(user) });
   return {
     token: token, expires_at: new Date(exp).toISOString(), user: publicUser_(user),
-    must_change: user.must_change, access: computeAccess_(user, readTable_(T.TAB_ACCESS))
+    must_change: user.must_change, access: computeAccess_(user, readTable_(T.TAB_ACCESS)),
+    theme: accountTheme_(user.user_id)
   };
 }
 
@@ -94,7 +95,7 @@ function requireSession_(token) {
 }
 
 function getMyAccess_(session) {
-  return { user: publicUser_(session.user), access: session.access, must_change: session.user.must_change };
+  return { user: publicUser_(session.user), access: session.access, must_change: session.user.must_change, theme: accountTheme_(session.user.user_id) };
 }
 
 function changePassword_(session, current, next) {

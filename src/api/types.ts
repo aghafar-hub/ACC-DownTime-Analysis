@@ -103,6 +103,8 @@ export interface UploadRow {
 export interface SessionUser { user_id: string; email: string; display_name: string; role_id: string }
 export interface Session {
   token: string; expires_at: string; user: SessionUser; must_change: boolean; access: Access;
+  /** The theme saved with the account (backend 1.5.0; '' or absent when none, or from an older server). */
+  theme?: string;
 }
 export interface AdminUser extends SessionUser { active: boolean; must_change: boolean; last_login_at?: string; overrides?: Partial<Access> }
 
@@ -159,10 +161,11 @@ export interface NotificationState {
  * The caller's own preferences. Keys: alert_types (csv of NotificationType, blank = all), watch_areas (csv of
  * area ids, blank = all), digest ('none' | 'daily' | 'weekly'), last_seen_at (timestamp), and last_digest_at
  * (read only, written by the server), saved_views (JSON text: at most 20 of {id, name, page, query}) and saved_reports
- * (JSON text: at most 20 report templates, see SavedReportTemplate; docs/wire-protocol.md). A key that was never saved is absent.
+ * (JSON text: at most 20 report templates, see SavedReportTemplate; docs/wire-protocol.md) and theme (backend 1.5.0: one of the
+ * five theme names, blank = none). A key that was never saved is absent.
  */
 export type NotificationPrefs = Record<string, string>;
-export type NotificationPrefKey = 'alert_types' | 'watch_areas' | 'digest' | 'last_seen_at' | 'saved_views' | 'saved_reports';
+export type NotificationPrefKey = 'alert_types' | 'watch_areas' | 'digest' | 'last_seen_at' | 'saved_views' | 'saved_reports' | 'theme';
 
 /** The report templates the Reports page can start from, and the saved-template shape (preference `saved_reports`). */
 export const REPORT_TEMPLATES = ['monthly', 'area', 'failure', 'custom'] as const;
@@ -330,7 +333,8 @@ export interface Api {
   // --- auth ---
   login(email: string, password: string, keepSignedIn: boolean): Promise<Session>;
   changePassword(token: string, current: string, next: string): Promise<Session>;
-  getMyAccess(token: string): Promise<{ user: SessionUser; access: Access; must_change: boolean }>;
+  /** Also the theme saved with the account (backend 1.5.0; absent from older servers). */
+  getMyAccess(token: string): Promise<{ user: SessionUser; access: Access; must_change: boolean; theme?: string }>;
 
   // --- reads ---
   getStartup(token: string): Promise<Startup>;
@@ -366,7 +370,13 @@ export interface Api {
 
   // --- master data ---
   saveEquipment(token: string, row: Equipment, areaIds: string[]): Promise<void>;
+  /** Changing `active` needs the Admin role (backend 1.5.0; 'forbidden' otherwise): use setAreaActive. */
   saveArea(token: string, row: Area): Promise<void>;
+  /**
+   * Switches one area on or off (backend 1.5.0, Admin role only, audited). An inactive area and all its records are left
+   * out of every page, number, list and server rule; the records stay stored. Returns the area as stored.
+   */
+  setAreaActive(token: string, areaId: string, active: boolean): Promise<Area>;
   saveReason(token: string, row: Reason): Promise<void>;
   saveAlias(token: string, row: EquipmentAlias): Promise<void>;
   deleteAlias(token: string, alias: string): Promise<void>;

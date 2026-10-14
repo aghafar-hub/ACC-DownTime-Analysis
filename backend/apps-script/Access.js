@@ -5,7 +5,8 @@
 
 /**
  * auth: 'none' (no session), 'session' (any valid session), 'anyTab' (at least
- * one tab not Hidden), 'tabs' (one of `tabs` at `level` or above).
+ * one tab not Hidden), 'tabs' (one of `tabs` at `level` or above), 'admin' (the
+ * Admin role, ROLE-ADMIN; 1.5.0).
  * mustChangeOk: allowed while the user still has a temporary password.
  */
 var ACTION_RULES = {
@@ -26,6 +27,8 @@ var ACTION_RULES = {
   acceptEventFlags: { auth: 'tabs', tabs: ['events'], level: 'Edit' },
   saveEquipment: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
   saveArea: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
+  // 1.5.0: only the Admin role (ROLE-ADMIN), whatever the tab access says.
+  setAreaActive: { auth: 'admin' },
   saveReason: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
   saveAlias: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
   deleteAlias: { auth: 'tabs', tabs: ['master'], level: 'Edit' },
@@ -76,14 +79,15 @@ function userOverrides_(userId, accessRows) {
   return o;
 }
 
-function accessAllows_(rule, access) {
+function accessAllows_(rule, access, user) {
   if (rule.auth === 'none' || rule.auth === 'session') return true;
+  if (rule.auth === 'admin') return !!user && user.role_id === 'ROLE-ADMIN';
   if (rule.auth === 'anyTab') return TAB_IDS.some(function (t) { return access[t] !== 'Hidden'; });
   var need = levelRank_(rule.level);
   return rule.tabs.some(function (t) { return levelRank_(access[t]) >= need; });
 }
 
-function requireAccess_(action, access) {
+function requireAccess_(action, access, user) {
   var rule = ACTION_RULES[action];
-  if (!rule || !accessAllows_(rule, access)) throw apiError_(ERR.FORBIDDEN, 'You do not have access to do this.');
+  if (!rule || !accessAllows_(rule, access, user)) throw apiError_(ERR.FORBIDDEN, 'You do not have access to do this.');
 }

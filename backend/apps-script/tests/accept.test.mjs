@@ -34,7 +34,7 @@ test('the schema gains the three event columns and the new settings', () => {
   const keys = env.rows('settings').map((s) => s.key);
   for (const k of ['availability_target_pct', 'target_mtbf_h', 'target_mttr_h']) assert.ok(keys.includes(k), k);
   assert.ok(!keys.includes('target_availability_pct') && !keys.includes('notif_availability_target_pct'));
-  assert.ok(['1.3.0', '1.4.0'].includes(env.run('APP_VERSION'))); // 1.3.0 features, still present in later versions
+  assert.ok(['1.3.0', '1.4.0', '1.5.0'].includes(env.run('APP_VERSION'))); // 1.3.0 features, still present in later versions
 });
 
 test('ensureSchema + seedDefaults upgrade a 1.2.0 database without touching data', () => {

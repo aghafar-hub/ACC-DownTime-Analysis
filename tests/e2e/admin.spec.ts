@@ -106,10 +106,13 @@ test.describe('master data', () => {
     await expect(page.getByTestId('saved-toast')).toContainText('Added area TST.1');
     await expect(page.getByTestId('area-row')).toHaveCount(20);
     await page.getByTestId('area-row').filter({ hasText: 'TST.1' }).getByRole('button').click();
+    // backend 1.5.0: only an Admin switches an area on or off (Settings > Areas); the engineer's choice does not move
+    await expect(page.getByTestId('ar-active-admin-only')).toBeVisible();
     await page.getByTestId('ar-active-no').click();
+    await expect(page.getByTestId('ar-active-no')).toHaveAttribute('aria-pressed', 'false');
     await page.getByTestId('save-area').click();
-    await page.getByTestId('confirm-ok').click();
-    await expect(page.getByTestId('area-row').filter({ hasText: 'TST.1' })).toContainText('Inactive');
+    await expect(page.getByTestId('confirm-ok')).toHaveCount(0);
+    await expect(page.getByTestId('area-row').filter({ hasText: 'TST.1' })).toContainText('Active');
 
     // reasons: leading spaces are drawn
     await page.getByRole('button', { name: /^Reasons/ }).click();

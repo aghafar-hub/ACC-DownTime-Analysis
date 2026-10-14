@@ -73,7 +73,7 @@ export default function Notifications() {
   const groups = useMemo(() => groupByDay(items, nowMs), [items, nowMs]);
   const fresh = scoped.filter((i) => i.unseen).length;
   const chosen = items.find((i) => i.id === selected) ?? items[0] ?? null;
-  const areas = useMemo(() => (startup?.areas ?? []).slice().sort((a, b) => a.sort_order - b.sort_order), [startup]);
+  const areas = useMemo(() => (startup?.areas ?? []).filter((a) => a.active !== false).sort((a, b) => a.sort_order - b.sort_order), [startup]);
   const lines = useMemo(() => (startup?.lines ?? []).slice().sort((a, b) => a.sort_order - b.sort_order), [startup]);
   const known = useMemo(() => new Set((startup?.equipment ?? []).map((e) => codeKey(e.equipment_id))), [startup]);
 

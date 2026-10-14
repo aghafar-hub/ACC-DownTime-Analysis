@@ -6,6 +6,8 @@ import type { CSSProperties } from 'react';
 // The five platform themes. The choice is kept on this device under
 // `acc_dt_theme` and applied to <body> as CSS custom properties, so the
 // shell, the pages and anything drawn on <body> (menus, popups) all follow it.
+// Signed in, the account's theme wins (src/theme/accountTheme.tsx, backend 1.5.0);
+// this device's value stays as the fallback (sign-in page, offline, older server).
 const DARK_THEMES = ['Navy Dark', 'Carbon Dark'];
 
 export type ThemePalette = { name: string; dark: boolean } & Pick<Tokens, 'appBg' | 'sidebarBg' | 'accent'>;

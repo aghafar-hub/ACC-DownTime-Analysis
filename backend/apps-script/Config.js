@@ -4,7 +4,7 @@
  * at load time, so file order does not matter.
  */
 
-var APP_VERSION = '1.4.0';
+var APP_VERSION = '1.5.0';
 var TIMEZONE = 'Africa/Cairo';
 
 // Password hashing cost. Run benchmarkHashRounds() and, if it suggests a

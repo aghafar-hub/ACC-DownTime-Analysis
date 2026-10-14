@@ -21,6 +21,8 @@ interface Stored {
   user: SessionUser;
   must_change: boolean;
   access: Access;
+  /** the theme saved with the account (backend 1.5.0); '' when none or from an older server */
+  theme?: string;
 }
 
 function readStored(): { stored: Stored; remember: boolean } | null {
@@ -58,6 +60,10 @@ export interface AuthState {
   canView: (tab: TabId) => boolean;
   canEdit: (tab: TabId) => boolean;
   refreshAccess: () => Promise<void>;
+  /** The theme saved with the account ('' when none, or the server is older than 1.5.0): it wins over this device's. */
+  accountTheme: string;
+  /** After the account's theme was saved: remember it with the session (a refresh started earlier cannot undo it). */
+  setAccountTheme: (name: string) => void;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -83,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applySession = useCallback((s: Session) => {
-    persist({ token: s.token, expires_at: s.expires_at, user: s.user, must_change: s.must_change, access: s.access });
+    persist({ token: s.token, expires_at: s.expires_at, user: s.user, must_change: s.must_change, access: s.access, theme: s.theme ?? '' });
   }, [persist]);
 
   const login = useCallback(async (email: string, password: string, keep: boolean) => {
@@ -101,15 +107,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const storedRef = useRef(stored);
   storedRef.current = stored;
+  // bumped by every theme saved from this device: an answer to a refresh that started before it keeps the new theme
+  const themeEpoch = useRef(0);
+  const setAccountTheme = useCallback((name: string) => {
+    themeEpoch.current++;
+    const now = storedRef.current;
+    if (now && now.theme !== name) persist({ ...now, theme: name });
+  }, [persist]);
   const refreshAccess = useCallback(async () => {
     const cur = storedRef.current;
     if (!cur) return;
+    const epoch = themeEpoch.current;
     try {
       const r = await api.getMyAccess(cur.token);
       const now = storedRef.current;
       if (!now || now.token !== cur.token) return;
-      const same = JSON.stringify([r.user, r.access, r.must_change]) === JSON.stringify([now.user, now.access, now.must_change]);
-      if (!same) persist({ ...now, user: r.user, access: r.access, must_change: r.must_change });
+      // an older server sends no theme: keep what we have
+      const theme = r.theme === undefined || epoch !== themeEpoch.current ? now.theme : r.theme;
+      const same = JSON.stringify([r.user, r.access, r.must_change, theme ?? '']) === JSON.stringify([now.user, now.access, now.must_change, now.theme ?? '']);
+      if (!same) persist({ ...now, user: r.user, access: r.access, must_change: r.must_change, theme });
     } catch {
       /* offline or a server hiccup: keep what we have; an ended session is reported by the api event */
     }
@@ -157,12 +173,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       access: stored?.access ?? null,
       mustChange: stored?.must_change ?? false,
       notice,
-      login, changePassword, logout, refreshAccess,
+      accountTheme: stored?.theme ?? '',
+      login, changePassword, logout, refreshAccess, setAccountTheme,
       levelOf,
       canView: (tab) => levelOf(tab) !== 'Hidden',
       canEdit: (tab) => levelOf(tab) === 'Edit',
     };
-  }, [stored, notice, login, changePassword, logout, refreshAccess]);
+  }, [stored, notice, login, changePassword, logout, refreshAccess, setAccountTheme]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

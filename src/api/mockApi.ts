@@ -15,6 +15,8 @@ import { ApiError, NOTIFICATION_CATEGORY_OF, NOTIFICATION_TYPES, TAB_IDS } from 
 import { createActionStore } from './mockActions';
 import { buildSyntheticDb, fmtTs, type MockUser, type SyntheticDb } from '../mock/synthetic';
 import { codeKey, eventIdOf, fingerprintOf, isValidDate, matchKey, parseTs } from '../util/normalize';
+import { THEME_NAMES } from '../theme/themes';
+import { store } from '../storagePrefix';
 
 const LEVEL_RANK: Record<AccessLevel, number> = { Hidden: 0, View: 1, Edit: 2 };
 const CLASS_CODES: ClassificationCode[] = ['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'];
@@ -68,6 +70,23 @@ function cleanSavedViews(text: string): string {
   return text;
 }
 
+// demo mode only: the saved theme of each demo account, kept in this browser (see createMockApi)
+const KEPT_THEMES_KEY = 'mock_account_themes';
+function readKeptThemes(): Record<string, string> {
+  try {
+    const v = JSON.parse(store.get(KEPT_THEMES_KEY) ?? '{}') as unknown;
+    if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+    return Object.fromEntries(Object.entries(v as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string' && THEME_NAMES.includes(e[1])));
+  } catch {
+    return {};
+  }
+}
+function writeKeptTheme(userId: string, theme: string): void {
+  const all = readKeptThemes();
+  if (theme) all[userId] = theme; else delete all[userId];
+  store.set(KEPT_THEMES_KEY, JSON.stringify(all));
+}
+
 export interface MockApi extends Api {
   /** Test helpers: the live data and a clock override. Not part of Api. */
   __db(): SyntheticDb;
@@ -78,7 +97,11 @@ export interface MockApi extends Api {
  * `demoActions` (the app's demo mode) fills the Actions page on first use: area targets, auto drafts moved along the board,
  * a manual action and comments. Tests leave it off so their scenarios start from an empty action list, like the server.
  */
-export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {}): MockApi {
+/**
+ * `keepAccountThemes` (the app's demo mode) keeps each demo account's saved theme in this browser's storage, so it
+ * outlives a reload and a fresh sign-in like on a real server (everything else in the mock starts again on a reload).
+ */
+export function createMockApi(opts: { seed?: number; demoActions?: boolean; keepAccountThemes?: boolean } = {}): MockApi {
   let db: SyntheticDb | null = null;
   let now: () => number = () => Date.now();
   let counter = 0;
@@ -87,6 +110,9 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
     if (!db) {
       db = buildSyntheticDb(opts.seed);
       seedHistory(db);
+      if (opts.keepAccountThemes) {
+        for (const [user_id, value] of Object.entries(readKeptThemes())) notifPrefs.push({ user_id, key: 'theme', value, updated_at: '' });
+      }
     }
     return db;
   };
@@ -134,7 +160,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
     const payload = b64urlEncode(JSON.stringify({ uid: u.user_id, role: u.role_id, iat, exp, pv: pwVersion(u) }));
     return {
       token: `${payload}.mock`, expires_at: new Date(exp).toISOString(), user: sessionUser(u),
-      must_change: u.must_change, access: accessFor(u),
+      must_change: u.must_change, access: accessFor(u), theme: accountTheme(u.user_id),
     };
   }
 
@@ -252,8 +278,9 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
     for (const n of notifications) {
       if (n.status === 'open' && n.expires_at && n.expires_at <= stamp) { n.status = 'expired'; res.expired++; }
     }
+    const inactive = inactiveAreas();
     const cands = notificationCandidates({
-      events: d.events, areas: d.areas, index: lookup(), settings: st, today: stamp.slice(0, 10), targets: actionStore.targets(), actions: actionStore.actions(),
+      events: d.events.filter((e) => !inactive.has(e.area_id)), areas: d.areas, index: lookup(), settings: st, today: stamp.slice(0, 10), targets: actionStore.targets(), actions: actionStore.actions(),
     });
     if (batch) cands.push(uploadDoneCandidate(batch));
     const byKey = new Map(notifications.map((n) => [n.dedupe_key, n]));
@@ -357,6 +384,16 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
 
   const notifVisible = (n: Notification, access: Access, stamp: string): boolean =>
     n.status === 'open' && !(n.expires_at && n.expires_at <= stamp) && !(n.type === 'user_event' && access.users === 'Hidden');
+
+  /** The theme saved with the account, '' when none (accountTheme_ in Notifications.js). */
+  const accountTheme = (userId: string): string => {
+    const v = notifPrefs.find((r) => r.user_id === userId && r.key === 'theme')?.value ?? '';
+    return THEME_NAMES.includes(v) ? v : '';
+  };
+  /** Areas switched off (backend 1.5.0): their records are left out of every rule, as on the server. */
+  const inactiveAreas = (): Set<string> => new Set(get().areas.filter((x) => !x.active).map((x) => x.area_id));
+  /** An alert about an area that is switched off is not shown (overdue actions are). */
+  const ofInactiveArea = (n: Notification, inactive: Set<string>): boolean => !!n.area_id && inactive.has(n.area_id) && n.type !== 'action_due';
 
   const prefsOf = (userId: string): NotificationPrefs => {
     const out: NotificationPrefs = {};
@@ -564,7 +601,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
     },
     async getMyAccess(token) {
       const a = auth(token, true);
-      return clone({ user: sessionUser(a.user), access: a.access, must_change: a.user.must_change });
+      return clone({ user: sessionUser(a.user), access: a.access, must_change: a.user.must_change, theme: accountTheme(a.user.user_id) });
     },
 
     // --- reads
@@ -771,11 +808,29 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
       if (!id) throw new ApiError('The area code cannot be empty.', 'bad_request');
       if (!String(row.name ?? '').trim()) throw new ApiError('The area needs a name.', 'bad_request');
       if (!d.lines.some((l) => l.line_id === row.line_id)) throw new ApiError(`The line "${row.line_id}" does not exist.`, 'bad_request');
-      const next: Area = { ...row, area_id: id, name: row.name.trim() };
+      const next: Area = { ...row, area_id: id, name: row.name.trim(), active: row.active === true };
       const at = d.areas.findIndex((x) => x.area_id === id);
+      const wasActive = at >= 0 ? d.areas[at]!.active : true;
+      if (next.active !== wasActive && a.user.role_id !== 'ROLE-ADMIN') {
+        throw new ApiError('Only an Admin can switch an area on or off (Settings > Areas).', 'forbidden', true);
+      }
       if (at >= 0) d.areas[at] = { ...d.areas[at], ...next };
       else d.areas.push(next);
       audit(a.user.user_id, 'saveArea', 'areas', id, at >= 0 ? 'Area changed' : 'Area added');
+    },
+    async setAreaActive(token, areaId, active) {
+      const a = auth(token);
+      if (a.user.role_id !== 'ROLE-ADMIN') throw new ApiError('You do not have access to this.', 'forbidden', true);
+      const id = typeof areaId === 'string' ? areaId.trim() : '';
+      if (!id) throw new ApiError('Area code is required.', 'bad_request');
+      if (typeof active !== 'boolean') throw new ApiError('Active must be true or false.', 'bad_request');
+      const area = get().areas.find((x) => x.area_id === id);
+      if (!area) throw new ApiError(`Unknown area: ${oneLine(id, 60)}.`, 'not_found');
+      if (area.active !== active) {
+        area.active = active;
+        audit(a.user.user_id, active ? 'activate_area' : 'deactivate_area', 'areas', id, `${active ? 'Area switched on' : 'Area switched off'}: ${area.name} on ${area.line_id}`);
+      }
+      return clone(area);
     },
     async saveReason(token, row) {
       const a = need(token, ['master'], 'Edit');
@@ -937,7 +992,8 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
       seedDemoActions();
       if (!notifSeeded) runChecks();
       const stamp = nowTs();
-      const items = notifications.filter((n) => notifVisible(n, a.access, stamp))
+      const inactive = inactiveAreas();
+      const items = notifications.filter((n) => notifVisible(n, a.access, stamp) && !ofInactiveArea(n, inactive))
         .sort((x, y) => (x.created_at < y.created_at ? 1 : x.created_at > y.created_at ? -1 : x.notification_id < y.notification_id ? -1 : 1));
       const ids = new Set(items.map((n) => n.notification_id));
       return clone({
@@ -978,7 +1034,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
       const clean: Record<string, string> = {};
       for (const k of keys) {
         const raw = (prefs as Record<string, unknown>)[k];
-        if (!['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views', 'saved_reports'].includes(k)) throw new ApiError(`Unknown preference: ${oneLine(k, 40)}.`, 'bad_request');
+        if (!['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views', 'saved_reports', 'theme'].includes(k)) throw new ApiError(`Unknown preference: ${oneLine(k, 40)}.`, 'bad_request');
         if (typeof raw !== 'string') throw new ApiError(`Preference ${k} must be text.`, 'bad_request');
         const v = raw.trim();
         if (k === 'digest') {
@@ -999,6 +1055,9 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
             if (!chosen.includes(real.area_id)) chosen.push(real.area_id);
           }
           clean[k] = chosen.join(',');
+        } else if (k === 'theme') {
+          if (v !== '' && !THEME_NAMES.includes(v)) throw new ApiError(`Theme must be one of: ${THEME_NAMES.join(', ')}.`, 'bad_request');
+          clean[k] = v;
         } else if (k === 'saved_views') {
           clean[k] = cleanSavedViews(v);
         } else if (k === 'saved_reports') {
@@ -1009,6 +1068,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
           clean[k] = fmtTs(ms);
         }
       }
+      if (opts.keepAccountThemes && clean.theme !== undefined) writeKeptTheme(a.user.user_id, clean.theme);
       for (const [k, value] of Object.entries(clean)) {
         const rec = { user_id: a.user.user_id, key: k, value, updated_at: nowTs() };
         const at = notifPrefs.findIndex((r) => r.user_id === rec.user_id && r.key === k);
@@ -1065,4 +1125,4 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {
   return api;
 }
 
-export const mockApi: MockApi = createMockApi({ demoActions: true });
+export const mockApi: MockApi = createMockApi({ demoActions: true, keepAccountThemes: true });
