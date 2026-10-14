@@ -13,7 +13,7 @@ var ACTION_RULES = {
   changePassword: { auth: 'session', mustChangeOk: true },
   getMyAccess: { auth: 'session', mustChangeOk: true },
   getStartup: { auth: 'anyTab' },
-  getEvents: { auth: 'tabs', tabs: ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'events'], level: 'View' },
+  getEvents: { auth: 'tabs', tabs: ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'actions', 'events'], level: 'View' },
   getEventEdits: { auth: 'tabs', tabs: ['events'], level: 'View' },
   getUploadHistory: { auth: 'tabs', tabs: ['upload'], level: 'View' },
   getUploadWarnings: { auth: 'tabs', tabs: ['upload'], level: 'View' },
@@ -39,7 +39,16 @@ var ACTION_RULES = {
   getNotifications: { auth: 'session' },
   setNotificationState: { auth: 'session' },
   saveNotificationPrefs: { auth: 'session' },
-  runNotificationChecks: { auth: 'tabs', tabs: ['settings'], level: 'Edit' }
+  runNotificationChecks: { auth: 'tabs', tabs: ['settings'], level: 'Edit' },
+  // Actions (Actions.js). Closing and cancelling also need the caller in actions_closers or an Admin (checked in the handler).
+  listActions: { auth: 'tabs', tabs: ['actions'], level: 'View' },
+  createAction: { auth: 'tabs', tabs: ['actions'], level: 'Edit' },
+  updateAction: { auth: 'tabs', tabs: ['actions'], level: 'Edit' },
+  addActionComment: { auth: 'tabs', tabs: ['actions'], level: 'Edit' },
+  saveContractors: { auth: 'tabs', tabs: ['settings'], level: 'Edit' },
+  getAreaTargets: { auth: 'session' },
+  saveAreaTargets: { auth: 'tabs', tabs: ['settings'], level: 'Edit' },
+  runActionChecks: { auth: 'tabs', tabs: ['settings'], level: 'Edit' }
 };
 
 function levelRank_(level) { return LEVELS.indexOf(level); }

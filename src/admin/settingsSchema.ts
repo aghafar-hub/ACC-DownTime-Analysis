@@ -7,8 +7,8 @@ export type When = 'now' | 'signin' | 'password' | 'checks';
 /** `fallback`: the value the server uses while the database has no row for the key (databases made before the key existed). */
 export interface NumberField { key: string; kind: 'int' | 'number_or_blank'; min: number; max: number; label: string; help: string; unit?: string; fallback?: string }
 export interface ChoiceField { key: string; kind: 'choice'; label: string; help: string; options: { value: string; label: string; detail?: string }[]; fallback?: string }
-/** Free text; blank is allowed. Used for the app's web address. */
-export interface TextField { key: string; kind: 'text'; maxLength: number; label: string; help: string; placeholder?: string; fallback?: string }
+/** Free text; blank is allowed. `format` url (default): the app's web address; ids: comma-separated user ids (who can close actions). */
+export interface TextField { key: string; kind: 'text'; maxLength: number; label: string; help: string; placeholder?: string; fallback?: string; format?: 'url' | 'ids' }
 export type Field = NumberField | ChoiceField | TextField;
 
 export interface Group { id: string; title: string; icon: string; when: When; intro: string; fields: Field[] }
@@ -89,6 +89,26 @@ export function groups(): Group[] {
       ],
     },
     {
+      // Shown by the Settings > Actions & targets page (backend 1.4.0); the closers list is edited there with a people picker.
+      id: 'action-rules', title: t('Action rules'), icon: 'compliance', when: 'checks',
+      intro: t('When the system drafts an action for review, and how long a closed action is watched.'),
+      fields: [
+        {
+          key: 'actions_auto_draft', kind: 'choice', label: t('Draft actions automatically'), fallback: 'true', help: t('The rules below create Draft actions for review.'),
+          options: [
+            { value: 'true', label: t('On') },
+            { value: 'false', label: t('Off') },
+          ],
+        },
+        { key: 'actions_repeat_n', kind: 'int', min: 2, max: 100, label: t('Repeated failure: at least'), unit: t('failures'), fallback: '3', help: t('The same equipment and reason fails this many times ...') },
+        { key: 'actions_repeat_days', kind: 'int', min: 1, max: 3650, label: t('Repeated failure: within'), unit: t('days'), fallback: '30', help: t('... within this many days.') },
+        { key: 'actions_chronic_top', kind: 'int', min: 1, max: 100, label: t('Chronic equipment: in the top'), unit: t('equipment'), fallback: '10', help: t('Equipment among the most failure hours of a month ...') },
+        { key: 'actions_chronic_months', kind: 'int', min: 1, max: 24, label: t('Chronic equipment: for'), unit: t('months in a row'), fallback: '3', help: t('... for this many complete months in a row.') },
+        { key: 'actions_effect_days', kind: 'int', min: 1, max: 3650, label: t('Effectiveness watch'), unit: t('days'), fallback: '60', help: t('After closing, failures of this many days are compared with the same number of days before.') },
+        { key: 'actions_closers', kind: 'text', format: 'ids', maxLength: 2000, label: t('Who can close actions'), fallback: '', help: t('User ids, separated by commas. Administrators can always close.') },
+      ],
+    },
+    {
       id: 'signin', title: t('Sign-in rules'), icon: 'shield', when: 'signin',
       intro: t('How long sessions last and when an account is locked.'),
       fields: [
@@ -117,6 +137,7 @@ export function validateSettings(values: Record<string, string>): Record<string,
       const raw = (values[f.key] ?? '').trim();
       if (f.kind === 'text') {
         if (raw.length > f.maxLength) out[f.key] = t('Use at most {n} characters.', { n: f.maxLength });
+        else if (f.format === 'ids') { if (raw !== '' && !/^[^,\s][^,]*(,[^,]*)*$/.test(raw)) out[f.key] = t('Write user ids separated by commas.'); }
         else if (raw !== '' && !/^https?:\/\/[^\s"'<>]+$/i.test(raw)) out[f.key] = t('Write a web address that starts with http:// or https://, with no spaces or quotes.');
         continue;
       }

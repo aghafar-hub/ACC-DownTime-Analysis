@@ -44,7 +44,7 @@ function applyColumnFormats_(sheet, table, headers) {
   }
 }
 
-/** Adds the starting lines, areas, classifications, roles, settings and role access. Never overwrites. */
+/** Adds the starting lines, areas, classifications, roles, settings, role access and contractors. Never overwrites. */
 function seedDefaults() {
   var seeds = SCHEMA.seeds;
   var added = {};
@@ -73,6 +73,8 @@ function seedDefaults() {
       });
     });
     seed(T.TAB_ACCESS, function (r) { return r.subject_type + '|' + r.subject_id + '|' + r.tab_id; }, access);
+    // contractors and internal teams of the Actions page (1.4.0); an existing id is never touched
+    seed(T.CONTRACTORS, function (r) { return r.contractor_id; }, seeds.contractors || []);
     auditLog_('setup', 'seed_defaults', '', '', JSON.stringify(added));
   });
   Logger.log('Defaults added: ' + JSON.stringify(added));
@@ -212,12 +214,13 @@ function removeNotificationTriggers() {
 }
 
 /**
- * The daily job: runs the notification checks, then sends the digests that are due. Each step is isolated, so a
+ * The daily job: runs the notification checks and the action checks, then sends the digests that are due. Each step is isolated, so a
  * failed check does not stop the digests and nothing here can throw into the trigger.
  */
 function notificationDailyJob() {
-  var out = { checks: null, digest: null };
+  var out = { checks: null, actions: null, digest: null };
   try { out.checks = runNotificationChecks_({}); } catch (err) { notifLogFailure_('daily checks', err); }
+  out.actions = actionChecksSafely_('daily checks'); // drafts and effectiveness (1.4.0)
   try { out.digest = sendDigest_(); } catch (err2) { notifLogFailure_('daily digest', err2); }
   Logger.log('Notification job: ' + JSON.stringify(out));
   return out;

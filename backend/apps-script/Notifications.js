@@ -17,9 +17,15 @@
  *   an expired row is never re-opened.
  */
 
-var NOTIF_RESOLVABLE_ = ['long_stop', 'repeat_group', 'upload_gap'];
+var NOTIF_RESOLVABLE_ = ['long_stop', 'repeat_group', 'upload_gap', 'action_due'];
 // Most severe first (used by the digest).
-var NOTIF_SEVERITY_ORDER_ = ['long_stop', 'availability_low', 'failure_spike', 'repeat_group', 'upload_gap'];
+var NOTIF_SEVERITY_ORDER_ = ['long_stop', 'availability_low', 'planned_overrun', 'failure_spike', 'repeat_group', 'action_due', 'upload_gap'];
+// The inbox category of each type (1.4.0). Returned with every item by getNotifications; not stored.
+var NOTIF_CATEGORY_ = {
+  long_stop: 'Reliability', repeat_group: 'Reliability', failure_spike: 'Reliability',
+  availability_low: 'Availability & planned', planned_overrun: 'Availability & planned',
+  upload_gap: 'Data quality', upload_done: 'Data quality', action_due: 'Actions', user_event: 'System'
+};
 var NOTIF_PREF_KEYS_ = ['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views', 'saved_reports'];
 var SAVED_VIEWS_MAX_ = 20;
 var SAVED_VIEWS_TEXT_MAX_ = 20000;
@@ -481,12 +487,35 @@ function notifRuleAvailability_(ctx) {
   return out;
 }
 
+/** planned_overrun (1.4.0): an area's planned hours in a complete month above the month's allowance (Actions.js plannedOverruns_). */
+function notifRulePlanned_(ctx) {
+  return plannedOverruns_(ctx, optionalTable_(T.AREA_TARGETS)).map(function (o) {
+    var txt = plannedOverrunText_(o);
+    return notifCandidate_('planned_overrun', 'planned|' + o.area + '|' + o.month, txt.title, txt.detail, o.area, o.line, '');
+  });
+}
+
+/** action_due (1.4.0): an action that is not closed or cancelled and whose due date is before today (plant date). */
+function notifRuleActionDue_(ctx) {
+  var out = [];
+  optionalTable_(T.ACTIONS).filter(function (a) { return !isTerminal_(a.status) && a.due_date && isValidDate_(a.due_date) && a.due_date < ctx.today; })
+    .sort(function (a, b) { return a.action_id < b.action_id ? -1 : 1; })
+    .forEach(function (a) {
+      var days = Math.round((dateMs_(ctx.today) - dateMs_(a.due_date)) / MS_DAY_);
+      out.push(notifCandidate_('action_due', 'action_due|' + a.action_id + '|' + a.due_date,
+        'Action overdue: ' + a.action_id + ' - ' + oneLine_(a.title, 120),
+        'Due ' + a.due_date + ', ' + days + ' day' + (days === 1 ? '' : 's') + ' ago. Status ' + a.status + ', owner ' + (a.owner || 'nobody yet') + '.',
+        a.area_id, a.line_id, a.action_id));
+    });
+  return out;
+}
+
 /** All data-driven candidates, in a fixed order. */
 function notifCandidates_(ctx) {
   var chains = notifBuildChains_(ctx.rows);
   return [].concat(
     notifRuleLongStop_(ctx, chains), notifRuleRepeat_(ctx, chains), notifRuleSpike_(ctx, chains),
-    notifRuleAvailability_(ctx), notifRuleGap_(ctx)
+    notifRuleAvailability_(ctx), notifRulePlanned_(ctx), notifRuleGap_(ctx), notifRuleActionDue_(ctx)
   );
 }
 
@@ -571,6 +600,7 @@ function runNotificationChecks_(opts) {
 
 function runNotificationChecksAction_(session) {
   var res = runNotificationChecks_({});
+  actionChecksSafely_('notification check');
   withLock_(function () {
     auditLog_(session.user.user_id, 'notification_check', T.NOTIFICATIONS, '',
       'Created ' + res.created + ', resolved ' + res.resolved + ', expired ' + res.expired);
@@ -585,6 +615,7 @@ function notifyAfterUpload_(batch) {
   } catch (err) {
     notifLogFailure_('upload', err);
   }
+  actionChecksSafely_('upload'); // after the alerts, so a new long stop already has its notification
 }
 
 /** Best effort 'user created / password reset / role changed' update, visible to people with access to Users. */
@@ -650,6 +681,7 @@ function getNotifications_(session) {
   items.forEach(function (n) { ids[n.notification_id] = true; });
   var state = readTable_(T.NOTIFICATION_STATE, function (row, idx) { return row[idx.user_id] === uid; })
     .filter(function (s) { return ids[s.notification_id]; });
+  items.forEach(function (n) { n.category = NOTIF_CATEGORY_[n.type] || 'System'; });
   return { items: items, state: state, prefs: prefsOf_(uid) };
 }
 

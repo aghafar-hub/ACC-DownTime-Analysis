@@ -7,7 +7,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { bootstrapAdmin, createEnv } from '../../backend/apps-script/tests/harness.mjs';
 import { createMockApi } from '../../src/api/mockApi';
 import { createSheetsApi } from '../../src/api/sheetsApi';
-import { ApiError, type Api, type EventRow, type Notification, type UploadRow } from '../../src/api/types';
+import { ApiError, type Action, type Api, type AreaTargetInput, type EventRow, type Notification, type UploadRow } from '../../src/api/types';
 import {
   applyFilters, blockedSummary, buildIndex, DEFAULT_SETTINGS, emptyFilter, eventIdFromFingerprint, fingerprint, isBlocked,
 } from '../../src/calc';
@@ -781,5 +781,177 @@ describe.each([
       },
     ]);
     await s.api.saveSettings(ntoken, { availability_target_pct: '' });
+  });
+
+  // ------------------------------------------------------------------ actions (backend 1.4.0)
+  // One scenario in 2045 against both implementations; the expected drafts are written out once.
+  const a5 = (d: string, h: string): string => `2045-${d} ${h}:00.000`;
+  let atoken = '';
+  let before = new Set<string>();
+  const aview = (a: Action) => ({
+    dedupe_key: a.dedupe_key, source: a.source, status: a.status, priority: a.priority, title: a.title, detail: a.detail, scope_kind: a.scope_kind,
+    area_id: a.area_id, line_id: a.line_id, equipment_id: a.equipment_id, reason_key: a.reason_key, owner: a.owner, owner_kind: a.owner_kind,
+    created_by: a.created_by, evidence: a.evidence.map((x) => x.event_id ?? x.note).sort(),
+  });
+  async function scenarioActions(): Promise<Action[]> {
+    return (await s.api.listActions(atoken)).actions.filter((a) => !before.has(a.action_id)).sort((x, y) => (x.dedupe_key < y.dedupe_key ? -1 : 1));
+  }
+
+  it('actions: the draft rules produce the same drafts in the backend and the mock', async () => {
+    s.setClock(NOON('2045-06-20'));
+    atoken = (await s.api.login(s.admin.email, s.admin.password, true)).token;
+    ntoken = atoken; // load() uploads with it
+    await s.api.saveSettings(atoken, { notif_long_stop_hours: '8', availability_target_pct: '' });
+    before = new Set((await s.api.listActions(atoken)).actions.map((a) => a.action_id));
+    const targets = await s.api.saveAreaTargets(atoken, 2045, [{ area_id: 'K.1', planned_allowance_h_year: 120 }]);
+    expect(targets.map((x) => [x.area_id, x.monthly_split[11]])).toEqual([['K.1', 10]]);
+    const f = (stop: string, start: string, over: Partial<UploadRow> = {}) => srow(stop, start, { reason_raw: 'Contract action', ...over });
+    const pl = { classification: 'PL', criticality: 'NO_INC', is_failure: false, code_raw: 'N/A', reason_raw: 'Planned shutdown' } as Partial<UploadRow>;
+    const rows: UploadRow[] = [
+      await f(a5('03-15', '10:00'), a5('03-15', '12:00')), // chronic: in the top 10 in March, April and May
+      await f(a5('04-15', '10:00'), a5('04-15', '11:00')),
+      await f(a5('05-20', '10:00'), a5('05-20', '11:00')), // repeat: May 20, June 1, June 10 within 30 days
+      await f(a5('06-01', '10:00'), a5('06-01', '11:00')),
+      await f(a5('06-10', '00:00'), a5('06-10', '10:00')), // ... and a long stop of 10 h
+      await srow(a5('05-10', '00:00'), a5('05-10', '08:00'), pl), // planned: 8 h + 8 h overlapping by 4 h = 12 h in May (10 h allowed)
+      await srow(a5('05-10', '04:00'), a5('05-10', '12:00'), pl),
+      await srow(a5('06-18', '10:00'), a5('06-18', '10:30'), { area_id: 'CR', code_raw: 'N/A', reason_raw: 'Contract filler' }),
+    ];
+    await load('scenario-2045.xlsx', rows);
+    const id = (d: string, h: string, area = 'K.1') => ID[`${area}|${a5(d, h)}`] as string;
+    const notes = (await s.api.getNotifications(atoken)).items;
+    const longStop = notes.find((n) => n.type === 'long_stop' && n.source_ref === id('06-10', '00:00'));
+    const planned = notes.find((n) => n.dedupe_key === 'planned|K.1|2045-05');
+    expect(planned && view(planned)).toEqual({
+      type: 'planned_overrun', severity: 'alert', dedupe_key: 'planned|K.1|2045-05', title: 'Planned overrun: K.1 used 12.0 h of 10.0 h allowed in 2045-05',
+      detail: 'Year to date 12.0 h of 50.0 h allowed (120.0 h for 2045).', area_id: 'K.1', line_id: 'L.1', source_ref: '',
+    });
+    expect(planned?.category).toBe('Availability & planned');
+    expect(longStop?.category).toBe('Reliability');
+    const got = await scenarioActions();
+    expect(got.find((a) => a.source === 'auto_long_stop')?.source_ref).toBe(longStop?.notification_id);
+    expect(got.find((a) => a.source === 'auto_planned_overrun')?.source_ref).toBe(planned?.notification_id);
+    const base = { status: 'Draft', area_id: 'K.1', line_id: 'L.1', owner: 'RHI', owner_kind: 'contractor', created_by: 'system' };
+    expect(got.map(aview)).toEqual([
+      {
+        ...base, dedupe_key: 'chronic|900.ZZ01|2045-05', source: 'auto_chronic', priority: 'High', scope_kind: 'equipment', equipment_id: '900.ZZ01', reason_key: '',
+        title: '900.ZZ01: top 10 by failure hours for 3 months (2045-03 to 2045-05)',
+        detail: 'Failure hours: 2045-03 2.0 h (#1), 2045-04 1.0 h (#1), 2045-05 1.0 h (#1).', evidence: [id('05-20', '10:00')],
+      },
+      {
+        ...base, dedupe_key: `long_stop|${id('06-10', '00:00')}`, source: 'auto_long_stop', priority: 'High', scope_kind: 'equipment', equipment_id: '900.ZZ01',
+        reason_key: 'contract action', title: 'Long stop: K.1 10.0 h on 900.ZZ01 - Contract action', detail: 'A failure stopped K.1 for 10.0 hours, starting 2045-06-10 00:00.',
+        evidence: [id('06-10', '00:00')],
+      },
+      {
+        ...base, dedupe_key: 'planned|K.1|2045-05', source: 'auto_planned_overrun', priority: 'Medium', scope_kind: 'area', equipment_id: '', reason_key: '',
+        title: 'Planned overrun: K.1 used 12.0 h of 10.0 h allowed in 2045-05', detail: 'Year to date 12.0 h of 50.0 h allowed (120.0 h for 2045).',
+        evidence: [id('05-10', '00:00'), id('05-10', '04:00')].sort(),
+      },
+      {
+        ...base, dedupe_key: 'repeat|900.ZZ01|contract action', source: 'auto_repeat', priority: 'Medium', scope_kind: 'equipment', equipment_id: '900.ZZ01',
+        reason_key: 'contract action', title: '900.ZZ01 - Contract action: 3 failures in 30 days',
+        detail: '3 failures within 30 days (12.0 h stopped), latest 2045-06-10 in K.1. Rule: 3 or more in 30 days.',
+        evidence: [id('05-20', '10:00'), id('06-01', '10:00'), id('06-10', '00:00')].sort(),
+      },
+    ]);
+    expect(got.every((a) => /^AC-204506-\d{4}$/.test(a.action_id))).toBe(true);
+    expect(await s.api.runActionChecks(atoken)).toEqual({ created: 0, merged: 0, effectiveness: 0 });
+  });
+
+  it('actions: create, merge, closers, transitions and refusals agree', async () => {
+    const repeat = (await scenarioActions()).find((a) => a.source === 'auto_repeat') as Action;
+    const merged = await s.api.createAction(atoken, {
+      title: 'From the Pareto bar', scope_kind: 'equipment', equipment_id: '900.zz01', reason_key: 'Contract  ACTION', source: 'pareto', evidence: [{ note: 'bar of May' }],
+    });
+    expect(merged.merged).toBe(true);
+    expect(merged.action.action_id).toBe(repeat.action_id);
+    expect(merged.action.evidence).toHaveLength(4);
+    expect(merged.logs.map((l) => l.kind)).toEqual(['status', 'evidence']);
+
+    // an engineer with Edit on actions, not a closer
+    const email = 'actions.eng@example.com';
+    const created = await s.api.createUser(atoken, { email, display_name: 'Actions Engineer', role_id: 'ROLE-ENG' });
+    const first = await s.api.login(email, created.temp_password, false);
+    const eng = (await s.api.changePassword(first.token, created.temp_password, 'A-New-Strong-Pass-77')).token;
+    expect((await s.api.listActions(eng)).can_close).toBe(false);
+    const moved = await s.api.updateAction(eng, repeat.action_id, { status: 'Contractor informed', priority: 'High', due_date: '2045-06-01' });
+    expect(moved.action.status).toBe('Contractor informed');
+    expect(moved.logs.slice(-2).map((l) => [l.kind, l.from_status, l.to_status, l.text])).toEqual([
+      ['status', 'Draft', 'Contractor informed', ''], ['edit', '', '', 'priority: Medium -> High; due_date: (blank) -> 2045-06-01'],
+    ]);
+    const refused = await rejection(s.api.updateAction(eng, repeat.action_id, { status: 'Closed', closure_note: 'fixed it' }));
+    expect([refused.code, refused.accessDenied]).toEqual(['forbidden', true]);
+    for (const [changes, code] of [
+      [{ status: 'Closed' }, 'bad_request'], [{ status: 'Closed', closure_note: 'ok' }, 'bad_request'], [{ closure_note: 'early' }, 'bad_request'],
+      [{ priority: 'Urgent' }, 'bad_request'], [{ due_date: '2045-13-01' }, 'bad_request'], [{ owner: 'NOBODY' }, 'bad_request'], [{ status: 'Contractor informed' }, 'bad_request'],
+      [{ equipment_id: '999.NONE' }, 'bad_request'], [{}, 'bad_request'], [{ colour: 'red' }, 'bad_request'],
+    ] as [Record<string, unknown>, string][]) {
+      expect((await rejection(s.api.updateAction(atoken, repeat.action_id, changes as never))).code, JSON.stringify(changes)).toBe(code);
+    }
+    expect((await rejection(s.api.updateAction(atoken, 'AC-000000-0000', { priority: 'Low' }))).code).toBe('not_found');
+    for (const input of [
+      { title: '', scope_kind: 'plant' }, { title: 'x', scope_kind: 'galaxy' }, { title: 'x', scope_kind: 'area' }, { title: 'x', scope_kind: 'plant', status: 'Cancelled' },
+      { title: 'x', scope_kind: 'plant', evidence: [{ event_id: 'EV-x' }] }, { title: 'x', scope_kind: 'plant', root_cause: 'XYZ' },
+    ]) {
+      expect((await rejection(s.api.createAction(atoken, input as never))).code, JSON.stringify(input)).toBe('bad_request');
+    }
+
+    // action_due: overdue and not closed raises an alert for everyone; closing resolves it
+    expect(await s.api.runNotificationChecks(atoken)).toMatchObject({ created: 1, resolved: 0 });
+    const due = (await s.api.getNotifications(eng)).items.find((n) => n.type === 'action_due');
+    expect(due && { ...view(due), category: due.category }).toEqual({
+      type: 'action_due', severity: 'alert', dedupe_key: `action_due|${repeat.action_id}|2045-06-01`, title: `Action overdue: ${repeat.action_id} - ${repeat.title}`,
+      detail: 'Due 2045-06-01, 19 days ago. Status Contractor informed, owner RHI.', area_id: 'K.1', line_id: 'L.1', source_ref: repeat.action_id, category: 'Actions',
+    });
+
+    // a closer closes; effectiveness starts Watching; a comment is fine afterwards; the alert resolves
+    await s.api.saveSettings(atoken, { actions_closers: (await s.api.listActions(eng)).people.find((p) => p.display_name === 'Actions Engineer')!.user_id });
+    expect((await rejection(s.api.saveSettings(atoken, { actions_closers: 'U-NOBODY' }))).code).toBe('bad_request');
+    const closed = await s.api.updateAction(eng, repeat.action_id, { status: 'Closed', closure_note: 'Bearing and seal replaced' });
+    expect([closed.action.status, closed.action.effectiveness, closed.action.closure_note]).toEqual(['Closed', 'Watching', 'Bearing and seal replaced']);
+    expect((await s.api.addActionComment(eng, repeat.action_id, 'Watching it')).logs.at(-1)?.kind).toBe('comment');
+    expect(await s.api.runNotificationChecks(atoken)).toMatchObject({ created: 0, resolved: 1 });
+    expect((await rejection(s.api.updateAction(eng, repeat.action_id, { status: 'In progress' }))).code).toBe('bad_request');
+    await s.api.saveSettings(atoken, { actions_closers: '' });
+  });
+
+  it('actions: effectiveness is judged the same way once the window has passed in the data', async () => {
+    const repeat = (await scenarioActions()).find((a) => a.source === 'auto_repeat') as Action;
+    // no failure of 900.ZZ01 for 60 days after closing: Effective
+    await load('scenario-2045-later.xlsx', [await srow(a5('08-25', '10:00'), a5('08-25', '10:30'), { area_id: 'CR', code_raw: 'N/A', reason_raw: 'Contract filler' })]);
+    const after = (await scenarioActions()).find((a) => a.action_id === repeat.action_id) as Action;
+    expect(after.effectiveness).toBe('Effective');
+    const log = (await s.api.listActions(atoken)).logs.filter((l) => l.action_id === repeat.action_id && l.by === 'system').at(-1);
+    expect(log?.text).toBe('Effectiveness: Effective (60 days before closing: 3 failures, 12.0 h; 60 days after: 0 failures, 0.0 h)');
+    expect((await s.api.runActionChecks(atoken)).effectiveness).toBe(0);
+  });
+
+  it('actions: contractors and area targets are validated the same way', async () => {
+    const all = await s.api.saveContractors(atoken, [{ contractor_id: 'CIV', name: 'Civil', areas: [], kind: 'internal', active: true, sort_order: 9, default_assignee: '' }]);
+    expect(all.map((c) => c.contractor_id)).toEqual(['RHI', 'ASEC', 'MEC', 'ELE', 'AUT', 'PRO', 'CIV']);
+    expect(all.find((c) => c.contractor_id === 'ASEC')?.areas).toEqual(['CM.1', 'CM.2', 'CM.3', 'CM.4', 'PK.1', 'PK.2']);
+    const clash = await rejection(s.api.saveContractors(atoken, [{ contractor_id: 'NEWCO', name: 'New', areas: ['pk.1'], kind: 'contractor', active: true, sort_order: 10, default_assignee: '' }]));
+    expect(clash.code).toBe('conflict');
+    for (const row of [
+      { contractor_id: '', name: 'x', areas: [], kind: 'internal', active: true, sort_order: 1 },
+      { contractor_id: 'X', name: 'x', areas: ['NOWHERE'], kind: 'internal', active: true, sort_order: 1 },
+      { contractor_id: 'X', name: 'x', areas: [], kind: 'internal', active: 'yes', sort_order: 1 },
+    ]) expect((await rejection(s.api.saveContractors(atoken, [row as never]))).code, JSON.stringify(row)).toBe('bad_request');
+    for (const [year, row] of [
+      [2045, { area_id: 'CR', planned_allowance_h_year: 120, monthly_split: [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10.2] }],
+      [2045, { area_id: 'CR', planned_allowance_h_year: 120, monthly_split: [120] }],
+      [2045, { area_id: 'CR', planned_allowance_h_year: 120, overhaul_months: [0] }],
+      [2045, { area_id: 'CR', planned_allowance_h_year: 9000 }],
+      [2045, { area_id: 'NOWHERE', planned_allowance_h_year: 1 }],
+      [1999, { area_id: 'CR', planned_allowance_h_year: 1 }],
+    ] as [number, AreaTargetInput][]) {
+      expect((await rejection(s.api.saveAreaTargets(atoken, year, [row]))).code, JSON.stringify(row)).toBe('bad_request');
+    }
+    const ok = await s.api.saveAreaTargets(atoken, 2045, [{ area_id: 'cr', planned_allowance_h_year: 100, overhaul_months: [11, 2, 2], availability_target_pct: 92.5 }]);
+    expect(ok.map((x) => [x.area_id, x.availability_target_pct, x.overhaul_months, Math.round(x.monthly_split.reduce((a, b) => a + b, 0) * 100) / 100])).toEqual([
+      ['CR', 92.5, [2, 11], 100], ['K.1', null, [], 120],
+    ]);
+    expect(await s.api.getAreaTargets(atoken, 2044)).toEqual([]);
   });
 });

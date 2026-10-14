@@ -41,7 +41,9 @@ export const ALERT_TYPE_GROUPS: AlertTypeGroup[] = [
   { id: 'repeat_group', label: 'Repeated failures', help: 'The same code and reason failed again and again.', types: ['repeat_group'] },
   { id: 'failure_spike', label: 'Failure spikes', help: 'An area had many more failures than in the period before.', types: ['failure_spike'] },
   { id: 'availability_low', label: 'Availability below target', help: 'An area ended its latest month under the target.', types: ['availability_low'] },
+  { id: 'planned_overrun', label: 'Planned stops over allowance', help: 'An area used more planned-stop hours in a month than its allowance.', types: ['planned_overrun'] },
   { id: 'upload_gap', label: 'No recent upload', help: 'No new data has arrived for a while.', types: ['upload_gap'] },
+  { id: 'action_due', label: 'Overdue actions', help: 'An action passed its due date and is not closed.', types: ['action_due'] },
   { id: 'updates', label: 'Updates', help: 'Workbook uploads and, for administrators, user changes.', types: ['upload_done', 'user_event'] },
 ];
 

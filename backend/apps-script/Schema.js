@@ -1,7 +1,7 @@
 // GENERATED FILE - do not edit by hand.
 // Source: schema/tables.json. Regenerate with: node tools/gen-apps-script-schema.mjs
 var SCHEMA = {
- "version": 3,
+ "version": 4,
  "tableOrder": [
   "lines",
   "areas",
@@ -21,7 +21,11 @@ var SCHEMA = {
   "audit_log",
   "notifications",
   "notification_state",
-  "notification_prefs"
+  "notification_prefs",
+  "actions",
+  "action_log",
+  "contractors",
+  "area_targets"
  ],
  "tables": {
   "lines": {
@@ -766,6 +770,7 @@ var SCHEMA = {
       "repeats",
       "reliability",
       "reports",
+      "actions",
       "events",
       "upload",
       "master",
@@ -876,7 +881,9 @@ var SCHEMA = {
       "availability_low",
       "upload_gap",
       "upload_done",
-      "user_event"
+      "user_event",
+      "planned_overrun",
+      "action_due"
      ]
     },
     {
@@ -1012,6 +1019,364 @@ var SCHEMA = {
      "required": true
     }
    ]
+  },
+  "actions": {
+   "description": "Improvement actions (docs/actions-design.md). Created by people or drafted by the server rules; one dedupe_key per cause keeps one open action for it.",
+   "key": [
+    "action_id"
+   ],
+   "columns": [
+    {
+     "name": "action_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "detail",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "Draft",
+      "Open",
+      "Contractor informed",
+      "Waiting stoppage",
+      "In progress",
+      "Closed",
+      "Cancelled"
+     ]
+    },
+    {
+     "name": "priority",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "High",
+      "Medium",
+      "Low"
+     ]
+    },
+    {
+     "name": "source",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "auto_repeat",
+      "auto_chronic",
+      "auto_long_stop",
+      "auto_planned_overrun",
+      "notification",
+      "report",
+      "pareto",
+      "event",
+      "manual"
+     ]
+    },
+    {
+     "name": "source_ref",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "scope_kind",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "equipment",
+      "area",
+      "line",
+      "plant"
+     ]
+    },
+    {
+     "name": "area_id",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "line_id",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "equipment_id",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "reason_key",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "owner_kind",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "contractor",
+      "internal"
+     ]
+    },
+    {
+     "name": "owner",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "assignee",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "due_date",
+     "type": "date",
+     "required": false
+    },
+    {
+     "name": "needs_stop",
+     "type": "bool",
+     "required": false
+    },
+    {
+     "name": "root_cause",
+     "type": "enum",
+     "required": false,
+     "enum": [
+      "",
+      "PRO",
+      "MEC",
+      "ELE",
+      "AUT",
+      "OPR",
+      "EXT"
+     ]
+    },
+    {
+     "name": "required_action",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "created_by",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "required": true
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp",
+     "required": true
+    },
+    {
+     "name": "updated_by",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "closed_by",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "closed_at",
+     "type": "timestamp",
+     "required": false
+    },
+    {
+     "name": "closure_note",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "effectiveness",
+     "type": "enum",
+     "required": false,
+     "enum": [
+      "",
+      "Watching",
+      "Effective",
+      "Not effective"
+     ]
+    },
+    {
+     "name": "effectiveness_checked_at",
+     "type": "timestamp",
+     "required": false
+    },
+    {
+     "name": "evidence",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "dedupe_key",
+     "type": "text",
+     "required": false
+    }
+   ]
+  },
+  "action_log": {
+   "description": "History of every action: status changes, comments, edits and added evidence. Append-only.",
+   "key": [
+    "log_id"
+   ],
+   "columns": [
+    {
+     "name": "log_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "action_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "at",
+     "type": "timestamp",
+     "required": true
+    },
+    {
+     "name": "by",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "kind",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "status",
+      "comment",
+      "edit",
+      "evidence"
+     ]
+    },
+    {
+     "name": "from_status",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "to_status",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "text",
+     "type": "text",
+     "required": false
+    }
+   ]
+  },
+  "contractors": {
+   "description": "External contractors and internal teams that own actions, with the areas each contractor is responsible for.",
+   "key": [
+    "contractor_id"
+   ],
+   "columns": [
+    {
+     "name": "contractor_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "areas",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "kind",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "contractor",
+      "internal"
+     ]
+    },
+    {
+     "name": "active",
+     "type": "bool",
+     "required": true
+    },
+    {
+     "name": "sort_order",
+     "type": "int",
+     "required": true
+    },
+    {
+     "name": "default_assignee",
+     "type": "text",
+     "required": false
+    }
+   ]
+  },
+  "area_targets": {
+   "description": "Per area and year: availability target and planned-stop allowance, split into months.",
+   "key": [
+    "area_id",
+    "year"
+   ],
+   "columns": [
+    {
+     "name": "area_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "year",
+     "type": "int",
+     "required": true
+    },
+    {
+     "name": "availability_target_pct",
+     "type": "float",
+     "required": false
+    },
+    {
+     "name": "planned_allowance_h_year",
+     "type": "float",
+     "required": true
+    },
+    {
+     "name": "monthly_split",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "overhaul_months",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp",
+     "required": false
+    },
+    {
+     "name": "updated_by",
+     "type": "text",
+     "required": false
+    }
+   ]
   }
  },
  "seeds": {
@@ -1125,6 +1490,41 @@ var SCHEMA = {
     "key": "target_mttr_h",
     "value": "",
     "description": "MTTR target, hours (above 0, up to 100000); blank = no target"
+   },
+   {
+    "key": "actions_closers",
+    "value": "",
+    "description": "Comma-separated user ids who may close or cancel actions (Admins always can)"
+   },
+   {
+    "key": "actions_repeat_n",
+    "value": "3",
+    "description": "Repeated-failure draft: this many failure events of the same equipment and reason ..."
+   },
+   {
+    "key": "actions_repeat_days",
+    "value": "30",
+    "description": "... within this many days"
+   },
+   {
+    "key": "actions_chronic_top",
+    "value": "10",
+    "description": "Chronic-equipment draft: in the top this many equipment by failure hours ..."
+   },
+   {
+    "key": "actions_chronic_months",
+    "value": "3",
+    "description": "... for this many complete months in a row"
+   },
+   {
+    "key": "actions_effect_days",
+    "value": "60",
+    "description": "Effectiveness check: days watched after closing (compared with the same number of days before)"
+   },
+   {
+    "key": "actions_auto_draft",
+    "value": "true",
+    "description": "true | false. The server rules create Draft actions"
    }
   ],
   "roles": [
@@ -1156,6 +1556,7 @@ var SCHEMA = {
     "repeats": "Edit",
     "reliability": "Edit",
     "reports": "Edit",
+    "actions": "Edit",
     "events": "Edit",
     "upload": "Edit",
     "master": "Edit",
@@ -1168,6 +1569,7 @@ var SCHEMA = {
     "repeats": "View",
     "reliability": "View",
     "reports": "Edit",
+    "actions": "Edit",
     "events": "View",
     "upload": "Hidden",
     "master": "View",
@@ -1180,6 +1582,7 @@ var SCHEMA = {
     "repeats": "View",
     "reliability": "View",
     "reports": "View",
+    "actions": "Edit",
     "events": "Edit",
     "upload": "Edit",
     "master": "Edit",
@@ -1192,6 +1595,7 @@ var SCHEMA = {
     "repeats": "View",
     "reliability": "View",
     "reports": "View",
+    "actions": "View",
     "events": "View",
     "upload": "Hidden",
     "master": "Hidden",
@@ -1387,6 +1791,62 @@ var SCHEMA = {
     "line_id": "L.2",
     "sort_order": 19,
     "in_downtime_sheet": false
+   }
+  ],
+  "contractors": [
+   {
+    "contractor_id": "RHI",
+    "name": "RHI",
+    "areas": "CR,RM.1,RM.2,K.1,K.2,HD,AFR,AFR new,SHR,FM.1,FM.2,HY.1,HY.2",
+    "kind": "contractor",
+    "active": true,
+    "sort_order": 1,
+    "default_assignee": ""
+   },
+   {
+    "contractor_id": "ASEC",
+    "name": "ASEC",
+    "areas": "CM.1,CM.2,CM.3,CM.4,PK.1,PK.2",
+    "kind": "contractor",
+    "active": true,
+    "sort_order": 2,
+    "default_assignee": ""
+   },
+   {
+    "contractor_id": "MEC",
+    "name": "Mechanical",
+    "areas": "",
+    "kind": "internal",
+    "active": true,
+    "sort_order": 3,
+    "default_assignee": ""
+   },
+   {
+    "contractor_id": "ELE",
+    "name": "Electrical",
+    "areas": "",
+    "kind": "internal",
+    "active": true,
+    "sort_order": 4,
+    "default_assignee": ""
+   },
+   {
+    "contractor_id": "AUT",
+    "name": "Automation",
+    "areas": "",
+    "kind": "internal",
+    "active": true,
+    "sort_order": 5,
+    "default_assignee": ""
+   },
+   {
+    "contractor_id": "PRO",
+    "name": "Production",
+    "areas": "",
+    "kind": "internal",
+    "active": true,
+    "sort_order": 6,
+    "default_assignee": ""
    }
   ]
  }

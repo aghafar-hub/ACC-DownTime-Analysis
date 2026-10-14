@@ -37,7 +37,7 @@ The repository is public. Secrets live only in **Script Properties** (step 4).
    of `backend/apps-script/appsscript.json` from this repository.
 4. For each `.js` file in this folder (`Schema.js`, `Config.js`, `Utils.js`,
    `Crypto.js`, `Audit.js`, `Settings.js`, `Access.js`, `Auth.js`, `Users.js`,
-   `Master.js`, `Events.js`, `Upload.js`, `Notifications.js`, `Setup.js`, `Code.js`): click **+** next
+   `Master.js`, `Events.js`, `Upload.js`, `Notifications.js`, `Actions.js`, `Setup.js`, `Code.js`): click **+** next
    to **Files > Script**, name it the same without `.js` (for example `Utils`),
    and paste the content. Delete the empty default `Code.gs` first, or paste
    `Code.js` into it.
@@ -160,7 +160,7 @@ Ping (no login needed):
 curl -L "YOUR_WEB_APP_URL?action=ping"
 ```
 
-Expected: `{"status":"ok","data":{"version":"1.3.0"}}`
+Expected: `{"status":"ok","data":{"version":"1.4.0"}}`
 
 Sign in:
 
@@ -274,6 +274,52 @@ Until `seedDefaults` has run, nobody (not even an Admin) sees the Reports page, 
 
 Good to know: an old app build keeps working against 1.3.0 (it just does not show the button). The new app build needs 1.3.0,
 otherwise **Keep as entered** answers "Unknown action".
+
+## 13. Actions (1.4.0)
+
+Version 1.4.0 adds the **Actions** page (a new `actions` access tab), the contractors and their areas, per-area targets with a planned-stop
+allowance per year, two new alerts (planned stops over the allowance, overdue actions) and a category on every notification. Nothing in
+your data changes. Do these steps in order; all of them are safe to repeat.
+
+1. **Paste these 8 files** into the Apps Script project, replacing the old content of each:
+   `Actions.js` (**new**: add it with **+** next to **Files > Script** and name it `Actions`), `Schema.js`, `Config.js`, `Access.js`,
+   `Code.js`, `Settings.js`, `Notifications.js`, `Setup.js`.
+   The other files (`Utils.js`, `Crypto.js`, `Audit.js`, `Auth.js`, `Users.js`, `Master.js`, `Events.js`, `Upload.js`) and
+   `appsscript.json` did not change from 1.3.0: leave them alone. With the one-file bundle (option A2), run
+   `node tools/bundle-apps-script.mjs` (it includes `Actions.js`) and paste `ACC_Downtime_Backend.gs` over `Code.gs` instead.
+2. **Run `ensureSchema`.** It adds four sheets (`actions`, `action_log`, `contractors`, `area_targets`) and never touches existing sheets,
+   rows or columns.
+3. **Run `seedDefaults`.** It only adds what is missing and never overwrites a value you changed:
+   - the four role rows of the `actions` tab (Admin Edit, Manager Edit, Engineer Edit, Viewer View; change a person with the Users page as
+     for any tab);
+   - seven settings: `actions_closers` (blank: only Admins can close actions until you add people), `actions_repeat_n` (3),
+     `actions_repeat_days` (30), `actions_chronic_top` (10), `actions_chronic_months` (3), `actions_effect_days` (60),
+     `actions_auto_draft` (`true`);
+   - the contractors: RHI (CR, RM.1, RM.2, K.1, K.2, HD, AFR, AFR new, SHR, FM.1, FM.2, HY.1, HY.2), ASEC (CM.1, CM.2, CM.3, CM.4, PK.1,
+     PK.2) and the internal teams Mechanical, Electrical, Automation and Production. A contractor you already have (same id) is left as it is.
+   The log line `Defaults added: ...` shows how many rows of each table it added (all 0 on a second run).
+4. **Deploy a new version** as in section 10 (**Manage deployments**, pencil, **Version: New version**, **Deploy**). The web app
+   address stays the same, and no new permission is asked (the daily trigger from section 11 now also runs the action checks; there is
+   nothing to install).
+5. **Check.** Open the web app address with `?action=ping`: it must answer version `1.4.0`. Run **installCheck**: the four new sheets
+   must say `is ready`.
+6. **Optional, in the app (Settings, admin):** choose who can close actions, check the contractors' areas, and enter the area targets
+   for the year (availability target and planned-stop hours a year; the months are split evenly unless you change them).
+
+Good to know:
+
+- **Drafts.** After every upload, every *Run checks* and the daily job, the server drafts actions for review: repeated failures (3 or more
+  of the same equipment and reason in 30 days), chronic equipment (top 10 by failure hours 3 complete months in a row), long stops (from
+  the long-stop alert) and planned stops over a month's allowance (only for areas with targets). An open action for the same cause gets the
+  new records as evidence instead of a second draft. Set `actions_auto_draft` to `false` to switch drafting off. The exact rules are in
+  `docs/wire-protocol.md` section 10.
+- **Closing.** Only people in `actions_closers` (and Admins) can close, cancel or reopen an action. A closing note is required. Sixty days
+  after an equipment action is closed (once the data reaches that far), the server compares the failures before and after and marks it
+  Effective or Not effective.
+- **Until `seedDefaults` has run**, nobody (not even an Admin) sees the Actions page, because a missing access row means Hidden. Before
+  `ensureSchema` has run, uploads and the alerts still work: the action checks are simply skipped.
+- An old app build keeps working against 1.4.0 (it ignores the new fields). The new app build needs 1.4.0 for the Actions page,
+  otherwise it answers "Unknown action".
 
 ## Good to know
 

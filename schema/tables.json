@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "notes": [
     "Single source of truth for the database spreadsheet, the Apps Script backend and the TypeScript types.",
     "Timestamps are plain text 'YYYY-MM-DD HH:MM:SS.mmm' in plant-local time (no time zone). Dates are 'YYYY-MM-DD'.",
@@ -219,7 +219,7 @@
       "columns": [
         {"name": "subject_type", "type": "enum", "required": true, "enum": ["role", "user"], "description": ""},
         {"name": "subject_id", "type": "text", "required": true, "description": "role_id or user_id"},
-        {"name": "tab_id", "type": "enum", "required": true, "enum": ["overview", "pareto", "repeats", "reliability", "reports", "events", "upload", "master", "settings", "users"], "description": ""},
+        {"name": "tab_id", "type": "enum", "required": true, "enum": ["overview", "pareto", "repeats", "reliability", "reports", "actions", "events", "upload", "master", "settings", "users"], "description": ""},
         {"name": "level", "type": "enum", "required": true, "enum": ["Hidden", "View", "Edit"], "description": ""}
       ]
     },
@@ -254,14 +254,14 @@
       "key": ["notification_id"],
       "columns": [
         {"name": "notification_id", "type": "text", "required": true, "description": "NT- + 16 hex characters"},
-        {"name": "type", "type": "enum", "required": true, "enum": ["long_stop", "repeat_group", "failure_spike", "availability_low", "upload_gap", "upload_done", "user_event"], "description": "Which rule raised it"},
+        {"name": "type", "type": "enum", "required": true, "enum": ["long_stop", "repeat_group", "failure_spike", "availability_low", "upload_gap", "upload_done", "user_event", "planned_overrun", "action_due"], "description": "Which rule raised it"},
         {"name": "severity", "type": "enum", "required": true, "enum": ["alert", "update"], "description": "alert = needs attention; update = informational"},
-        {"name": "dedupe_key", "type": "text", "required": true, "description": "Unique. One row per cause, e.g. long_stop|<event_id>, repeat|<area>|<code>|<reason_key>|<first_event_id>, spike|<area>|<yyyy-mm-dd>, upload_gap|<latest_event_date>, availability|<area>|<yyyy-mm>, upload|<batch_id>"},
+        {"name": "dedupe_key", "type": "text", "required": true, "description": "Unique. One row per cause, e.g. long_stop|<event_id>, repeat|<area>|<code>|<reason_key>|<first_event_id>, spike|<area>|<yyyy-mm-dd>, upload_gap|<latest_event_date>, availability|<area>|<yyyy-mm>, upload|<batch_id>, planned|<area>|<yyyy-mm>, action_due|<action_id>|<due_date>"},
         {"name": "title", "type": "text", "required": true, "description": "One line, with the count"},
         {"name": "detail", "type": "text", "required": false, "description": "Plain-English explanation, no event rows"},
         {"name": "area_id", "type": "text", "required": false, "description": "References areas.area_id; blank when not about one area"},
         {"name": "line_id", "type": "text", "required": false, "description": "Line of the area"},
-        {"name": "source_ref", "type": "text", "required": false, "description": "event_id, batch_id or user_id the notification is about"},
+        {"name": "source_ref", "type": "text", "required": false, "description": "event_id, batch_id, user_id or action_id the notification is about"},
         {"name": "created_at", "type": "timestamp", "required": true, "description": ""},
         {"name": "expires_at", "type": "timestamp", "required": true, "description": "created_at plus notif_retention_days"},
         {"name": "status", "type": "enum", "required": true, "enum": ["open", "resolved", "expired"], "description": "resolved = the condition no longer holds; expired = retention passed"},
@@ -290,6 +290,87 @@
         {"name": "value", "type": "text", "required": false, "description": ""},
         {"name": "updated_at", "type": "timestamp", "required": true, "description": ""}
       ]
+    },
+    {
+      "name": "actions",
+      "description": "Improvement actions (docs/actions-design.md). Created by people or drafted by the server rules; one dedupe_key per cause keeps one open action for it.",
+      "key": ["action_id"],
+      "columns": [
+        {"name": "action_id", "type": "text", "required": true, "description": "AC-<yyyymm>-<4-digit sequence within the month>"},
+        {"name": "title", "type": "text", "required": true, "description": "Problem statement, one line"},
+        {"name": "detail", "type": "text", "required": false, "description": "Longer description"},
+        {"name": "status", "type": "enum", "required": true, "enum": ["Draft", "Open", "Contractor informed", "Waiting stoppage", "In progress", "Closed", "Cancelled"], "description": "Closed and Cancelled only by people in actions_closers (or an Admin)"},
+        {"name": "priority", "type": "enum", "required": true, "enum": ["High", "Medium", "Low"], "description": ""},
+        {"name": "source", "type": "enum", "required": true, "enum": ["auto_repeat", "auto_chronic", "auto_long_stop", "auto_planned_overrun", "notification", "report", "pareto", "event", "manual"], "description": "Where the action came from"},
+        {"name": "source_ref", "type": "text", "required": false, "description": "notification_id, event_id, report name ... the action came from"},
+        {"name": "scope_kind", "type": "enum", "required": true, "enum": ["equipment", "area", "line", "plant"], "description": ""},
+        {"name": "area_id", "type": "text", "required": false, "description": "References areas.area_id"},
+        {"name": "line_id", "type": "text", "required": false, "description": "References lines.line_id"},
+        {"name": "equipment_id", "type": "text", "required": false, "description": "Equipment code (scope equipment)"},
+        {"name": "reason_key", "type": "text", "required": false, "description": "Reason in match_key form (trimmed, single spaces, lower case)"},
+        {"name": "owner_kind", "type": "enum", "required": true, "enum": ["contractor", "internal"], "description": "Kind of the owner (follows the contractors row)"},
+        {"name": "owner", "type": "text", "required": false, "description": "contractors.contractor_id (external contractor or internal team); blank = nobody yet"},
+        {"name": "assignee", "type": "text", "required": false, "description": "Person following the action up: user_id or a free name; blank = nobody"},
+        {"name": "due_date", "type": "date", "required": false, "description": ""},
+        {"name": "needs_stop", "type": "bool", "required": false, "description": "The work needs the area stopped"},
+        {"name": "root_cause", "type": "enum", "required": false, "enum": ["", "PRO", "MEC", "ELE", "AUT", "OPR", "EXT"], "description": "Root-cause category; blank = not known yet"},
+        {"name": "required_action", "type": "text", "required": false, "description": "What should be done, by whom"},
+        {"name": "created_by", "type": "text", "required": true, "description": "user_id or 'system'"},
+        {"name": "created_at", "type": "timestamp", "required": true, "description": ""},
+        {"name": "updated_at", "type": "timestamp", "required": true, "description": ""},
+        {"name": "updated_by", "type": "text", "required": false, "description": "user_id or 'system'"},
+        {"name": "closed_by", "type": "text", "required": false, "description": "user_id of the person who closed or cancelled it"},
+        {"name": "closed_at", "type": "timestamp", "required": false, "description": "When it was closed or cancelled"},
+        {"name": "closure_note", "type": "text", "required": false, "description": "Why it was closed or cancelled"},
+        {"name": "effectiveness", "type": "enum", "required": false, "enum": ["", "Watching", "Effective", "Not effective"], "description": "Set after closing (equipment scope only)"},
+        {"name": "effectiveness_checked_at", "type": "timestamp", "required": false, "description": "When the verdict was last set"},
+        {"name": "evidence", "type": "text", "required": false, "description": "JSON list of {event_id?, note?, added_at, added_by}; at most 200 entries"},
+        {"name": "dedupe_key", "type": "text", "required": false, "description": "repeat|<equipment>|<reason_key>, chronic|<equipment>|<yyyy-mm>, long_stop|<event_id>, planned|<area>|<yyyy-mm>; at most one OPEN action per key"}
+      ]
+    },
+    {
+      "name": "action_log",
+      "description": "History of every action: status changes, comments, edits and added evidence. Append-only.",
+      "key": ["log_id"],
+      "columns": [
+        {"name": "log_id", "type": "text", "required": true, "description": "AL- + 16 hex characters"},
+        {"name": "action_id", "type": "text", "required": true, "description": "References actions.action_id"},
+        {"name": "at", "type": "timestamp", "required": true, "description": ""},
+        {"name": "by", "type": "text", "required": true, "description": "user_id or 'system'"},
+        {"name": "kind", "type": "enum", "required": true, "enum": ["status", "comment", "edit", "evidence"], "description": ""},
+        {"name": "from_status", "type": "text", "required": false, "description": "kind status only"},
+        {"name": "to_status", "type": "text", "required": false, "description": "kind status only"},
+        {"name": "text", "type": "text", "required": false, "description": "Comment, summary of the change, or the closing note"}
+      ]
+    },
+    {
+      "name": "contractors",
+      "description": "External contractors and internal teams that own actions, with the areas each contractor is responsible for.",
+      "key": ["contractor_id"],
+      "columns": [
+        {"name": "contractor_id", "type": "text", "required": true, "description": "Short id, e.g. RHI, ASEC, MEC"},
+        {"name": "name", "type": "text", "required": true, "description": "Display name"},
+        {"name": "areas", "type": "text", "required": false, "description": "Comma-separated area ids (an area belongs to at most one active contractor)"},
+        {"name": "kind", "type": "enum", "required": true, "enum": ["contractor", "internal"], "description": "contractor = external; internal = own team"},
+        {"name": "active", "type": "bool", "required": true, "description": ""},
+        {"name": "sort_order", "type": "int", "required": true, "description": "Display order"},
+        {"name": "default_assignee", "type": "text", "required": false, "description": "user_id suggested as assignee for new actions; blank = none"}
+      ]
+    },
+    {
+      "name": "area_targets",
+      "description": "Per area and year: availability target and planned-stop allowance, split into months.",
+      "key": ["area_id", "year"],
+      "columns": [
+        {"name": "area_id", "type": "text", "required": true, "description": "References areas.area_id"},
+        {"name": "year", "type": "int", "required": true, "description": ""},
+        {"name": "availability_target_pct", "type": "float", "required": false, "description": "0-100; blank = none"},
+        {"name": "planned_allowance_h_year", "type": "float", "required": true, "description": "Planned-stop hours allowed in the year"},
+        {"name": "monthly_split", "type": "text", "required": true, "description": "JSON list of 12 hour numbers (Jan..Dec) adding up to planned_allowance_h_year (within 0.1)"},
+        {"name": "overhaul_months", "type": "text", "required": false, "description": "Comma-separated month numbers 1-12 with a planned overhaul"},
+        {"name": "updated_at", "type": "timestamp", "required": false, "description": ""},
+        {"name": "updated_by", "type": "text", "required": false, "description": ""}
+      ]
     }
   ],
   "settingsDefaults": [
@@ -314,7 +395,14 @@
     {"key": "notif_retention_days", "value": "30", "description": "Alerts and updates expire after this many days"},
     {"key": "app_url", "value": "", "description": "Web address of the app, used for the link in digest emails; blank = no link"},
     {"key": "target_mtbf_h", "value": "", "description": "MTBF target, hours (above 0, up to 100000); blank = no target"},
-    {"key": "target_mttr_h", "value": "", "description": "MTTR target, hours (above 0, up to 100000); blank = no target"}
+    {"key": "target_mttr_h", "value": "", "description": "MTTR target, hours (above 0, up to 100000); blank = no target"},
+    {"key": "actions_closers", "value": "", "description": "Comma-separated user ids who may close or cancel actions (Admins always can)"},
+    {"key": "actions_repeat_n", "value": "3", "description": "Repeated-failure draft: this many failure events of the same equipment and reason ..."},
+    {"key": "actions_repeat_days", "value": "30", "description": "... within this many days"},
+    {"key": "actions_chronic_top", "value": "10", "description": "Chronic-equipment draft: in the top this many equipment by failure hours ..."},
+    {"key": "actions_chronic_months", "value": "3", "description": "... for this many complete months in a row"},
+    {"key": "actions_effect_days", "value": "60", "description": "Effectiveness check: days watched after closing (compared with the same number of days before)"},
+    {"key": "actions_auto_draft", "value": "true", "description": "true | false. The server rules create Draft actions"}
   ],
   "roleSeeds": [
     {"role_id": "ROLE-ADMIN", "name": "Admin", "description": "Everything, including users and settings"},
@@ -323,10 +411,10 @@
     {"role_id": "ROLE-VIEW", "name": "Viewer", "description": "Views dashboards; never edits"}
   ],
   "tabAccessDefaults": {
-    "ROLE-ADMIN": {"overview": "Edit", "pareto": "Edit", "repeats": "Edit", "reliability": "Edit", "reports": "Edit", "events": "Edit", "upload": "Edit", "master": "Edit", "settings": "Edit", "users": "Edit"},
-    "ROLE-MGR":   {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "reports": "Edit", "events": "View", "upload": "Hidden", "master": "View", "settings": "Hidden", "users": "Hidden"},
-    "ROLE-ENG":   {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "reports": "View", "events": "Edit", "upload": "Edit", "master": "Edit", "settings": "Hidden", "users": "Hidden"},
-    "ROLE-VIEW":  {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "reports": "View", "events": "View", "upload": "Hidden", "master": "Hidden", "settings": "Hidden", "users": "Hidden"}
+    "ROLE-ADMIN": {"overview": "Edit", "pareto": "Edit", "repeats": "Edit", "reliability": "Edit", "reports": "Edit", "actions": "Edit", "events": "Edit", "upload": "Edit", "master": "Edit", "settings": "Edit", "users": "Edit"},
+    "ROLE-MGR":   {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "reports": "Edit", "actions": "Edit", "events": "View", "upload": "Hidden", "master": "View", "settings": "Hidden", "users": "Hidden"},
+    "ROLE-ENG":   {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "reports": "View", "actions": "Edit", "events": "Edit", "upload": "Edit", "master": "Edit", "settings": "Hidden", "users": "Hidden"},
+    "ROLE-VIEW":  {"overview": "View", "pareto": "View", "repeats": "View", "reliability": "View", "reports": "View", "actions": "View", "events": "View", "upload": "Hidden", "master": "Hidden", "settings": "Hidden", "users": "Hidden"}
   },
   "classificationSeeds": [
     {"code": "PRO", "name": "Production", "is_incident": true, "sort_order": 1},
@@ -339,6 +427,14 @@
   "lineSeeds": [
     {"line_id": "L.1", "name": "Line 1", "sort_order": 1, "active": true},
     {"line_id": "L.2", "name": "Line 2", "sort_order": 2, "active": true}
+  ],
+  "contractorSeeds": [
+    {"contractor_id": "RHI", "name": "RHI", "areas": "CR,RM.1,RM.2,K.1,K.2,HD,AFR,AFR new,SHR,FM.1,FM.2,HY.1,HY.2", "kind": "contractor", "active": true, "sort_order": 1, "default_assignee": ""},
+    {"contractor_id": "ASEC", "name": "ASEC", "areas": "CM.1,CM.2,CM.3,CM.4,PK.1,PK.2", "kind": "contractor", "active": true, "sort_order": 2, "default_assignee": ""},
+    {"contractor_id": "MEC", "name": "Mechanical", "areas": "", "kind": "internal", "active": true, "sort_order": 3, "default_assignee": ""},
+    {"contractor_id": "ELE", "name": "Electrical", "areas": "", "kind": "internal", "active": true, "sort_order": 4, "default_assignee": ""},
+    {"contractor_id": "AUT", "name": "Automation", "areas": "", "kind": "internal", "active": true, "sort_order": 5, "default_assignee": ""},
+    {"contractor_id": "PRO", "name": "Production", "areas": "", "kind": "internal", "active": true, "sort_order": 6, "default_assignee": ""}
   ],
   "areaSeeds": [
     {"area_id": "CR", "name": "Crusher", "line_id": "L.1", "sort_order": 1, "in_downtime_sheet": true},

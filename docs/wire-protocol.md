@@ -22,7 +22,10 @@ contract.
   `changePassword` -> `{ "current", "next" }`, `uploadChunk` -> `{ "batchId", "rows" }`,
   `createUser` -> `{ "u" }`, `updateUser` -> `{ "userId", "changes" }`,
   `setUserTabAccess` -> `{ "userId", "overrides" }`, `setNotificationState` -> `{ "notificationId", "state", "snoozeUntil" }`,
-  `saveNotificationPrefs` -> `{ "prefs" }`; `getNotifications` and `runNotificationChecks` take no params).
+  `saveNotificationPrefs` -> `{ "prefs" }`; `getNotifications` and `runNotificationChecks` take no params;
+  `createAction` -> `{ "input", "options" }`, `updateAction` -> `{ "actionId", "changes" }`, `addActionComment` -> `{ "actionId", "text" }`,
+  `saveContractors` -> `{ "rows" }`, `getAreaTargets` -> `{ "year" }`, `saveAreaTargets` -> `{ "year", "rows" }`; `listActions` and
+  `runActionChecks` take no params).
 - Success: `{ "status": "ok", "data": <result> }`.
 - Failure: `{ "status": "error", "error": { "message": "<plain English>", "code": "<code>", "accessDenied": false } }`.
 - Error codes: `bad_request`, `unauthenticated` (missing/invalid/expired token), `forbidden`
@@ -47,7 +50,7 @@ wins over the role row. Missing row = Hidden.
 | `login` | none |
 | `changePassword`, `getMyAccess` | any valid session |
 | `getStartup` | any valid session with at least one non-Hidden tab |
-| `getEvents` | `overview`, `pareto`, `repeats`, `reliability`, `reports` or `events` at View or Edit |
+| `getEvents` | `overview`, `pareto`, `repeats`, `reliability`, `reports`, `actions` or `events` at View or Edit |
 | `getEventEdits` | `events` View |
 | `getUploadHistory`, `getUploadWarnings` | `upload` View |
 | `uploadStart`, `uploadChunk`, `uploadFinish` | `upload` Edit |
@@ -58,6 +61,10 @@ wins over the role row. Missing row = Hidden.
 | `createUser`, `updateUser`, `resetPassword`, `setUserTabAccess` | `users` Edit |
 | `getNotifications`, `setNotificationState`, `saveNotificationPrefs` | any valid session (not while a temporary password is still unchanged); only the caller's own state and preferences are read or written |
 | `runNotificationChecks` | `settings` Edit |
+| `listActions` | `actions` View |
+| `createAction`, `updateAction`, `addActionComment` | `actions` Edit (closing, cancelling, reopening and changing a closed action also need the caller in `actions_closers` or the Admin role, checked in the action: section 10) |
+| `getAreaTargets` | any valid session |
+| `saveContractors`, `saveAreaTargets`, `runActionChecks` | `settings` Edit |
 
 `getStartup.years` is sorted newest first.
 
@@ -286,6 +293,8 @@ class other than PL and CIR (owner decision P2; `src/calc/events.ts` `isFailureH
 | `upload_gap` | today is more than `notif_upload_gap_days` after `L` | `upload_gap\|<L>` | newer data arrives (`L` changes) |
 | `upload_done` (update) | `uploadFinish` completes an upload | `upload\|<batch_id>` | never |
 | `user_event` (update) | a user is created, a password is reset, a role is changed | `user\|<kind>\|<user_id>\|<epoch ms>` (kind: `created`, `password_reset`, `role_changed`) | never |
+| `planned_overrun` (1.4.0) | an area with `area_targets` for the year used more planned hours in a complete month than that month's allowance (`monthly_split`); section 10.4 | `planned\|<area>\|<yyyy-mm>` | stays until it expires |
+| `action_due` (1.4.0) | an action that is not Closed or Cancelled has a `due_date` before today (plant date, server clock) | `action_due\|<action_id>\|<due_date>` | the action is closed or cancelled, or its due date moves |
 
 Recency: a `long_stop` or `repeat_group` alert is only raised when the event (the last event of the cluster) started no more than
 `notif_retention_days` before `L`. Older ones would expire at once, and without this the first check on a database with years of
@@ -297,7 +306,12 @@ notif_retention_days`; open rows past it become `expired` at the next check and 
 `long_stop`, `repeat_group` and `upload_gap` rows whose key is no longer produced by the rules become `resolved` at the next check.
 
 When checks run: at the end of `uploadFinish` (never fails the upload; also writes `upload_done`), on `runNotificationChecks`, and in
-the daily job. `user_event` rows are written by `createUser`, `resetPassword` and `updateUser` (role change), best effort.
+the daily job. Each time, the action checks (section 10.4) run right after them, best effort.
+
+**Category** (1.4.0). Every item returned by `getNotifications` carries `category`, derived from `type` and not stored:
+Reliability (`long_stop`, `repeat_group`, `failure_spike`), Availability & planned (`availability_low`, `planned_overrun`),
+Data quality (`upload_gap`, `upload_done`), Actions (`action_due`), System (`user_event`). The table is `NOTIF_CATEGORY_` in
+`Notifications.js` and `NOTIFICATION_CATEGORY_OF` in `src/api/types.ts`. `user_event` rows are written by `createUser`, `resetPassword` and `updateUser` (role change), best effort.
 
 ### 9.4 Digest e-mail
 
@@ -319,3 +333,97 @@ Content (plain text and simple HTML, counts and titles only, never event rows):
 
 `MailApp` quota, permission and send errors are written to `audit_log` (`digest_failed`, with the user id, never the address) and never
 raise; when the daily quota is used up the run stops. `last_digest_at` is saved only after a successful send.
+
+## 10. Actions (backend 1.4.0)
+
+Design: `docs/actions-design.md` and the mockups in `docs/actions-mockups/`. Code: `backend/apps-script/Actions.js` (plain JS) and
+`src/api/mockActions.ts` (the same rules for the mock, written with `src/calc`). `tests/unit/contract.test.ts` runs one scenario against
+both and expects identical drafts, alerts and refusals. Tab: `actions` (Admin Edit, Manager Edit, Engineer Edit, Viewer View).
+
+### 10.1 Tables and settings
+
+- `actions`: one row per action. `action_id` is `AC-` + `yyyymm` (plant time of creation) + `-` + a 4-digit sequence within the month.
+  `evidence` is stored as JSON text (a list of `{ event_id?, note?, added_at, added_by }`, at most 200: the oldest drop out) and sent as a
+  list. Besides the fields of the design, the mockups needed `assignee` (the person following it up: a user id or a free name),
+  `needs_stop`, `root_cause` (blank, PRO, MEC, ELE, AUT, OPR, EXT) and `required_action`.
+- `action_log`: append-only history, `kind` = `status` (with `from_status`, `to_status`; the text is the closing note), `comment`,
+  `edit` (one row per call: `field: old -> new` joined with `; `, long texts only as `title changed`), `evidence`. `by` is a user id
+  or `system`. Rows written in the same millisecond keep their order.
+- `contractors`: `contractor_id`, `name`, `areas` (csv, sent as a list), `kind` (`contractor` external / `internal` team), `active`,
+  `sort_order`, `default_assignee`. Seeded: RHI (CR, RM.1, RM.2, K.1, K.2, HD, AFR, AFR new, SHR, FM.1, FM.2, HY.1, HY.2), ASEC (CM.1-CM.4,
+  PK.1, PK.2) and the internal teams MEC Mechanical, ELE Electrical, AUT Automation, PRO Production. An area belongs to at most one active
+  external contractor.
+- `area_targets`: per area and year, `availability_target_pct` (blank = none), `planned_allowance_h_year`, `monthly_split` (JSON text of
+  12 hours, sent as a list), `overhaul_months` (csv, sent as a list of numbers), `updated_at`, `updated_by`.
+
+Settings (validated by `saveSettings`): `actions_closers` (csv of existing user ids, cleaned of repeats; Admins can always close),
+`actions_repeat_n` (3, 2-100), `actions_repeat_days` (30, 1-3650), `actions_chronic_top` (10, 1-100), `actions_chronic_months` (3, 1-24),
+`actions_effect_days` (60, 1-3650), `actions_auto_draft` (`true` / `false`).
+
+### 10.2 Calls
+
+| Action | Params | Result |
+|---|---|---|
+| `listActions` | none | `{ actions, logs, contractors, people, closers, can_close }`: every action (newest first) and log row (oldest first); `people` = active users as `{ user_id, display_name }` only |
+| `createAction` | `input` (`NewAction`), `options` (`{ merge }`, optional) | `{ action, logs, merged }` |
+| `updateAction` | `actionId`, `changes` (`ActionChanges`) | `{ action, logs }` |
+| `addActionComment` | `actionId`, `text` (1-2000 characters) | `{ action, logs }` |
+| `saveContractors` | `rows` (`Contractor[]`, 1-50) | every contractor |
+| `getAreaTargets` | `year` (optional) | the targets of the year (all years when left out) |
+| `saveAreaTargets` | `year`, `rows` (`AreaTargetInput[]`, 1-100) | the targets of the year |
+| `runActionChecks` | none | `{ created, merged, effectiveness }` |
+
+- `createAction`: `title` and `scope_kind` are required; defaults Draft, Medium, `manual`; Closed and Cancelled are refused. Scope:
+  `equipment` needs an equipment code of Master Data (area and line follow it when left blank), `area` needs an area (the line
+  follows it), `line` needs a line, `plant` clears all three. `owner` is blank or an active contractor or team (`owner_kind` follows it).
+  `reason_key` is stored in `match_key` form. A blank `dedupe_key` of an equipment action with a reason becomes
+  `repeat|<equipment>|<reason_key>`, so "same equipment + reason" is one action whoever creates it.
+- **Dedupe.** When an action that is not Closed or Cancelled has the same `dedupe_key` (the oldest such action), the new evidence is added
+  to it (an event already listed is not added twice), one `evidence` log row says so and that action is returned with `merged: true`.
+  `options.merge: false` always creates a new action.
+- `updateAction`: fields `title`, `detail`, `status`, `priority`, `scope_kind`, `area_id`, `line_id`, `equipment_id`, `reason_key`, `owner`,
+  `assignee`, `due_date`, `needs_stop`, `root_cause`, `required_action`, `closure_note`, plus `add_evidence`. Any open status may move to
+  any other. Moving to or from Closed or Cancelled, and any change to a closed or cancelled action, needs the caller in `actions_closers`
+  or the Admin role (`forbidden` otherwise). Closing or cancelling needs `closure_note` of at least 3 characters and sets `closed_by`,
+  `closed_at`; closing an equipment action sets `effectiveness` to Watching. A closed or cancelled action reopens only to Open, which
+  clears the closing fields and the effectiveness. `closure_note` alone may only be written on a closed or cancelled action. A call that
+  changes nothing is refused ("Nothing was changed."). Comments are allowed on any action, closed ones included.
+- `saveContractors` inserts or updates the rows sent (by id); others stay (switch one off with `active: false`). Areas are matched without
+  regard to case and stored in the master spelling; two active external contractors for one area give `conflict`.
+- `saveAreaTargets` inserts or updates the targets of the areas sent for the year. `monthly_split` left out is the even split (2-decimal
+  months, December takes the rounding rest; `evenMonthlySplit` in `src/api/types.ts`); when sent it must be 12 numbers of 0 or more adding
+  up to the allowance within 0.1 h. Allowance 0-8784 h, target 0-100 or blank, overhaul months whole numbers 1-12 (repeats dropped, sorted).
+
+### 10.3 Draft rules
+
+Only when `actions_auto_draft` is `true`. Every rule uses the notification rules' data (section 9.3): voided and blocked events left out,
+rows chained into events, a failure event as P2, the code after alias resolution (area-level N/A never), the reason in `match_key` form,
+and `L` = the latest event date. A draft is a Draft action by `system`, owner = the active external contractor of its area (blank,
+internal, when none) with that contractor's `default_assignee`, evidence = the event ids listed.
+
+| Rule (`source`) | Raised when | `dedupe_key` | Priority |
+|---|---|---|---|
+| `auto_repeat` | the same equipment and reason has at least `actions_repeat_n` occurrences (P5, as `repeat_group`) within `actions_repeat_days`; the latest cluster of the group only, and only when its last occurrence started on or after `L - actions_repeat_days`. Area = the area of the last occurrence. Evidence = every failure event of the cluster | `repeat\|<equipment>\|<reason_key>` | Medium |
+| `auto_chronic` | the equipment is in the top `actions_chronic_top` by failure hours in each of the last `actions_chronic_months` complete months (the month of `L` when `L` is its last day, else the month before, and the months before it). Failure hours of a month = the summed hours of the equipment's failure events that started in it (whole events, by the head's stop); ties: more hours first, then the code. Evidence = its failure events of the last month | `chronic\|<equipment>\|<last yyyy-mm>` | High |
+| `auto_long_stop` | an open `long_stop` alert whose event is still in the data; `source_ref` = the notification id; scope equipment (area for N/A) | `long_stop\|<event_id>` | High |
+| `auto_planned_overrun` | a planned overrun (10.4); `source_ref` = the `planned_overrun` notification id when it exists; scope area; evidence = the PL rows of the area that started in the month | `planned\|<area>\|<yyyy-mm>` | Medium |
+
+A draft whose key has an open action adds only the evidence that action does not have yet (one `evidence` log row; counted as `merged`).
+A key that already has a Closed or Cancelled action is never drafted again, except `auto_repeat` when the cluster's last occurrence started
+after the latest `closed_at` of those actions.
+
+### 10.4 Planned overrun, effectiveness, when the checks run
+
+- **Planned overrun.** For every `area_targets` row and month: PL hours = the area's planned time in the month, overlapping stops counted
+  once and owned PL first (P1, as availability). Checked for complete months (last day on or before `L`) whose last day is on or after
+  `L - notif_retention_days`. Raised when PL hours > `monthly_split[month]`. The alert's detail gives the year to date: PL hours from 1 January
+  to the month's end against the allowance of January to the month.
+- **Effectiveness** of a Closed equipment action (D = `actions_effect_days`): failure events of the equipment, and of the action's reason
+  when it has one, that started in the D days before `closed_at` against the D days from `closed_at`. While `L` + 1 day is before
+  `closed_at` + D days: Watching. Then no failure after = Effective; at least as many failures after as before = Not effective; fewer failures =
+  Effective when the hours fell as well, else Not effective. The verdict is final (it is not judged again) and logged by `system` with the
+  counts. Runs whether or not `actions_auto_draft` is on.
+- **When.** At the end of `uploadFinish` and of `runNotificationChecks` (after the notification rules, so a new long stop already has its
+  alert), in the daily job, and on `runActionChecks` (audited as `action_check`). The automatic runs never fail the call they follow; a
+  problem is written to `audit_log` (`notification_failed`, "actions after ..."). A check is idempotent: run twice, the second run changes
+  nothing.

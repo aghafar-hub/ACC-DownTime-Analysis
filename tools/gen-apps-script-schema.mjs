@@ -41,6 +41,7 @@ export function buildSchema(src) {
       classifications: src.classificationSeeds,
       lines: src.lineSeeds,
       areas: src.areaSeeds,
+      contractors: src.contractorSeeds || [],
     },
   };
 }
