@@ -27,13 +27,13 @@ import {
   typeGroups, typeSummary, type TypeGroup,
 } from './scopeOptions';
 import { rememberQuery } from './sharedFilters';
-import type { Dash } from './useDash';
+import type { Dash, FilterPatch } from './useDash';
 import './scopebar.css';
 
 /** What the bar needs from a page: the shared filters and enough data to list the choices. */
 export interface ScopeSource {
   filters: DashFilters;
-  setFilters: (patch: Partial<DashFilters>) => void;
+  setFilters: (patch: FilterPatch) => void;
   reset: () => void;
   startup: Startup | null;
   /** the range the filters resolve to (null while loading) */
@@ -95,12 +95,12 @@ function useScopeModel(src: ScopeSource) {
   }, [rows, areaOpts, areaKey, f.reasonKeys]); // eslint-disable-line react-hooks/exhaustive-deps
   const groups = useMemo(() => typeGroups(startup?.classifications ?? []), [startup]);
   /** Every change goes through here: a line or area change prunes the areas and equipment that fell out of scope. */
-  const set = (patch: Partial<DashFilters>) => {
-    if (patch.lineIds || patch.areaIds) {
-      const next = pruneScope({ ...f, ...patch }, startup, rows);
-      src.setFilters({ ...patch, areaIds: next.areaIds, equipmentIds: next.equipmentIds });
-    } else src.setFilters(patch);
-  };
+  const set = (patch: FilterPatch) => src.setFilters((cur) => {
+    const p = typeof patch === 'function' ? patch(cur) : patch;
+    if (!p.lineIds && !p.areaIds) return p;
+    const next = pruneScope({ ...cur, ...p }, startup, rows);
+    return { ...p, areaIds: next.areaIds, equipmentIds: next.equipmentIds };
+  });
   const lineName = (id: string) => lines.find((l) => l.line_id === id)?.name ?? id;
   const lineText = f.lineIds.length === 0 ? t('All') : f.lineIds.length === 1 ? lineName(f.lineIds[0]!) : t('{n} lines', { n: f.lineIds.length });
   const areaText = f.areaIds.length === 0 ? t('All') : f.areaIds.length <= 2 ? f.areaIds.join(', ') : t('{n} areas', { n: f.areaIds.length });
@@ -201,7 +201,7 @@ function TypeGroupsField({ m }: { m: Model }) {
     <div className="sb-types" role="group" aria-label={t('Type')}>
       {TYPE_GROUPS.filter((g) => m.groups[g].length > 0).map((g) => (
         <label key={g} className="sb-type">
-          <input type="checkbox" checked={on.includes(g)} onChange={() => m.set({ classifications: toggleGroup(m.f.classifications, g, m.groups) })} data-testid={`fb-group-${g}`} />
+          <input type="checkbox" checked={on.includes(g)} onChange={() => m.set((cur) => ({ classifications: toggleGroup(cur.classifications, g, m.groups) }))} data-testid={`fb-group-${g}`} />
           <span className={`sb-swatch sb-swatch--${g}`} style={{ background: GROUP_COLOR[g] }} aria-hidden="true" />
           <span className="sb-type-text">
             <b>{t(TYPE_GROUP_LABEL[g])} ({TYPE_GROUP_CODE[g]})</b>
@@ -218,7 +218,7 @@ function MoreFields({ src, m, stacked }: { src: ScopeSource; m: Model; stacked?:
   const { f, set } = m;
   const uid = useId().replace(/:/g, '');
   const s = src.settings;
-  const toggleCls = (c: ClassificationCode) => set({ classifications: f.classifications.includes(c) ? f.classifications.filter((x) => x !== c) : [...f.classifications, c] });
+  const toggleCls = (c: ClassificationCode) => set((cur) => ({ classifications: cur.classifications.includes(c) ? cur.classifications.filter((x) => x !== c) : [...cur.classifications, c] }));
   const chip = (on: boolean, onClick: () => void, testid: string, label: ReactNode) => (
     <button type="button" className={on ? 'sb-opt sb-opt--on' : 'sb-opt'} aria-pressed={on} onClick={onClick} data-testid={testid}>{label}</button>
   );
@@ -230,18 +230,18 @@ function MoreFields({ src, m, stacked }: { src: ScopeSource; m: Model; stacked?:
       </div>
       <div className="sb-more-row">
         <span className="sb-label">{t('Criticality')}</span>
-        <div className="sb-chiprow">{(['INC', 'NO_INC'] as const).map((c) => chip(f.criticality.includes(c), () => set({ criticality: f.criticality.includes(c) ? f.criticality.filter((x) => x !== c) : [...f.criticality, c] }), `fb-crit-${c}`, c))}</div>
+        <div className="sb-chiprow">{(['INC', 'NO_INC'] as const).map((c) => chip(f.criticality.includes(c), () => set((cur) => ({ criticality: cur.criticality.includes(c) ? cur.criticality.filter((x) => x !== c) : [...cur.criticality, c] })), `fb-crit-${c}`, c))}</div>
       </div>
       {!stacked && (
         <div className="sb-more-row">
           <span className="sb-label">{t('Failures')}</span>
-          <div className="sb-chiprow">{chip(f.failureOnly, () => set({ failureOnly: !f.failureOnly }), 'fb-fail', t('Failures only'))}</div>
+          <div className="sb-chiprow">{chip(f.failureOnly, () => set((cur) => ({ failureOnly: !cur.failureOnly })), 'fb-fail', t('Failures only'))}</div>
         </div>
       )}
       <div className="sb-more-row">
         <span className="sb-label">{t('Duration')}</span>
         <div className="sb-chiprow">
-          {(['short', 'medium', 'long'] as const).map((b) => chip(f.durationBand === b, () => set({ durationBand: f.durationBand === b ? null : b }), `fb-band-${b}`,
+          {(['short', 'medium', 'long'] as const).map((b) => chip(f.durationBand === b, () => set((cur) => ({ durationBand: cur.durationBand === b ? null : b })), `fb-band-${b}`,
             b === 'short' ? t('Short ≤ {m} min', { m: s?.durationShortMaxMin ?? 30 }) : b === 'long' ? t('Long ≥ {m} min', { m: s?.durationLongMinMin ?? 120 }) : t('Medium')))}
         </div>
       </div>
@@ -273,14 +273,14 @@ function Chip({ label, value, set, testid, children, wide }: { label: string; va
 function ActiveChips({ src, m }: { src: ScopeSource; m: Model }) {
   const { f, set } = m;
   const items: { id: string; text: string; clear: () => void }[] = [];
-  f.lineIds.forEach((v) => items.push({ id: `line-${v}`, text: `${t('Line')}: ${m.lineName(v)}`, clear: () => set({ lineIds: f.lineIds.filter((x) => x !== v) }) }));
-  f.areaIds.forEach((v) => items.push({ id: `area-${v}`, text: `${t('Area')}: ${v}`, clear: () => set({ areaIds: f.areaIds.filter((x) => x !== v) }) }));
-  f.equipmentIds.forEach((v) => items.push({ id: `code-${v}`, text: `${t('Code')}: ${v}`, clear: () => set({ equipmentIds: f.equipmentIds.filter((x) => x !== v) }) }));
-  f.equipmentTypes.forEach((v) => items.push({ id: `type-${v}`, text: `${t('Type')}: ${v}`, clear: () => set({ equipmentTypes: f.equipmentTypes.filter((x) => x !== v) }) }));
-  f.classifications.forEach((v) => items.push({ id: `cls-${v}`, text: `${t('Class')}: ${v}`, clear: () => set({ classifications: f.classifications.filter((x) => x !== v) }) }));
-  f.criticality.forEach((v) => items.push({ id: `crit-${v}`, text: v, clear: () => set({ criticality: f.criticality.filter((x) => x !== v) }) }));
+  f.lineIds.forEach((v) => items.push({ id: `line-${v}`, text: `${t('Line')}: ${m.lineName(v)}`, clear: () => set((cur) => ({ lineIds: cur.lineIds.filter((x) => x !== v) })) }));
+  f.areaIds.forEach((v) => items.push({ id: `area-${v}`, text: `${t('Area')}: ${v}`, clear: () => set((cur) => ({ areaIds: cur.areaIds.filter((x) => x !== v) })) }));
+  f.equipmentIds.forEach((v) => items.push({ id: `code-${v}`, text: `${t('Code')}: ${v}`, clear: () => set((cur) => ({ equipmentIds: cur.equipmentIds.filter((x) => x !== v) })) }));
+  f.equipmentTypes.forEach((v) => items.push({ id: `type-${v}`, text: `${t('Type')}: ${v}`, clear: () => set((cur) => ({ equipmentTypes: cur.equipmentTypes.filter((x) => x !== v) })) }));
+  f.classifications.forEach((v) => items.push({ id: `cls-${v}`, text: `${t('Class')}: ${v}`, clear: () => set((cur) => ({ classifications: cur.classifications.filter((x) => x !== v) })) }));
+  f.criticality.forEach((v) => items.push({ id: `crit-${v}`, text: v, clear: () => set((cur) => ({ criticality: cur.criticality.filter((x) => x !== v) })) }));
   if (f.failureOnly) items.push({ id: 'fail', text: t('Failures only'), clear: () => set({ failureOnly: false }) });
-  f.reasonKeys.forEach((v) => items.push({ id: `reason-${v}`, text: `${t('Reason')}: ${v.length > 28 ? `${v.slice(0, 27)}…` : v}`, clear: () => set({ reasonKeys: f.reasonKeys.filter((x) => x !== v) }) }));
+  f.reasonKeys.forEach((v) => items.push({ id: `reason-${v}`, text: `${t('Reason')}: ${v.length > 28 ? `${v.slice(0, 27)}…` : v}`, clear: () => set((cur) => ({ reasonKeys: cur.reasonKeys.filter((x) => x !== v) })) }));
   if (f.durationBand) items.push({ id: 'band', text: `${t('Duration')}: ${f.durationBand}`, clear: () => set({ durationBand: null }) });
   if (!items.length) return null;
   return (
@@ -431,7 +431,7 @@ function PhoneBar({ src, m, eventCount, hideCompare, views, exportMenu }: BarPro
         >
           <div className="sb-sec sb-sec--switch">
             <span><b>{t('Failures only')}</b> <small>· {t('breakdowns only')}</small></span>
-            <button type="button" role="switch" aria-checked={f.failureOnly} aria-label={t('Failures only')} className={f.failureOnly ? 'sb-switch sb-switch--on' : 'sb-switch'} onClick={() => set({ failureOnly: !f.failureOnly })} data-testid="fb-fail">
+            <button type="button" role="switch" aria-checked={f.failureOnly} aria-label={t('Failures only')} className={f.failureOnly ? 'sb-switch sb-switch--on' : 'sb-switch'} onClick={() => set((cur) => ({ failureOnly: !cur.failureOnly }))} data-testid="fb-fail">
               <span className="sb-switch-knob" aria-hidden="true" />
             </button>
           </div>
@@ -455,7 +455,7 @@ function PhoneBar({ src, m, eventCount, hideCompare, views, exportMenu }: BarPro
                 const on = f.lineIds.includes(l.line_id);
                 return (
                   <button key={l.line_id} type="button" role="checkbox" aria-checked={on} className={on ? 'sb-opt sb-opt--on' : 'sb-opt'} data-testid="fb-line-opt" data-value={l.line_id}
-                    onClick={() => set({ lineIds: on ? f.lineIds.filter((x) => x !== l.line_id) : [...f.lineIds, l.line_id] })}>
+                    onClick={() => set((cur) => ({ lineIds: on ? cur.lineIds.filter((x) => x !== l.line_id) : [...cur.lineIds, l.line_id] }))}>
                     {on && <Icon name="check" size={14} />}{l.name}
                   </button>
                 );
@@ -469,7 +469,7 @@ function PhoneBar({ src, m, eventCount, hideCompare, views, exportMenu }: BarPro
                 const on = f.areaIds.includes(a.value);
                 return (
                   <button key={a.value} type="button" role="checkbox" aria-checked={on} className={on ? 'sb-opt sb-opt--on' : 'sb-opt'} title={a.hint} data-testid="fb-area-opt" data-value={a.value}
-                    onClick={() => set({ areaIds: on ? f.areaIds.filter((x) => x !== a.value) : [...f.areaIds, a.value] })}>
+                    onClick={() => set((cur) => ({ areaIds: on ? cur.areaIds.filter((x) => x !== a.value) : [...cur.areaIds, a.value] }))}>
                     {on && <Icon name="check" size={14} />}{a.label}
                   </button>
                 );

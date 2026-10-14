@@ -18,7 +18,10 @@ import { buildBase, buildEventScope, buildKpis, buildMaster, buildWindows, cover
  * The filters of this page. The query string is the source of truth; the last one is remembered between the four
  * Analyze tabs (and in sessionStorage, see sharedFilters.ts), so moving to another tab keeps every filter.
  */
-export function useDashFilters(): { filters: DashFilters; setFilters: (patch: Partial<DashFilters>) => void; reset: () => void } {
+/** A change of the filters, or a function of the filters as they are at that moment (for toggles: two quick clicks both count). */
+export type FilterPatch = Partial<DashFilters> | ((cur: DashFilters) => Partial<DashFilters>);
+
+export function useDashFilters(): { filters: DashFilters; setFilters: (patch: FilterPatch) => void; reset: () => void } {
   const [sp, setSpRaw] = useSearchParams();
   const location = useLocation();
   // router state (a drill-through's event ids) stays with the address when the filters change
@@ -46,11 +49,11 @@ export function useDashFilters(): { filters: DashFilters; setFilters: (patch: Pa
   const spRef = useRef(sp);
   spRef.current = sp;
   const setFilters = useCallback(
-    (patch: Partial<DashFilters>) => {
+    (patch: FilterPatch) => {
       // two quick changes render in one transition: start from the address as it is now, not from the last render
       const live = liveSearch() ?? spRef.current;
       const cur = hasFilterParams(live) ? parseFilters(live) : ref.current;
-      const next = serializeFilters({ ...cur, ...patch });
+      const next = serializeFilters({ ...cur, ...(typeof patch === 'function' ? patch(cur) : patch) });
       rememberQuery(next.toString());
       nonFilterParams(live).forEach((v, k) => next.append(k, v));
       setSp(next, { replace: true });
@@ -137,7 +140,7 @@ export interface Dash {
   st: StartupHook;
   startup: Startup | null;
   filters: DashFilters;
-  setFilters: (patch: Partial<DashFilters>) => void;
+  setFilters: (patch: FilterPatch) => void;
   reset: () => void;
   /** every year needed is loaded and the scope is built */
   ready: boolean;
@@ -227,7 +230,7 @@ export interface RecordsScope {
   st: StartupHook;
   startup: Startup | null;
   filters: DashFilters;
-  setFilters: (patch: Partial<DashFilters>) => void;
+  setFilters: (patch: FilterPatch) => void;
   reset: () => void;
   /** the shared range (null until the latest data says where "today" is) */
   range: DateRange | null;

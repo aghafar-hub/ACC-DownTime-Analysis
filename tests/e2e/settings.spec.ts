@@ -40,13 +40,13 @@ test.describe('desktop', () => {
   test('admin sees all five subtabs', async ({ page }) => {
     await signInAndWait(page, 'admin');
     await page.goto('/#/settings');
-    expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(SUBS);
+    await expect(subTabs(page)).toHaveText(SUBS);
   });
 
   test('viewer sees Appearance and Notifications and the theme choice survives a reload', async ({ page }) => {
     await signInAndWait(page, 'viewer');
     await page.getByTestId('settings-btn').click();
-    expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(['Appearance', 'Notifications']);
+    await expect(subTabs(page)).toHaveText(['Appearance', 'Notifications']);
     await expect(page.getByTestId('theme-picker')).toBeVisible();
     await page.getByRole('radio', { name: /Carbon Dark/ }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'Carbon Dark');
@@ -58,7 +58,7 @@ test.describe('desktop', () => {
   test('engineer (settings and users Hidden) sees Appearance and Notifications', async ({ page }) => {
     await signInAndWait(page, 'engineer');
     await page.goto('/#/settings');
-    expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(['Appearance', 'Notifications']);
+    await expect(subTabs(page)).toHaveText(['Appearance', 'Notifications']);
     for (const sub of ['calculations', 'security', 'users']) {
       await page.goto(`/#/settings/${sub}`);
       await expect(page.getByTestId('no-access')).toBeVisible();
@@ -122,7 +122,7 @@ test.describe('desktop', () => {
     await page.getByTestId('login-submit').click();
     await expect(page.getByTestId('page-title')).toBeVisible();
     await page.getByTestId('settings-btn').click();
-    expect((await subTabs(page).allTextContents()).map((s) => s.trim())).toEqual(['Appearance', 'Notifications', 'Users and access']);
+    await expect(subTabs(page)).toHaveText(['Appearance', 'Notifications', 'Users and access']);
     await subTabs(page).filter({ hasText: 'Users and access' }).click();
     await expect(page.getByTestId('access-level')).toHaveText('View only');
     await expect(page.getByTestId('user-row').first()).toBeVisible();
