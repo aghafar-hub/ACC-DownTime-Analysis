@@ -314,3 +314,17 @@ export function useNotificationsOptional(): NotificationsState | null {
 }
 
 export type { FeedItem };
+
+/** Beside "Notifications" in the rail and the More sheet: items needing action plus new alerts; nothing when there are none. */
+export function NotificationsNavBadge({ testid = 'notif-nav-badge' }: { testid?: string }) {
+  const n = useContext(ctx);
+  if (!n) return null;
+  const count = n.actionCount + n.unseenAlerts;
+  if (count === 0) return null;
+  const label = t('{a} need action, {b} new alerts', { a: n.actionCount, b: n.unseenAlerts });
+  return (
+    <span className="vbadge vbadge--neutral" role="img" aria-label={label} title={label} data-testid={testid}>
+      <span>{count > 99 ? '99+' : count}</span>
+    </span>
+  );
+}

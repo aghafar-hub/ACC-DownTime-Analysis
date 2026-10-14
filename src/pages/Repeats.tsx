@@ -1,3 +1,5 @@
+import { useCreateAction } from '../actions/ActionsContext';
+import { repeatPrefill } from '../actions/prefill';
 import { useMemo, useRef, useState } from 'react';
 import { dateText } from '../util/dates';
 import type { RepeatGroup } from '../calc';
@@ -48,6 +50,7 @@ function sortVal(g: RepeatGroup, k: SortKey): string | number {
 const gaps = (g: RepeatGroup): string => (g.daysBetween.length === 0 ? '-' : g.daysBetween.slice(0, 5).map((d) => (Math.round(d * 10) / 10).toString()).join(', ') + (g.daysBetween.length > 5 ? ` +${g.daysBetween.length - 5}` : ''));
 
 export default function Repeats() {
+  const createAction = useCreateAction();
   const dash = useDash();
   const { ctx } = dash;
   const mobile = useIsMobile();
@@ -157,7 +160,7 @@ export default function Repeats() {
             {groups.length === 0 ? <p className="muted" data-testid="repeat-none">{t('No repeated failures in this range.')}</p> : !mobile ? (
               <StickyTableWrap>
                 <table className="data-table" data-testid="repeat-table">
-                  <thead><tr>{COLS.slice(0, 3).map(th)}<th scope="col">{t('Timeline')}</th>{COLS.slice(3).map(th)}<th scope="col">{t('Days between')}</th></tr></thead>
+                  <thead><tr>{COLS.slice(0, 3).map(th)}<th scope="col">{t('Timeline')}</th>{COLS.slice(3).map(th)}<th scope="col">{t('Days between')}</th>{createAction && <th scope="col"><span className="sr-only">{t('Action')}</span></th>}</tr></thead>
                   <tbody>
                     {visible.map((g) => (
                       <tr key={g.key} className={g.equipmentId === selCode ? 'tr-selected' : undefined} data-testid="repeat-row" data-equipment={g.equipmentId}>
@@ -173,6 +176,14 @@ export default function Repeats() {
                         <td className="nowrap">{dateText(g.lastFailureDate)}</td>
                         <td className="num">{fint(g.previousPeriodOccurrences)}</td>
                         <td className="mono nowrap">{gaps(g)}</td>
+                        {createAction && (
+                          <td className="nowrap">
+                            <button type="button" className="btn btn-sm" onClick={() => createAction(repeatPrefill(g, settings?.repeatWindowDays))} data-testid="repeat-create-action"
+                              aria-label={t('Create action for {c}, {r}', { c: g.equipmentId, r: g.reasonLabel })}>
+                              <Icon name="plus" size={13} /> {t('Action')}
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -184,7 +195,8 @@ export default function Repeats() {
                   {COLS.filter((c) => c.num || c.key === 'last').map((c) => <button key={c.key} type="button" className={sort.key === c.key ? 'chip chip--on' : 'chip'} onClick={() => setSort({ key: c.key, dir: -1 })}>{t(c.label)}</button>)}
                 </div>
                 {visible.map((g) => (
-                  <button key={g.key} type="button" className="event-card" onClick={() => select(g.equipmentId)} data-testid="repeat-card">
+                  <div key={g.key} className="repeat-card-wrap">
+                  <button type="button" className="event-card" onClick={() => select(g.equipmentId)} data-testid="repeat-card">
                     <div className="event-card-top"><span className="event-card-code">{g.equipmentId} · {g.areaIds.join(', ')}</span><span className="badge badge--danger"><span aria-hidden="true">◆</span> {g.occurrences}×</span></div>
                     <div className="event-card-line">{g.reasonLabel}</div>
                     {g.burstCount > 0 && <div className="event-card-line" data-testid="repeat-bursts">{t('{n} of them bursts (less than 1 h after the previous one in the same area)', { n: fint(g.burstCount) })}</div>}
@@ -193,6 +205,12 @@ export default function Repeats() {
                     <div className="event-card-line mono">{t('Days between')}: {gaps(g)}</div>
                     {win && <div className="event-card-line occ-line"><span className="muted">{t('Timeline')}</span> <OccurrenceStrip dates={g.occurrenceDates} from={win.from} to={win.to} label={`${g.equipmentId}, ${g.reasonLabel}`} /></div>}
                   </button>
+                  {createAction && (
+                    <button type="button" className="btn repeat-card-action" onClick={() => createAction(repeatPrefill(g, settings?.repeatWindowDays))} data-testid="repeat-create-action">
+                      <Icon name="plus" size={14} /> {t('Create action for {c}', { c: g.equipmentId })}
+                    </button>
+                  )}
+                  </div>
                 ))}
               </div>
             )}

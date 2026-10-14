@@ -8,10 +8,11 @@ import { t } from './i18n/t';
 export type PageId = TabId | 'validate';
 
 /** The navigation sections: the left rail headings, the page tabs' scope, the More sheet groups. */
-export type SectionId = 'analyze' | 'reports' | 'data' | 'setup';
+export type SectionId = 'analyze' | 'reports' | 'act' | 'data' | 'setup';
 export const SECTIONS: { id: SectionId; label: string }[] = [
   { id: 'analyze', label: 'Analyze' },
   { id: 'reports', label: 'Reports' },
+  { id: 'act', label: 'Act' },
   { id: 'data', label: 'Data' },
   { id: 'setup', label: 'Setup' },
 ];
@@ -39,6 +40,7 @@ export const PAGES: PageDef[] = [
   { id: 'repeats', access: 'repeats', path: '/repeats', label: 'Repeated Failures', tab: 'Repeated Failures', short: 'Repeats', icon: 'repeat', group: 'analyze' },
   { id: 'reliability', access: 'reliability', path: '/reliability', label: 'Reliability Trends', tab: 'Reliability', short: 'Reliability', icon: 'trend', group: 'analyze' },
   { id: 'reports', access: 'reports', path: '/reports', label: 'Reports', tab: 'Reports', short: 'Reports', icon: 'registry', group: 'reports' },
+  { id: 'actions', access: 'actions', path: '/actions', label: 'Actions', tab: 'Actions', short: 'Actions', icon: 'target', group: 'act' },
   { id: 'events', access: 'events', path: '/events', label: 'Event Explorer', tab: 'Event Explorer', short: 'Events', icon: 'list', group: 'data' },
   { id: 'validate', access: 'events', path: '/validate', label: 'Validate', tab: 'Validate', short: 'Validate', icon: 'compliance', group: 'data' },
   { id: 'upload', access: 'upload', path: '/upload', label: 'Upload', tab: 'Upload', short: 'Upload', icon: 'upload', group: 'data' },
@@ -52,14 +54,14 @@ const GEAR_TABS: PageDef[] = [
   { id: 'users', access: 'users', path: '/settings/users', label: 'Users', tab: 'Users', short: 'Users', icon: 'users', group: 'setup' },
 ];
 
-// Tab ids the server knows whose page is not in the navigation yet: the Actions page (backend 1.4.0). Its label is used
-// by the access editor (Users page); move the entry to PAGES when the page is built.
-const NOT_YET_IN_NAV: PageDef[] = [
-  { id: 'actions', access: 'actions', path: '/actions', label: 'Actions', tab: 'Actions', short: 'Actions', icon: 'compliance', group: 'analyze' },
-];
+export const pageById = (id: PageId): PageDef => PAGES.find((p) => p.id === id) ?? GEAR_TABS.find((p) => p.id === id)!;
 
-export const pageById = (id: PageId): PageDef =>
-  PAGES.find((p) => p.id === id) ?? GEAR_TABS.find((p) => p.id === id) ?? NOT_YET_IN_NAV.find((p) => p.id === id)!;
+/**
+ * The Notifications page (the bell's inbox): every signed-in person may open it, so it has no tab id and is not one of
+ * PAGES; the rail and the More sheet list it in the Act section after the pages.
+ */
+export const NOTIFICATIONS_PATH = '/notifications';
+export const isNotificationsPath = (pathname: string): boolean => pathname === NOTIFICATIONS_PATH || pathname.startsWith(`${NOTIFICATIONS_PATH}/`);
 export const pageForPath = (pathname: string): PageDef | undefined => {
   const path = pathname === '/overview' || pathname.startsWith('/overview/') ? pathname.replace(/^\/overview/, '/dashboard') : pathname;
   return PAGES.find((p) => path === p.path || path.startsWith(`${p.path}/`));
@@ -68,9 +70,9 @@ export const pageLabel = (p: PageDef): string => t(p.label);
 export const pageTab = (p: PageDef): string => t(p.tab);
 export const pageShort = (p: PageDef): string => t(p.short);
 
-/** The first three of these that the person may see go on the phone bottom bar, left to right; More is the fourth slot. */
-export const BOTTOM_BAR_ORDER: PageId[] = ['overview', 'pareto', 'events', 'reliability', 'repeats', 'validate', 'upload'];
-export const BOTTOM_BAR_SLOTS = 3;
+/** The first four of these that the person may see go on the phone bottom bar, left to right; More is the fifth slot (mobile-actions.png). */
+export const BOTTOM_BAR_ORDER: PageId[] = ['overview', 'pareto', 'actions', 'events', 'reliability', 'repeats', 'validate', 'upload'];
+export const BOTTOM_BAR_SLOTS = 4;
 /** The pages on the phone bottom bar (before More), given the pages the person may see. */
 export const bottomBarPages = (visible: PageDef[]): PageDef[] =>
   BOTTOM_BAR_ORDER.map((id) => visible.find((p) => p.id === id)).filter((p): p is PageDef => !!p).slice(0, BOTTOM_BAR_SLOTS);
@@ -99,6 +101,7 @@ export const SETTINGS_SUBS: SettingsSub[] = [
   { id: 'appearance', label: 'Appearance', tab: null, icon: 'palette', blurb: 'Theme and install. Kept on this device.' },
   { id: 'notifications', label: 'Notifications', tab: null, icon: 'bell', blurb: 'Which alerts you get, the areas you follow and the digest email.' },
   { id: 'calculations', label: 'Calculations', tab: 'settings', icon: 'trend', blurb: 'How availability, repeated failures and durations are worked out.' },
+  { id: 'actions', label: 'Actions & targets', tab: 'settings', icon: 'target', blurb: 'Who can close actions, the contractors and their areas, the draft rules and the targets per area.' },
   { id: 'security', label: 'Security', tab: 'settings', icon: 'shield', blurb: 'Sign-in limits, sessions and passwords.' },
   { id: 'users', label: 'Users and access', tab: 'users', icon: 'users', blurb: 'Who can sign in and which pages they can open.' },
 ];

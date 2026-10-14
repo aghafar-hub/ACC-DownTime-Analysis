@@ -33,7 +33,9 @@ test.describe('targets', () => {
     const errors = watchConsole(page);
     await as(page, 'engineer');
     await open(page, '/overview', 'page-overview');
-    for (const id of ['kpi-availability-target', 'kpi-mttr-target', 'below-target-count', 'hbars-extra-ref']) await expect(page.getByTestId(id)).toHaveCount(0);
+    for (const id of ['kpi-availability-target', 'kpi-mttr-target', 'hbars-extra-ref']) await expect(page.getByTestId(id)).toHaveCount(0);
+    // the demo has availability targets for some areas (Settings > Actions & targets): only those rows are judged
+    await expect(page.getByTestId('chart-area-availability').getByTestId('own-target-note')).toBeVisible();
     await expect(page.getByTestId('kpi-availability')).not.toContainText('Target');
     await open(page, '/reliability', 'page-reliability');
     await expect(page.getByTestId('area-table')).toBeVisible();
@@ -125,7 +127,8 @@ test.describe('targets', () => {
     await setTargets(page, { avail: '', mtbf: '', mttr: '' });
     await open(page, '/overview', 'page-overview');
     await expect(page.getByTestId('kpi-availability-target')).toHaveCount(0);
-    await expect(page.getByTestId('below-target-count')).toHaveCount(0);
+    // the demo's own area targets (Settings > Actions & targets) still mark their rows; the plant-wide wording is gone
+    await expect(page.getByTestId('chart-area-availability').getByTestId('own-target-note')).toBeVisible();
     expect(errors, errors.join('\n')).toEqual([]);
   });
 

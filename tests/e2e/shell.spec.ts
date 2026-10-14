@@ -8,10 +8,10 @@ const ANALYZE_RAIL = ['Dashboard', 'Pareto & Contributors', 'Repeated Failures',
 const DATA_VIEW = ['Event Explorer', 'Validate'];
 // the left rail: every page the role may open, grouped under Analyze / Data / Setup
 const RAIL: Record<Role, Record<string, string[]>> = {
-  admin: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
-  manager: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Data: DATA_VIEW, Setup: ['Master Data'] },
-  engineer: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
-  viewer: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Data: DATA_VIEW },
+  admin: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions', 'Notifications'], Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
+  manager: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions', 'Notifications'], Data: DATA_VIEW, Setup: ['Master Data'] },
+  engineer: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions', 'Notifications'], Data: [...DATA_VIEW, 'Upload'], Setup: ['Master Data'] },
+  viewer: { Analyze: ANALYZE_RAIL, Reports: ['Reports'], Act: ['Actions', 'Notifications'], Data: DATA_VIEW },
 };
 
 test.describe('desktop', () => {
@@ -410,10 +410,10 @@ test.describe('phone', () => {
   test('bottom bar, page chips and the More sheet follow the role', async ({ page }) => {
     await signInAndWait(page, 'viewer');
     await expect(page.getByTestId('bottom-nav')).toBeVisible();
-    // exactly four slots: Dashboard, Causes (Pareto), Events, More
+    // exactly five slots: Dashboard, Causes (Pareto), Actions, Events, More (mobile-actions.png)
     const bar = page.getByTestId('bottom-nav');
-    await expect(bar.locator('a, button')).toHaveCount(4);
-    await expect(bar.locator('a, button')).toHaveText([/^Dashboard$/, /^Causes$/, /^Events$/, /More$/]);
+    await expect(bar.locator('a, button')).toHaveCount(5);
+    await expect(bar.locator('a, button')).toHaveText([/^Dashboard$/, /^Causes$/, /Actions$/, /^Events$/, /More$/]);
     await expect(page.getByTestId('bottom-overview')).toHaveAttribute('href', /#\/dashboard$/);
     await expect(page.getByTestId('topbar-title')).toHaveText('Dashboard');
     await expect(page.getByTestId('bottom-pareto')).toHaveAttribute('href', /#\/pareto$/);
@@ -424,7 +424,7 @@ test.describe('phone', () => {
     const sheet = page.getByTestId('more-sheet');
     await expect(sheet).toBeVisible();
     // pages grouped under Analyze / Data (no Setup for a viewer)
-    await expect(sheet.locator('.more-group-title')).toHaveText(['Analyze', 'Reports', 'Data']);
+    await expect(sheet.locator('.more-group-title')).toHaveText(['Analyze', 'Reports', 'Act', 'Data']);
     await expect(sheet.locator('[data-section="analyze"] .more-tile')).toHaveCount(4);
     await expect(sheet.locator('[data-section="data"] .more-tile')).toHaveCount(2);
     for (const id of ['overview', 'pareto', 'repeats', 'reliability', 'events', 'validate']) await expect(sheet.getByTestId(`more-tile-${id}`)).toBeVisible();
@@ -444,9 +444,9 @@ test.describe('phone', () => {
     await expect(page.getByTestId('login-form')).toBeVisible();
   });
 
-  test('the bar always has Dashboard, Causes, Events and More, whatever the role; admin sees every page in More', async ({ page }) => {
+  test('the bar always has Dashboard, Causes, Actions, Events and More, whatever the role; admin sees every page in More', async ({ page }) => {
     await signInAndWait(page, 'engineer');
-    await expect(page.getByTestId('bottom-nav').locator('a, button')).toHaveText([/^Dashboard$/, /^Causes$/, /^Events$/, /More$/]);
+    await expect(page.getByTestId('bottom-nav').locator('a, button')).toHaveText([/^Dashboard$/, /^Causes$/, /Actions$/, /^Events$/, /More$/]);
     await expect(page.getByTestId('bottom-upload')).toHaveCount(0);
     await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); });
     await page.goto('/');
@@ -457,7 +457,7 @@ test.describe('phone', () => {
       await expect(page.getByTestId(`more-tile-${id}`)).toBeVisible();
     }
     for (const id of ['settings', 'users']) await expect(page.getByTestId(`more-tile-${id}`)).toHaveCount(0);
-    await expect(page.locator('.more-group-title')).toHaveText(['Analyze', 'Reports', 'Data', 'Setup']);
+    await expect(page.locator('.more-group-title')).toHaveText(['Analyze', 'Reports', 'Act', 'Data', 'Setup']);
     await expect(page.locator('[data-section="data"] .more-tile')).toHaveCount(3);
     await expect(page.locator('[data-section="setup"] .more-tile')).toHaveCount(1);
     await expect(page.getByTestId('more-tile-master')).toContainText('Can edit');

@@ -538,11 +538,11 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
 
     // the cards: a question as the title, in this order
     const order = await page.locator('[data-dash-card]').evaluateAll((els) => els.map((e) => e.getAttribute('data-dash-card')));
-    expect(order).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);
+    expect(order).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'planned-allowance', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);
     const titles = await page.locator('[data-dash-card] h2').allTextContents();
     expect(titles).toEqual([
       'How is stoppage moving month to month?', 'What kind of stoppage was it?', 'Where did we lose the most time?', 'Planned or incidental?',
-      'Which areas stopped the longest?', 'Which areas have the lowest availability?', 'Are we failing more, or repairing slower?', 'Which areas need attention?',
+      'Which areas stopped the longest?', 'Which areas miss their availability target?', 'Planned hours vs allowance (year to date)', 'Are we failing more, or repairing slower?', 'Which areas need attention?',
       'What keeps failing again?', 'Is any area slipping over time?', 'Which days were worst?',
     ]);
     const y = async (id: string) => (await page.getByTestId(id).boundingBox())!.y;
@@ -565,8 +565,10 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     // downtime by area: sorted, largest first
     const areaVals = (await page.getByTestId('chart-downtime-area').locator('.hb-val').allTextContents()).map(num);
     expect(areaVals).toEqual([...areaVals].sort((p, q) => q - p));
-    // no target set: plain bars and the note
-    await expect(page.getByTestId('chart-area-availability').getByTestId('no-target-note')).toBeVisible();
+    // no plant-wide target; the demo has targets for some areas (Settings > Actions & targets): only those are judged
+    await expect(page.getByTestId('chart-area-availability').getByTestId('own-target-note')).toBeVisible();
+    await expect(page.getByTestId('chart-area-availability').locator('[data-testid=at-row][data-area="K.1"]')).toHaveAttribute('data-target', '90');
+    await expect(page.getByTestId('chart-area-availability').locator('[data-testid=at-row][data-area="CM.4"]')).toHaveAttribute('data-state', 'none');
     await expect(page.getByTestId('chart-avail-heat').getByTestId('heat-no-target')).toBeVisible();
     // the quadrant names the worst corner
     await expect(page.getByTestId('chart-quadrant').getByTestId('quadrant-worst-label')).toHaveText('Fails often, slow to fix');
@@ -919,7 +921,7 @@ for (const width of [360, 390]) {
       expect(boxes[4]!.width).toBeGreaterThan(boxes[0]!.width * 1.8);
       // the cards one under the other, in the same order as on a desktop
       const cards = await page.locator('[data-dash-card]').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { id: e.getAttribute('data-dash-card'), x: r.x, y: r.y }; }));
-      expect(cards.map((c) => c.id)).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);
+      expect(cards.map((c) => c.id)).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'planned-allowance', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);
       for (let i = 1; i < cards.length; i++) {
         expect(cards[i]!.y).toBeGreaterThan(cards[i - 1]!.y);
         expect(Math.abs(cards[i]!.x - cards[0]!.x)).toBeLessThan(2);

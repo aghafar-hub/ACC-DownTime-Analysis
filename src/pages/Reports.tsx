@@ -21,6 +21,9 @@ import { useReportData } from '../reports/useReportData';
 import '../components/ui.css';
 import '../dashboard/dashboard.css';
 import '../reports/reports.css';
+import { useCreateAction } from '../actions/ActionsContext';
+import { reportPrefill } from '../actions/prefill';
+import { monthText, rangeText } from '../util/dates';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 const nowText = (): string => {
@@ -141,6 +144,7 @@ function Preview({ setup, data, generatedBy, onEdit, onCopyLink, copied }: {
   setup: ReportSetup; data: ReturnType<typeof useReportData>; generatedBy: string; onEdit: () => void; onCopyLink: () => void; copied: boolean;
 }) {
   const generatedAt = useRef(nowText());
+  const createAction = useCreateAction();
   const [model, setModel] = useState<ReportModel | null>(null);
   const [info, setInfo] = useState<DocumentInfo | null>(null);
   const setupKey = serializeSetup(setup).toString();
@@ -183,6 +187,15 @@ function Preview({ setup, data, generatedBy, onEdit, onCopyLink, copied }: {
           sections={setup.sections} ready={!!model} testid="rp"
           getModel={(only) => (model ? (only ? { ...model, sections: model.sections.filter((s) => only.includes(s.id)) } : model) : null)}
         />
+        {createAction && (
+          <button type="button" className="btn" disabled={!model} data-testid="report-create-action"
+            onClick={() => model && createAction(reportPrefill({
+              title: model.title, period: model.range.from.slice(0, 7) === model.range.to.slice(0, 7) ? monthText(model.range.from) : rangeText(model.range),
+              equipmentIds: setup.filters.equipmentIds, areaIds: setup.filters.areaIds, lineIds: setup.filters.lineIds,
+            }))}>
+            <Icon name="plus" size={16} /> {t('Create action')}
+          </button>
+        )}
         <button type="button" className="btn-primary" onClick={() => window.print()} disabled={!info} data-testid="report-print"><Icon name="download" size={16} /> {t('Print / Save as PDF')}</button>
         <span className="rpt-toolbar-info" data-testid="report-info" role="status">
           {info ? t('{p} pages · {s} sections', { p: info.pages, s: info.sections }) : model ? t('Laying out the pages…') : ''}

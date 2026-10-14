@@ -12,6 +12,7 @@ import { EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, useDrill } from 
 import { overviewTakeaway } from '../dashboard/takeaways';
 import { useDash } from '../dashboard/useDash';
 import KpiRow from '../dashboard/cards/KpiRow';
+import PlannedAllowanceCard from '../dashboard/cards/PlannedAllowanceCard';
 import TrendCard from '../dashboard/cards/TrendCard';
 import { AreaDownCard, AreaTargetCard, ClassCard, LossesCard, PlannedCard } from '../dashboard/cards/BreakdownCards';
 import { AttentionCard, DailyCard, FailMttrCard, HeatCard, RepeatsCard } from '../dashboard/cards/ReliabilityCards';
@@ -34,6 +35,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const drill = useDrill(dash, 'Dashboard');
   const onOpen = useCallback((s: OpenSpec) => drill(s.label, { eventIds: s.ids }), [drill]);
+  // planned rows need not head an event: they are opened as rows (and the events they head)
+  const onOpenRows = useCallback((label: string, ids: string[]) => drill(label, { eventIds: ids, rowIds: ids }), [drill]);
   const model = useMemo(() => (ctx ? overviewModel(ctx) : null), [ctx]);
   const sparks = useMemo(() => (ctx ? kpiSparks(ctx) : null), [ctx]);
   const rows = useMemo(() => (ctx ? rowsInRange(ctx.scope, ctx.win.range) : null), [ctx]);
@@ -84,6 +87,7 @@ export default function Dashboard() {
             <PlannedCard ctx={ctx} filters={dash.filters} dark={dark} onOpen={onOpen} />
             <AreaDownCard ctx={ctx} filters={dash.filters} dark={dark} onOpen={onOpen} />
             <AreaTargetCard ctx={ctx} filters={dash.filters} onOpen={onOpen} />
+            <PlannedAllowanceCard ctx={ctx} filters={dash.filters} onOpenRows={onOpenRows} />
             <FailMttrCard ctx={ctx} filters={dash.filters} onOpen={onOpen} />
             <AttentionCard ctx={ctx} filters={dash.filters} onOpen={onOpen} />
             <RepeatsCard ctx={ctx} filters={dash.filters} onOpen={onOpen} onAll={() => navigate('/repeats')} />

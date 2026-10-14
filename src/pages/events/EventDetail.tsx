@@ -1,3 +1,5 @@
+import { useCreateAction } from '../../actions/ActionsContext';
+import { eventPrefill } from '../../actions/prefill';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { dateText, tsText } from '../../util/dates';
 import { api, describeError } from '../../api';
@@ -12,7 +14,7 @@ import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
 import { useOnlineStatus } from '../../useOnlineStatus';
 import { duration } from '../../util/format';
-import { flagList, isValidDate, parseTs } from '../../util/normalize';
+import { codeKey, flagList, isValidDate, parseTs } from '../../util/normalize';
 import { shortTs } from '../../util/format';
 import type { ValidateAssist } from './assist';
 import EventBadges from './EventBadges';
@@ -94,6 +96,7 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
 }) {
   const { token, user } = useAuth();
   const online = useOnlineStatus();
+  const createAction = useCreateAction();
   const [mode, setMode] = useState<Mode>(canEdit && assist?.initialMode ? assist.initialMode : 'view');
   const [history, setHistory] = useState<EventEdit[] | null>(null);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -238,6 +241,12 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
   const err = (k: string) => errors[k] && <span className="field-error" role="alert" data-testid={`error-${k}`}>{errors[k]}</span>;
   const startBeforeStop = parseTs(fromInput(form.start_ts)) !== null && parseTs(fromInput(form.stop_ts)) !== null && parseTs(fromInput(form.start_ts))! < parseTs(fromInput(form.stop_ts))!;
 
+  // "Create action" from this record (people with Edit on Actions), with the record as evidence
+  const createActionBtn = createAction && !row.is_void ? (
+    <button type="button" className="btn" onClick={() => { createAction(eventPrefill(row, (code) => !!startup?.equipment.some((e) => codeKey(e.equipment_id) === codeKey(code)))); }} data-testid="event-create-action">
+      <Icon name="plus" size={15} /> {t('Create action')}
+    </button>
+  ) : null;
   const footer =
     mode === 'view' && drawer ? (
       // the drawer: the main action first (its header has the close button)
@@ -259,13 +268,15 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
             <button type="button" className="btn-danger" onClick={startVoid} data-testid="void-event">
               <Icon name="ban" size={15} /> {t('Void')}
             </button>
+            {createActionBtn}
             <span className="sm-foot-note">{t('Saves to history')}</span>
           </>
         )
-      ) : <span className="sm-foot-note">{t('View only')}</span>
+      ) : <>{createActionBtn}<span className="sm-foot-note">{t('View only')}</span></>
     ) : mode === 'view' ? (
       <>
         <button type="button" className="btn" onClick={onClose}>{t('Close')}</button>
+        {createActionBtn}
         {canEdit && (
           <>
             {row.is_void ? (

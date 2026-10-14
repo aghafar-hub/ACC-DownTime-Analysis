@@ -11,8 +11,10 @@ import { BASIS_FORMULA, changedSettings, groups, SETTING_FALLBACKS, validateSett
 import './admin.css';
 
 /** The editable settings. Saved together with one call: all or nothing. */
-export default function SettingsForm({ settings, canEdit, onSaved, groupIds, badge }: {
+export default function SettingsForm({ settings, canEdit, onSaved, groupIds, badge, hideKeys }: {
   settings: Setting[]; canEdit: boolean; onSaved: (text: string) => void; groupIds?: string[];
+  /** fields edited elsewhere on the page (e.g. the closers people picker) */
+  hideKeys?: string[];
   /** shown at the end of the summary line (the View only badge) */
   badge?: ReactNode;
 }) {
@@ -97,7 +99,7 @@ export default function SettingsForm({ settings, canEdit, onSaved, groupIds, bad
           </div>
           <p className="adm-note">{g.intro} {t(WHEN_TEXT[g.when].detail)}</p>
           <fieldset disabled={!canEdit || busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-            <div className="form-grid">{g.fields.map(control)}</div>
+            <div className="form-grid">{g.fields.filter((f) => !hideKeys?.includes(f.key)).map(control)}</div>
           </fieldset>
         </section>
       ))}

@@ -5,7 +5,7 @@ import BellButton from '../notifications/BellButton';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
-import { isSettingsPath, pageForPath, pageLabel, ROLE_LABELS, sectionLabel, settingsSubFromPath, settingsSubLabel } from '../navigation';
+import { isNotificationsPath, isSettingsPath, pageForPath, pageLabel, ROLE_LABELS, sectionLabel, settingsSubFromPath, settingsSubLabel } from '../navigation';
 import { useOnlineStatus } from '../useOnlineStatus';
 import './TopBar.css';
 
@@ -23,7 +23,8 @@ export default function TopBar() {
   const page = pageForPath(location.pathname);
   const onSettings = isSettingsPath(location.pathname);
   const sub = onSettings ? settingsSubFromPath(location.pathname) : undefined;
-  const pageName = onSettings ? t('Settings') : page ? pageLabel(page) : '';
+  const onInbox = isNotificationsPath(location.pathname);
+  const pageName = onSettings ? t('Settings') : onInbox ? t('Notifications') : page ? pageLabel(page) : '';
   const subName = sub ? settingsSubLabel(sub) : '';
 
   useEffect(() => {
@@ -69,6 +70,12 @@ export default function TopBar() {
       ) : (
         <div className="shell-topbar-titles">
           <div className="shell-topbar-crumb" data-testid="breadcrumb">
+            {onInbox && (
+              <>
+                <span className="shell-topbar-page" data-testid="breadcrumb-section">{sectionLabel('act')}</span>
+                <span className="shell-topbar-sep" aria-hidden="true">›</span>
+              </>
+            )}
             {page && !onSettings && sectionLabel(page.group) !== pageName && (
               <>
                 <span className="shell-topbar-page" data-testid="breadcrumb-section">{sectionLabel(page.group)}</span>

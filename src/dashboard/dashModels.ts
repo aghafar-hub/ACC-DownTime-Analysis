@@ -11,7 +11,7 @@ import { monthShort, monthText, rangeText } from '../util/dates';
 import type { DashFilters } from './filters';
 import { areaModel, daily, equipmentModel, lineModel, reasonModel } from './models';
 import type { DashCtx } from './scope';
-import { getTargets, targetStatus, type TargetStatus, type Targets } from './targets';
+import { getTargets, targetsOfArea, targetStatus, type TargetStatus, type Targets } from './targets';
 
 // ---------------------------------------------------------------- ranges
 
@@ -314,6 +314,10 @@ export interface AreaAvail {
   pct: number | null;
   reason?: string;
   status: TargetStatus | null;
+  /** the target this area is judged against (its own or the plant-wide one), percent or null */
+  target?: number | null;
+  /** the area has its own target for the year */
+  ownTarget?: boolean;
 }
 
 export interface AreaAvailModel {
@@ -327,13 +331,18 @@ export interface AreaAvailModel {
 }
 
 /** Availability (settings basis) per area, worst first; areas without a figure last. */
-export function areaAvailability(ctx: DashCtx): AreaAvailModel | null {
+/** `perArea`: availability targets of single areas for the year (Settings › Actions & targets); the others use the plant-wide one. */
+export function areaAvailability(ctx: DashCtx, perArea?: ReadonlyMap<string, number> | null): AreaAvailModel | null {
   const k = ctx.kpis.current;
   if (k.status !== 'ok') return null;
   const targets = getTargets(ctx.master.settings);
   const rows = k.areas.map((a) => {
     const m = a.availabilityHeadline;
-    return { area_id: a.area_id, name: areaName(ctx, a.area_id), pct: m.available ? m.value * 100 : null, reason: m.available ? undefined : m.reason, status: m.available ? targetStatus('availability', m.value, targets) : null };
+    const tg = targetsOfArea(targets, perArea, a.area_id);
+    return {
+      area_id: a.area_id, name: areaName(ctx, a.area_id), pct: m.available ? m.value * 100 : null, reason: m.available ? undefined : m.reason,
+      status: m.available ? targetStatus('availability', m.value, tg) : null, target: tg.availabilityPct, ownTarget: perArea?.has(a.area_id) ?? false,
+    };
   }).sort((a, b) => (a.pct ?? Infinity) - (b.pct ?? Infinity) || a.area_id.localeCompare(b.area_id));
   const judged = rows.filter((r) => r.status);
   const o = k.total.availabilityHeadline;

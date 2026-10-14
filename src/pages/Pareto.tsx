@@ -14,6 +14,8 @@ import { paretoTakeaway } from '../dashboard/takeaways';
 import { useDash } from '../dashboard/useDash';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
+import { useCreateAction } from '../actions/ActionsContext';
+import { paretoPrefill, type ParetoDim } from '../actions/prefill';
 import '../components/ui.css';
 import '../dashboard/dashboard.css';
 
@@ -82,6 +84,11 @@ export default function Pareto() {
   const rows = useMemo(() => (ctx ? rowsInRange(ctx.scope, ctx.win.range) : null), [ctx]);
 
   const open = (prefix: string) => (label: string, ids: string[]) => drill(`${prefix} ${label}`, { eventIds: ids });
+  // "Create action" in a bar's tooltip, for people who may create actions
+  const createAction = useCreateAction();
+  const act = (dim: ParetoDim, chart: string, equipment?: string) => (createAction
+    ? (b: ParetoBar) => createAction(paretoPrefill({ dim, key: b.key, label: b.label, eventIds: b.eventIds, hours: chart.includes(t('hours')) ? b.value : undefined, chart, equipment }))
+    : undefined);
   const win = ctx?.win.effective;
   const hoursTot = eq?.hours.own.total ?? 0;
   const empty = !!eq && rows !== null && rows.length === 0;
@@ -119,8 +126,8 @@ export default function Pareto() {
           {sub === 'equipment' && (
             <>
               <div className="chart-grid">
-                <ParetoCard title={t('Equipment by failure hours')} subtitle={t('Own-stop rule: only codes that belong to the stopped area')} all={eq.hours.own} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-eq-hours" onOpen={open(t('the Pareto bar'))} />
-                <ParetoCard title={t('Equipment by failure frequency')} subtitle={t('Failure events that started in the range')} all={eq.count.own} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-eq-count" onOpen={open(t('the Pareto bar'))} />
+                <ParetoCard title={t('Equipment by failure hours')} subtitle={t('Own-stop rule: only codes that belong to the stopped area')} all={eq.hours.own} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-eq-hours" onOpen={open(t('the Pareto bar'))} onAction={act('equipment', t('Equipment by failure hours'))} />
+                <ParetoCard title={t('Equipment by failure frequency')} subtitle={t('Failure events that started in the range')} all={eq.count.own} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-eq-count" onOpen={open(t('the Pareto bar'))} onAction={act('equipment', t('Equipment by failure frequency'))} />
               </div>
               <div className="bucket-grid" data-testid="buckets">
                 <Bucket title={t('Stopped by other areas')} note={t('The code belongs to another area only; not counted above so a cause is never counted twice.')} result={eq.hours.otherAreas} testid="bucket-other" onOpen={open(t('the bucket'))} detail={otherDetail} />
@@ -137,12 +144,12 @@ export default function Pareto() {
                 <Toggle value={split ? 'split' : 'merge'} options={[{ value: 'merge', label: t('Merge') }, { value: 'split', label: t('Split by classification') }]} onChange={(v) => setSplit(v === 'split')} label={t('Reason grouping')} testid="reason-split" />
               </div>
               <div className="chart-grid">
-                <ParetoCard title={t('Reasons by failure hours')} all={reasons?.hours ?? null} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-reason-hours" onOpen={open(t('the Pareto bar'))} />
-                <ParetoCard title={t('Reasons by failure frequency')} all={reasons?.count ?? null} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-reason-count" onOpen={open(t('the Pareto bar'))} />
+                <ParetoCard title={t('Reasons by failure hours')} all={reasons?.hours ?? null} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-reason-hours" onOpen={open(t('the Pareto bar'))} onAction={act('reason', t('Reasons by failure hours'))} />
+                <ParetoCard title={t('Reasons by failure frequency')} all={reasons?.count ?? null} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-reason-count" onOpen={open(t('the Pareto bar'))} onAction={act('reason', t('Reasons by failure frequency'))} />
               </div>
               <ParetoCard
                 title={t('Reasons for one equipment code')} subtitle={t('Why does {c} fail?', { c: code || '-' })} all={reasonEq} what={t('failures')} unit={eqMeasure === 'hours' ? 'h' : t('events')} fmt={eqMeasure === 'hours' ? fh : fint}
-                testid="pareto-reason-equipment" onOpen={open(t('the Pareto bar'))}
+                testid="pareto-reason-equipment" onOpen={open(t('the Pareto bar'))} onAction={act('reason', t('Reasons for {c}', { c: code }), code)}
                 controls={(
                   <>
                     <div className="field" style={{ minWidth: 150 }}>
@@ -177,9 +184,9 @@ export default function Pareto() {
           )}
           {sub === 'area' && (
             <div className="chart-grid">
-              <ParetoCard title={t('Lines by failure hours')} subtitle={t('Failure events by the line of the stopped area (area-hours)')} all={lineH} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-line-hours" onOpen={open(t('the Pareto bar'))} />
+              <ParetoCard title={t('Lines by failure hours')} subtitle={t('Failure events by the line of the stopped area (area-hours)')} all={lineH} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-line-hours" onOpen={open(t('the Pareto bar'))} onAction={act('line', t('Lines by failure hours'))} />
               <ParetoCard title={t('Lines by failure frequency')} all={lineC} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-line-count" onOpen={open(t('the Pareto bar'))} />
-              <ParetoCard title={t('Areas by failure hours')} subtitle={t('Failure events by stopped area (area-hours)')} all={areaH} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-area-hours" onOpen={open(t('the Pareto bar'))} />
+              <ParetoCard title={t('Areas by failure hours')} subtitle={t('Failure events by stopped area (area-hours)')} all={areaH} what={t('failure hours')} unit="h" fmt={fh} testid="pareto-area-hours" onOpen={open(t('the Pareto bar'))} onAction={act('area', t('Areas by failure hours'))} />
               <ParetoCard title={t('Areas by failure frequency')} all={areaC} what={t('failures')} unit={t('events')} fmt={fint} testid="pareto-area-count" onOpen={open(t('the Pareto bar'))} />
               <ParetoCard
                 title={t('Classifications by hours')} subtitle={classAll ? t('All events, including planned (PL) and other (CIR)') : t('Failure events only')} all={cls} what={t('hours')} unit="h" fmt={fh}

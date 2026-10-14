@@ -20,6 +20,7 @@ const SUBS = {
   appearance: lazyPage(() => import('../admin/settings/Appearance')),
   notifications: lazyPage(() => import('../admin/settings/Notifications')),
   calculations: lazyPage(() => import('../admin/settings/Calculations')),
+  actions: lazyPage(() => import('../admin/settings/ActionsTargets')),
   security: lazyPage(() => import('../admin/settings/Security')),
   users: lazyPage(() => import('../admin/settings/UsersAccess')),
 };

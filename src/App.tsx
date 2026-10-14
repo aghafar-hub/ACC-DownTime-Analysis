@@ -24,9 +24,10 @@ import ScrollKeeper from './mobile/ScrollKeeper';
 import ChangePassword from './pages/ChangePassword';
 import Login from './pages/Login';
 import {
-  DashboardPage, EventExplorerPage, MasterPage, ParetoPage, preloadPath, ReliabilityPage, ReportsPage, RepeatsPage,
+  ActionsPage, DashboardPage, EventExplorerPage, MasterPage, NotificationsPage, ParetoPage, preloadPath, ReliabilityPage, ReportsPage, RepeatsPage,
   SettingsPage, UploadPage, ValidatePage, whenIdle,
 } from './routes/lazyPages';
+import { ActionsProvider } from './actions/ActionsContext';
 import { PageLoadBoundary, PageSkeleton } from './routes/PageFallback';
 import { NotificationsProvider } from './notifications/NotificationsContext';
 import { ValidationProvider } from './validate/ValidationContext';
@@ -45,6 +46,8 @@ const Validate = ValidatePage.Component;
 const Upload = UploadPage.Component;
 const Master = MasterPage.Component;
 const Settings = SettingsPage.Component;
+const ActionsBoard = ActionsPage.Component;
+const NotificationsInbox = NotificationsPage.Component;
 
 // Hover, keyboard focus or a touch on any link or menu tile in the shell starts loading that page's code,
 // so the page is usually ready by the time the click lands. Links carry their address in href ('#/pareto');
@@ -93,6 +96,7 @@ function ShellLayout() {
   return (
     <ValidationProvider>
     <NotificationsProvider>
+    <ActionsProvider>
     <ScopeSlotContext.Provider value={slots}>
     <div
       className={pinned && !mobile ? 'app-shell app-shell--rail-pinned' : 'app-shell'}
@@ -121,6 +125,7 @@ function ShellLayout() {
       <SaveBlockedToast />
     </div>
     </ScopeSlotContext.Provider>
+    </ActionsProvider>
     </NotificationsProvider>
     </ValidationProvider>
   );
@@ -213,6 +218,8 @@ export default function App() {
                 <Route path="/repeats" element={<RequireTab tab="repeats"><Repeats /></RequireTab>} />
                 <Route path="/reliability" element={<RequireTab tab="reliability"><Reliability /></RequireTab>} />
                 <Route path="/reports" element={<RequireTab tab="reports"><Reports /></RequireTab>} />
+                <Route path="/actions" element={<RequireTab tab="actions"><ActionsBoard /></RequireTab>} />
+                <Route path="/notifications" element={<NotificationsInbox />} />
                 <Route path="/events" element={<RequireTab tab="events"><EventExplorer /></RequireTab>} />
                 <Route path="/validate" element={<RequireTab tab="events"><Validate /></RequireTab>} />
                 <Route path="/upload" element={<RequireTab tab="upload"><Upload /></RequireTab>} />

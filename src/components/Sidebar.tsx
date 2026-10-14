@@ -3,7 +3,9 @@ import { Icon } from '../icons';
 import { useRail } from '../hooks/useRail';
 import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
-import { pageLabel, pagesInSection, SECTIONS, sectionLabel } from '../navigation';
+import { NOTIFICATIONS_PATH, pageLabel, pagesInSection, SECTIONS, sectionLabel } from '../navigation';
+import { ActionsBadge } from '../actions/ActionsContext';
+import { NotificationsNavBadge } from '../notifications/NotificationsContext';
 import ValidateBadge from '../validate/NavBadge';
 import './Sidebar.css';
 
@@ -28,7 +30,8 @@ export default function Sidebar() {
         <div className="sidebar-nav">
           {SECTIONS.map((sec) => {
             const items = pagesInSection(pages, sec.id);
-            if (items.length === 0) return null;
+            // the Notifications inbox is for everyone: the Act section always has it
+            if (items.length === 0 && sec.id !== 'act') return null;
             return (
               <section key={sec.id} className="sidebar-section" aria-labelledby={`sidebar-sec-${sec.id}`} data-section={sec.id}>
                 <h2 className="sidebar-section-title" id={`sidebar-sec-${sec.id}`} data-testid={`rail-section-${sec.id}`}>{sectionLabel(sec.id)}</h2>
@@ -39,9 +42,19 @@ export default function Sidebar() {
                         <span className="sidebar-link-icon"><Icon name={p.icon} size={18} /></span>
                         <span className="sidebar-link-label">{pageLabel(p)}</span>
                         {p.id === 'validate' && <ValidateBadge testid="validate-badge-rail" />}
+                        {p.id === 'actions' && <ActionsBadge testid="actions-badge-rail" />}
                       </NavLink>
                     </li>
                   ))}
+                  {sec.id === 'act' && (
+                    <li>
+                      <NavLink to={NOTIFICATIONS_PATH} className={({ isActive }) => (isActive ? 'sidebar-link sidebar-link--active' : 'sidebar-link')} title={pinned ? undefined : t('Notifications')} data-testid="rail-link-notifications">
+                        <span className="sidebar-link-icon"><Icon name="bell" size={18} /></span>
+                        <span className="sidebar-link-label">{t('Notifications')}</span>
+                        <NotificationsNavBadge testid="notif-badge-rail" />
+                      </NavLink>
+                    </li>
+                  )}
                 </ul>
               </section>
             );

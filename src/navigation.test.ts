@@ -7,10 +7,11 @@ const only = (ids: PageId[]) => PAGES.filter((p) => ids.includes(p.id));
 const ids = (ps: { id: string }[]) => ps.map((p) => p.id);
 
 describe('navigation sections', () => {
-  it('groups every page into Analyze, Reports, Data or Setup in the agreed order', () => {
-    expect(SECTIONS.map((s) => s.label)).toEqual(['Analyze', 'Reports', 'Data', 'Setup']);
+  it('groups every page into Analyze, Reports, Act, Data or Setup in the agreed order', () => {
+    expect(SECTIONS.map((s) => s.label)).toEqual(['Analyze', 'Reports', 'Act', 'Data', 'Setup']);
     expect(ids(pagesInSection(PAGES, 'analyze'))).toEqual(['overview', 'pareto', 'repeats', 'reliability']);
     expect(ids(pagesInSection(PAGES, 'reports'))).toEqual(['reports']);
+    expect(ids(pagesInSection(PAGES, 'act'))).toEqual(['actions']);
     expect(ids(pagesInSection(PAGES, 'data'))).toEqual(['events', 'validate', 'upload']);
     expect(ids(pagesInSection(PAGES, 'setup'))).toEqual(['master']);
   });
@@ -29,12 +30,18 @@ describe('navigation sections', () => {
     for (const tab of TAB_IDS) expect(() => pageById(tab)).not.toThrow();
     expect(pageById('reports').label).toBe('Reports');
   });
-  it('the phone bar is Overview, Pareto, Events for everyone who sees them', () => {
-    expect(ids(bottomBarPages(PAGES))).toEqual(['overview', 'pareto', 'events']);
+  it('the phone bar is Dashboard, Pareto, Actions, Events for everyone who sees them (mobile-actions.png)', () => {
+    expect(ids(bottomBarPages(PAGES))).toEqual(['overview', 'pareto', 'actions', 'events']);
   });
-  it('takes the next visible page when one of the three is hidden', () => {
-    expect(ids(bottomBarPages(only(['overview', 'events', 'reliability', 'repeats'])))).toEqual(['overview', 'events', 'reliability']);
+  it('takes the next visible page when one of the four is hidden', () => {
+    expect(ids(bottomBarPages(only(['overview', 'events', 'reliability', 'repeats', 'upload'])))).toEqual(['overview', 'events', 'reliability', 'repeats']);
     expect(ids(bottomBarPages(only(['overview', 'validate', 'upload'])))).toEqual(['overview', 'validate', 'upload']);
-    expect(ids(bottomBarPages(only(['pareto', 'repeats', 'upload', 'validate'])))).toEqual(['pareto', 'repeats', 'validate']);
+    expect(ids(bottomBarPages(only(['pareto', 'repeats', 'upload', 'validate', 'master'])))).toEqual(['pareto', 'repeats', 'validate', 'upload']);
+  });
+  it('Actions is a page of its own Act section; the Notifications inbox has no tab id', () => {
+    expect(pageById('actions')).toMatchObject({ path: '/actions', access: 'actions', group: 'act' });
+    expect(pageForPath('/actions')?.id).toBe('actions');
+    expect(pageForPath('/notifications')).toBeUndefined();
+    expect(ICON_NAMES).toContain(pageById('actions').icon);
   });
 });

@@ -54,6 +54,13 @@ export function storedTarget(n: Notification, env: LinkEnv): Target {
       return { link: env.canView('upload') ? { to: '/upload' } : null, label: t('Open Upload') };
     case 'user_event':
       return { link: env.canView('users') ? { to: '/settings/users' } : null, label: t('Open users') };
+    case 'action_due': {
+      const id = n.source_ref || keyParts(n)[1] || '';
+      return { link: env.canView('actions') ? { to: id ? `/actions${qs([['id', id]])}` : '/actions' } : null, label: id ? t('Open action {id}', { id }) : t('Open Actions') };
+    }
+    case 'planned_overrun':
+      // the Dashboard's "Planned hours against the allowance" card for the area
+      return { link: env.canView('overview') ? { to: `/dashboard${qs([['area', area]])}` } : null, label: t('See planned hours') };
     default:
       return { link: null, label: '' };
   }

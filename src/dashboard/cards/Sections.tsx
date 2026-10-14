@@ -15,7 +15,8 @@ import { fh, fh2, fint, metricText } from '../format';
 import { areaName, idsWithHoursByArea, scopeText } from '../dashModels';
 import type { DashFilters } from '../filters';
 import type { DashCtx } from '../scope';
-import { getTargets, targetStatus } from '../targets';
+import { getTargets, targetsOfArea, targetStatus } from '../targets';
+import { useAreaTargetMap } from '../useAreaTargetMap';
 import { OpenLink, type OpenFn } from './DashCard';
 
 const pct1 = (n: number): string => `${(Math.round(n * 10) / 10).toFixed(1)}%`;
@@ -64,6 +65,7 @@ export function AreasSection({ ctx, filters, onOpen }: { ctx: DashCtx; filters: 
   const eff = ctx.win.effective!;
   const k = ctx.kpis.current;
   const byArea = useMemo(() => idsWithHoursByArea(ctx, eff), [ctx, eff]);
+  const perArea = useAreaTargetMap(ctx);
   if (k.status !== 'ok') return null;
   const targets = getTargets(ctx.master.settings);
   const basis = ctx.master.settings.availabilityBasis;
@@ -74,7 +76,7 @@ export function AreasSection({ ctx, filters, onOpen }: { ctx: DashCtx; filters: 
   const sub = `${t('Top {n} of {m} by stopped hours', { n: Math.min(5, sorted.length), m: sorted.length })}${targets.availabilityPct !== null ? ` · ${t('availability target {x}% (basis {b})', { x: targets.availabilityPct, b: basis })}` : ''}`;
   const status = (a: (typeof sorted)[number]) => {
     const m = a.availabilityHeadline;
-    const s = m.available ? targetStatus('availability', m.value, targets) : null;
+    const s = m.available ? targetStatus('availability', m.value, targetsOfArea(targets, perArea, a.area_id)) : null;
     if (!s) return null;
     const g = `${Math.abs(s.gap).toFixed(1)} ${t('pt')}`;
     return s.ok
@@ -123,7 +125,7 @@ export function AreasSection({ ctx, filters, onOpen }: { ctx: DashCtx; filters: 
                 <thead>
                   <tr>
                     <th scope="col">{t('Area')}</th><th scope="col" aria-hidden="true" /><th scope="col" className="num">{t('Stopped h')}</th><th scope="col" className="num">{t('Failures')}</th>
-                    <th scope="col">{targets.availabilityPct !== null ? t('Availability {b} vs target {x}%', { b: basis, x: targets.availabilityPct }) : t('Availability {b}', { b: basis })}</th>
+                    <th scope="col">{perArea ? t('Availability {b} vs area target', { b: basis }) : targets.availabilityPct !== null ? t('Availability {b} vs target {x}%', { b: basis, x: targets.availabilityPct }) : t('Availability {b}', { b: basis })}</th>
                     <th scope="col" className="num">{t('MTBF')}</th><th scope="col" className="num">{t('MTTR')}</th><th scope="col"><span className="sr-only">{t('Records')}</span></th>
                   </tr>
                 </thead>

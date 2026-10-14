@@ -11,13 +11,20 @@ import { groupItems, GROUP_LABEL, KIND_LABEL, type FeedItem, type ItemKind } fro
 import { useNotifications } from './NotificationsContext';
 import { serializeAreas } from './prefs';
 import { useValidationOptional } from '../validate/ValidationContext';
+import { useCreateAction } from '../actions/ActionsContext';
+import { notificationPrefill } from '../actions/prefill';
+import { codeKey } from '../calc';
+import { NOTIFICATIONS_PATH } from '../navigation';
+import { canCreateFrom, categoryOf } from './categories';
 import './notifications.css';
+import './inbox.css';
 
 const KIND_ICON: Record<ItemKind, string> = { action: 'alert', alert: 'bell', update: 'info' };
 const FOCUSABLE = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-function Row({ item, isNew, nowMs, onGo, onSnooze, onDismiss }: {
+function Row({ item, isNew, nowMs, onGo, onSnooze, onDismiss, onCreate }: {
   item: FeedItem; isNew: boolean; nowMs: number; onGo: (i: FeedItem) => void; onSnooze: (i: FeedItem, days: number) => void; onDismiss: (i: FeedItem) => void;
+  onCreate?: (i: FeedItem) => void;
 }) {
   const [menu, setMenu] = useState(false);
   const age = item.created_at ? relativeAge(item.created_at, nowMs) : '';
@@ -38,6 +45,11 @@ function Row({ item, isNew, nowMs, onGo, onSnooze, onDismiss }: {
       <div className="np-actions">
         {item.link && (
           <button type="button" className="btn-primary np-go" onClick={() => onGo(item)} data-testid="notif-go">{item.linkLabel}</button>
+        )}
+        {onCreate && canCreateFrom(item) && (
+          <button type="button" className="btn np-btn" onClick={() => onCreate(item)} data-testid="notif-create-action">
+            <Icon name="plus" size={14} /> {t('Create action')}
+          </button>
         )}
         {canDefer && (
           <>
@@ -169,6 +181,21 @@ export default function NotificationPanel({ anchorRef }: { anchorRef: RefObject<
   }, [anchorRef, closePanel, mobile]);
 
   const groups = useMemo(() => groupItems(n.items), [n.items]);
+  const createAction = useCreateAction();
+  const v = useValidationOptional();
+  const known = useMemo(() => new Set((v?.st.startup?.equipment ?? []).map((e) => codeKey(e.equipment_id))), [v?.st.startup]);
+  const onCreate = useCallback((item: FeedItem) => {
+    if (!createAction) return;
+    closePanel();
+    createAction(notificationPrefill(item, categoryOf(item), {
+      findEvent: (id) => v?.rows.find((r) => r.event_id === id),
+      isEquipment: (code) => known.size === 0 || known.has(codeKey(code)),
+    }));
+  }, [createAction, closePanel, v, known]);
+  const seeAll = useCallback(() => {
+    closePanel();
+    navigate(NOTIFICATIONS_PATH);
+  }, [closePanel, navigate]);
   const nowMs = Date.now();
   const go = useCallback((item: FeedItem) => {
     if (!item.link) return;
@@ -226,12 +253,15 @@ export default function NotificationPanel({ anchorRef }: { anchorRef: RefObject<
               </h3>
               <ul className="np-list">
                 {g.items.map((item) => (
-                  <Row key={item.id} item={item} isNew={newIds.has(item.id)} nowMs={nowMs} onGo={go} onSnooze={snooze} onDismiss={dismiss} />
+                  <Row key={item.id} item={item} isNew={newIds.has(item.id)} nowMs={nowMs} onGo={go} onSnooze={snooze} onDismiss={dismiss} onCreate={createAction ? onCreate : undefined} />
                 ))}
               </ul>
             </section>
           ))
         )}
+      </div>
+      <div className="np-all">
+        <button type="button" className="btn" onClick={seeAll} data-testid="notif-see-all"><Icon name="list" size={15} /> {t('See all notifications')}</button>
       </div>
     </div>
   );

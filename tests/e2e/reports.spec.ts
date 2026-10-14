@@ -255,9 +255,9 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('rpt-findings').locator('li')).toHaveCount(5);
     await expect(page.getByTestId('rpt-takeaway').first()).toContainText('area-hours stopped');
     await expect(page.getByTestId('rpt-q-records')).toBeVisible();
-    // actions: Edit setup, Copy link, Download Excel, Download CSV (a menu), Print
+    // actions: Edit setup, Copy link, Download Excel, Download CSV (a menu), Create action (Edit on Actions), Print
     const bar = page.getByTestId('report-toolbar');
-    await expect(bar.getByRole('button')).toHaveText([/Edit setup/, /Copy link/, /Download Excel/, /Download CSV/, /Print \/ Save as PDF/]);
+    await expect(bar.getByRole('button')).toHaveText([/Edit setup/, /Copy link/, /Download Excel/, /Download CSV/, /Create action/, /Print \/ Save as PDF/]);
   });
 
   test('filters narrow the report: line, area and equipment change the numbers and the cover says so', async ({ page }) => {

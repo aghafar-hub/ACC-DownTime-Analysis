@@ -30,6 +30,13 @@ describe('storedTarget', () => {
     expect(storedTarget(n({ type: 'upload_done', area_id: undefined }), env()).link).toEqual({ to: '/upload' });
     expect(storedTarget(n({ type: 'user_event', area_id: undefined }), env()).link).toEqual({ to: '/settings/users' });
   });
+  it('overdue action: that action on the Actions page; planned overrun: the Dashboard of the area', () => {
+    const due = storedTarget(n({ type: 'action_due', dedupe_key: 'action_due|AC-202610-0004|2026-10-01', source_ref: 'AC-202610-0004' }), env());
+    expect(due).toEqual({ link: { to: '/actions?id=AC-202610-0004' }, label: 'Open action AC-202610-0004' });
+    expect(storedTarget(n({ type: 'action_due', dedupe_key: 'action_due|AC-1|2026-10-01', source_ref: '' }), env()).link).toEqual({ to: '/actions?id=AC-1' });
+    expect(storedTarget(n({ type: 'action_due' }), env(['actions'])).link).toBeNull();
+    expect(storedTarget(n({ type: 'planned_overrun', dedupe_key: 'planned|K.1|2026-08' }), env()).link).toEqual({ to: '/dashboard?area=K.1' });
+  });
   it('no button when the person may not open the place', () => {
     expect(storedTarget(n({ type: 'upload_gap' }), env(['upload'])).link).toBeNull();
     expect(storedTarget(n({}), env(['events'])).link).toBeNull();

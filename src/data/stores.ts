@@ -2,7 +2,7 @@
 // cache behind them. Pages read them through the hooks in useStartup.ts and
 // useEvents.ts; nothing here depends on React.
 import { api, describeError } from '../api';
-import type { EventRow, Startup } from '../api/types';
+import type { ActionsPayload, AreaTarget, EventRow, Startup } from '../api/types';
 import { ApiError } from '../api/types';
 import { t } from '../i18n/t';
 import { getCached, setCached } from './cache';
@@ -95,6 +95,11 @@ export class Resource<T> {
 
 export const startupResource = new Resource<Startup>('startup', (token) => api.getStartup(token));
 
+/** Every action with its history, the contractors and the people (backend 1.4.0). Cached on the device, readable offline. */
+export const actionsResource = new Resource<ActionsPayload>('actions', (token) => api.listActions(token));
+/** The area targets of every year (availability target and planned-stop allowance). */
+export const areaTargetsResource = new Resource<AreaTarget[]>('area_targets', (token) => api.getAreaTargets(token));
+
 let eventResources = new Map<number, Resource<EventRow[]>>();
 export function eventsResource(year: number): Resource<EventRow[]> {
   let r = eventResources.get(year);
@@ -110,4 +115,6 @@ export function resetDataStores() {
   eventResources.forEach((r) => r.reset());
   eventResources = new Map();
   startupResource.reset();
+  actionsResource.reset();
+  areaTargetsResource.reset();
 }

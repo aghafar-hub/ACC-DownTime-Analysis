@@ -67,9 +67,15 @@ export function kpiTargetStatuses(k: Pick<AreaKpis, 'availabilityHeadline' | 'mt
   };
 }
 
-/** Per area (by area id). Areas without a figure or without a target have null entries. */
-export function areaTargetStatuses(areas: readonly Pick<AreaKpis, 'area_id' | 'availabilityHeadline' | 'mtbfHours' | 'mttrHours'>[], targets: Targets): Map<string, KpiTargetStatuses> {
-  return new Map(areas.map((a) => [a.area_id, kpiTargetStatuses(a, targets)]));
+/** The targets an area is judged against: its own availability target for the year (Settings › Actions & targets) when it has one. */
+export function targetsOfArea(targets: Targets, perArea: ReadonlyMap<string, number> | null | undefined, areaId: string): Targets {
+  const own = perArea?.get(areaId);
+  return own === undefined ? targets : { ...targets, availabilityPct: own };
+}
+
+/** Per area (by area id). Areas without a figure or without a target have null entries. `perArea`: availability targets per area. */
+export function areaTargetStatuses(areas: readonly Pick<AreaKpis, 'area_id' | 'availabilityHeadline' | 'mtbfHours' | 'mttrHours'>[], targets: Targets, perArea?: ReadonlyMap<string, number> | null): Map<string, KpiTargetStatuses> {
+  return new Map(areas.map((a) => [a.area_id, kpiTargetStatuses(a, targetsOfArea(targets, perArea, a.area_id))]));
 }
 
 /** "N of M areas below target": areas with a figure are counted; null when the availability target is off. */

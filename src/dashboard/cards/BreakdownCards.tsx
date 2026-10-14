@@ -18,6 +18,7 @@ import {
 import type { DashFilters } from '../filters';
 import type { DashCtx } from '../scope';
 import DashCard, { Seg, type OpenFn } from './DashCard';
+import { useAreaTargetMap } from '../useAreaTargetMap';
 
 const pct1 = (v: number, total: number): string => (total > 0 ? `${((v / total) * 100).toFixed(1)}%` : '–');
 const pct0 = (v: number, total: number): number => (total > 0 ? Math.round((v / total) * 100) : 0);
@@ -298,15 +299,19 @@ export function AreaTargetCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters
   const mobile = useIsMobile();
   const [all, setAll] = useState(false);
   const eff = ctx.win.effective!;
-  const m = useMemo(() => areaAvailability(ctx), [ctx]);
+  const perArea = useAreaTargetMap(ctx);
+  const m = useMemo(() => areaAvailability(ctx, perArea), [ctx, perArea]);
   const ids = useMemo(() => idsWithHours(ctx, eff), [ctx, eff]);
   if (!m) return null;
   const basis = ctx.master.settings.availabilityBasis;
-  const tg = m.target;
+  // with targets per area (Settings > Actions & targets) each row has its own dashed line; m.target stays the plant-wide one
+  const own = !!perArea && m.rows.some((r) => r.ownTarget);
+  const tg = own ? (m.target ?? m.rows.find((r) => r.target != null)?.target ?? null) : m.target;
   const shown = mobile && !all ? m.rows.slice(0, 6) : m.rows;
-  const title = tg !== null ? t('Which areas miss the {x}% target?', { x: tg }) : t('Which areas have the lowest availability?');
+  // a plant-wide target keeps the card's wording (areas with their own target use it on their row); without one, only own targets
+  const title = m.target !== null ? t('Which areas miss the {x}% target?', { x: m.target }) : own ? t('Which areas miss their availability target?') : t('Which areas have the lowest availability?');
   const summary = m.rows.length
-    ? `${t('{n} areas, worst first. Lowest: {a} at {p}%.', { n: m.rows.length, a: m.rows[0]!.area_id, p: m.rows[0]!.pct?.toFixed(1) ?? '–' })}${tg !== null ? ` ${t('{n} of {m} areas below target ({x}%).', { n: m.below, m: m.judged, x: tg })}` : ` ${t('No availability target is set.')}`}`
+    ? `${t('{n} areas, worst first. Lowest: {a} at {p}%.', { n: m.rows.length, a: m.rows[0]!.area_id, p: m.rows[0]!.pct?.toFixed(1) ?? '–' })}${m.target !== null ? ` ${t('{n} of {m} areas below target ({x}%).', { n: m.below, m: m.judged, x: m.target })}` : own ? ` ${t('{n} of {m} areas below their own target.', { n: m.below, m: m.judged })}` : ` ${t('No availability target is set.')}`}`
     : t('No availability can be calculated for these areas.');
   const gapText = (r: (typeof m.rows)[number]) => {
     const s = r.status;
@@ -319,25 +324,27 @@ export function AreaTargetCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters
   return (
     <DashCard
       id="area-target" testid="chart-area-availability" title={title}
-      subtitle={tg !== null ? t('Availability by area (basis {b}, %) · worst first · dashed line = {x}% target', { b: basis, x: tg }) : t('Availability by area (basis {b}, %) · worst first', { b: basis })}
+      subtitle={own ? t('Availability by area (basis {b}, %) · worst first · dashed line = the target of the area (Settings › Actions & targets){g}', { b: basis, g: m.target !== null ? t(', else {x}%', { x: m.target }) : '' }) : m.target !== null ? t('Availability by area (basis {b}, %) · worst first · dashed line = {x}% target', { b: basis, x: m.target }) : t('Availability by area (basis {b}, %) · worst first', { b: basis })}
       headLink={mobile && m.rows.length > 6 ? <button type="button" className="dcard-link" onClick={() => setAll((v) => !v)} aria-expanded={all} data-testid="area-target-all">{all ? t('Worst 6') : t('All {n}', { n: m.rows.length })} <span aria-hidden="true">›</span></button> : undefined}
       legend={tg !== null ? [
         { kind: 'box', className: 'lg-below', label: t('Below target ▼') },
         { kind: 'box', className: 'lg-on', label: t('On target ✓') },
-        { kind: 'dash', label: t('{x}% target', { x: tg }) },
+        { kind: 'dash', label: m.target !== null ? t('{x}% target', { x: m.target }) : t('area target') },
       ] : undefined}
       summary={summary} scope={`${scopeText(eff, filters, 'all')}${tg !== null ? ` · ${t('{n} of {m} below target', { n: m.below, m: m.judged })}` : ''}`}
       open={{ ids, label: t('Availability by area') }} onOpen={onOpen}
       footExtra={tg !== null ? <span className="sr-only" data-testid="below-target-count">{t('{n} of {m} areas below target', { n: m.below, m: m.judged })}</span> : undefined}
     >
+      {own && m.target === null && <p className="at-note" data-testid="own-target-note">{t('Only areas with their own target (Settings › Actions & targets) are marked; there is no plant-wide target for the others.')}</p>}
       {tg === null && <p className="at-note" data-testid="no-target-note">{t('No availability target is set, so no area is marked below or on target. An admin can set one in Settings › Calculations.')}</p>}
       <div className={`at-list${tg === null ? ' at-list--plain' : ''}`} style={{ '--target': tg === null ? '0%' : `${tg}%` } as CSSProperties} data-testid="at-list">
         {shown.map((r) => (
-          <div key={r.area_id} className="at-row" data-testid="at-row" data-area={r.area_id} data-state={r.status?.state ?? 'none'}>
-            <span className="at-label"><b>{r.area_id}</b>{r.name && <span className="muted"> {r.name}</span>}</span>
+          <div key={r.area_id} className="at-row" data-testid="at-row" data-area={r.area_id} data-state={r.status?.state ?? 'none'} data-target={r.target ?? undefined}
+            style={own && r.target != null ? ({ '--target': `${r.target}%` } as CSSProperties) : undefined}>
+            <span className="at-label"><b>{r.area_id}</b>{r.name && <span className="muted"> {r.name}</span>}{own && r.target != null && <span className="muted at-own" data-testid="at-own-target"> · {t('target {x}%', { x: r.target })}</span>}</span>
             <span className="at-track">
               {r.pct !== null && <span className={`at-fill${r.status ? (r.status.ok ? ' at-fill--ok' : ' at-fill--bad') : ''}`} style={{ width: `${Math.max(0, Math.min(100, r.pct))}%` }} />}
-              {tg !== null && <span className="at-target" />}
+              {(own ? r.target != null : tg !== null) && <span className="at-target" />}
             </span>
             <span className="at-val">{r.pct === null ? t('Unavailable') : `${r.pct.toFixed(1)}%`}</span>
             {gapText(r)}
@@ -347,7 +354,7 @@ export function AreaTargetCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters
           <span />
           <span className="at-track at-track--axis">
             {(tg === null ? [0, 25, 50, 75, 100] : [0, 25, 50, 100]).filter((v) => !mobile || v === 0 || v === 50 || (tg === null && v === 100)).map((v) => <span key={v} style={{ left: `${v}%` }}>{v}%</span>)}
-            {tg !== null && mobile && <b className="at-axis-target" style={{ left: `${tg}%`, transform: tg > 70 ? 'translateX(-100%)' : tg < 30 ? 'none' : 'translateX(-50%)' }} data-testid="target-line">{t('{x}% target', { x: tg })}</b>}
+            {m.target !== null && mobile && <b className="at-axis-target" style={{ left: `${m.target}%`, transform: m.target > 70 ? 'translateX(-100%)' : m.target < 30 ? 'none' : 'translateX(-50%)' }} data-testid="target-line">{t('{x}% target', { x: m.target })}</b>}
           </span>
         </div>
       </div>

@@ -5,7 +5,9 @@ import { tapHaptic } from '../haptics';
 import { useVisiblePages } from '../hooks/useVisiblePages';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
-import { pageLabel, pagesInSection, ROLE_LABELS, SECTIONS, sectionLabel } from '../navigation';
+import { NOTIFICATIONS_PATH, pageLabel, pagesInSection, ROLE_LABELS, SECTIONS, sectionLabel } from '../navigation';
+import { ActionsBadge } from '../actions/ActionsContext';
+import { NotificationsNavBadge } from '../notifications/NotificationsContext';
 import ValidateBadge from '../validate/NavBadge';
 import { useBackClose } from './useBackClose';
 import './mobile.css';
@@ -39,11 +41,19 @@ export default function MoreSheet({ open, onClose }: { open: boolean; onClose: (
   const tile = (p: (typeof pages)[number]) => (
     <button key={p.id} type="button" className="more-tile" onClick={() => go(p.path)} data-preload={p.path} data-testid={`more-tile-${p.id}`}>
       <span className="more-tile-icon more-tile-icon--other"><Icon name={p.icon} size={22} /></span>
-      <b>{pageLabel(p)} {p.id === 'validate' && <ValidateBadge testid="validate-badge-more" />}</b>
+      <b>{pageLabel(p)} {p.id === 'validate' && <ValidateBadge testid="validate-badge-more" />}{p.id === 'actions' && <ActionsBadge testid="actions-badge-more" />}</b>
       <small>{levelOf(p.access) === 'Edit' ? t('Can edit') : t('View only')}</small>
     </button>
   );
-  const sections = SECTIONS.map((sec) => ({ sec, items: pagesInSection(hits, sec.id) })).filter((g) => g.items.length > 0);
+  const notifHit = !term || t('Notifications').toLowerCase().includes(term);
+  const sections = SECTIONS.map((sec) => ({ sec, items: pagesInSection(hits, sec.id) })).filter((g) => g.items.length > 0 || (g.sec.id === 'act' && notifHit));
+  const notifTile = (
+    <button key="notifications" type="button" className="more-tile" onClick={() => go(NOTIFICATIONS_PATH)} data-testid="more-tile-notifications">
+      <span className="more-tile-icon more-tile-icon--other"><Icon name="bell" size={22} /></span>
+      <b>{t('Notifications')} <NotificationsNavBadge testid="notif-badge-more" /></b>
+      <small>{t('Your inbox')}</small>
+    </button>
+  );
 
   return (
     <>
@@ -58,10 +68,10 @@ export default function MoreSheet({ open, onClose }: { open: boolean; onClose: (
           {sections.map(({ sec, items }) => (
             <section key={sec.id} className="more-group" aria-labelledby={`more-sec-${sec.id}`} data-section={sec.id}>
               <h2 className="more-group-title" id={`more-sec-${sec.id}`} data-testid={`more-section-${sec.id}`}>{sectionLabel(sec.id)}</h2>
-              <div className="more-tiles">{items.map(tile)}</div>
+              <div className="more-tiles">{items.map(tile)}{sec.id === 'act' && notifHit && notifTile}</div>
             </section>
           ))}
-          {hits.length === 0 && <p className="more-muted more-empty">{t('Nothing found.')}</p>}
+          {hits.length === 0 && !notifHit && <p className="more-muted more-empty">{t('Nothing found.')}</p>}
 
           <div className="more-account">
             <span className="more-avatar">{initials}</span>

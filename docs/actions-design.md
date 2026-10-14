@@ -26,3 +26,40 @@ The server and API side is built: tables `actions`, `action_log`, `contractors`,
 `actions_*`, the draft rules, the effectiveness check, the alerts `planned_overrun` and `action_due` and a category on every notification.
 The exact formulas, the choices these decisions left open and the calls are in `docs/wire-protocol.md` section 10; owner setup steps are in
 `backend/apps-script/README.md` section 13.
+
+## Frontend (built)
+
+- **Navigation.** New rail section *Act* (after Reports) with *Actions* (`/actions`, access tab `actions`) and *Notifications*
+  (`/notifications`, every signed-in person, no tab id). The phone bottom bar is Dashboard, Causes, Actions, Events, More
+  (as in `mobile-actions.png`); the More sheet has the Act group. The Actions item carries the number of overdue open actions
+  (not Closed / Cancelled, due date before today).
+- **Data.** `src/actions/ActionsContext.tsx` keeps one copy of `listActions` for the shell (device cache through `src/data/stores.ts`,
+  so the page reads offline; every change needs a connection and is disabled with the reason) and opens the create dialog from any
+  page. Pure helpers: `src/actions/model.ts` (filters, search, sort, grouping, summary cards, status rules, dedupe key, CSV),
+  `src/actions/targets.ts` (month split check within 0.1 h, year-to-date allowance, PL hours with P1), `src/actions/prefill.ts`
+  (what each entry point fills in); unit tests beside them.
+- **Actions page** (`src/pages/Actions.tsx`): summary cards, one filter row (status, area, line, contractor, owner, source, priority,
+  My actions, Overdue only, search, sort) kept in the address, Board (a column per status, drag a card to another column) or List;
+  Export CSV. Phone: status tabs, Filters sheet, Mine / Overdue chips, cards, New button. **Detail** (`src/actions/ActionDetail.tsx`,
+  `?id=AC-…`): wide panel on a desktop, full screen on a phone; stepper, *Move to next*, *Change status* (`StatusDialog`: closing
+  and cancelling only for people on `actions_closers` or Admins, with a note of 3+ characters; a closed action reopens only to Open),
+  problem, evidence linked to Event records, root cause, required action, comments, assignment (owner = person, contractor =
+  `owner`, default from the area), effectiveness, history. View only = everything read-only with the *View only* badge.
+- **Create action** (`src/actions/CreateActionDialog.tsx`): manual (New action), from a built report (toolbar), Pareto bars (the
+  card's *Create action* bar menu and the tooltip button on a tap), Repeated failures rows, the Event records detail, and alert
+  notifications (panel and page). When an open action has the same equipment + reason the dialog offers *Add evidence to AC-…*
+  or *Keep creating a new action*; a merged result shows "Added to existing action AC-…" with a link.
+- **Notifications page** (`src/pages/Notifications.tsx`, *See all notifications* in the bell panel): tabs per category with counts,
+  area / line filters, day groups, the chosen item beside the list, Snooze / Dismiss / Create action / Mark all read; the derived
+  items are under Data quality. `action_due` opens the action, `planned_overrun` the Dashboard of the area.
+- **Settings › Actions & targets** (`src/admin/settings/ActionsTargets.tsx`): who can close (people picker → `actions_closers`),
+  contractors (`saveContractors`, one active external contractor per area checked live), the `action-rules` group and *Run checks
+  now* (`runActionChecks`), area targets per year (`getAreaTargets` / `saveAreaTargets`: target %, allowance, 12 months with Even
+  split and the live sum check, overhaul months, planned hours used year to date). Edit on Settings to change, View read-only.
+- **Dashboard / Reliability.** Availability by area, the Areas section and the Reliability areas use the area's own target of the
+  year when it has one (else the plant-wide target; nothing changes when no area has one). New Dashboard card *Planned hours vs
+  allowance (year to date)* after Availability by area, per area with an allowance: used vs allowance, month bars, overhaul months,
+  Open records.
+- Left out on purpose: the mockups' per-week failure chart inside the detail, attachments on comments, @mentions, saved Views for
+  the Actions page, the History switch on the Notifications page, "Import from Excel" for targets and per-rule Notify switches (the
+  backend has no setting for them). The Repeated-failures entry point uses source `pareto` (the API has no own source for it).

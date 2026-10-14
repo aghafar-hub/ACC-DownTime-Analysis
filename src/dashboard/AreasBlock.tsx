@@ -12,6 +12,7 @@ import { monthly } from './models';
 import AreaReliabilityCharts from './AreaReliabilityCharts';
 import { TargetCell } from './TargetStatus';
 import { anyTarget, areaTargetStatuses, getTargets } from './targets';
+import { useAreaTargetMap } from './useAreaTargetMap';
 import type { DashCtx } from './scope';
 
 export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (label: string, eventIds: string[]) => void }) {
@@ -23,7 +24,8 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
   const target = settings.availabilityTargetPct ?? null;
   const areaOrder = ctx.base.areaIds;
   const targets = getTargets(settings);
-  const statuses = useMemo(() => areaTargetStatuses(perArea, targets), [perArea, targets.availabilityPct, targets.mtbfH, targets.mttrH]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ownTargets = useAreaTargetMap(ctx);
+  const statuses = useMemo(() => areaTargetStatuses(perArea, targets, ownTargets), [perArea, ownTargets, targets.availabilityPct, targets.mtbfH, targets.mttrH]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const months = useMemo(() => monthly(ctx), [ctx]);
   const cats: CartCategory[] = months.map((m, i, all) => ({ key: m.month, label: monthAxisLabels(all.map((x) => x.month))[i]!, full: monthLabel(m.month), partial: m.partial, note: partialNote(m) }));

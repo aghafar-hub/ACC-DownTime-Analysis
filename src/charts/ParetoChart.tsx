@@ -45,7 +45,7 @@ function short(label: string, max = 16): string {
 }
 
 export default function ParetoChart({
-  result, width, height = 300, valueLabel, format, onBar, ariaLabel, openLabel, static: isStatic = false,
+  result, width, height = 300, valueLabel, format, onBar, ariaLabel, openLabel, static: isStatic = false, onAction,
 }: {
   result: ParetoResult;
   width: number;
@@ -53,6 +53,8 @@ export default function ParetoChart({
   valueLabel: string;
   format: (n: number) => string;
   onBar?: (bar: ParetoBar) => void;
+  /** a second button in the tooltip: "Create action" from this bar (not on Others) */
+  onAction?: (bar: ParetoBar) => void;
   ariaLabel: string;
   openLabel?: (bar: ParetoBar) => string;
   /** report mode: no tooltips, hit areas or sideways scrolling, only the drawing fitted to `width` (for print and PDF) */
@@ -104,6 +106,11 @@ export default function ParetoChart({
       {onBar && (
         <button type="button" className="btn btn-sm" data-testid="tip-open" onClick={(e) => { e.stopPropagation(); hide(); onBar(b); }}>
           {openLabel ? openLabel(b) : t('Open {n} events', { n: num(b.eventIds.length) })}
+        </button>
+      )}
+      {onAction && !b.isOthers && (
+        <button type="button" className="btn btn-sm" data-testid="tip-action" onClick={(e) => { e.stopPropagation(); hide(); onAction(b); }}>
+          {t('Create action')}
         </button>
       )}
     </>
