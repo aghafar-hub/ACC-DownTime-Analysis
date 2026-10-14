@@ -52,7 +52,14 @@ const GEAR_TABS: PageDef[] = [
   { id: 'users', access: 'users', path: '/settings/users', label: 'Users', tab: 'Users', short: 'Users', icon: 'users', group: 'setup' },
 ];
 
-export const pageById = (id: PageId): PageDef => PAGES.find((p) => p.id === id) ?? GEAR_TABS.find((p) => p.id === id)!;
+// Tab ids the server knows whose page is not in the navigation yet: the Actions page (backend 1.4.0). Its label is used
+// by the access editor (Users page); move the entry to PAGES when the page is built.
+const NOT_YET_IN_NAV: PageDef[] = [
+  { id: 'actions', access: 'actions', path: '/actions', label: 'Actions', tab: 'Actions', short: 'Actions', icon: 'compliance', group: 'analyze' },
+];
+
+export const pageById = (id: PageId): PageDef =>
+  PAGES.find((p) => p.id === id) ?? GEAR_TABS.find((p) => p.id === id) ?? NOT_YET_IN_NAV.find((p) => p.id === id)!;
 export const pageForPath = (pathname: string): PageDef | undefined => {
   const path = pathname === '/overview' || pathname.startsWith('/overview/') ? pathname.replace(/^\/overview/, '/dashboard') : pathname;
   return PAGES.find((p) => path === p.path || path.startsWith(`${p.path}/`));

@@ -13,10 +13,10 @@
  */
 
 export type TabId =
-  | 'overview' | 'pareto' | 'repeats' | 'reliability' | 'reports' | 'events'
+  | 'overview' | 'pareto' | 'repeats' | 'reliability' | 'reports' | 'actions' | 'events'
   | 'upload' | 'master' | 'settings' | 'users';
 export const TAB_IDS: TabId[] = [
-  'overview', 'pareto', 'repeats', 'reliability', 'reports', 'events', 'upload', 'master', 'settings', 'users',
+  'overview', 'pareto', 'repeats', 'reliability', 'reports', 'actions', 'events', 'upload', 'master', 'settings', 'users',
 ];
 export type AccessLevel = 'Hidden' | 'View' | 'Edit';
 export type Access = Record<TabId, AccessLevel>;
@@ -116,10 +116,21 @@ export interface Startup {
 
 /** Stored notification types. Action items are derived by the app and are not stored. */
 export type NotificationType =
-  | 'long_stop' | 'repeat_group' | 'failure_spike' | 'availability_low' | 'upload_gap' | 'upload_done' | 'user_event';
+  | 'long_stop' | 'repeat_group' | 'failure_spike' | 'availability_low' | 'upload_gap' | 'upload_done' | 'user_event'
+  | 'planned_overrun' | 'action_due';
 export const NOTIFICATION_TYPES: NotificationType[] = [
   'long_stop', 'repeat_group', 'failure_spike', 'availability_low', 'upload_gap', 'upload_done', 'user_event',
+  'planned_overrun', 'action_due',
 ];
+/** Inbox categories (backend 1.4.0). The server derives the category from the type; it is not stored. */
+export const NOTIFICATION_CATEGORIES = ['Reliability', 'Availability & planned', 'Data quality', 'Actions', 'System'] as const;
+export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
+/** The category of each type, the same table as NOTIF_CATEGORY_ in backend/apps-script/Notifications.js. */
+export const NOTIFICATION_CATEGORY_OF: Record<NotificationType, NotificationCategory> = {
+  long_stop: 'Reliability', repeat_group: 'Reliability', failure_spike: 'Reliability',
+  availability_low: 'Availability & planned', planned_overrun: 'Availability & planned',
+  upload_gap: 'Data quality', upload_done: 'Data quality', action_due: 'Actions', user_event: 'System',
+};
 export type NotificationSeverity = 'alert' | 'update';
 /** getNotifications only returns 'open' items; resolved and expired ones stay in the table for the record. */
 export type NotificationStatus = 'open' | 'resolved' | 'expired';
@@ -132,6 +143,8 @@ export interface Notification {
   /** event_id, batch_id or user_id the notification is about */
   source_ref?: string;
   created_at: string; expires_at: string; status: NotificationStatus; resolved_at?: string;
+  /** derived from `type` by getNotifications (backend 1.4.0); older servers leave it out: use NOTIFICATION_CATEGORY_OF */
+  category?: NotificationCategory;
 }
 
 export type NotificationStateValue = 'seen' | 'snoozed' | 'dismissed';
@@ -176,6 +189,131 @@ export interface NotificationsPayload {
   items: Notification[]; state: NotificationState[]; prefs: NotificationPrefs;
 }
 export interface NotificationCheckResult { created: number; resolved: number; expired: number }
+
+// ---- actions (docs/actions-design.md, docs/wire-protocol.md section 10, backend 1.4.0) ----
+
+export const ACTION_STATUSES = ['Draft', 'Open', 'Contractor informed', 'Waiting stoppage', 'In progress', 'Closed', 'Cancelled'] as const;
+export type ActionStatus = (typeof ACTION_STATUSES)[number];
+/** Closed and Cancelled: only people in actions_closers (or an Admin) move an action to or from them. */
+export const ACTION_TERMINAL_STATUSES: readonly ActionStatus[] = ['Closed', 'Cancelled'];
+export const isTerminalStatus = (s: ActionStatus): boolean => ACTION_TERMINAL_STATUSES.includes(s);
+export const ACTION_PRIORITIES = ['High', 'Medium', 'Low'] as const;
+export type ActionPriority = (typeof ACTION_PRIORITIES)[number];
+export const ACTION_SOURCES = [
+  'auto_repeat', 'auto_chronic', 'auto_long_stop', 'auto_planned_overrun', 'notification', 'report', 'pareto', 'event', 'manual',
+] as const;
+export type ActionSource = (typeof ACTION_SOURCES)[number];
+export const ACTION_SCOPES = ['equipment', 'area', 'line', 'plant'] as const;
+export type ActionScope = (typeof ACTION_SCOPES)[number];
+export type ActionOwnerKind = 'contractor' | 'internal';
+/** Root-cause category; '' = not known yet. OPR = operation, EXT = external. */
+export const ACTION_ROOT_CAUSES = ['', 'PRO', 'MEC', 'ELE', 'AUT', 'OPR', 'EXT'] as const;
+export type ActionRootCause = (typeof ACTION_ROOT_CAUSES)[number];
+export type ActionEffectiveness = '' | 'Watching' | 'Effective' | 'Not effective';
+export const ACTION_EVIDENCE_MAX = 200;
+
+/** One evidence item: a stored event, a note, or both. The server stamps who added it and when. */
+export interface ActionEvidence { event_id?: string; note?: string; added_at: string; added_by: string }
+export interface ActionEvidenceInput { event_id?: string; note?: string }
+
+/** An action as the API sends it (blank text fields are ''). `evidence` is stored as JSON text and sent as a list. */
+export interface Action {
+  /** 'AC-' + yyyymm + '-' + 4-digit sequence within the month, e.g. AC-202610-0007 */
+  action_id: string;
+  title: string; detail: string; status: ActionStatus; priority: ActionPriority;
+  source: ActionSource;
+  /** notification_id, event_id, report name ... the action came from */
+  source_ref: string;
+  scope_kind: ActionScope; area_id: string; line_id: string; equipment_id: string;
+  /** reason in match_key form (trimmed, single spaces, lower case) */
+  reason_key: string;
+  owner_kind: ActionOwnerKind;
+  /** a Contractor.contractor_id (external contractor or internal team); '' = nobody yet */
+  owner: string;
+  /** the person following it up: a user_id (see ActionsPayload.people) or a free name; '' = nobody */
+  assignee: string;
+  /** 'YYYY-MM-DD' or '' */
+  due_date: string;
+  needs_stop: boolean; root_cause: ActionRootCause; required_action: string;
+  created_by: string; created_at: string; updated_at: string; updated_by: string;
+  closed_by: string; closed_at: string; closure_note: string;
+  effectiveness: ActionEffectiveness; effectiveness_checked_at: string;
+  evidence: ActionEvidence[];
+  /** at most one action that is not Closed / Cancelled per key, e.g. 'repeat|<equipment>|<reason_key>' */
+  dedupe_key: string;
+}
+
+export type ActionLogKind = 'status' | 'comment' | 'edit' | 'evidence';
+export interface ActionLog {
+  log_id: string; action_id: string; at: string;
+  /** user_id or 'system' */
+  by: string;
+  kind: ActionLogKind; from_status: string; to_status: string; text: string;
+}
+
+/** An external contractor or an internal team. `areas` is stored as csv and sent as a list. */
+export interface Contractor {
+  contractor_id: string; name: string; areas: string[]; kind: ActionOwnerKind; active: boolean; sort_order: number;
+  /** user_id suggested as assignee for new actions; '' = none */
+  default_assignee: string;
+}
+/** An active user, for the assignee picker and history names (no e-mail addresses). */
+export interface ActionPerson { user_id: string; display_name: string }
+
+export interface ActionsPayload {
+  actions: Action[]; logs: ActionLog[]; contractors: Contractor[]; people: ActionPerson[];
+  /** user ids in actions_closers (Admins can always close as well) */
+  closers: string[];
+  /** may the caller close, cancel or reopen actions */
+  can_close: boolean;
+}
+
+/** createAction input. Defaults: status Draft, priority Medium, source manual. Closed / Cancelled are refused here. */
+export interface NewAction {
+  title: string; scope_kind: ActionScope;
+  detail?: string; status?: ActionStatus; priority?: ActionPriority; source?: ActionSource; source_ref?: string;
+  area_id?: string; line_id?: string; equipment_id?: string; reason_key?: string;
+  owner?: string; assignee?: string; due_date?: string; needs_stop?: boolean; root_cause?: ActionRootCause; required_action?: string;
+  evidence?: ActionEvidenceInput[];
+  /** blank: equipment scope with a reason uses 'repeat|<equipment>|<reason_key>' */
+  dedupe_key?: string;
+}
+export type ActionEditableField =
+  | 'title' | 'detail' | 'status' | 'priority' | 'scope_kind' | 'area_id' | 'line_id' | 'equipment_id' | 'reason_key' | 'owner'
+  | 'assignee' | 'due_date' | 'needs_stop' | 'root_cause' | 'required_action' | 'closure_note';
+export type ActionChanges = Partial<Pick<Action, ActionEditableField>> & { add_evidence?: ActionEvidenceInput[] };
+export interface ActionResult { action: Action; logs: ActionLog[] }
+/** merged = an open action with the same dedupe_key received the evidence instead (that action is returned). */
+export interface CreateActionResult extends ActionResult { merged: boolean }
+export interface ActionCheckResult { created: number; merged: number; effectiveness: number }
+
+/** Per area and year. `monthly_split` (12 hours, Jan..Dec) adds up to the allowance; overhaul months are 1-12. */
+export interface AreaTarget {
+  area_id: string; year: number; availability_target_pct: number | null; planned_allowance_h_year: number;
+  monthly_split: number[]; overhaul_months: number[]; updated_at: string; updated_by: string;
+}
+/** saveAreaTargets input; monthly_split left out = even split (evenMonthlySplit). */
+export interface AreaTargetInput {
+  area_id: string; availability_target_pct?: number | null; planned_allowance_h_year: number;
+  monthly_split?: number[]; overhaul_months?: number[];
+}
+
+/** The even split the server uses: 2-decimal months, December takes the rounding rest. */
+export function evenMonthlySplit(allowance: number): number[] {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const each = r2(allowance / 12);
+  let sum = 0;
+  const out: number[] = [];
+  for (let i = 0; i < 11; i++) { out.push(each); sum += each; }
+  out.push(r2(allowance - sum));
+  return out;
+}
+
+/** The active external contractor responsible for an area (the owner the server gives an auto draft), or null. */
+export function contractorForArea(contractors: readonly Contractor[], areaId: string): Contractor | null {
+  if (!areaId) return null;
+  return contractors.find((c) => c.active && c.kind === 'contractor' && c.areas.includes(areaId)) ?? null;
+}
 
 export class ApiError extends Error {
   code: string;
@@ -253,4 +391,29 @@ export interface Api {
   saveNotificationPrefs(token: string, prefs: Partial<Record<NotificationPrefKey, string>>): Promise<NotificationPrefs>;
   /** Runs the server rules now. Needs Edit on the settings tab. */
   runNotificationChecks(token: string): Promise<NotificationCheckResult>;
+
+  // --- actions (backend 1.4.0) ---
+  /** Every action with its history, the contractors, the active people and whether the caller may close. Needs actions View. */
+  listActions(token: string): Promise<ActionsPayload>;
+  /**
+   * Creates an action (actions Edit). When an action that is not Closed / Cancelled has the same dedupe_key, the evidence is
+   * added to it instead and that action comes back with merged = true (options.merge = false always creates a new one).
+   */
+  createAction(token: string, input: NewAction, options?: { merge?: boolean }): Promise<CreateActionResult>;
+  /**
+   * Changes some fields (actions Edit). Moving to or from Closed / Cancelled, and changing a closed action, needs the caller in
+   * actions_closers or an Admin ('forbidden' otherwise); closing needs closure_note (3+ characters); a closed or cancelled
+   * action reopens only to Open. 'Nothing was changed.' when nothing would change.
+   */
+  updateAction(token: string, actionId: string, changes: ActionChanges): Promise<ActionResult>;
+  /** Adds a comment to the history (actions Edit; also on a closed action). */
+  addActionComment(token: string, actionId: string, text: string): Promise<ActionResult>;
+  /** Inserts or updates the contractors sent (settings Edit); an area belongs to at most one active external contractor. Returns all. */
+  saveContractors(token: string, rows: Contractor[]): Promise<Contractor[]>;
+  /** Area targets of one year (every year when left out). Any signed-in user. */
+  getAreaTargets(token: string, year?: number): Promise<AreaTarget[]>;
+  /** Inserts or updates the targets of one year for the areas sent (settings Edit). Returns the year's targets. */
+  saveAreaTargets(token: string, year: number, rows: AreaTargetInput[]): Promise<AreaTarget[]>;
+  /** Runs the draft rules and the effectiveness check now (settings Edit). Also runs after every upload and notification check. */
+  runActionChecks(token: string): Promise<ActionCheckResult>;
 }

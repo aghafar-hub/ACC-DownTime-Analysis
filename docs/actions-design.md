@@ -19,3 +19,10 @@ To be built AFTER the redesign (R1-R5) is finished. Mockups first.
 - NEW: per-area availability target and planned-stop allowance PER YEAR (hours/year per area), split into months
   (evenly by default, editable) with planned overhaul shutdowns assigned to their month; notify (and optionally draft an
   action) when a month's planned hours exceed that month's allowance and show YTD used vs YTD allowance.
+
+## Implementation notes (backend and API, version 1.4.0)
+
+The server and API side is built: tables `actions`, `action_log`, `contractors`, `area_targets`, the `actions` access tab, the settings
+`actions_*`, the draft rules, the effectiveness check, the alerts `planned_overrun` and `action_due` and a category on every notification.
+The exact formulas, the choices these decisions left open and the calls are in `docs/wire-protocol.md` section 10; owner setup steps are in
+`backend/apps-script/README.md` section 13.

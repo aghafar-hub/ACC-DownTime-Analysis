@@ -11,7 +11,8 @@ import {
   cleanSavedReports, notificationCandidates, oneLine, parseNotifSettings, uploadDoneCandidate, userEventCandidate, type Candidate,
 } from './mockNotifications';
 import { buildIndex, canonicalFlags, deriveEventFields, findArea, isKnownFlag, pruneAcceptedFlags, splitFlags, DERIVED_FLAGS, type MasterIndex } from '../calc';
-import { ApiError, NOTIFICATION_TYPES, TAB_IDS } from './types';
+import { ApiError, NOTIFICATION_CATEGORY_OF, NOTIFICATION_TYPES, TAB_IDS } from './types';
+import { createActionStore } from './mockActions';
 import { buildSyntheticDb, fmtTs, type MockUser, type SyntheticDb } from '../mock/synthetic';
 import { codeKey, eventIdOf, fingerprintOf, isValidDate, matchKey, parseTs } from '../util/normalize';
 
@@ -73,7 +74,11 @@ export interface MockApi extends Api {
   __setNow(fn: () => number): void;
 }
 
-export function createMockApi(opts: { seed?: number } = {}): MockApi {
+/**
+ * `demoActions` (the app's demo mode) fills the Actions page on first use: area targets, auto drafts moved along the board,
+ * a manual action and comments. Tests leave it off so their scenarios start from an empty action list, like the server.
+ */
+export function createMockApi(opts: { seed?: number; demoActions?: boolean } = {}): MockApi {
   let db: SyntheticDb | null = null;
   let now: () => number = () => Date.now();
   let counter = 0;
@@ -215,7 +220,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
   const stored = (v: string | undefined): string | undefined => v || undefined;
 
   // ------------------------------------------------------------ notifications (rules: mockNotifications.ts; the server has its own port)
-  const RESOLVABLE = ['long_stop', 'repeat_group', 'upload_gap'];
+  const RESOLVABLE = ['long_stop', 'repeat_group', 'upload_gap', 'action_due'];
   const SNOOZE_MAX_DAYS = 366;
   let notifications: Notification[] = [];
   let notifState: NotificationState[] = [];
@@ -247,7 +252,9 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
     for (const n of notifications) {
       if (n.status === 'open' && n.expires_at && n.expires_at <= stamp) { n.status = 'expired'; res.expired++; }
     }
-    const cands = notificationCandidates({ events: d.events, areas: d.areas, index: lookup(), settings: st, today: stamp.slice(0, 10) });
+    const cands = notificationCandidates({
+      events: d.events, areas: d.areas, index: lookup(), settings: st, today: stamp.slice(0, 10), targets: actionStore.targets(), actions: actionStore.actions(),
+    });
     if (batch) cands.push(uploadDoneCandidate(batch));
     const byKey = new Map(notifications.map((n) => [n.dedupe_key, n]));
     const current = new Set<string>();
@@ -283,6 +290,68 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       const st = parseNotifSettings(get().settings);
       const nowMs = now();
       notifications.push(makeNotification(userEventCandidate(kind, actor, target, roleChange, nowMs), st.retentionDays, nowMs));
+    });
+  }
+
+  // ------------------------------------------------------------ actions (rules and checks: mockActions.ts; the server has its own port)
+  const actionStore = createActionStore({
+    db: () => get(), index: () => lookup(), nowTs: () => nowTs(), notifications: () => notifications,
+    retentionDays: () => parseNotifSettings(get().settings).retentionDays,
+    audit: (userId, action, entityId, detail) => audit(userId, action, 'actions', entityId, detail),
+  });
+  let demoSeeded = !opts.demoActions;
+
+  /** Demo mode only: area targets, the checks, and a few drafts moved along the board so every column has cards. */
+  function seedDemoActions(): void {
+    if (demoSeeded) return;
+    demoSeeded = true;
+    safely(() => {
+      const d = get();
+      const admin = d.users.find((u) => u.role_id === 'ROLE-ADMIN')!;
+      const mgr = d.users.find((u) => u.role_id === 'ROLE-MGR');
+      const closers = d.settings.find((x) => x.key === 'actions_closers');
+      if (closers && mgr) closers.value = mgr.user_id;
+      const year = Number(nowTs().slice(0, 4));
+      const contractorOf = (area: string): string => actionStore.list(admin).contractors.find((c) => c.kind === 'contractor' && c.areas.includes(area))?.contractor_id ?? '';
+      actionStore.saveTargets(admin, year, [
+        { area_id: 'CR', availability_target_pct: 92, planned_allowance_h_year: 240 },
+        { area_id: 'RM.1', availability_target_pct: 88, planned_allowance_h_year: 300, overhaul_months: [6] },
+        { area_id: 'K.1', availability_target_pct: 90, planned_allowance_h_year: 576, overhaul_months: [2],
+          monthly_split: [14, 374, 14, 14, 14, 14, 14, 62, 14, 14, 14, 14] },
+        { area_id: 'K.2', availability_target_pct: 90, planned_allowance_h_year: 552, overhaul_months: [11] },
+        { area_id: 'CM.1', availability_target_pct: 85, planned_allowance_h_year: 120, overhaul_months: [4] },
+        { area_id: 'PK.1', availability_target_pct: 80, planned_allowance_h_year: 216 },
+      ]);
+      runChecks();
+      actionStore.runChecks();
+      // the auto drafts stay in Draft; demo actions from the other sources fill the other columns
+      const due = (days: number) => tsAt(now() + days * 86_400_000).slice(0, 10);
+      const eqOf = (area: string): string => d.equipment_areas.find((r) => r.area_id === area)?.equipment_id ?? '';
+      const steps: [string, string, Record<string, unknown>, string?][] = [
+        ['K.2', 'Open', { source: 'pareto', priority: 'High', due_date: due(10), assignee: mgr?.user_id ?? '', reason_key: 'Hydraulic pressure low' }, 'Owner asked for the last three shift reports.'],
+        ['RM.1', 'Contractor informed', { source: 'report', due_date: due(14), reason_key: 'Chute blockage' }, 'Contractor informed by phone in the morning meeting (outside the app).'],
+        ['K.1', 'Waiting stoppage', { source: 'event', needs_stop: true, due_date: due(20), reason_key: 'Chain slack' }],
+        ['FM.1', 'In progress', { source: 'notification', due_date: due(-3), root_cause: 'MEC', required_action: 'Replace the worn part and check the alignment.', reason_key: 'Liner worn' }],
+        ['CM.2', 'Closed', { source: 'pareto', reason_key: 'Belt torn', closure_note: 'Belt replaced and alignment checked; watching for repeats.' }],
+        ['PK.1', 'Cancelled', { source: 'manual', reason_key: 'Spout wear', closure_note: 'Duplicate of an older action.' }],
+      ];
+      steps.forEach(([area, status, extra, comment]) => {
+        const eq = eqOf(area);
+        if (!eq) return;
+        const { closure_note: note, ...fields } = extra;
+        const created = actionStore.create(admin, {
+          title: `${eq} - ${String(fields.reason_key)} (demo)`, scope_kind: 'equipment', equipment_id: eq, status: 'Open',
+          owner: contractorOf(area), ...fields,
+        }, { merge: false });
+        const id = created.action.action_id;
+        if (status !== 'Open') actionStore.update(admin, id, note === undefined ? { status } : { status, closure_note: note });
+        if (comment) actionStore.comment(admin, id, comment);
+      });
+      actionStore.create(admin, {
+        title: 'Diaphragm slots clogged - inspect and clean', scope_kind: 'area', area_id: 'CM.3', status: 'Open', priority: 'Low',
+        owner: 'MEC', due_date: due(7), detail: 'Seen at the last inspection round (demo).',
+      }, undefined);
+      runChecks();
     });
   }
 
@@ -611,6 +680,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
       batch.status = 'Completed';
       audit(a.user.user_id, 'uploadFinish', 'upload_batches', batchId, `${batch.rows_added} rows added, ${batch.rows_identical} identical`);
       safely(() => { runChecks(batch); });
+      safely(() => { actionStore.runChecks(); }); // after the alerts, so a new long stop already has its notification
       return clone(batch);
     },
 
@@ -756,6 +826,7 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
         duration_short_max_min: [1, 10000], duration_long_min_min: [1, 100000], lockout_attempts: [1, 100], lockout_minutes: [1, 1440],
         session_hours: [1, 168], session_hours_keep: [1, 8760], min_password_length: [8, 128],
         notif_long_stop_hours: [1, 720], notif_spike_pct: [1, 1000], notif_upload_gap_days: [1, 3650], notif_retention_days: [1, 3650],
+        actions_repeat_n: [2, 100], actions_repeat_days: [1, 3650], actions_chronic_top: [1, 100], actions_chronic_months: [1, 24], actions_effect_days: [1, 3650],
       };
       for (const [k, v] of Object.entries(changes ?? {})) {
         if (!d.settings.some((s) => s.key === k)) throw new ApiError(`There is no setting called "${k}".`, 'bad_request');
@@ -773,10 +844,12 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
         if (k === 'app_url' && val !== '' && (val.length > 300 || !/^https?:\/\/[^\s<>"']+$/i.test(val))) throw new ApiError('The app address must start with http:// or https://, or be blank.', 'bad_request');
         if ((k === 'target_mtbf_h' || k === 'target_mttr_h') && val !== '' && !(Number.isFinite(Number(val)) && Number(val) > 0 && Number(val) <= 100000)) throw new ApiError('The target must be above 0 and at most 100000 hours, or blank.', 'bad_request');
         if (k === 'availability_target_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The availability target must be between 0 and 100, or blank.', 'bad_request');
+        if (k === 'actions_auto_draft' && !['true', 'false'].includes(val)) throw new ApiError('Auto drafts must be true or false.', 'bad_request');
+        if (k === 'actions_closers') actionStore.cleanClosers(val);
       }
       for (const [k, v] of Object.entries(changes ?? {})) {
         const s = d.settings.find((x) => x.key === k)!;
-        s.value = String(v ?? '').trim();
+        s.value = k === 'actions_closers' ? actionStore.cleanClosers(String(v ?? '')) : String(v ?? '').trim();
         s.updated_by = a.user.user_id;
         s.updated_at = nowTs();
       }
@@ -861,13 +934,15 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
     // --- notifications
     async getNotifications(token) {
       const a = auth(token);
+      seedDemoActions();
       if (!notifSeeded) runChecks();
       const stamp = nowTs();
       const items = notifications.filter((n) => notifVisible(n, a.access, stamp))
         .sort((x, y) => (x.created_at < y.created_at ? 1 : x.created_at > y.created_at ? -1 : x.notification_id < y.notification_id ? -1 : 1));
       const ids = new Set(items.map((n) => n.notification_id));
       return clone({
-        items, state: notifState.filter((s) => s.user_id === a.user.user_id && ids.has(s.notification_id)), prefs: prefsOf(a.user.user_id),
+        items: items.map((n) => ({ ...n, category: NOTIFICATION_CATEGORY_OF[n.type] })),
+        state: notifState.filter((s) => s.user_id === a.user.user_id && ids.has(s.notification_id)), prefs: prefsOf(a.user.user_id),
       });
     },
     async setNotificationState(token, notificationId, state, snoozeUntil) {
@@ -944,11 +1019,50 @@ export function createMockApi(opts: { seed?: number } = {}): MockApi {
     async runNotificationChecks(token) {
       const a = need(token, ['settings'], 'Edit');
       const res = runChecks();
+      safely(() => { actionStore.runChecks(); });
       audit(a.user.user_id, 'runNotificationChecks', 'notifications', '', `Created ${res.created}, resolved ${res.resolved}, expired ${res.expired}`);
+      return res;
+    },
+
+    // --- actions
+    async listActions(token) {
+      const a = need(token, ['actions'], 'View');
+      seedDemoActions();
+      return actionStore.list(a.user);
+    },
+    async createAction(token, input, options) {
+      const a = need(token, ['actions'], 'Edit');
+      return actionStore.create(a.user, input, options);
+    },
+    async updateAction(token, actionId, changes) {
+      const a = need(token, ['actions'], 'Edit');
+      return actionStore.update(a.user, actionId, changes);
+    },
+    async addActionComment(token, actionId, text) {
+      const a = need(token, ['actions'], 'Edit');
+      return actionStore.comment(a.user, actionId, text);
+    },
+    async saveContractors(token, rows) {
+      const a = need(token, ['settings'], 'Edit');
+      return actionStore.saveContractors(a.user, rows);
+    },
+    async getAreaTargets(token, year) {
+      auth(token);
+      seedDemoActions();
+      return actionStore.getTargets(year);
+    },
+    async saveAreaTargets(token, year, rows) {
+      const a = need(token, ['settings'], 'Edit');
+      return actionStore.saveTargets(a.user, year, rows);
+    },
+    async runActionChecks(token) {
+      const a = need(token, ['settings'], 'Edit');
+      const res = actionStore.runChecks();
+      audit(a.user.user_id, 'runActionChecks', 'actions', '', `Created ${res.created}, merged ${res.merged}, effectiveness ${res.effectiveness}`);
       return res;
     },
   };
   return api;
 }
 
-export const mockApi: MockApi = createMockApi();
+export const mockApi: MockApi = createMockApi({ demoActions: true });

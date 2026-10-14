@@ -132,7 +132,7 @@ test('setUserTabAccess replaces overrides, validates input, and protects own Use
   assert.equal(env.call('setUserTabAccess', admin.token, { userId: e.user_id, overrides: { upload: 'Admin' } }).error.code, 'bad_request');
   assert.equal(env.call('setUserTabAccess', admin.token, { userId: 'U-missing', overrides: {} }).error.code, 'not_found');
   assert.equal(env.call('setUserTabAccess', admin.token, { userId: admin.user_id, overrides: { users: 'View' } }).error.code, 'conflict');
-  assert.deepEqual(env.rows('tab_access').filter((r) => r.subject_type === 'role').length, 40);
+  assert.deepEqual(env.rows('tab_access').filter((r) => r.subject_type === 'role').length, 44);
   assert.ok(env.rows('audit_log').some((a) => a.action === 'set_tab_access'));
 });
 

@@ -6,7 +6,7 @@ import { createEnv, bootstrapAdmin, makeUser, BACKEND_DIR } from './harness.mjs'
 
 const ROOT = resolve(BACKEND_DIR, '../..');
 const schema = JSON.parse(readFileSync(resolve(ROOT, 'schema/tables.json'), 'utf8'));
-const DASH = ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'events'];
+const DASH = ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'actions', 'events'];
 
 // Independent copy of docs/wire-protocol.md section 3.
 const REQ = {
@@ -21,6 +21,9 @@ const REQ = {
   resetPassword: [['users'], 'Edit'], setUserTabAccess: [['users'], 'Edit'],
   getNotifications: 'session', setNotificationState: 'session', saveNotificationPrefs: 'session',
   runNotificationChecks: [['settings'], 'Edit'],
+  listActions: [['actions'], 'View'], createAction: [['actions'], 'Edit'], updateAction: [['actions'], 'Edit'],
+  addActionComment: [['actions'], 'Edit'], saveContractors: [['settings'], 'Edit'], getAreaTargets: 'session',
+  saveAreaTargets: [['settings'], 'Edit'], runActionChecks: [['settings'], 'Edit'],
 };
 const RANK = { Hidden: 0, View: 1, Edit: 2 };
 
@@ -117,7 +120,7 @@ test('a missing row means Hidden', () => {
   const user = { user_id: 'U-x', role_id: 'ROLE-NONE' };
   const access = env.json(env.ctx.computeAccess_(user, []));
   assert.ok(Object.values(access).every((l) => l === 'Hidden'));
-  assert.equal(Object.keys(access).length, 10);
+  assert.equal(Object.keys(access).length, 11);
   assert.equal(access.reports, 'Hidden');
 });
 
@@ -158,7 +161,7 @@ test('reports tab: seeded Admin Edit, Manager Edit, Engineer View, Viewer View; 
   assert.ok(env.json(env.run('TAB_IDS')).includes('reports'));
   // the events a report is built from are readable with the Reports tab alone
   const v = users['ROLE-VIEW'];
-  const onlyReports = Object.fromEntries(['overview', 'pareto', 'repeats', 'reliability', 'events', 'upload', 'master', 'settings', 'users'].map((t) => [t, 'Hidden']));
+  const onlyReports = Object.fromEntries(['overview', 'pareto', 'repeats', 'reliability', 'actions', 'events', 'upload', 'master', 'settings', 'users'].map((t) => [t, 'Hidden']));
   env.ok('setUserTabAccess', admin.token, { userId: v.user_id, overrides: { ...onlyReports, reports: 'View' } });
   assert.equal(env.call('getStartup', v.token).status, 'ok');
   assert.equal(env.call('getEvents', v.token, { year: 2026 }).error?.code === 'forbidden', false);
@@ -169,4 +172,23 @@ test('reports tab: seeded Admin Edit, Manager Edit, Engineer View, Viewer View; 
   // an override can raise the Viewer to Edit and the Manager down to Hidden
   env.ok('setUserTabAccess', admin.token, { userId: users['ROLE-MGR'].user_id, overrides: { reports: 'Hidden' } });
   assert.equal(env.ok('getMyAccess', users['ROLE-MGR'].token).access.reports, 'Hidden');
+});
+
+test('actions tab: seeded Admin Edit, Manager Edit, Engineer Edit, Viewer View; events readable with it alone', () => {
+  const { env, admin, users } = setup();
+  const want = { 'ROLE-ADMIN': 'Edit', 'ROLE-MGR': 'Edit', 'ROLE-ENG': 'Edit', 'ROLE-VIEW': 'View' };
+  for (const [role, level] of Object.entries(want)) {
+    assert.equal(schema.tabAccessDefaults[role].actions, level, `schema ${role}`);
+    assert.equal(env.ok('getMyAccess', users[role].token).access.actions, level, `server ${role}`);
+  }
+  assert.ok(env.json(env.run('TAB_IDS')).includes('actions'));
+  const v = users['ROLE-VIEW'];
+  assert.equal(env.call('listActions', v.token).status, 'ok');
+  assert.equal(env.call('createAction', v.token, { input: { title: 'x', scope_kind: 'plant' } }).error.code, 'forbidden');
+  const others = Object.fromEntries(['overview', 'pareto', 'repeats', 'reliability', 'reports', 'events', 'upload', 'master', 'settings', 'users'].map((t) => [t, 'Hidden']));
+  env.ok('setUserTabAccess', admin.token, { userId: v.user_id, overrides: { ...others, actions: 'View' } });
+  assert.equal(env.call('getEvents', v.token, { year: 2026 }).status, 'ok');
+  env.ok('setUserTabAccess', admin.token, { userId: v.user_id, overrides: { ...others, actions: 'Hidden' } });
+  assert.equal(env.call('listActions', v.token).error.code, 'forbidden');
+  assert.equal(env.call('getAreaTargets', v.token, {}).status, 'ok'); // any signed-in user reads the targets
 });

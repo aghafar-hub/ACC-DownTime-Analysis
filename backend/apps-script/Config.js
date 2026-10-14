@@ -4,7 +4,7 @@
  * at load time, so file order does not matter.
  */
 
-var APP_VERSION = '1.3.0';
+var APP_VERSION = '1.4.0';
 var TIMEZONE = 'Africa/Cairo';
 
 // Password hashing cost. Run benchmarkHashRounds() and, if it suggests a
@@ -21,8 +21,8 @@ var UPLOAD_WARNING_MAX = 20000;
 var FINGERPRINT_HINT_MAX = 20;
 var TEXT_MAX = 1000;
 
-var TAB_IDS = ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'events', 'upload', 'master', 'settings', 'users'];
-var DASHBOARD_TABS = ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'events'];
+var TAB_IDS = ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'actions', 'events', 'upload', 'master', 'settings', 'users'];
+var DASHBOARD_TABS = ['overview', 'pareto', 'repeats', 'reliability', 'reports', 'actions', 'events'];
 var LEVELS = ['Hidden', 'View', 'Edit'];
 
 var AREA_LEVEL_KEYS = ['N/A', 'NA'];
@@ -63,7 +63,8 @@ var T = {
   ALIASES: 'equipment_aliases', CLASSIFICATIONS: 'classifications', REASONS: 'reasons',
   BATCHES: 'upload_batches', EVENTS: 'events', EDITS: 'event_edits', WARNINGS: 'upload_warnings',
   ROLES: 'roles', USERS: 'users', TAB_ACCESS: 'tab_access', SETTINGS: 'settings', AUDIT: 'audit_log',
-  NOTIFICATIONS: 'notifications', NOTIFICATION_STATE: 'notification_state', NOTIFICATION_PREFS: 'notification_prefs'
+  NOTIFICATIONS: 'notifications', NOTIFICATION_STATE: 'notification_state', NOTIFICATION_PREFS: 'notification_prefs',
+  ACTIONS: 'actions', ACTION_LOG: 'action_log', CONTRACTORS: 'contractors', AREA_TARGETS: 'area_targets'
 };
 
 // Script Property names.

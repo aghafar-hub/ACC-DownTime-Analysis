@@ -23,7 +23,15 @@ var SETTING_RULES = {
   app_url: { type: 'url_or_blank' },
   // Targets shown on the dashboards (blank = no target). Hours must be above 0.
   target_mtbf_h: { type: 'number_or_blank', min: 0, max: 100000, minExclusive: true },
-  target_mttr_h: { type: 'number_or_blank', min: 0, max: 100000, minExclusive: true }
+  target_mttr_h: { type: 'number_or_blank', min: 0, max: 100000, minExclusive: true },
+  // Actions (1.4.0): who may close or cancel (csv of existing user ids; Admins always can), and the draft rules.
+  actions_closers: { type: 'user_csv' },
+  actions_repeat_n: { type: 'int', min: 2, max: 100 },
+  actions_repeat_days: { type: 'int', min: 1, max: 3650 },
+  actions_chronic_top: { type: 'int', min: 1, max: 100 },
+  actions_chronic_months: { type: 'int', min: 1, max: 24 },
+  actions_effect_days: { type: 'int', min: 1, max: 3650 },
+  actions_auto_draft: { type: 'enum', values: ['true', 'false'] }
 };
 
 function readSettings_() { return readTable_(T.SETTINGS); }
@@ -46,6 +54,16 @@ function validateSetting_(key, value) {
   if (rule.type === 'enum') {
     if (rule.values.indexOf(s) < 0) throw apiError_(ERR.BAD_REQUEST, 'Setting ' + key + ' must be one of: ' + rule.values.join(', ') + '.');
     return s;
+  }
+  if (rule.type === 'user_csv') {
+    var known = {};
+    readUsers_().forEach(function (u) { known[u.user_id] = true; });
+    var ids = [];
+    s.split(',').map(function (x) { return x.trim(); }).filter(Boolean).forEach(function (id) {
+      if (!known[id]) throw apiError_(ERR.BAD_REQUEST, 'Setting ' + key + ': there is no user ' + id.slice(0, 40) + '.');
+      if (ids.indexOf(id) < 0) ids.push(id);
+    });
+    return ids.join(',');
   }
   if (rule.type === 'url_or_blank') {
     if (s !== '' && (s.length > 300 || !/^https?:\/\/[^\s<>"']+$/i.test(s))) {

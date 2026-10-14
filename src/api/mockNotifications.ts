@@ -1,7 +1,8 @@
 // The notification rules for the mock API (docs/notifications-design.md). They are written with the calc library
 // (the same code the screens use), while backend/apps-script/Notifications.js has its own plain-JS port of the same
 // formulas. tests/unit/contract.test.ts runs both over the same scenarios, so the two cannot drift apart.
-import { ApiError, REPORT_PRESETS, REPORT_SECTION_IDS, REPORT_TEMPLATES, SAVED_REPORTS_MAX, type Area, type EventRow, type NotificationSeverity, type NotificationType, type Setting, type UploadBatch } from './types';
+import { ApiError, REPORT_PRESETS, REPORT_SECTION_IDS, REPORT_TEMPLATES, SAVED_REPORTS_MAX, type Action, type Area, type AreaTarget, type EventRow, type NotificationSeverity, type NotificationType, type Setting, type UploadBatch } from './types';
+import { actionDueAlerts, plannedOverruns, plannedOverrunText } from './mockActions';
 import { isValidDate } from '../util/normalize';
 import {
   addDays, buildFailureEvents, computeKpis, findClusters, groupOccurrences, lastDayOfMonth, matchKey, monthRange, parseSettings, rowCode,
@@ -60,6 +61,10 @@ export interface RuleInput {
   settings: NotifSettings;
   /** plant-local today, YYYY-MM-DD */
   today: string;
+  /** area targets (planned_overrun, backend 1.4.0) */
+  targets?: AreaTarget[];
+  /** actions (action_due, backend 1.4.0) */
+  actions?: Action[];
 }
 
 /** Data-driven candidates in a fixed order: long stops, repeated groups, spikes, availability, upload gap. */
@@ -68,7 +73,9 @@ export function notificationCandidates(input: RuleInput): Candidate[] {
   const events = input.events.filter((e) => !e.is_void);
   let latest = '';
   for (const e of events) if (e.event_date > latest) latest = e.event_date;
-  if (!latest) return [];
+  // action_due does not depend on the events (port of notifRuleActionDue_)
+  const due = actionDueAlerts(input.actions ?? [], today).map((a) => alert('action_due', a.key, a.title, a.detail, a.area, a.line, a.ref));
+  if (!latest) return due;
   const cutoff = addDays(latest, -st.retentionDays);
   const lineOf = (area: string, fallback = ''): string => areas.find((a) => a.area_id === area)?.line_id ?? fallback;
   const chains = buildFailureEvents(events).chains;
@@ -159,12 +166,19 @@ export function notificationCandidates(input: RuleInput): Candidate[] {
     }
   }
 
+  // planned_overrun (1.4.0): planned hours of a complete, recent month above the area's allowance (mockActions.ts plannedOverruns)
+  for (const o of plannedOverruns(events, areas, input.targets ?? [], latest, cutoff)) {
+    const t = plannedOverrunText(o);
+    out.push(alert('planned_overrun', `planned|${o.area}|${o.month}`, t.title, t.detail, o.area, o.line));
+  }
+
   // upload_gap
   const days = Math.round((parseDate(today)! - parseDate(latest)!) / MS_DAY);
   if (days > st.uploadGapDays) {
     out.push(alert('upload_gap', `upload_gap|${latest}`, `No upload since ${latest}`,
       `The latest stored event is dated ${latest}, ${days} days ago (limit ${st.uploadGapDays} days).`, '', ''));
   }
+  out.push(...due);
   return out;
 }
 

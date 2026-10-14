@@ -97,5 +97,14 @@ export function createSheetsApi(url: string): Api {
       call('setNotificationState', token, snoozeUntil === undefined ? { notificationId, state } : { notificationId, state, snoozeUntil }),
     saveNotificationPrefs: (token, prefs) => call('saveNotificationPrefs', token, { prefs }),
     runNotificationChecks: (token) => call('runNotificationChecks', token),
+
+    listActions: (token) => call('listActions', token),
+    createAction: (token, input, options) => call('createAction', token, options === undefined ? { input } : { input, options }),
+    updateAction: (token, actionId, changes) => call('updateAction', token, { actionId, changes }),
+    addActionComment: (token, actionId, text) => call('addActionComment', token, { actionId, text }),
+    saveContractors: (token, rows) => call('saveContractors', token, { rows }),
+    getAreaTargets: (token, year) => call('getAreaTargets', token, year === undefined ? {} : { year }),
+    saveAreaTargets: (token, year, rows) => call('saveAreaTargets', token, { year, rows }),
+    runActionChecks: (token) => call('runActionChecks', token),
   };
 }

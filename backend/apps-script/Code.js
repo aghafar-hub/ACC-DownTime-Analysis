@@ -50,7 +50,15 @@ var HANDLERS = {
   getNotifications: function (s) { return getNotifications_(s); },
   setNotificationState: function (s, p) { return setNotificationState_(s, p.notificationId, p.state, p.snoozeUntil); },
   saveNotificationPrefs: function (s, p) { return saveNotificationPrefs_(s, p.prefs); },
-  runNotificationChecks: function (s) { return runNotificationChecksAction_(s); }
+  runNotificationChecks: function (s) { return runNotificationChecksAction_(s); },
+  listActions: function (s) { return listActions_(s); },
+  createAction: function (s, p) { return createAction_(s, p.input, p.options); },
+  updateAction: function (s, p) { return updateAction_(s, p.actionId, p.changes); },
+  addActionComment: function (s, p) { return addActionComment_(s, p.actionId, p.text); },
+  saveContractors: function (s, p) { return saveContractors_(s, p.rows); },
+  getAreaTargets: function (s, p) { return getAreaTargets_(p.year); },
+  saveAreaTargets: function (s, p) { return saveAreaTargets_(s, p.year, p.rows); },
+  runActionChecks: function (s) { return runActionChecksAction_(s); }
 };
 
 /** Runs one request and returns the response envelope (an object, never throws). */
