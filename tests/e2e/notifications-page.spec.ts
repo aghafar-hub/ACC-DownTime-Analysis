@@ -66,7 +66,10 @@ test.describe('desktop', () => {
     await openInbox(page, 'engineer', 'rail');
     await expect(page.getByTestId('nx-new').first()).toBeVisible();
     await page.getByTestId('nx-tab-reliability').click();
+    // wait for the tab's own list: every row is a Reliability item
+    await expect(rows(page).locator(':scope:not([data-category="Reliability"])')).toHaveCount(0);
     const first = rows(page).first();
+    await expect(first).toHaveAttribute('data-category', 'Reliability');
     const title = (await first.getByTestId('nx-title').textContent()) ?? '';
     await first.getByTestId('nx-title').click();
     await expect(page.getByTestId('nx-detail')).toContainText(title.slice(0, 20));
