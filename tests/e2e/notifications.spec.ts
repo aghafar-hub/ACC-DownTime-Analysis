@@ -67,6 +67,8 @@ test.describe('desktop', () => {
 
   test('admin: the badge equals the number of action items and each item matches what its page shows', async ({ page }) => {
     await signInAndWait(page, 'admin');
+    // older years are counted in the background (R5): read the numbers once every year is in
+    await expect(page.getByTestId('bell-btn')).toHaveAttribute('data-records', 'complete', { timeout: 20000 });
     await expect(page.getByTestId('bell-badge')).toBeVisible();
     const badge = num(await page.getByTestId('bell-badge').textContent());
     await open(page);
@@ -388,6 +390,7 @@ for (const vp of [{ w: 360, h: 740 }, { w: 390, h: 844 }]) {
 
     test('the More badge shows the action count (admin) and nothing for a viewer; Validate keeps its own badge', async ({ page }) => {
       await signInAndWait(page, 'admin');
+      await expect(bell(page)).toHaveAttribute('data-records', 'complete', { timeout: 20000 });
       const badge = page.getByTestId('bottom-more').getByTestId('more-badge');
       await expect(badge).toBeVisible();
       await expect(badge).toHaveAttribute('aria-label', /items? needs? action/);

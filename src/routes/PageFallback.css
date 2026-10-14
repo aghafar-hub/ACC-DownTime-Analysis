@@ -1,0 +1,63 @@
+/* Page skeleton shown while a page's code downloads (R5). Light and static (a slow pulse unless reduced motion). */
+.page-skel {
+  min-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 4px;
+}
+.page-skel-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.page-skel-bar,
+.page-skel-block {
+  display: block;
+  background: var(--border);
+  opacity: 0.35;
+  border-radius: var(--radius-sm, 8px);
+  animation: page-skel-pulse 1.6s ease-in-out infinite;
+}
+.page-skel-title {
+  width: min(280px, 60%);
+  height: 26px;
+}
+.page-skel-sub {
+  width: min(420px, 85%);
+  height: 14px;
+}
+.page-skel-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+}
+.page-skel-tiles .page-skel-block {
+  height: 92px;
+  border-radius: var(--radius-md, 12px);
+}
+.page-skel-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 12px;
+}
+.page-skel-card {
+  height: 280px;
+  border-radius: var(--radius-md, 12px);
+}
+.page-skel-error {
+  padding: 24px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+@keyframes page-skel-pulse {
+  50% { opacity: 0.2; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-skel-bar,
+  .page-skel-block {
+    animation: none;
+  }
+}

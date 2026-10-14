@@ -48,13 +48,13 @@ export function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div className={dark ? 'auth-page auth-page--dark' : 'auth-page'}>
       <aside className="auth-hero">
-        <img src={`${base}brand/acc-logo-full.png`} alt={t('Arabian Cement Company')} className="auth-hero-logo" width={602} height={316} />
+        <img src={`${base}brand/acc-logo-full.png`} alt={t('Arabian Cement Company')} className="auth-hero-logo" width={602} height={316} decoding="async" />
         <p className="auth-hero-phone-caption">{t('Down Time Analysis')}</p>
         <div className="auth-hero-copy">
           <p className="auth-hero-title">{t('Understand every stop.')}</p>
           <p className="auth-hero-sub">{t('Turn downtime data into reliable decisions.')}</p>
         </div>
-        <img src={heroUrl} alt="" className="auth-hero-art" width={1206} height={832} />
+        <img src={heroUrl} alt="" className="auth-hero-art" width={1206} height={832} loading="lazy" decoding="async" fetchPriority="low" />
         <p className="auth-hero-caption">{t('ACC DOWN TIME ANALYSIS')}</p>
       </aside>
       <main className="auth-panel" id="main">

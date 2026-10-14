@@ -494,6 +494,16 @@ export function buildHeatmap(cells: HeatCell[], opts: { maxRows?: number; maxCol
   return { rows, cols, values, total, omittedRows: opts.fixedRows ? 0 : allRows.length - rows.length, omittedCols: allColCount - cols.length };
 }
 
+/**
+ * The first `maxRows` rows of a heat map built WITHOUT a row limit: exactly what buildHeatmap returns for the same
+ * cells with `maxRows` (rows are ordered before the cut, columns and every cell value do not depend on the cut, and
+ * the total covers every cell either way), so one full build serves both the top-N view and 'Show all rows'.
+ */
+export function topHeatmapRows(full: Heatmap, maxRows: number): Heatmap {
+  const keep = Math.min(full.rows.length, maxRows);
+  return { ...full, rows: full.rows.slice(0, keep), values: full.values.slice(0, keep), omittedRows: full.omittedRows + (full.rows.length - keep) };
+}
+
 export interface HeatmapOptions {
   measure: ParetoMeasure; maxRows?: number; maxCols?: number;
   /** who owns overlapping time (attribution.ts); default: over every row of the events passed in */

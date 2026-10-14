@@ -115,7 +115,9 @@ export default function Validate() {
   const mobile = useIsMobile();
   const online = useOnlineStatus();
   const editor = canEdit('events');
-  const { list, rows, ready, st } = v;
+  const { list, rows, ready, st, loadAll } = v;
+  // this page needs every year's records: no waiting for idle time
+  useEffect(() => loadAll(), [loadAll]);
   const startup = st.startup;
   const { summary } = list;
 

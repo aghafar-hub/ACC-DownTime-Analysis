@@ -1,21 +1,30 @@
+import { Suspense } from 'react';
 import { Navigate, NavLink, useParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import Appearance from '../admin/settings/Appearance';
-import Calculations from '../admin/settings/Calculations';
-import Notifications from '../admin/settings/Notifications';
-import Security from '../admin/settings/Security';
-import UsersAccess from '../admin/settings/UsersAccess';
 import { PageHeader } from '../components/Tile';
 import { tapHaptic } from '../haptics';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { SETTINGS_SUBS, settingsSubById, settingsSubLabel, type SettingsSub } from '../navigation';
 import { store } from '../storagePrefix';
+import { lazyPage } from '../routes/lazyPages';
+import { PageSkeleton } from '../routes/PageFallback';
 import NoAccess from './NoAccess';
 import '../components/ui.css';
 import './Settings.css';
 
 const LAST_SUB_KEY = 'settings_sub';
+
+// each subtab is its own chunk (R5): hover or focus on its tab starts the download
+const SUBS = {
+  appearance: lazyPage(() => import('../admin/settings/Appearance')),
+  notifications: lazyPage(() => import('../admin/settings/Notifications')),
+  calculations: lazyPage(() => import('../admin/settings/Calculations')),
+  security: lazyPage(() => import('../admin/settings/Security')),
+  users: lazyPage(() => import('../admin/settings/UsersAccess')),
+};
+const subFor = (id: string) => SUBS[id as keyof typeof SUBS] ?? SUBS.appearance;
+const preloadSub = (id: string) => void subFor(id).preload().catch(() => undefined);
 
 /** The subtabs this person may open: Appearance always, the rest need View on their tab. */
 export function useVisibleSubs(): SettingsSub[] {
@@ -24,13 +33,12 @@ export function useVisibleSubs(): SettingsSub[] {
 }
 
 function Body({ id }: { id: string }) {
-  switch (id) {
-    case 'notifications': return <Notifications />;
-    case 'calculations': return <Calculations />;
-    case 'security': return <Security />;
-    case 'users': return <UsersAccess />;
-    default: return <Appearance />;
-  }
+  const Sub = subFor(id).Component;
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <Sub />
+    </Suspense>
+  );
 }
 
 /** Settings: a bar of subtabs (Appearance, Calculations, Security, Users and access) under one page header. */
@@ -59,6 +67,8 @@ export default function Settings() {
             onClick={tapHaptic}
             className={({ isActive }) => (isActive ? 'set-tab set-tab--active' : 'set-tab')}
             data-sub={s.id}
+            onPointerEnter={() => preloadSub(s.id)}
+            onFocus={() => preloadSub(s.id)}
           >
             <Icon name={s.icon} size={15} />
             <span>{settingsSubLabel(s)}</span>

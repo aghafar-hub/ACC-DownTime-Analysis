@@ -1,19 +1,33 @@
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { EventRow } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { useEventsForYears, type MultiYear } from '../dashboard/useDash';
 import { eventsResource } from '../data/stores';
-import { useStartup, type StartupHook } from '../data/useStartup';
+import { useStartup, useYear, type StartupHook } from '../data/useStartup';
+import { whenIdle } from '../routes/lazyPages';
 import { buildClassificationSuggester, buildValidation, recheckRecord, type ValidationList, type ValidationRecord } from './model';
 
 // One shared copy of "which records need checking", built from the events of EVERY year. The shell,
 // the page tabs, the banners and the Validate page all read it, so the numbers are the same everywhere
 // and the list is worked out once per change.
+//
+// Loading (R5): sign-in first loads only the latest year (and the year picked in the year switcher), so the
+// page badges get a first count quickly (`early`, marked 'checking older years…'); the older years follow
+// when the browser is idle (or at once when the Validate page asks for them with `loadAll`). `ready`, `rows`
+// and `list` keep their meaning: every year is loaded and the list is complete.
 export interface ValidationState {
   /** the person may read events (any dashboard page) */
   enabled: boolean;
   /** every year is loaded */
   ready: boolean;
+  /** the latest (and selected) year is loaded and `early` holds its records to check; older years may still be loading */
+  earlyReady: boolean;
+  /** the list from the years loaded so far: the complete list once `ready`, the first years' list before that, else empty */
+  early: ValidationList;
+  /** the first years are counted but older years are still being loaded: show counts as 'checking older years…' */
+  checkingOlder: boolean;
+  /** Load every year now instead of waiting for idle time (the Validate page needs the whole list). */
+  loadAll: () => void;
   st: StartupHook;
   data: MultiYear;
   rows: EventRow[];
@@ -35,12 +49,37 @@ const yearOf = (e: Pick<EventRow, 'event_date'>): number => Number(String(e.even
 export function ValidationProvider({ children }: { children: ReactNode }) {
   const { canView } = useAuth();
   const st = useStartup();
+  const [selectedYear] = useYear();
   const enabled = (['overview', 'pareto', 'repeats', 'reliability', 'reports', 'events'] as const).some((t) => canView(t));
-  const years = useMemo(() => (enabled && st.startup ? st.startup.years : []), [enabled, st.startup]);
+  const allYears = useMemo(() => (enabled && st.startup ? st.startup.years : []), [enabled, st.startup]);
+  // step 1: the latest year and the year picked in the year switcher
+  const firstKey = useMemo(() => {
+    if (allYears.length === 0) return '';
+    const latest = Math.max(...allYears);
+    const picked = selectedYear !== null && allYears.includes(selectedYear) ? [selectedYear] : [];
+    return [...new Set([latest, ...picked])].sort((a, b) => a - b).join(',');
+  }, [allYears, selectedYear]);
+  const firstYears = useMemo(() => (firstKey ? firstKey.split(',').map(Number) : []), [firstKey]);
+  const first = useEventsForYears(firstYears);
+  // step 2: every year, once the first ones are in and the browser is idle (or when asked)
+  const [wantAll, setWantAll] = useState(false);
+  const onlyFirst = allYears.length > 0 && allYears.length === firstYears.length;
+  useEffect(() => {
+    if (wantAll || onlyFirst || !first.ready) return undefined;
+    return whenIdle(() => setWantAll(true), 3000);
+  }, [wantAll, onlyFirst, first.ready]);
+  const years = wantAll || onlyFirst ? allYears : [];
   const data = useEventsForYears(years);
   const rows = data.rows;
   const list = useMemo(() => (data.ready ? buildValidation(rows) : EMPTY_LIST), [data.ready, rows]);
+  const firstList = useMemo(() => (first.ready && !data.ready ? buildValidation(first.rows) : EMPTY_LIST), [first.ready, first.rows, data.ready]);
+  const early = data.ready ? list : firstList;
+  const earlyReady = data.ready || first.ready;
+  const checkingOlder = !data.ready && first.ready;
   const suggest = useMemo(() => buildClassificationSuggester(rows), [rows]);
+  const loadAll = useCallback(() => setWantAll(true), []);
+  // the data shown for loading and errors: every year once asked for, else the first years
+  const shown = years.length > 0 ? data : first;
 
   const replaceEvent = useCallback(
     (row: EventRow) => {
@@ -64,12 +103,13 @@ export function ValidationProvider({ children }: { children: ReactNode }) {
   const recheck = useCallback((updated: EventRow) => recheckRecord(rows, updated), [rows]);
   const reload = useCallback(() => {
     st.reload();
+    first.reload();
     data.reload();
-  }, [st, data]);
+  }, [st, first, data]);
 
   const value = useMemo<ValidationState>(
-    () => ({ enabled, ready: data.ready, st, data, rows, list, suggest, reload, replaceEvent, recheck }),
-    [enabled, data, st, rows, list, suggest, reload, replaceEvent, recheck],
+    () => ({ enabled, ready: data.ready, earlyReady, early, checkingOlder, loadAll, st, data: shown, rows, list, suggest, reload, replaceEvent, recheck }),
+    [enabled, data.ready, earlyReady, early, checkingOlder, loadAll, shown, st, rows, list, suggest, reload, replaceEvent, recheck],
   );
   return <ctx.Provider value={value}>{children}</ctx.Provider>;
 }

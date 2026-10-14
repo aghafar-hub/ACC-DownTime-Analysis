@@ -76,6 +76,13 @@ left/right; Pareto as horizontal bars on phones and tooltip clamped above the bo
 
 ## R5 - performance
 Route-level code splitting; lazy older years (Validate counts); memo/caching of heavy models.
+Implemented: every signed-in page (and each Settings subtab, the Event Explorer Timeline) is its own chunk
+(src/routes/lazyPages.ts) with a fixed-height skeleton (src/routes/PageFallback.tsx); hover, focus or touch on a
+navigation item preloads its chunk, and the sign-in screen preloads the Dashboard when idle. The PWA precaches every
+chunk (vite.config.ts globPatterns). ValidationContext loads the latest/selected year first (`early`, badges marked
+'checking older years…') and the older years when idle; `ready`/`list`/`rows` still mean every year. Month vs month
+is keyed on the non-date filters only; Repeats and Reasons-by-month build each heat map once and cut the top rows
+(topHeatmapRows); the base and event scope stages are memoised in a small LRU (src/dashboard/scope.ts).
 
 ## Analytical changes (approved by the owner, implemented)
 P1 overlaps counted once per area (union; shared time PL > INC > CIR, then the stop that started first; exact

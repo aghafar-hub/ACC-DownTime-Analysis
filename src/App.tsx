@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState, type FocusEvent, type PointerEvent } from 'react';
 import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import RequireAuth from './auth/RequireAuth';
@@ -22,22 +22,37 @@ import { t } from './i18n/t';
 import MoreSheet, { OPEN_MORE_EVENT } from './mobile/MoreSheet';
 import ScrollKeeper from './mobile/ScrollKeeper';
 import ChangePassword from './pages/ChangePassword';
-import EventExplorer from './pages/EventExplorer';
 import Login from './pages/Login';
-import Master from './pages/Master';
-import Dashboard from './pages/Dashboard';
-import Pareto from './pages/Pareto';
-import Reliability from './pages/Reliability';
-import Reports from './pages/Reports';
-import Repeats from './pages/Repeats';
-import Settings from './pages/Settings';
-import Upload from './pages/Upload';
-import Validate from './pages/Validate';
+import {
+  DashboardPage, EventExplorerPage, MasterPage, ParetoPage, preloadPath, ReliabilityPage, ReportsPage, RepeatsPage,
+  SettingsPage, UploadPage, ValidatePage, whenIdle,
+} from './routes/lazyPages';
+import { PageLoadBoundary, PageSkeleton } from './routes/PageFallback';
 import { NotificationsProvider } from './notifications/NotificationsContext';
 import { ValidationProvider } from './validate/ValidationContext';
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
 import UpdateBanner from './update/UpdateBanner';
 import './App.css';
+
+const Dashboard = DashboardPage.Component;
+const Pareto = ParetoPage.Component;
+const Repeats = RepeatsPage.Component;
+const Reliability = ReliabilityPage.Component;
+const Reports = ReportsPage.Component;
+const EventExplorer = EventExplorerPage.Component;
+const Validate = ValidatePage.Component;
+const Upload = UploadPage.Component;
+const Master = MasterPage.Component;
+const Settings = SettingsPage.Component;
+
+// Hover, keyboard focus or a touch on any link or menu tile in the shell starts loading that page's code,
+// so the page is usually ready by the time the click lands. Links carry their address in href ('#/pareto');
+// buttons that navigate (the phone's More tiles) carry it in data-preload.
+function preloadFromEvent(e: PointerEvent | FocusEvent) {
+  const el = (e.target as Element | null)?.closest?.('a[href], [data-preload]');
+  if (!el) return;
+  preloadPath(el.getAttribute('data-preload') ?? el.getAttribute('href'));
+}
 
 // Signed in: the shell (left rail, top bar, page tabs, phone bottom bar) around the page.
 function ShellLayout() {
@@ -78,7 +93,10 @@ function ShellLayout() {
     <ValidationProvider>
     <NotificationsProvider>
     <ScopeSlotContext.Provider value={slots}>
-    <div className={pinned && !mobile ? 'app-shell app-shell--rail-pinned' : 'app-shell'}>
+    <div
+      className={pinned && !mobile ? 'app-shell app-shell--rail-pinned' : 'app-shell'}
+      onPointerOver={preloadFromEvent} onPointerDown={preloadFromEvent} onFocus={preloadFromEvent}
+    >
       {!mobile && <Sidebar />}
       <div className="app-shell-right">
         <TopBar />
@@ -88,7 +106,11 @@ function ShellLayout() {
         {scoped && <DataStatusStrip />}
         <OfflineBanner />
         <main className="shell-page-content" id="main">
-          <Outlet />
+          <PageLoadBoundary resetKey={location.pathname}>
+            <Suspense fallback={<PageSkeleton />}>
+              <Outlet />
+            </Suspense>
+          </PageLoadBoundary>
         </main>
         {mobile && <BottomNav onOpenMore={() => setMoreOpen(true)} moreOpen={moreOpen} />}
         {mobile && <MoreSheet open={moreOpen} onClose={() => setMoreOpen(false)} />}
@@ -136,6 +158,19 @@ function NotFound() {
 
 function LoginRoute() {
   const { token, mustChange } = useAuth();
+  // the Dashboard is where most people land after signing in: fetch its code once the sign-in screen is
+  // fully loaded and the browser is idle, so it never competes with the form itself
+  useEffect(() => {
+    if (token) return undefined;
+    let cancel = () => {};
+    const start = () => { cancel = whenIdle(() => preloadPath('/dashboard'), 4000); };
+    if (document.readyState === 'complete') start();
+    else window.addEventListener('load', start, { once: true });
+    return () => {
+      window.removeEventListener('load', start);
+      cancel();
+    };
+  }, [token]);
   if (token) return <Navigate to={mustChange ? '/change-password' : '/'} replace />;
   return <Login />;
 }

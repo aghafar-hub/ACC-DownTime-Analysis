@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import type { EventRow } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
@@ -41,11 +41,15 @@ import { downloadFile, stampNow } from '../export/files';
 import { XLSX_MIME } from '../export/xlsx';
 import { CSV_MIME } from '../export/csv';
 import EventDetail from './events/EventDetail';
-import TimelineView from './events/TimelineView';
 import './events/timeline.css';
 import './events/records.css';
 import '../components/ui.css';
 import StickyTableWrap, { stuckTop } from '../components/StickyTableWrap';
+
+// the Timeline view is its own chunk (R5): most visits use the List
+const loadTimeline = () => import('./events/TimelineView');
+const TimelineView = lazy(loadTimeline);
+const preloadTimeline = () => void loadTimeline().catch(() => undefined);
 
 const SORT_WORDS: Record<SortKey, [string, string]> = {
   stop: ['Oldest first', 'Newest first'],
@@ -485,7 +489,7 @@ export default function EventExplorer() {
 
       <div className="seg view-switch" role="group" aria-label={t('Event view')} data-testid="view-switch">
         <button type="button" className="seg-btn" aria-pressed={view === 'list'} onClick={() => setView('list')} data-testid="view-list">{t('List')}</button>
-        <button type="button" className="seg-btn" aria-pressed={view === 'timeline'} onClick={() => setView('timeline')} data-testid="view-timeline">{t('Timeline')}</button>
+        <button type="button" className="seg-btn" aria-pressed={view === 'timeline'} onClick={() => setView('timeline')} onPointerEnter={preloadTimeline} onFocus={preloadTimeline} data-testid="view-timeline">{t('Timeline')}</button>
       </div>
 
       {!mobile ? (
@@ -552,7 +556,9 @@ export default function EventExplorer() {
 
       {dataReady && view === 'timeline' && (
         <div style={{ marginTop: 12 }}>
-          <TimelineView sourceRows={sourceRows} filteredRows={timelineRows} startup={startup} year={drill ? '' : periodName} mobile={mobile} onOpen={setOpenId} />
+          <Suspense fallback={<div className="page-skel-block" style={{ height: 320 }} data-testid="timeline-loading" />}>
+            <TimelineView sourceRows={sourceRows} filteredRows={timelineRows} startup={startup} year={drill ? '' : periodName} mobile={mobile} onOpen={setOpenId} />
+          </Suspense>
         </div>
       )}
       {dataReady && view === 'list' && (

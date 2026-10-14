@@ -96,9 +96,13 @@ export default function MonthCompare({ dash, page, compact = false }: {
   const notUploaded = useMemo(() => new Set(ready ? notUploadedMonths(rows, coverage) : []), [ready, rows, coverage]);
   const optLabel = (m: string): string => (notUploaded.has(m) ? `${monthLong(m)} (${t('Not uploaded')})` : monthLong(m));
 
+  // the comparison ignores the date filters (period, year, month, range, comparison): changing only those
+  // must not rebuild it, so it is keyed on the other filters alone (monthCompareModel resets the same fields)
+  const cmpKey = JSON.stringify({ ...dash.filters, preset: 'custom', from: '', to: '', year: null, month: null, compare: 'none' });
+  const cmpFilters = useMemo(() => dash.filters, [cmpKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const model = useMemo(
-    () => ((open || compact) && ready && pair && dash.startup ? monthCompareModel(rows, dash.startup, dash.filters, pair) : null),
-    [open, compact, ready, pair?.a, pair?.b, rows, dash.startup, dash.filters], // eslint-disable-line react-hooks/exhaustive-deps
+    () => ((open || compact) && ready && pair && dash.startup ? monthCompareModel(rows, dash.startup, cmpFilters, pair) : null),
+    [open, compact, ready, pair?.a, pair?.b, rows, dash.startup, cmpFilters], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   const choose = (patch: Partial<MonthPair>) => {

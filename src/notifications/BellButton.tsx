@@ -4,6 +4,7 @@ import { t, tn } from '../i18n/t';
 import { Icon } from '../icons';
 import { badgeText } from './merge';
 import { useNotifications } from './NotificationsContext';
+import { useValidationOptional } from '../validate/ValidationContext';
 import NotificationPanel from './NotificationPanel';
 import './notifications.css';
 
@@ -19,6 +20,9 @@ export function bellLabel(actionCount: number, unseenAlerts: number): string {
 // the person has not opened. Nothing is drawn when there is nothing. A hidden live region announces new items.
 export default function BellButton() {
   const n = useNotifications();
+  const v = useValidationOptional();
+  // the action items from the records follow once every year is loaded (R5: older years load in the background)
+  const records = !v || !v.enabled ? 'none' : v.ready ? 'complete' : 'checking';
   const ref = useRef<HTMLButtonElement>(null);
   const location = useLocation();
   const { closePanel } = n;
@@ -38,6 +42,7 @@ export default function BellButton() {
         data-testid="bell-btn"
         data-action-count={n.actionCount}
         data-alert-count={n.unseenAlerts}
+        data-records={records}
       >
         <Icon name="bell" size={18} />
         {n.actionCount > 0 && (

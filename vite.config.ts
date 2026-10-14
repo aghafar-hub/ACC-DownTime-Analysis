@@ -59,6 +59,9 @@ export default defineConfig({
       },
       workbox: {
         clientsClaim: true,
+        // Every built file is precached, including each lazily loaded page chunk (R5 route splitting): the app
+        // works offline on any page, not only the ones opened before. The sign-in art and the brand logos too.
+        globPatterns: ['**/*.{js,css,html}', 'assets/*.{webp,png,svg}', 'brand/*.png'],
         runtimeCaching: [
           {
             // Web fonts: serve from the device once fetched, so the app

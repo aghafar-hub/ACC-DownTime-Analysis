@@ -2,7 +2,7 @@
 // their own beyond joining calc outputs (tests compare every headline number with a direct calc call).
 import {
   areaMonthAvailability, areaPareto, availabilityByArea, failureStartHeatmap, linePareto, mtbfMttrQuadrants, rankAreas, reasonMonthHeatmap, buildPareto, classificationPareto, dailySeries, daysInRange, monthlyHoursByClassification, compareTotal, avail, durationHistogram, equipmentMonthHeatmap,
-  equipmentPareto, equipmentReasonHeatmap, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
+  equipmentPareto, equipmentReasonHeatmap, topHeatmapRows, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
   reasonParetoForEquipment, resolvedKey, rollingFailureCounts, rowCode, yearOverYear,
   type AreaAvailability, type AreaKpis, type AreaMonthAvailability, type AreaRank, type QuadrantResult, type ClassMonthPoint, type DayPoint, type Metric, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
   type KpiChanges, type KpiOk, type LongEvent, type MonthPoint, type ParetoBar, type ParetoMeasure, type ParetoResult, type RepeatResult,
@@ -256,12 +256,10 @@ export function reasonMonthModel(ctx: DashCtx): ReasonMonthModel | null {
   const chains = ctx.scope.failureChains;
   const attribution = ctx.scope.attribution;
   const mark = (h: Heatmap): Heatmap => markNotUploaded(h, ctx.notUploaded);
-  return {
-    hours: mark(reasonMonthHeatmap(chains, window, { measure: 'hours', maxRows: 12, attribution })),
-    count: mark(reasonMonthHeatmap(chains, window, { measure: 'count', maxRows: 12 })),
-    hoursAll: mark(reasonMonthHeatmap(chains, window, { measure: 'hours', attribution })),
-    countAll: mark(reasonMonthHeatmap(chains, window, { measure: 'count' })),
-  };
+  // each measure is built once with every row; the top 12 is a cut of it (same numbers as a limited build)
+  const hoursAll = mark(reasonMonthHeatmap(chains, window, { measure: 'hours', attribution }));
+  const countAll = mark(reasonMonthHeatmap(chains, window, { measure: 'count' }));
+  return { hours: topHeatmapRows(hoursAll, 12), count: topHeatmapRows(countAll, 12), hoursAll, countAll };
 }
 
 /** P6: month columns of a cause x month heat map that were not uploaded read 'YYYY-MM n/u' (an empty column is not 0). */
@@ -304,18 +302,21 @@ export function repeatsModel(ctx: DashCtx): RepeatsModel | null {
   const scatter: ScatterPoint[] = count.bars
     .map((c) => ({ code: c.key, count: c.value, totalHours: h.get(c.key)?.value ?? 0, avgHours: (h.get(c.key)?.value ?? 0) / c.value, eventIds: c.eventIds }))
     .filter((p) => p.count > 0);
+  // four heat maps built once with every row (the 'Show all rows' view); the top 15 / top 12 are cuts of them,
+  // equal to a build with the row limit (topHeatmapRows)
+  const heatAll = {
+    monthHours: markNotUploaded(equipmentMonthHeatmap(coded, index, window, { measure: 'hours', attribution }), ctx.notUploaded),
+    monthCount: markNotUploaded(equipmentMonthHeatmap(coded, index, window, { measure: 'count' }), ctx.notUploaded),
+    reasonHours: equipmentReasonHeatmap(coded, index, window, { measure: 'hours', maxCols: 8, attribution }),
+    reasonCount: equipmentReasonHeatmap(coded, index, window, { measure: 'count', maxCols: 8 }),
+  };
   return {
     result, window, scatter,
-    heatMonthHours: markNotUploaded(equipmentMonthHeatmap(coded, index, window, { measure: 'hours', maxRows: 15, attribution }), ctx.notUploaded),
-    heatMonthCount: markNotUploaded(equipmentMonthHeatmap(coded, index, window, { measure: 'count', maxRows: 15 }), ctx.notUploaded),
-    heatReasonHours: equipmentReasonHeatmap(coded, index, window, { measure: 'hours', maxRows: 12, maxCols: 8, attribution }),
-    heatReasonCount: equipmentReasonHeatmap(coded, index, window, { measure: 'count', maxRows: 12, maxCols: 8 }),
-    heatAll: {
-      monthHours: markNotUploaded(equipmentMonthHeatmap(coded, index, window, { measure: 'hours', attribution }), ctx.notUploaded),
-      monthCount: markNotUploaded(equipmentMonthHeatmap(coded, index, window, { measure: 'count' }), ctx.notUploaded),
-      reasonHours: equipmentReasonHeatmap(coded, index, window, { measure: 'hours', maxCols: 8, attribution }),
-      reasonCount: equipmentReasonHeatmap(coded, index, window, { measure: 'count', maxCols: 8 }),
-    },
+    heatMonthHours: topHeatmapRows(heatAll.monthHours, 15),
+    heatMonthCount: topHeatmapRows(heatAll.monthCount, 15),
+    heatReasonHours: topHeatmapRows(heatAll.reasonHours, 12),
+    heatReasonCount: topHeatmapRows(heatAll.reasonCount, 12),
+    heatAll,
   };
 }
 

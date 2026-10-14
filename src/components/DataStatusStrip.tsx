@@ -29,11 +29,14 @@ export default function DataStatusStrip() {
     return { coverage, gaps, segments: coverageSegments(coverage, gaps), added };
   }, [rows]);
   if (!v || !v.enabled) return null;
-  const toCheck = v.ready ? v.list.summary.total : 0;
+  // the latest year counts first; older years follow in the background
+  const toCheck = v.earlyReady ? v.early.summary.total : 0;
   const canCheck = canView('events') && toCheck > 0;
   const checkLink = canCheck && (
-    <Link to="/validate" className="ds-check" data-testid="data-status-check">
-      {mobile ? t('{n} to check', { n: num(toCheck) }) : t('{n} records to check', { n: num(toCheck) })} <span aria-hidden="true">›</span>
+    <Link to="/validate" className="ds-check" data-testid="data-status-check" data-partial={v.checkingOlder || undefined}>
+      {mobile ? t('{n} to check', { n: num(toCheck) }) : t('{n} records to check', { n: num(toCheck) })}
+      {v.checkingOlder && <span className="ds-muted" data-testid="data-status-checking-older"> ({t('checking older years…')})</span>}
+      {' '}<span aria-hidden="true">›</span>
     </Link>
   );
 
