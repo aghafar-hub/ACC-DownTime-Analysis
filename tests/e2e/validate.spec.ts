@@ -44,7 +44,7 @@ test.describe('validate (desktop)', () => {
   for (const [role, fixes] of [['viewer', false], ['manager', false], ['engineer', true], ['admin', true]] as [Role, boolean][]) {
     test(`${role}: sees the Validate tab and ${fixes ? 'can fix records' : 'reads only'}`, async ({ page }) => {
       await signInAndWait(page, role);
-      // Validate lives in the Data section: the pinned rail lists it (with its count) right after Event Explorer
+      // Validate lives in the Data section: the rail lists it (with its count) right after Event Explorer
       const railLink = page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: /Validate/ });
       await expect(railLink).toBeVisible();
       await railLink.click();
@@ -459,8 +459,7 @@ test.describe('validate (desktop)', () => {
     await expect(page.getByTestId('v-count-blocked')).toBeVisible({ timeout: 20000 });
     await expect(rows(page).first()).toBeVisible();
     await expect(page.getByTestId('rail-link-validate')).toHaveClass(/sidebar-link--active/);
-    // with the icon rail the Data page tabs come back, Validate lit
-    await page.getByTestId('rail-toggle').click();
+    // beside the icon rail the Data page tabs show, Validate lit
     await expect(page.getByRole('navigation', { name: 'Pages' }).getByRole('link', { name: /^Validate/ })).toHaveClass(/module-tab--active/);
     await expect(page.getByTestId('validate-badge-tab')).toBeVisible();
   });

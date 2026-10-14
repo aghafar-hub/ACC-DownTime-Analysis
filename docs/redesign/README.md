@@ -43,7 +43,7 @@ Data status strip (coverage, months not uploaded as information only (no number 
 ACC orange as secondary accent (primary CTAs, active filter pill). One date format: months 'Aug 2026',
 days '26 Aug', timestamps '26 Aug 2026 14:05'. Filter dependencies (equipment list incl. cross-area codes;
 prune out-of-scope equipment; reasons narrowed). Rename Overview -> Dashboard.
-Status: implemented. Notes: the rail mode lives in src/hooks/useRail.ts (choice kept on the device); the desktop page
+Status: implemented. Notes: owner change (14 Oct): the rail is the icon rail at every width with no Collapse button; it opens over the page on hover or keyboard focus and closes by itself (also at once after a page is chosen with the mouse) (src/hooks/useRail.ts); the desktop page
 tabs show only beside the icon rail; the scope bar is drawn into a sticky slot of the shell (src/components/ScopeSlot.tsx,
 src/dashboard/ScopeBar.tsx), its note, range and active filters scroll under it; Event records apply the shared scope row
 by row (src/pages/events/explorerFilters.ts) and the year chips set the shared period to that year; dates go through

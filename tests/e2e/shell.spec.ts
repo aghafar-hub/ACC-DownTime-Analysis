@@ -62,13 +62,8 @@ test.describe('desktop', () => {
     });
   }
 
-  test('page tabs show only the siblings of the open page, and none for Setup (icon rail); none beside the pinned rail', async ({ page }) => {
+  test('page tabs show only the siblings of the open page, and none for Setup (icon rail at every width)', async ({ page }) => {
     await signInAndWait(page, 'admin');
-    // 1280 px: the labelled rail is pinned and lists every page, so there is no second row of tabs
-    await expect(page.getByTestId('rail')).toHaveAttribute('data-mode', 'pinned');
-    await expect(page.getByTestId('page-tabs')).toHaveCount(0);
-    // with the icon rail (a narrower screen) the tabs come back
-    await page.setViewportSize({ width: 1200, height: 800 });
     await expect(page.getByTestId('rail')).toHaveAttribute('data-mode', 'icons');
     const tabNames = () => page.getByRole('navigation', { name: 'Pages' }).getByRole('link').evaluateAll((els) => els.map((el) => (el.firstChild?.textContent ?? '').trim()));
     expect(await tabNames()).toEqual(ANALYZE);
@@ -92,9 +87,9 @@ test.describe('desktop', () => {
   test('the rail shows section headings when open and a thin divider when narrow', async ({ page }) => {
     await signInAndWait(page, 'admin');
     const title = page.getByTestId('rail-section-data');
-    // pinned at 1280: headings show
+    // the icon rail: headings show while it is open (hover), a divider when it closes by itself
+    await page.getByTestId('rail-panel').hover();
     await expect(title).toBeVisible();
-    await page.getByTestId('rail-toggle').click();
     await page.mouse.move(800, 500);
     await expect(title).toBeHidden();
     const border = await page.locator('[data-section="data"]').evaluate((el) => getComputedStyle(el).borderTopWidth);
@@ -321,40 +316,39 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('offline-banner')).toHaveCount(0);
   });
 
-  test('at 1280 the labelled rail is pinned (232 px, logo on the navy); Collapse menu keeps the 68 px icon rail across a reload', async ({ page }) => {
+  test('at 1280 the rail is the 68 px icon rail with no collapse button; it opens over the page on hover and closes by itself', async ({ page }) => {
     await signInAndWait(page, 'viewer');
     const rail = page.getByTestId('rail');
     const panel = page.getByTestId('rail-panel');
-    await expect(rail).toHaveAttribute('data-mode', 'pinned');
-    expect((await rail.boundingBox())!.width).toBe(232);
-    await expect(page.locator('.sidebar-logo-full')).toBeVisible();
-    await expect(page.locator('.sidebar-logo-mark')).toBeHidden();
-    await expect(page.getByTestId('rail-link-overview')).toContainText('Dashboard');
-    await expect(page.getByTestId('rail-link-overview')).toHaveClass(/sidebar-link--active/);
-    // the logo sits straight on the navy rail (no plate behind it), dark in a light theme
-    expect(await rail.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(11, 27, 46)');
-    expect(await page.locator('.sidebar-logo-crop').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
-    // the main content starts after the rail
-    const mainLeft = async () => (await page.locator('#main').boundingBox())!.x;
-    expect(await mainLeft()).toBe(232);
-
-    await page.getByTestId('rail-toggle').click();
-    await page.mouse.move(900, 500);
     await expect(rail).toHaveAttribute('data-mode', 'icons');
+    await expect(page.getByTestId('rail-toggle')).toHaveCount(0);
+    await expect(page.getByText('Collapse menu')).toHaveCount(0);
     expect((await rail.boundingBox())!.width).toBe(68);
     await expect(page.locator('.sidebar-logo-mark')).toBeVisible();
     await expect(page.locator('.sidebar-logo-full')).toBeHidden();
+    // the logo sits straight on the navy rail (no plate behind it)
+    expect(await rail.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(11, 27, 46)');
+    expect(await page.locator('.sidebar-logo-crop').evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+    const mainLeft = async () => (await page.locator('#main').boundingBox())!.x;
     expect(await mainLeft()).toBe(68);
     // hover opens the labels OVER the page: the page does not move
     await panel.hover();
     await expect.poll(async () => (await panel.boundingBox())!.width).toBe(232);
     await expect(page.locator('.sidebar-logo-full')).toBeVisible();
+    await expect(page.getByTestId('rail-link-overview')).toContainText('Dashboard');
     expect(await mainLeft()).toBe(68);
-    // the choice is kept on this device
-    await page.reload();
-    await expect(page.getByTestId('rail')).toHaveAttribute('data-mode', 'icons');
-    await page.getByTestId('rail-toggle').click();
-    await expect(page.getByTestId('rail')).toHaveAttribute('data-mode', 'pinned');
+    // choosing a page with the mouse closes it at once, even with the pointer still on the rail
+    await page.getByTestId('rail-link-pareto').click();
+    await expect(page.getByTestId('page-pareto')).toBeVisible();
+    await expect.poll(async () => (await panel.boundingBox())!.width).toBe(68);
+    // it opens again once the pointer has left and comes back
+    await page.mouse.move(900, 500);
+    await panel.hover();
+    await expect.poll(async () => (await panel.boundingBox())!.width).toBe(232);
+    await page.mouse.move(900, 500);
+    await expect.poll(async () => (await panel.boundingBox())!.width).toBe(68);
+    // the page tabs show beside the icon rail
+    await expect(page.getByRole('navigation', { name: 'Pages' })).toBeVisible();
   });
 
   test('between 861 and 1279 px the icon rail opens over the page on hover and on keyboard focus; hover keeps the text readable', async ({ page }) => {
@@ -363,7 +357,7 @@ test.describe('desktop', () => {
     const rail = page.getByTestId('rail');
     const panel = page.getByTestId('rail-panel');
     await expect(rail).toHaveAttribute('data-mode', 'icons');
-    await expect(page.getByTestId('rail-toggle')).toHaveCount(0); // nothing to pin at this width
+    await expect(page.getByTestId('rail-toggle')).toHaveCount(0);
     const mainLeft = async () => (await page.locator('#main').boundingBox())!.x;
     expect(await mainLeft()).toBe(68);
     // keyboard: tabbing onto a link opens the labels

@@ -1,51 +1,17 @@
-import { useCallback, useSyncExternalStore } from 'react';
 import { store } from '../storagePrefix';
 
-// The desktop left rail. At 1280 px and wider it is pinned open with labels (232 px) unless the person chose
-// "Collapse menu"; that choice is kept on this device. Narrower (861-1279 px), or collapsed, it is the 68 px icon
-// rail, and hovering or focusing it opens the labels OVER the page (the page never moves).
-export const RAIL_WIDE_QUERY = '(min-width: 1280px)';
-const KEY = 'rail_collapsed';
+// The desktop left rail: always the 68 px icon rail. Hovering or keyboard-focusing it opens the labels OVER the page
+// (the page never moves) and it closes again by itself when the pointer or focus leaves; there is no pin or collapse
+// button (owner decision). The pinned 232 px mode is kept in the CSS but no longer used.
 
-let collapsed: boolean | null = null;
-const listeners = new Set<() => void>();
-
-function readCollapsed(): boolean {
-  if (collapsed === null) collapsed = store.get(KEY) === '1';
-  return collapsed;
-}
-
-function subscribeCollapsed(cb: () => void) {
-  listeners.add(cb);
-  return () => listeners.delete(cb);
-}
-
-function subscribeWide(cb: () => void) {
-  const m = window.matchMedia(RAIL_WIDE_QUERY);
-  m.addEventListener('change', cb);
-  return () => m.removeEventListener('change', cb);
-}
-
-export function setRailCollapsed(next: boolean): void {
-  collapsed = next;
-  if (next) store.set(KEY, '1');
-  else store.remove(KEY);
-  listeners.forEach((l) => l());
-}
+// the old "Collapse menu" choice is no longer read; drop it from the device
+try { store.remove('rail_collapsed'); } catch { /* storage unavailable */ }
 
 export interface RailState {
-  /** the screen is wide enough for the labelled rail */
-  wide: boolean;
-  /** the person chose the icon rail */
-  collapsed: boolean;
-  /** the labelled rail is pinned open (wide and not collapsed) */
+  /** the labelled rail is pinned open (never, since the rail collapses by itself) */
   pinned: boolean;
-  toggle: () => void;
 }
 
 export function useRail(): RailState {
-  const wide = useSyncExternalStore(subscribeWide, () => window.matchMedia(RAIL_WIDE_QUERY).matches, () => true);
-  const isCollapsed = useSyncExternalStore(subscribeCollapsed, readCollapsed, () => false);
-  const toggle = useCallback(() => setRailCollapsed(!readCollapsed()), []);
-  return { wide, collapsed: isCollapsed, pinned: wide && !isCollapsed, toggle };
+  return { pinned: false };
 }

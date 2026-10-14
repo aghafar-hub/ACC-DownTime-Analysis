@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Icon } from '../icons';
 import { useRail } from '../hooks/useRail';
@@ -10,16 +11,23 @@ import ValidateBadge from '../validate/NavBadge';
 import './Sidebar.css';
 
 // Left rail (desktop and tablet), always on the navy side-bar colour with the transparent ACC logo straight on it.
-// At 1280 px and wider it is pinned open with labels (232 px) unless the person collapses it; otherwise it is the
-// 68 px icon rail, and hover or keyboard focus opens the labels OVER the page (the page does not move).
+// It is the 68 px icon rail at every width; hover or keyboard focus opens the labels OVER the page (the page does not
+// move) and it collapses again by itself.
 export default function Sidebar() {
   const pages = useVisiblePages();
-  const { wide, pinned, toggle } = useRail();
+  const { pinned } = useRail();
   const base = import.meta.env.BASE_URL;
   const mode = pinned ? 'pinned' : 'icons';
+  // choosing a page closes the open rail at once, even with the pointer still on it; it opens again after the pointer
+  // has left and comes back
+  const [rest, setRest] = useState(false);
   return (
-    <div className={`sidebar-rail sidebar-rail--${mode}`} data-testid="rail" data-mode={mode}>
-      <nav className="sidebar-panel" aria-label={t('Primary')} data-testid="rail-panel">
+    <div className={`sidebar-rail sidebar-rail--${mode}${rest ? ' sidebar-rail--rest' : ''}`} data-testid="rail" data-mode={mode}>
+      <nav
+        className="sidebar-panel" aria-label={t('Primary')} data-testid="rail-panel"
+        onClick={(e) => { if ((e.target as HTMLElement).closest('a') && e.detail > 0) setRest(true); }}
+        onMouseLeave={() => setRest(false)}
+      >
         <div className="sidebar-logo">
           <img src={`${base}brand/acc-leaf-mark.png`} alt="" className="sidebar-logo-mark" />
           <span className="sidebar-logo-crop">
@@ -60,17 +68,6 @@ export default function Sidebar() {
             );
           })}
         </div>
-        {wide && (
-          <div className="sidebar-foot">
-            <button
-              type="button" className="sidebar-link sidebar-toggle" onClick={toggle} aria-pressed={!pinned}
-              title={pinned ? t('Collapse menu') : t('Expand menu')} data-testid="rail-toggle"
-            >
-              <span className="sidebar-link-icon"><Icon name={pinned ? 'chevronsLeft' : 'chevronsRight'} size={18} /></span>
-              <span className="sidebar-link-label">{pinned ? t('Collapse menu') : t('Keep menu open')}</span>
-            </button>
-          </div>
-        )}
       </nav>
     </div>
   );
