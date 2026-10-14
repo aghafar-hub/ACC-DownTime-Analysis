@@ -72,7 +72,7 @@ export const CHART_HELP = {
     title: 'Planned or incidental, by line',
     what: 'Stopped hours of each production line split into incidental, planned (PL) and other (CIR), as a share of the line total.',
     formulas: ['Share = hours of the type ÷ stopped hours of the line × 100'],
-    how: ['The line of a stop is the line of its area in the master data.', 'Incidental = every stop that is not PL or CIR (failures and their continuations).', P1, CLIP, AREA_H],
+    how: ['Whole lines: the Area and Equipment filters do not apply to this card, so L.1 always means every area of line 1 (period, line and type filters still apply).', 'The line of a stop is the line of its area in the master data.', 'Incidental = every stop that is not PL or CIR (failures and their continuations).', P1, CLIP, AREA_H],
     example: 'Here, all lines: incidental {i} h, planned {p} h, other {o} h = {t} h.',
   },
   'area-down': {

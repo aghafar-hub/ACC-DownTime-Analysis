@@ -10,6 +10,7 @@ import MonthCompare from '../dashboard/MonthCompare';
 import { overviewModel } from '../dashboard/models';
 import { EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, useDrill } from '../dashboard/parts';
 import { overviewTakeaway } from '../dashboard/takeaways';
+import { buildCtx } from '../dashboard/scope';
 import { useDash } from '../dashboard/useDash';
 import KpiRow from '../dashboard/cards/KpiRow';
 import PlannedAllowanceCard from '../dashboard/cards/PlannedAllowanceCard';
@@ -72,6 +73,14 @@ export default function Dashboard() {
     </span>
   );
 
+  // "Planned or incidental?" always shows WHOLE lines (owner decision): the Area and Equipment filters do not apply to it
+  const lineFilters = useMemo(() => ({ ...dash.filters, areaIds: [], equipmentIds: [] }), [dash.filters]);
+  const narrowed = dash.filters.areaIds.length > 0 || dash.filters.equipmentIds.length > 0;
+  const lineCtx = useMemo(
+    () => (ctx && narrowed && dash.startup && dash.range ? buildCtx(dash.allRows, dash.startup, lineFilters, dash.range) : ctx),
+    [ctx, narrowed, dash.startup, dash.range, dash.allRows, lineFilters],
+  );
+
   return (
     <div className="page dash-page dash-v2" data-testid="page-overview" style={vars}>
       <DashTop title={t('Dashboard')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} belowTakeaway={<SinceLastVisit />} right={right} />
@@ -84,7 +93,7 @@ export default function Dashboard() {
             <TrendCard ctx={ctx} filters={dash.filters} dark={dark} classNames={classNames} onOpen={onOpen} />
             <ClassCard ctx={ctx} filters={dash.filters} dark={dark} classNames={classNames} onOpen={onOpen} />
             <LossesCard ctx={ctx} filters={dash.filters} onOpen={onOpen} />
-            <PlannedCard ctx={ctx} filters={dash.filters} dark={dark} onOpen={onOpen} />
+            <PlannedCard ctx={lineCtx ?? ctx} filters={lineFilters} wholeLines={lineCtx !== ctx} dark={dark} onOpen={onOpen} />
             <AreaDownCard ctx={ctx} filters={dash.filters} dark={dark} onOpen={onOpen} />
             <AreaTargetCard ctx={ctx} filters={dash.filters} onOpen={onOpen} />
             <PlannedAllowanceCard ctx={ctx} filters={dash.filters} onOpenRows={onOpenRows} />

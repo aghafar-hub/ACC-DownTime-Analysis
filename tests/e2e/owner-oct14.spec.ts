@@ -72,6 +72,27 @@ test.describe('desktop', () => {
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
+  test('Planned or incidental? shows whole lines: an Area or Equipment filter does not change it', async ({ page }) => {
+    const errors = watchConsole(page);
+    await stubFonts(page);
+    await page.goto('/');
+    await signInAndWait(page, 'engineer');
+    const lineTotals = async () => {
+      const card = page.getByTestId('chart-planned-line');
+      await expect(card).toBeVisible({ timeout: 20000 });
+      return card.getByTestId('split-row').evaluateAll((els) => els.map((el) => `${el.getAttribute('data-line')}=${el.querySelector('.split-total')?.textContent}`));
+    };
+    await open(page, '/dashboard', 'page-overview');
+    const all = await lineTotals();
+    for (const area of ['K.1', 'RM.1']) {
+      await open(page, `/dashboard?area=${area}`, 'page-overview');
+      await expect(page.getByTestId('fb-chip-area-' + area)).toBeVisible();
+      expect(await lineTotals(), area).toEqual(all);
+      await expect(page.getByTestId('chart-planned-line')).toContainText('whole lines');
+    }
+    expect(errors, errors.join('\n')).toEqual([]);
+  });
+
   test('Running hours on the KPI row: scheduled minus stopped, change, monthly sparkline and an (i) that says it is derived', async ({ page }) => {
     const errors = watchConsole(page);
     await stubFonts(page);

@@ -210,7 +210,8 @@ function SplitBar({ s, paints, testid }: { s: TypeSplit; paints: Paint[]; testid
   );
 }
 
-export function PlannedCard({ ctx, filters, dark, onOpen }: { ctx: DashCtx; filters: DashFilters; dark: boolean; onOpen: OpenFn }) {
+/** `wholeLines`: the page's Area / Equipment filters were dropped for this card, so every bar is a whole line. */
+export function PlannedCard({ ctx, filters, dark, onOpen, wholeLines }: { ctx: DashCtx; filters: DashFilters; dark: boolean; onOpen: OpenFn; wholeLines?: boolean }) {
   const eff = ctx.win.effective!;
   const m = useMemo(() => lineSplit(ctx), [ctx]);
   const ids = useMemo(() => idsWithHours(ctx, eff), [ctx, eff]);
@@ -222,7 +223,7 @@ export function PlannedCard({ ctx, filters, dark, onOpen }: { ctx: DashCtx; filt
     <DashCard
       id="planned" testid="chart-planned-line" span="narrow" title={t('Planned or incidental?')}
       help={{ id: 'planned', vars: { i: fh(m.all.inc), p: fh(m.all.pl), o: fh(m.all.cir), t: fh(m.all.total) } }}
-      subtitle={t('Stopped hours by line and type · % of the line total')}
+      subtitle={wholeLines ? t('Stopped hours by line and type · % of the line total · whole lines: the Area and Equipment filters do not apply here') : t('Stopped hours by line and type · % of the line total')}
       legend={paints.map((p) => ({ kind: 'paint' as const, paint: p, label: p.label }))}
       summary={summary} scope={scopeText(eff, filters, 'none')} open={{ ids, label: t('Planned or incidental, all lines') }} onOpen={onOpen}
     >
