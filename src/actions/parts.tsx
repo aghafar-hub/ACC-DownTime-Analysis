@@ -63,6 +63,16 @@ export function Avatar({ name, size = 'md' }: { name: string; size?: 'sm' | 'md'
   return <span className={`act-avatar act-avatar--${size}`} aria-hidden="true">{initials(name)}</span>;
 }
 
+/** The mark on an action whose area is switched off: the action stays, its area's records are left out of the numbers. */
+export function InactiveAreaTag() {
+  return (
+    <span className="act-tag act-tag--inactive" data-testid="action-area-inactive"
+      title={t('This area is switched off (Settings > Areas): its records are left out of every number, and no new drafts are made for it.')}>
+      <Icon name="ban" size={13} />{t('Area inactive')}
+    </span>
+  );
+}
+
 /** 'K.2 · L.2' or 'Plant'. */
 export function scopeText(a: Pick<Action, 'scope_kind' | 'area_id' | 'line_id'>): string {
   if (a.scope_kind === 'plant') return t('Plant');
@@ -79,6 +89,8 @@ export function cardHead(a: Action): { code: string; text: string } {
 
 export interface CardEnv {
   today: string;
+  /** areas switched off (Settings > Areas): their actions stay but are marked */
+  inactiveAreas?: ReadonlySet<string>;
   people: readonly ActionPerson[];
   contractors: readonly Contractor[];
   effectDays: number;
@@ -107,6 +119,7 @@ export function ActionCard({ action: a, env, onOpen, draggable, onDragStart, com
         <span className="act-card-title">{head.code && <b>{head.code}</b>} {head.text}</span>
         <span className="act-card-tags">
           <span className="act-tag">{scopeText(a)}</span>
+          {a.area_id && env.inactiveAreas?.has(a.area_id) && <InactiveAreaTag />}
           {a.owner && <span className="act-tag"><Icon name="database" size={13} />{contractorName(env.contractors, a.owner)}</span>}
           <SourceTag action={a} />
         </span>

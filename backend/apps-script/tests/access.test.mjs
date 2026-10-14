@@ -24,12 +24,14 @@ const REQ = {
   listActions: [['actions'], 'View'], createAction: [['actions'], 'Edit'], updateAction: [['actions'], 'Edit'],
   addActionComment: [['actions'], 'Edit'], saveContractors: [['settings'], 'Edit'], getAreaTargets: 'session',
   saveAreaTargets: [['settings'], 'Edit'], runActionChecks: [['settings'], 'Edit'],
+  setAreaActive: 'admin',
 };
 const RANK = { Hidden: 0, View: 1, Edit: 2 };
 
-function allowed(action, access) {
+function allowed(action, access, role) {
   const r = REQ[action];
   if (r === 'none' || r === 'session') return true;
+  if (r === 'admin') return role === 'ROLE-ADMIN';
   if (r === 'anyTab') return Object.values(access).some((l) => l !== 'Hidden');
   return r[0].some((t) => RANK[access[t]] >= RANK[r[1]]);
 }
@@ -74,12 +76,12 @@ function setup() {
   return { env, admin, users };
 }
 
-function checkMatrix(env, token, access, label) {
+function checkMatrix(env, token, access, label, role) {
   for (const action of Object.keys(REQ)) {
     if (action === 'login') continue;
     const r = env.call(action, token, {});
     const denied = r.status === 'error' && r.error.code === 'forbidden';
-    assert.equal(!denied, allowed(action, access), `${label}: ${action}`);
+    assert.equal(!denied, allowed(action, access, role), `${label}: ${action}`);
     if (denied) assert.equal(r.error.accessDenied, true);
   }
 }
@@ -89,7 +91,7 @@ test('access matrix: every action for every default role', () => {
   for (const [role, u] of Object.entries(users)) {
     const access = schema.tabAccessDefaults[role];
     assert.deepEqual(env.ok('getMyAccess', u.token).access, access, role);
-    checkMatrix(env, u.token, access, role);
+    checkMatrix(env, u.token, access, role, role);
   }
 });
 
@@ -99,11 +101,11 @@ test('user overrides win over the role, including Hidden', () => {
   env.ok('setUserTabAccess', admin.token, { userId: v.user_id, overrides: { events: 'Edit', overview: 'Hidden', master: 'View' } });
   const access = { ...schema.tabAccessDefaults['ROLE-VIEW'], events: 'Edit', overview: 'Hidden', master: 'View' };
   assert.deepEqual(env.ok('getMyAccess', v.token).access, access);
-  checkMatrix(env, v.token, access, 'viewer with overrides');
+  checkMatrix(env, v.token, access, 'viewer with overrides', 'ROLE-VIEW');
 
   const e = users['ROLE-ENG'];
   env.ok('setUserTabAccess', admin.token, { userId: e.user_id, overrides: { upload: 'Hidden', events: 'View' } });
-  checkMatrix(env, e.token, { ...schema.tabAccessDefaults['ROLE-ENG'], upload: 'Hidden', events: 'View' }, 'engineer with overrides');
+  checkMatrix(env, e.token, { ...schema.tabAccessDefaults['ROLE-ENG'], upload: 'Hidden', events: 'View' }, 'engineer with overrides', 'ROLE-ENG');
 });
 
 test('a user with every tab Hidden can only use session actions', () => {
@@ -111,7 +113,7 @@ test('a user with every tab Hidden can only use session actions', () => {
   const v = users['ROLE-VIEW'];
   const all = Object.fromEntries(DASH.concat(['upload', 'master', 'settings', 'users']).map((t) => [t, 'Hidden']));
   env.ok('setUserTabAccess', admin.token, { userId: v.user_id, overrides: all });
-  checkMatrix(env, v.token, all, 'all hidden');
+  checkMatrix(env, v.token, all, 'all hidden', 'ROLE-VIEW');
   assert.equal(env.call('getStartup', v.token).error.code, 'forbidden');
 });
 

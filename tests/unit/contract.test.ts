@@ -954,4 +954,52 @@ describe.each([
     ]);
     expect(await s.api.getAreaTargets(atoken, 2044)).toEqual([]);
   });
+
+  // ------------------------------------------------------------------ backend 1.5.0: areas on / off, theme with the account
+  it('areas: only an Admin switches an area on or off; others are refused; getStartup carries the flag', async () => {
+    const admin = (await s.api.login(s.admin.email, s.admin.password, true)).token;
+    const created = await s.api.createUser(admin, { email: 'eng.areas@example.com', display_name: 'Areas Engineer', role_id: 'ROLE-ENG' });
+    const first = await s.api.login('eng.areas@example.com', created.temp_password, false);
+    const eng = (await s.api.changePassword(first.token, created.temp_password, 'A-New-Strong-Pass-88')).token;
+    const refused = await rejection(s.api.setAreaActive(eng, 'K.1', false));
+    expect(refused.code).toBe('forbidden');
+    expect(refused.accessDenied).toBe(true);
+    const k1 = (await s.api.getStartup(admin)).areas.find((a) => a.area_id === 'K.1')!;
+    expect(k1.active).toBe(true);
+    // the master data save cannot change the flag either (the engineer has master Edit)
+    expect((await rejection(s.api.saveArea(eng, { ...k1, active: false }))).code).toBe('forbidden');
+    const off = await s.api.setAreaActive(admin, 'K.1', false);
+    expect({ area_id: off.area_id, active: off.active }).toEqual({ area_id: 'K.1', active: false });
+    expect((await s.api.getStartup(eng)).areas.find((a) => a.area_id === 'K.1')?.active).toBe(false);
+    expect((await rejection(s.api.setAreaActive(admin, 'NOWHERE', false))).code).toBe('not_found');
+    expect((await rejection(s.api.setAreaActive(admin, 'K.1', 'no' as never))).code).toBe('bad_request');
+    const on = await s.api.setAreaActive(admin, 'K.1', true);
+    expect(on.active).toBe(true);
+  });
+
+  it('areas: alerts of a switched-off area are hidden, its records leave the rules, and switching on brings them back', async () => {
+    const admin = (await s.api.login(s.admin.email, s.admin.password, true)).token;
+    await s.api.runNotificationChecks(admin);
+    const k1 = async () => (await s.api.getNotifications(admin)).items.filter((n) => n.area_id === 'K.1' && n.type !== 'action_due' && n.type !== 'user_event');
+    const shownBefore = (await k1()).map((n) => n.dedupe_key).sort();
+    expect(shownBefore.length).toBeGreaterThan(0);
+    await s.api.setAreaActive(admin, 'K.1', false);
+    expect(await k1()).toEqual([]);
+    const off = await s.api.runNotificationChecks(admin);
+    expect(off.created).toBe(0);
+    await s.api.setAreaActive(admin, 'K.1', true);
+    const on = await s.api.runNotificationChecks(admin);
+    expect(on.created).toBe(off.resolved);
+    expect((await k1()).map((n) => n.dedupe_key).sort()).toEqual(shownBefore);
+  });
+
+  it('theme: saved with the account, validated the same way, sent back at sign-in and by getMyAccess', async () => {
+    const admin = (await s.api.login(s.admin.email, s.admin.password, true)).token;
+    for (const bad of ['Purple', 'navy dark']) expect((await rejection(s.api.saveNotificationPrefs(admin, { theme: bad }))).code, bad).toBe('bad_request');
+    expect(await s.api.saveNotificationPrefs(admin, { theme: 'Navy Dark' })).toMatchObject({ theme: 'Navy Dark' });
+    expect((await s.api.getMyAccess(admin)).theme).toBe('Navy Dark');
+    expect((await s.api.login(s.admin.email, s.admin.password, false)).theme).toBe('Navy Dark');
+    await s.api.saveNotificationPrefs(admin, { theme: '' });
+    expect((await s.api.getMyAccess(admin)).theme).toBe('');
+  });
 });

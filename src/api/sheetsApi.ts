@@ -81,6 +81,7 @@ export function createSheetsApi(url: string): Api {
 
     saveEquipment: (token, row, areaIds) => call('saveEquipment', token, { row, areaIds }),
     saveArea: (token, row) => call('saveArea', token, { row }),
+    setAreaActive: (token, areaId, active) => call('setAreaActive', token, { areaId, active }),
     saveReason: (token, row) => call('saveReason', token, { row }),
     saveAlias: (token, row) => call('saveAlias', token, { row }),
     deleteAlias: (token, alias) => call('deleteAlias', token, { alias }),

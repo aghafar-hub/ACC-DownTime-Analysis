@@ -21,16 +21,18 @@ const SUBS = {
   notifications: lazyPage(() => import('../admin/settings/Notifications')),
   calculations: lazyPage(() => import('../admin/settings/Calculations')),
   actions: lazyPage(() => import('../admin/settings/ActionsTargets')),
+  areas: lazyPage(() => import('../admin/settings/AreasActive')),
   security: lazyPage(() => import('../admin/settings/Security')),
   users: lazyPage(() => import('../admin/settings/UsersAccess')),
 };
 const subFor = (id: string) => SUBS[id as keyof typeof SUBS] ?? SUBS.appearance;
 const preloadSub = (id: string) => void subFor(id).preload().catch(() => undefined);
 
-/** The subtabs this person may open: Appearance always, the rest need View on their tab. */
+/** The subtabs this person may open: Appearance always, Areas for Admins only, the rest need View on their tab. */
 export function useVisibleSubs(): SettingsSub[] {
-  const { canView } = useAuth();
-  return SETTINGS_SUBS.filter((s) => s.tab === null || canView(s.tab));
+  const { canView, user } = useAuth();
+  const admin = user?.role_id === 'ROLE-ADMIN';
+  return SETTINGS_SUBS.filter((s) => (s.adminOnly ? admin : s.tab === null || canView(s.tab)));
 }
 
 function Body({ id }: { id: string }) {

@@ -142,7 +142,7 @@ function AdminBlock({ onSaved }: { onSaved: (text: string) => void }) {
 /** Settings > Notifications: your own preferences for everyone; the rule thresholds only with Edit on Settings. */
 export default function Notifications() {
   const { st, edit, toastNode, toast } = useSettingsData();
-  const areas = useMemo(() => (st.startup?.areas ?? []).slice().sort((a, b) => a.sort_order - b.sort_order).map((a) => a.area_id), [st.startup]);
+  const areas = useMemo(() => (st.startup?.areas ?? []).filter((a) => a.active !== false).sort((a, b) => a.sort_order - b.sort_order).map((a) => a.area_id), [st.startup]);
   return (
     <div data-testid="settings-notifications">
       <PersonalBlock areas={areas} onSaved={toast} />

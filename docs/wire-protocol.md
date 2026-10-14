@@ -56,6 +56,7 @@ wins over the role row. Missing row = Hidden.
 | `uploadStart`, `uploadChunk`, `uploadFinish` | `upload` Edit |
 | `editEvent`, `voidEvent`, `revalidateEvents`, `acceptEventFlags` | `events` Edit |
 | `saveEquipment`, `saveArea`, `saveReason`, `saveAlias`, `deleteAlias` | `master` Edit |
+| `setAreaActive` | the Admin role (`ROLE-ADMIN`), whatever the tab access (backend 1.5.0, section 11) |
 | `saveSettings` | `settings` Edit |
 | `listUsers` | `users` View |
 | `createUser`, `updateUser`, `resetPassword`, `setUserTabAccess` | `users` Edit |
@@ -261,8 +262,9 @@ derived by the app from live data and are never stored.
   failuresOnly: true | false }, sections: list of section ids (cover, summary, daily, monthly, classes, area_downtime,
   availability, mtbf_mttr, failure_rate, top_equipment, top_reasons, pareto, repeats, longest, quadrant, when, events, quality,
   methodology), options: { <section id>: { top: whole number 1-1000 or "all", measure: hours | count } } }`; every list at most
-  100 entries without repeats, no other fields, unique ids; checked on the server and stored as given; blank clears them).
-  `last_digest_at`
+  100 entries without repeats, no other fields, unique ids; checked on the server and stored as given; blank clears them),
+  `theme` (backend 1.5.0: one of `ACC Light`, `Warm Paper`, `High Contrast`, `Navy Dark`, `Carbon Dark`, exactly; blank clears it;
+  section 11.2). `last_digest_at`
   is written by the server when it sends a digest; it is returned by `getNotifications` but cannot be saved.
 - `runNotificationChecks`: runs every rule now, audited as `notification_check`.
 
@@ -427,3 +429,43 @@ after the latest `closed_at` of those actions.
   alert), in the daily job, and on `runActionChecks` (audited as `action_check`). The automatic runs never fail the call they follow; a
   problem is written to `audit_log` (`notification_failed`, "actions after ..."). A check is idempotent: run twice, the second run changes
   nothing.
+
+## 11. Areas switched off and the theme with the account (backend 1.5.0)
+
+### 11.1 Areas switched off
+
+`areas.active` has always meant "shown in the app": the scope bar, the Reports builder, the new-action dialog and the timeline
+already left inactive areas out of their lists, and the scheduled time `T` of availability counts only active areas. From 1.5.0 an
+inactive area also hides its **records**, everywhere, as if they did not exist. Nothing is deleted: switching the area on again brings
+everything back.
+
+| Action | Params | Result |
+|---|---|---|
+| `setAreaActive` | `areaId` (text), `active` (true / false) | the area row as stored |
+
+- Only the Admin role (`ROLE-ADMIN`): everyone else gets `forbidden` (with `accessDenied`). `not_found` for an unknown area,
+  `bad_request` when `active` is not a boolean. A change is audited as `deactivate_area` / `activate_area` (entity `areas`); sending
+  the value the area already has changes and logs nothing.
+- `saveArea` (master Edit) may still save an area, but changing its `active` (or adding an area that is not active) needs the Admin role,
+  else `forbidden`. The app offers the switches in Settings > Areas (Admins only).
+- `getEvents` still returns the records of inactive areas (the upload compares against them, and Validate says how many are hidden).
+  The app leaves them out in one place (`src/data/activeAreas.ts`, used by the event hooks), so every dashboard, chart, table, Pareto,
+  repeat, reliability and availability figure, month vs month, heat map, report, export, Event records list and timeline, Since your last
+  visit, the data status strip and the Validate list and badge are worked out without them. The data status strip says which areas are
+  inactive; Validate says how many of their records would need checking.
+- The server rules read the events without the inactive areas (`notifLoadContext_`): long stop, repeated failure, failure spike,
+  availability below target, planned overrun and the action draft rules raise nothing for them, and a long stop or repeat alert of an
+  area switched off is resolved by the next check (and re-opened when the area is switched on again, as for any resolvable alert).
+  The effectiveness of a closed action of an inactive area is not judged until the area is active again (it would otherwise read as
+  "no failure after").
+- `getNotifications` and the digest leave out the alerts whose `area_id` is inactive, except `action_due`: actions of an inactive area
+  stay on the Actions page (marked in the app) and so do their overdue alerts. The digest counts of records to validate leave the
+  inactive areas out too.
+
+### 11.2 The theme with the account
+
+- The preference `theme` (section 9.1) is client-writable by any signed-in person for themselves.
+- `login`, `changePassword` (the `Session`) and `getMyAccess` also return `theme`: the saved value, or `''` when none.
+- The app applies the account's theme at sign-in, when it opens with a kept session and when the value changes on another device (the
+  access refresh every 2 minutes); the theme kept on the device stays the fallback (sign-in page, offline, and a backend older than
+  1.5.0, which refuses the unknown preference: the app then keeps the choice on the device without a message).

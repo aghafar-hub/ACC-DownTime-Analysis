@@ -9,6 +9,7 @@ import { Icon } from '../icons';
 import { dayText, monthText, tsText } from '../util/dates';
 import { num } from '../util/format';
 import { useValidationOptional } from '../validate/ValidationContext';
+import { inactiveAreas } from '../data/activeAreas';
 import './DataStatusStrip.css';
 
 // The data status strip under the scope bar (Analyze pages and Event records): what the data covers over every year,
@@ -28,7 +29,16 @@ export default function DataStatusStrip() {
     for (const r of rows) if (r.created_at && r.created_at > added) added = r.created_at;
     return { coverage, gaps, segments: coverageSegments(coverage, gaps), added };
   }, [rows]);
+  const off = inactiveAreas(v?.st.startup);
   if (!v || !v.enabled) return null;
+  // areas switched off (Settings > Areas): their records are left out of every number, so say so where the numbers are
+  const offNote = off.length > 0 && (
+    <span className="ds-gap" data-testid="data-status-inactive"
+      title={t('Switched off by an Admin (Settings > Areas): the records of these areas are left out of every number, chart, list and alert. They stay stored and come back when the area is switched on again.')}>
+      {t('{a} inactive', { a: off.map((a) => a.area_id).join(', ') })}
+    </span>
+  );
+  const offPart = offNote && <><span className="ds-sep" aria-hidden="true">·</span>{offNote}</>;
   // the latest year counts first; older years follow in the background
   const toCheck = v.earlyReady ? v.early.summary.total : 0;
   const canCheck = canView('events') && toCheck > 0;
@@ -55,6 +65,7 @@ export default function DataStatusStrip() {
         {facts.gaps.length > 0 && <span className="ds-gap" data-testid="data-status-not-uploaded">{t('{m} not uploaded', { m: facts.gaps.map(monthText).join(', ') })}</span>}
         {checkLink && <span className="ds-sep" aria-hidden="true">·</span>}
         {checkLink}
+        {offPart}
       </div>
     );
   }
@@ -72,6 +83,7 @@ export default function DataStatusStrip() {
       )}
       {checkLink && <span className="ds-sep" aria-hidden="true">·</span>}
       {checkLink}
+      {offPart}
       {facts.added && <span className="ds-upload" data-testid="data-status-upload">{t('Last upload {d}', { d: tsText(facts.added) })}</span>}
     </div>
   );

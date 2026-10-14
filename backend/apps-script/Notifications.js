@@ -26,7 +26,9 @@ var NOTIF_CATEGORY_ = {
   availability_low: 'Availability & planned', planned_overrun: 'Availability & planned',
   upload_gap: 'Data quality', upload_done: 'Data quality', action_due: 'Actions', user_event: 'System'
 };
-var NOTIF_PREF_KEYS_ = ['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views', 'saved_reports'];
+var NOTIF_PREF_KEYS_ = ['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views', 'saved_reports', 'theme'];
+// The person's theme (1.5.0), kept with their account so it follows them to every device. Mirrored in src/theme/themes.ts.
+var ACCOUNT_THEMES_ = ['ACC Light', 'Warm Paper', 'High Contrast', 'Navy Dark', 'Carbon Dark'];
 var SAVED_VIEWS_MAX_ = 20;
 var SAVED_VIEWS_TEXT_MAX_ = 20000;
 var SAVED_VIEW_PAGES_ = ['overview', 'pareto', 'repeats', 'reliability', 'events'];
@@ -236,16 +238,20 @@ function notifFindClusters_(starts, minEvents, windowDays) {
 // ---------- data for the rules ----------
 
 function notifLoadContext_(st) {
-  var all = readTable_(T.EVENTS, function (row, idx) { return !toBool_(row[idx.is_void]); });
-  var areas = {};
-  readTable_(T.AREAS).forEach(function (a) { areas[a.area_id] = a; });
+  var areas = {}, inactive = {};
+  readTable_(T.AREAS).forEach(function (a) {
+    areas[a.area_id] = a;
+    if (!toBool_(a.active)) inactive[a.area_id] = true;
+  });
+  // 1.5.0: records of an area switched off are left out of every rule, as if they did not exist
+  var all = readTable_(T.EVENTS, function (row, idx) { return !toBool_(row[idx.is_void]) && !inactive[row[idx.area_id]]; });
   var equipmentByKey = {}, aliases = {};
   readColumn_(T.EQUIPMENT, 'equipment_id').forEach(function (id) { equipmentByKey[codeKey_(id)] = id; });
   readTable_(T.ALIASES).forEach(function (a) { aliases[codeKey_(a.alias)] = a.equipment_id; });
   var latest = '';
   all.forEach(function (r) { if (isValidDate_(r.event_date) && r.event_date > latest) latest = r.event_date; });
   var rows = all.filter(function (r) { return !isBlockedFlags_(r.flags); });
-  var ctx = { st: st, all: all, rows: rows, areas: areas, equipmentByKey: equipmentByKey, aliases: aliases, latest: latest, today: nowTs_().slice(0, 10) };
+  var ctx = { st: st, all: all, rows: rows, areas: areas, inactive: inactive, equipmentByKey: equipmentByKey, aliases: aliases, latest: latest, today: nowTs_().slice(0, 10) };
   ctx.cutoff = latest ? addDays_(latest, -st.retentionDays) : '';
   return ctx;
 }
@@ -658,6 +664,14 @@ function notifLogFailure_(what, err) {
 
 // ---------- reads and per-user writes ----------
 
+/**
+ * 1.5.0: an alert about an area that is switched off is not shown (overdue actions are: the action itself stays visible).
+ * It comes back when the area is switched on again and the alert has not expired.
+ */
+function notifOfInactiveArea_(n, inactive) {
+  return !!n.area_id && !!inactive[n.area_id] && n.type !== 'action_due';
+}
+
 function notifVisible_(n, access, stamp) {
   if (n.status !== 'open') return false;
   if (n.expires_at && n.expires_at <= stamp) return false;
@@ -671,9 +685,21 @@ function prefsOf_(userId) {
   return out;
 }
 
+/** The theme saved with the account ('' when none or not readable): sent at sign-in and with getMyAccess (1.5.0). */
+function accountTheme_(userId) {
+  try {
+    var row = readTable_(T.NOTIFICATION_PREFS, function (r, idx) { return r[idx.user_id] === userId && r[idx.key] === 'theme'; })[0];
+    var v = row ? String(row.value || '').trim() : '';
+    return ACCOUNT_THEMES_.indexOf(v) >= 0 ? v : '';
+  } catch (err) {
+    return ''; // a missing sheet must never block a sign-in
+  }
+}
+
 function getNotifications_(session) {
   var uid = session.user.user_id, stamp = nowTs_();
-  var items = readTable_(T.NOTIFICATIONS).filter(function (n) { return notifVisible_(n, session.access, stamp); })
+  var inactive = inactiveAreaIds_();
+  var items = readTable_(T.NOTIFICATIONS).filter(function (n) { return notifVisible_(n, session.access, stamp) && !notifOfInactiveArea_(n, inactive); })
     .sort(function (a, b) {
       return a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : (a.notification_id < b.notification_id ? -1 : 1);
     });
@@ -834,6 +860,10 @@ function cleanNotifPref_(key, value) {
     });
     return chosen.join(',');
   }
+  if (key === 'theme') {
+    if (v !== '' && ACCOUNT_THEMES_.indexOf(v) < 0) throw apiError_(ERR.BAD_REQUEST, 'Theme must be one of: ' + ACCOUNT_THEMES_.join(', ') + '.');
+    return v;
+  }
   if (key === 'saved_views') return cleanSavedViews_(v);
   if (key === 'saved_reports') return cleanSavedReports_(v);
   var ts = normTs_(v);
@@ -881,7 +911,8 @@ function htmlEscape_(s) {
 function digestContext_() {
   var st = notifSettings_();
   var stamp = nowTs_();
-  var events = readTable_(T.EVENTS, function (row, idx) { return !toBool_(row[idx.is_void]); });
+  var inactive = inactiveAreaIds_();
+  var events = readTable_(T.EVENTS, function (row, idx) { return !toBool_(row[idx.is_void]) && !inactive[row[idx.area_id]]; });
   var validate = 0, blocked = 0, codes = 0;
   events.forEach(function (e) {
     if (!hasOpenProblem_(e)) return; // a record whose only problems are kept as entered is not counted
@@ -897,7 +928,9 @@ function digestContext_() {
   return {
     st: st, stamp: stamp, today: stamp.slice(0, 10),
     users: readUsers_(), accessRows: readTable_(T.TAB_ACCESS), prefsBy: prefsBy, stateBy: stateBy,
-    alerts: readTable_(T.NOTIFICATIONS).filter(function (n) { return n.severity === 'alert' && n.status === 'open' && !(n.expires_at && n.expires_at <= stamp); }),
+    alerts: readTable_(T.NOTIFICATIONS).filter(function (n) {
+      return n.severity === 'alert' && n.status === 'open' && !(n.expires_at && n.expires_at <= stamp) && !notifOfInactiveArea_(n, inactive);
+    }),
     counts: { validate: validate, blocked: blocked, codes: codes },
     needsReview: readTable_(T.EQUIPMENT).filter(function (e) { return e.needs_review; }).length
   };

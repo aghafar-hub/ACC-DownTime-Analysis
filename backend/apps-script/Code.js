@@ -38,6 +38,7 @@ var HANDLERS = {
   acceptEventFlags: function (s, p) { return acceptEventFlags_(s, p.eventId, p.flags, p.note); },
   saveEquipment: function (s, p) { return saveEquipment_(s, p.row, p.areaIds); },
   saveArea: function (s, p) { return saveArea_(s, p.row); },
+  setAreaActive: function (s, p) { return setAreaActive_(s, p.areaId, p.active); },
   saveReason: function (s, p) { return saveReason_(s, p.row); },
   saveAlias: function (s, p) { return saveAlias_(s, p.row); },
   deleteAlias: function (s, p) { return deleteAlias_(s, p.alias); },
@@ -78,7 +79,7 @@ function handleRequest_(body) {
       if (session.user.must_change && !rule.mustChangeOk) {
         throw apiError_(ERR.FORBIDDEN, 'You must change your temporary password first.');
       }
-      requireAccess_(action, session.access);
+      requireAccess_(action, session.access, session.user);
     }
     return okEnvelope_(HANDLERS[action](session, params));
   } catch (err) {

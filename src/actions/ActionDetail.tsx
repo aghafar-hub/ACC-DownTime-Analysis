@@ -204,6 +204,11 @@ export default function ActionDetail({ id, onClose }: { id: string; onClose: () 
             </div>
           )}
           <h2 className="ad-title" id={`ad-title-${a.action_id}`} data-testid="action-title">{head.code && <>{head.code} · </>}{head.text}</h2>
+          {a.area_id && startup?.areas.some((x) => x.area_id === a.area_id && x.active === false) && (
+            <p className="callout" role="note" data-testid="action-detail-area-inactive">
+              <Icon name="info" size={15} /> {t('Area {a} is switched off (Settings > Areas): its records are left out of every number and no new drafts are made for it. This action stays as it is.', { a: a.area_id })}
+            </p>
+          )}
           <p className="ad-sub">
             {[eqDesc, a.area_id, a.line_id && t('Line {l}', { l: a.line_id })].filter(Boolean).join(' · ')}
             {' · '}{t('created {d} by {w}', { d: dateText(a.created_at), w: personName(people, a.created_by) })} · {t(SOURCE_LABEL[a.source])}

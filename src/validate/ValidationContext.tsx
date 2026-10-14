@@ -30,8 +30,11 @@ export interface ValidationState {
   loadAll: () => void;
   st: StartupHook;
   data: MultiYear;
+  /** every loaded record of active areas (records of inactive areas are left out, src/data/activeAreas.ts) */
   rows: EventRow[];
   list: ValidationList;
+  /** records of inactive areas that would need checking: hidden from the list and every count (0 when none) */
+  hiddenInactive: number;
   /** classification most used for the same area and code, from the loaded records */
   suggest: ReturnType<typeof buildClassificationSuggester>;
   reload: () => void;
@@ -72,6 +75,8 @@ export function ValidationProvider({ children }: { children: ReactNode }) {
   const data = useEventsForYears(years);
   const rows = data.rows;
   const list = useMemo(() => (data.ready ? buildValidation(rows) : EMPTY_LIST), [data.ready, rows]);
+  // the records of inactive areas are not checked here; only how many would need it is told (Validate shows a note)
+  const hiddenInactive = useMemo(() => (data.ready && data.hidden.length ? buildValidation(data.hidden).summary.total : 0), [data.ready, data.hidden]);
   const firstList = useMemo(() => (first.ready && !data.ready ? buildValidation(first.rows) : EMPTY_LIST), [first.ready, first.rows, data.ready]);
   const early = data.ready ? list : firstList;
   const earlyReady = data.ready || first.ready;
@@ -108,8 +113,8 @@ export function ValidationProvider({ children }: { children: ReactNode }) {
   }, [st, first, data]);
 
   const value = useMemo<ValidationState>(
-    () => ({ enabled, ready: data.ready, earlyReady, early, checkingOlder, loadAll, st, data: shown, rows, list, suggest, reload, replaceEvent, recheck }),
-    [enabled, data.ready, earlyReady, early, checkingOlder, loadAll, shown, st, rows, list, suggest, reload, replaceEvent, recheck],
+    () => ({ enabled, ready: data.ready, earlyReady, early, checkingOlder, loadAll, st, data: shown, rows, list, hiddenInactive, suggest, reload, replaceEvent, recheck }),
+    [enabled, data.ready, earlyReady, early, checkingOlder, loadAll, shown, st, rows, list, hiddenInactive, suggest, reload, replaceEvent, recheck],
   );
   return <ctx.Provider value={value}>{children}</ctx.Provider>;
 }

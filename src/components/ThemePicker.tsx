@@ -1,5 +1,6 @@
 import { t } from '../i18n/t';
 import { THEME_PALETTES, useTheme } from '../theme/ThemeContext';
+import { useChooseTheme } from '../theme/accountTheme';
 import './ThemePicker.css';
 
 // What each theme is for, shown under its name so people pick by situation.
@@ -11,9 +12,10 @@ const THEME_HINTS: Record<string, string> = {
   'Carbon Dark': 'Night shift · easier on phone batteries',
 };
 
-/** The five-theme swatch grid. The choice is kept on this device and applies at once. */
+/** The five-theme swatch grid. The choice applies at once, is kept on this device and saved with the account (src/theme/accountTheme.tsx). */
 export default function ThemePicker() {
-  const { themeName, setThemeName } = useTheme();
+  const { themeName } = useTheme();
+  const setThemeName = useChooseTheme();
   return (
     <div className="theme-grid" role="radiogroup" aria-label={t('Theme')} data-testid="theme-picker">
       {THEME_PALETTES.map((theme) => {

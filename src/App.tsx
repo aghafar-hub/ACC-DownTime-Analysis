@@ -32,6 +32,7 @@ import { PageLoadBoundary, PageSkeleton } from './routes/PageFallback';
 import { NotificationsProvider } from './notifications/NotificationsContext';
 import { ValidationProvider } from './validate/ValidationContext';
 import { ThemeProvider, useTheme } from './theme/ThemeContext';
+import { AccountThemeSync } from './theme/accountTheme';
 import UpdateBanner from './update/UpdateBanner';
 import SharePrompt from './export/SharePrompt';
 import './App.css';
@@ -209,6 +210,7 @@ export default function App() {
         <EnvRibbon />
         <SharePrompt />
         <AuthProvider>
+          <AccountThemeSync />
           <Routes>
             <Route path="/login" element={<LoginRoute />} />
             <Route element={<RequireAuth />}>

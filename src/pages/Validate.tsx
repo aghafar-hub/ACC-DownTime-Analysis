@@ -13,6 +13,7 @@ import RowMenu from '../components/RowMenu';
 import { MenuItem } from '../components/PopMenu';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t, tn } from '../i18n/t';
+import { inactiveAreas } from '../data/activeAreas';
 import { Icon } from '../icons';
 import { pageById, pageLabel } from '../navigation';
 import { useTheme } from '../theme/ThemeContext';
@@ -345,6 +346,12 @@ export default function Validate() {
         ? <DataStatus state={st} onRetry={st.reload} what={t('master data')} />
         : <DataStatus state={v.data.state} onRetry={v.data.reload} what={t('events')} />}
 
+      {ready && v.hiddenInactive > 0 && (
+        <p className="v-inactive-note muted" role="note" data-testid="v-inactive-hidden">
+          <Icon name="info" size={14} /> {tn(v.hiddenInactive, '{n} record of inactive areas hidden', '{n} records of inactive areas hidden')}
+          {' '}({inactiveAreas(startup).map((a) => a.area_id).join(', ')}). {t('They come back when an Admin switches the area on again.')}
+        </p>
+      )}
       <details className="v-help" data-testid="v-hint">
         <summary>{t('What do ◆ and ▲ mean?')}</summary>
         <p>{hintText}</p>

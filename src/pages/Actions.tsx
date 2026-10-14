@@ -13,7 +13,8 @@ import {
   isOverdue, parseActionFilters, personName, SORT_KEYS, SORT_LABEL, sortActions, SOURCE_LABEL, statusKey, summarize, todayLocal, writeActionFilters,
   type ActionFilters, type SortKey,
 } from '../actions/model';
-import { ActionCard, DueTag, PriorityTag, StatusChip, StatusDot, scopeText, type CardEnv } from '../actions/parts';
+import { ActionCard, DueTag, InactiveAreaTag, PriorityTag, StatusChip, StatusDot, scopeText, type CardEnv } from '../actions/parts';
+import { inactiveAreaIds } from '../data/activeAreas';
 import StatusDialog from '../actions/StatusDialog';
 import SummaryCards from '../actions/SummaryCards';
 import AccessBadge from '../components/AccessBadge';
@@ -75,7 +76,8 @@ export default function Actions() {
   const contractors = useMemo(() => payload?.contractors ?? [], [payload]);
   const env = useMemo(() => ({ today, me: user?.user_id ?? '', people, contractors }), [today, user, people, contractors]);
   const effectDays = Number(startup?.settings.find((s) => s.key === 'actions_effect_days')?.value) || 60;
-  const cardEnv: CardEnv = { today, people, contractors, effectDays };
+  const inactive = useMemo(() => new Set(inactiveAreaIds(startup)), [startup]);
+  const cardEnv: CardEnv = { today, people, contractors, effectDays, inactiveAreas: inactive };
 
   const setFilters = useCallback((patch: Partial<ActionFilters>) => {
     setSp((cur) => writeActionFilters(cur, { ...parseActionFilters(cur), ...patch }), { replace: true });
@@ -388,7 +390,7 @@ export default function Actions() {
                     <td className="al-title">{a.equipment_id && <b className="mono">{a.equipment_id} </b>}{a.title}</td>
                     <td><StatusChip status={a.status} /></td>
                     <td><PriorityTag priority={a.priority} /></td>
-                    <td className="nowrap">{scopeText(a)}</td>
+                    <td className="nowrap">{scopeText(a)}{a.area_id && inactive.has(a.area_id) && <> <InactiveAreaTag /></>}</td>
                     <td>{contractorName(contractors, a.owner) || <span className="muted">{t('Nobody yet')}</span>}</td>
                     <td>{personName(people, a.assignee) || <span className="muted">{t('No owner')}</span>}</td>
                     <td className="nowrap"><DueTag action={a} today={today} /></td>

@@ -5,7 +5,8 @@ import { useLocation, useSearchParams } from 'react-router-dom';
 import type { EventRow, Startup } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { dataRangeOf, type DateRange } from '../calc';
-import { eventsResource, type ResState } from '../data/stores';
+import { inactiveAreaIds, splitInactive } from '../data/activeAreas';
+import { eventsResource, startupResource, type ResState } from '../data/stores';
 import { useStartup, type StartupHook } from '../data/useStartup';
 import { formatDate } from '../calc';
 import { defaultFilters, hasFilterParams, nonFilterParams, parseFilters, resolveRange, serializeFilters, type DashFilters } from './filters';
@@ -81,7 +82,10 @@ function liveSearch(): URLSearchParams | null {
 // ---------------------------------------------------------------- several years of events
 
 export interface MultiYear {
+  /** the records of every requested year, without the records of inactive areas (src/data/activeAreas.ts) */
   rows: EventRow[];
+  /** the records of inactive areas, left out of `rows` and of everything built from it */
+  hidden: EventRow[];
   /** every requested year has its data */
   ready: boolean;
   state: Pick<ResState<unknown>, 'loading' | 'refreshing' | 'error' | 'fromCache' | 'savedAt' | 'data' | 'accessDenied'>;
@@ -90,16 +94,21 @@ export interface MultiYear {
 
 const EMPTY_STATE: MultiYear['state'] = { loading: false, refreshing: false, error: null, fromCache: false, savedAt: null, data: null, accessDenied: false };
 
-/** Loads the events of several years (cache first, then the server) and joins them. */
+/**
+ * Loads the events of several years (cache first, then the server) and joins them. The records of areas switched off
+ * (Settings > Areas) are split off here, once for every page: `rows` never holds them.
+ */
 export function useEventsForYears(years: number[]): MultiYear {
   const { token } = useAuth();
   const yearKey = years.join(',');
   const resources = useMemo(() => (yearKey ? yearKey.split(',').map((y) => eventsResource(Number(y))) : []), [yearKey]);
-  const cache = useRef<{ snaps: unknown[]; value: MultiYear } | null>(null);
+  const cache = useRef<{ snaps: unknown[]; off: string; value: MultiYear } | null>(null);
 
   const subscribe = useCallback(
     (cb: () => void) => {
       const offs = resources.map((r) => r.subscribe(cb));
+      // the start-up data says which areas are switched off
+      offs.push(startupResource.subscribe(cb));
       return () => offs.forEach((o) => o());
     },
     [resources],
@@ -109,10 +118,13 @@ export function useEventsForYears(years: number[]): MultiYear {
   }, [token, resources]);
   const getSnapshot = useCallback((): MultiYear => {
     const snaps = resources.map((r) => r.getSnapshot());
+    const off = inactiveAreaIds(startupResource.getSnapshot().data);
+    const offKey = off.join('|');
     const prev = cache.current;
-    if (prev && prev.snaps.length === snaps.length && prev.snaps.every((s, i) => s === snaps[i])) return prev.value;
+    if (prev && prev.off === offKey && prev.snaps.length === snaps.length && prev.snaps.every((s, i) => s === snaps[i])) return prev.value;
     const ready = resources.length > 0 && snaps.every((s) => s.data !== null);
-    const rows = ready ? snaps.flatMap((s) => s.data!) : [];
+    const split = splitInactive(ready ? snaps.flatMap((s) => s.data!) : [], off);
+    const rows = split.rows;
     const firstError = snaps.find((s) => s.error)?.error ?? null;
     const state: MultiYear['state'] = resources.length === 0 ? EMPTY_STATE : {
       loading: snaps.some((s) => s.loading && !s.data),
@@ -123,8 +135,8 @@ export function useEventsForYears(years: number[]): MultiYear {
       data: ready ? rows : null,
       accessDenied: snaps.some((s) => s.accessDenied),
     };
-    const value: MultiYear = { rows, ready, state, reload };
-    cache.current = { snaps, value };
+    const value: MultiYear = { rows, hidden: split.hidden, ready, state, reload };
+    cache.current = { snaps, off: offKey, value };
     return value;
   }, [resources, reload]);
   const value = useSyncExternalStore(subscribe, getSnapshot);

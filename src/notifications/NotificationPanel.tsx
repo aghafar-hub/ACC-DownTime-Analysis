@@ -75,7 +75,8 @@ function Row({ item, isNew, nowMs, onGo, onSnooze, onDismiss, onCreate }: {
 /** Watched areas: a summary button that opens the chip row (empty selection = every area). */
 function WatchAreas() {
   const n = useNotifications();
-  const areas = useValidationOptional()?.st.startup?.areas ?? [];
+  // areas switched off are not offered (their alerts are not shown)
+  const areas = (useValidationOptional()?.st.startup?.areas ?? []).filter((a) => a.active !== false);
   const [open, setOpen] = useState(false);
   const watched = n.prefs.watchAreas;
   const summary = watched.length === 0 ? t('All areas') : watched.length <= 3 ? watched.join(', ') : tn(watched.length, '{n} area', '{n} areas');

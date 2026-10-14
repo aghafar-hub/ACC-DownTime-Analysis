@@ -8,6 +8,7 @@ import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
 import ConfirmDialog from '../ConfirmDialog';
 import { useAction, type TabProps } from '../useAction';
+import { useAuth } from '../../auth/AuthContext';
 import StickyTableWrap from '../../components/StickyTableWrap';
 
 const Active = ({ on }: { on: boolean }) => on
@@ -16,6 +17,8 @@ const Active = ({ on }: { on: boolean }) => on
 
 function AreaModal({ row, startup, canEdit, onClose, onSaved }: { row: Area | null; startup: TabProps['startup']; canEdit: boolean; onClose: () => void; onSaved: (s: string) => void }) {
   const { run, busy, error } = useAction();
+  // switching an area on or off hides or shows its records plant-wide: Admin only (backend 1.5.0, also Settings > Areas)
+  const admin = useAuth().user?.role_id === 'ROLE-ADMIN';
   const isNew = row === null;
   const [id, setId] = useState(row?.area_id ?? '');
   const [name, setName] = useState(row?.name ?? '');
@@ -77,9 +80,10 @@ function AreaModal({ row, startup, canEdit, onClose, onSaved }: { row: Area | nu
             <div className="field">
               <span className="field-label">{t('Active')}</span>
               <ChipRow label={t('Active')}>
-                <CountChip on={active} onClick={() => setActive(true)} testid="ar-active-yes">{t('Active')}</CountChip>
-                <CountChip on={!active} onClick={() => setActive(false)} testid="ar-active-no">{t('Inactive')}</CountChip>
+                <CountChip on={active} onClick={() => admin && setActive(true)} testid="ar-active-yes">{t('Active')}</CountChip>
+                <CountChip on={!active} onClick={() => admin && setActive(false)} testid="ar-active-no">{t('Inactive')}</CountChip>
               </ChipRow>
+              {!admin && <span className="muted" style={{ fontSize: 12 }} data-testid="ar-active-admin-only">{t('Only an Admin can switch an area on or off (Settings > Areas).')}</span>}
             </div>
             <div className="field">
               <span className="field-label">{t('Appears in the downtime sheet')}</span>
@@ -97,7 +101,7 @@ function AreaModal({ row, startup, canEdit, onClose, onSaved }: { row: Area | nu
       </fieldset>
       {confirm && (
         <ConfirmDialog title={t('Make {id} inactive?', { id })} danger confirmLabel={t('Make inactive')} busy={busy} onCancel={() => setConfirm(false)} onConfirm={() => { setConfirm(false); void save(); }}>
-          {t('Existing events keep their area. An inactive area is no longer offered for new data.')}
+          {t('For everyone, the area and all its records are left out of every number, chart, list, report and alert until it is made active again. Nothing is deleted.')}
         </ConfirmDialog>
       )}
     </ShellModal>

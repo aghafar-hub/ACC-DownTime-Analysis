@@ -929,6 +929,8 @@ function runActionChecks_() {
 
     actions.forEach(function (a) {
       if (a.status !== 'Closed' || a.scope_kind !== 'equipment' || a.effectiveness === 'Effective' || a.effectiveness === 'Not effective') return;
+      // 1.5.0: the records of an area switched off are left out, so its actions are not judged until it is switched on again
+      if (a.area_id && ctx.inactive[a.area_id]) return;
       var e = effectivenessOf_(ctx, chains, a, ast.effectDays);
       if (!e || e.verdict === a.effectiveness) return;
       patches.push({ row: a, patch: { effectiveness: e.verdict, effectiveness_checked_at: stamp } });

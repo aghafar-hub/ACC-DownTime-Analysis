@@ -13,7 +13,7 @@ export default function Appearance() {
     <div data-testid="settings-appearance">
       <section className="card" data-testid="appearance-section">
         <h2>{t('Appearance')}</h2>
-        <p style={{ marginBottom: 12 }}>{t('Pick the theme that suits where you work. It is kept on this device.')} <span data-testid="fact-theme">{t('In use: {name}.', { name: t(themeName) })}</span></p>
+        <p style={{ marginBottom: 12 }}>{t('Pick the theme that suits where you work. It is saved with your account, so it follows you to every device you sign in on.')} <span data-testid="fact-theme">{t('In use: {name}.', { name: t(themeName) })}</span></p>
         <ThemePicker />
       </section>
       <InstallCard />

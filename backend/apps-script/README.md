@@ -160,7 +160,7 @@ Ping (no login needed):
 curl -L "YOUR_WEB_APP_URL?action=ping"
 ```
 
-Expected: `{"status":"ok","data":{"version":"1.4.0"}}`
+Expected: `{"status":"ok","data":{"version":"1.5.0"}}`
 
 Sign in:
 
@@ -320,6 +320,42 @@ Good to know:
   `ensureSchema` has run, uploads and the alerts still work: the action checks are simply skipped.
 - An old app build keeps working against 1.4.0 (it ignores the new fields). The new app build needs 1.4.0 for the Actions page,
   otherwise it answers "Unknown action".
+
+## 14. Areas on and off, the theme with the account (1.5.0)
+
+Version 1.5.0 adds two things. **Settings > Areas** (Admins only) switches an area off for the whole plant: the area and all its
+records are then left out of every number, chart, list, report, export, the Validate list and the alerts, as if they did not exist,
+until it is switched on again. Nothing is deleted. It uses the column `areas.active` that already exists ("Shown in the app"), so there
+is no new sheet or column. And the **theme** each person picks is saved with their account, so it follows them to every device.
+Nothing in your data changes. Do these steps in order; all of them are safe to repeat.
+
+1. **Paste these 7 files** into the Apps Script project, replacing the old content of each:
+   `Config.js`, `Access.js`, `Code.js`, `Auth.js`, `Master.js`, `Notifications.js`, `Actions.js`.
+   The other files (`Schema.js`, `Utils.js`, `Crypto.js`, `Audit.js`, `Users.js`, `Events.js`, `Upload.js`, `Settings.js`,
+   `Setup.js`) and `appsscript.json` did not change from 1.4.0: leave them alone. With the one-file bundle (option A2), run
+   `node tools/bundle-apps-script.mjs` and paste `ACC_Downtime_Backend.gs` over `Code.gs` instead.
+2. **No `ensureSchema` and no `seedDefaults` are needed**: there is no new sheet, column, setting or access row. (Running them does no
+   harm.)
+3. **Deploy a new version** as in section 10 (**Manage deployments**, pencil, **Version: New version**, **Deploy**). The web app
+   address stays the same, and no new permission is asked.
+4. **Check.** Open the web app address with `?action=ping`: it must answer version `1.5.0`. Run **installCheck** as usual.
+5. **Optional, in the app (Settings > Areas, Admin):** switch off any area that should not count for now. Every area starts active,
+   as before.
+
+Good to know:
+
+- **Who.** Only people with the Admin role can switch an area on or off (the server refuses everyone else and writes every change to
+  `audit_log` as `deactivate_area` / `activate_area`). The master data page can still edit an area's name, line and notes, but its
+  Active choice is also Admin only now.
+- **What an inactive area does.** Its records stay in the `events` sheet and are still sent to the app, which leaves them out of every
+  page; the data status strip says "<area> inactive" so the numbers are never silently different, and Validate says how many of its
+  records are hidden. The alert rules and the action draft rules skip it; its open long-stop and repeated-failure alerts are resolved by
+  the next check and come back when the area is switched on again. Existing actions of the area stay on the Actions page, marked
+  "Area inactive"; their effectiveness is judged again once the area is active.
+- **The theme.** Saved in `notification_prefs` (key `theme`) when a person picks one in Settings > Appearance, and sent back at sign-in.
+  The theme kept on the device is still used on the sign-in page and offline. An older app build keeps working against 1.5.0; the new
+  app build against a 1.4.0 server keeps the theme on the device only and cannot switch areas ("Unknown action").
+- The exact rules are in `docs/wire-protocol.md` section 11.
 
 ## Good to know
 

@@ -92,6 +92,8 @@ export function buildBase(rows: EventRow[], startup: Startup, f: Pick<DashFilter
 
 function buildBaseNow(rows: EventRow[], startup: Startup, f: Pick<DashFilters, 'lineIds' | 'areaIds'>, master: Master): BaseScope {
   const areaIds = areasInScope(startup.areas, { ...f } as DashFilters);
+  // no area left (for example a link that names only an area switched off since): nothing, never every area
+  if (areaIds.length === 0) return { areaIds, rows: [], chains: [] };
   const filter: Filter = { ...emptyFilter(), lineIds: f.lineIds, areaIds };
   const kept = applyFilters(rows, filter, { settings: master.settings, index: master.index });
   return { areaIds, rows: kept, chains: buildFailureEvents(kept).chains };

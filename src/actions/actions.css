@@ -103,6 +103,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.act-tag--inactive {
+  border-style: dashed;
+  color: var(--tk-warning);
+}
 .act-tag--auto {
   background: var(--tk-info-bar-bg);
   color: var(--tk-accent);
