@@ -147,7 +147,7 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
         change={<ChangeLine change={model.downtimeChange} fmt={fh} unit=" h" label={cmpLabel} compare={cmp} />}
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.downtimeHours} label={t('Total stoppage')} format={(n) => `${fh(n)} h`} />)}
       >
-        <div className="ksplit" role="img" aria-label={t('Incidental {a} h, planned {b} h, other {c} h', { a: fh(split[0]!), b: fh(split[1]!), c: fh(split[2]!) })} data-testid="kpi-split">
+        <div className="ksplit" role="img" aria-label={t('Incidental {a} h, planned {b} h, CIR {c} h', { a: fh(split[0]!), b: fh(split[1]!), c: fh(split[2]!) })} data-testid="kpi-split">
           {split.map((v, i) => (v > 0 ? <span key={i} style={{ ...paintCss(paints[i]!), flexGrow: v / (splitSum || 1) }} /> : null))}
         </div>
         <ul className="ksplit-legend">

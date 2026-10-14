@@ -291,7 +291,7 @@ export function summaryText(bars: readonly TlBar[], w: TlWindow): string {
 export const timeSpanText = (b: TlBar): string => `${formatTs(b.startMs).slice(0, 16)} – ${formatTs(b.endMs).slice(0, 16)}`;
 
 export function kindLabel(k: BarKind): string {
-  return k === 'failure' ? t('Failure (INC)') : k === 'planned' ? t('Planned (PL)') : t('Other (CIR)');
+  return k === 'failure' ? t('Failure (INC)') : k === 'planned' ? t('Planned (PL)') : t('CIR');
 }
 
 /** Rows for 'View as table': area, code, reason, start, end, hours (inside the window), class. */

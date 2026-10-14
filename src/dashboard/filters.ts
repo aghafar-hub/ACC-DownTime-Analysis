@@ -203,7 +203,7 @@ export function areasInScope(
  */
 export function conflictingFilters(f: Pick<DashFilters, 'classifications' | 'criticality' | 'failureOnly'>): string | null {
   const onlyNoInc = f.classifications.length > 0 && f.classifications.every((c) => c === 'PL' || c === 'CIR');
-  if (f.failureOnly && onlyNoInc) return 'These filters exclude each other: planned (PL) and other (CIR) stops are not failures, so Failures only with PL or CIR matches nothing.';
+  if (f.failureOnly && onlyNoInc) return 'These filters exclude each other: planned (PL) and CIR stops are not failures, so Failures only with PL or CIR matches nothing.';
   if (f.failureOnly && f.criticality.length > 0 && !f.criticality.includes('INC')) return 'These filters exclude each other: every failure is an incident (INC), so Failures only with NO_INC matches nothing.';
   if (onlyNoInc && f.criticality.length > 0 && !f.criticality.includes('NO_INC')) return 'These filters exclude each other: PL and CIR stops are NO_INC, so with INC only they match nothing.';
   return null;

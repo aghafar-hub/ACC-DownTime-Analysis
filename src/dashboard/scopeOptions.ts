@@ -87,7 +87,7 @@ export function pruneScope(next: DashFilters, startup: Startup | null, rows: rea
 
 export type TypeGroup = 'incidental' | 'planned' | 'other';
 export const TYPE_GROUPS: TypeGroup[] = ['incidental', 'planned', 'other'];
-export const TYPE_GROUP_LABEL: Record<TypeGroup, string> = { incidental: 'Incidental', planned: 'Planned', other: 'Other' };
+export const TYPE_GROUP_LABEL: Record<TypeGroup, string> = { incidental: 'Incidental', planned: 'Planned', other: 'CIR' };
 export const TYPE_GROUP_CODE: Record<TypeGroup, string> = { incidental: 'INC', planned: 'PL', other: 'CIR' };
 export const TYPE_GROUP_BLURB: Record<TypeGroup, string> = {
   incidental: 'Unplanned stops: breakdowns, trips, blockages',
@@ -121,7 +121,7 @@ export function typeExtras(f: DashFilters): number {
   return (f.criticality.length ? 1 : 0) + (f.failureOnly ? 1 : 0) + (f.durationBand ? 1 : 0) + (f.reasonKeys.length ? 1 : 0) + (f.equipmentTypes.length ? 1 : 0);
 }
 
-/** The Type chip's value: 'All', 'Incidental', 'Planned + Other', 'MEC, ELE', 'Failures only' ... with '+N' for the extra filters. */
+/** The Type chip's value: 'All', 'Incidental', 'Planned + CIR', 'MEC, ELE', 'Failures only' ... with '+N' for the extra filters. */
 export function typeSummary(f: DashFilters, groups: Record<TypeGroup, ClassificationCode[]>): string {
   let base = '';
   if (f.classifications.length) {

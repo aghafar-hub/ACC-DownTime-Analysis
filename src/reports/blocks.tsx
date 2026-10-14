@@ -95,7 +95,7 @@ function notesBlock(s: SectionModel): Block[] {
 const statLegend = (): LegendItem[] => [
   { label: t('Failure (INC)'), color: STACK_COLORS.failure },
   { label: t('Planned (PL)'), color: STACK_COLORS.planned },
-  { label: t('Other (CIR)'), color: STACK_COLORS.other },
+  { label: t('CIR'), color: STACK_COLORS.other },
 ];
 
 // ---------------------------------------------------------------- summary
@@ -163,7 +163,7 @@ function dailyBlocks(s: DailySection): Block[] {
   const series: CartSeries[] = [
     { key: 'failure', label: t('Failure (INC)'), color: STACK_COLORS.failure, type: 'bar', stack: 'd', values: days.map((d) => (d.hasData ? d.failureHours : null)) },
     { key: 'planned', label: t('Planned (PL)'), color: STACK_COLORS.planned, type: 'bar', stack: 'd', values: days.map((d) => (d.hasData ? d.plannedHours : null)) },
-    { key: 'other', label: t('Other (CIR)'), color: STACK_COLORS.other, type: 'bar', stack: 'd', values: days.map((d) => (d.hasData ? d.otherHours : null)) },
+    { key: 'other', label: t('CIR'), color: STACK_COLORS.other, type: 'bar', stack: 'd', values: days.map((d) => (d.hasData ? d.otherHours : null)) },
     { key: 'avg', label: t('{n}-day average (total)', { n: s.data.rollingDays }), color: 'var(--tk-text-primary)', type: 'line', values: days.map((d) => d.rollingDowntimeHours) },
   ];
   out.push(node('daily:chart', (
@@ -186,7 +186,7 @@ function monthlyBlocks(s: MonthlySection): Block[] {
   const series: CartSeries[] = [
     { key: 'failure', label: t('Failure (INC)'), color: STACK_COLORS.failure, type: 'bar', stack: 's', values: months.map((m) => (m.hasData ? m.failureHours : null)), missing: miss },
     { key: 'planned', label: t('Planned (PL)'), color: STACK_COLORS.planned, type: 'bar', stack: 's', values: months.map((m) => (m.hasData ? m.plannedHours : null)), missing: miss },
-    { key: 'other', label: t('Other (CIR)'), color: STACK_COLORS.other, type: 'bar', stack: 's', values: months.map((m) => (m.hasData ? m.otherHours : null)), missing: miss },
+    { key: 'other', label: t('CIR'), color: STACK_COLORS.other, type: 'bar', stack: 's', values: months.map((m) => (m.hasData ? m.otherHours : null)), missing: miss },
   ];
   out.push(node('monthly:chart', (
     <ChartBox title={t('Stopped hours per month')} subtitle={t('Area-hours, stacked by type')} testid="rpt-chart-monthly" legend={statLegend()}
@@ -227,7 +227,7 @@ function areaDowntimeBlocks(s: AreaDowntimeSection): Block[] {
     segments: [
       { key: 'inc', label: t('Failure'), color: STACK_COLORS.failure, value: r.failureHours },
       { key: 'pl', label: t('Planned'), color: STACK_COLORS.planned, value: r.plannedHours },
-      { key: 'cir', label: t('Other'), color: STACK_COLORS.other, value: r.otherHours },
+      { key: 'cir', label: t('CIR'), color: STACK_COLORS.other, value: r.otherHours },
     ],
   }));
   out.push(node('area_downtime:chart', (

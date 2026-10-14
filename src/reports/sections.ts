@@ -36,10 +36,10 @@ const TOP_RANK: TopChoice[] = [5, 10, 20];
 export const SECTION_DEFS: SectionDef[] = [
   { id: 'cover', group: 'summary', label: 'Cover page', description: 'Title, plant, period, filters and when the report was made.', defaults: {} },
   { id: 'summary', group: 'summary', label: 'Executive summary', description: 'Headline figures with target status, change against the previous period and the main findings in words.', defaults: {} },
-  { id: 'daily', group: 'performance', label: 'Daily stopped hours', description: 'Failure, planned and other hours for every day, with a 7-day average.', defaults: {} },
-  { id: 'monthly', group: 'performance', label: 'Monthly stoppage by type', description: 'Failure, planned and other hours for every month of the period.', defaults: {} },
+  { id: 'daily', group: 'performance', label: 'Daily stopped hours', description: 'Failure, planned and CIR hours for every day, with a 7-day average.', defaults: {} },
+  { id: 'monthly', group: 'performance', label: 'Monthly stoppage by type', description: 'Failure, planned and CIR hours for every month of the period.', defaults: {} },
   { id: 'classes', group: 'performance', label: 'Downtime by classification', description: 'Stopped hours per month and classification (PRO, MEC, ELE, AUT, PL, CIR).', defaults: {} },
-  { id: 'area_downtime', group: 'performance', label: 'Downtime by area', description: 'Stopped hours of each area, split into failure, planned and other.', defaults: {} },
+  { id: 'area_downtime', group: 'performance', label: 'Downtime by area', description: 'Stopped hours of each area, split into failure, planned and CIR.', defaults: {} },
   { id: 'availability', group: 'performance', label: 'Availability by area', description: 'Availability of each area and of all areas together, against the target if one is set.', defaults: {} },
   { id: 'mtbf_mttr', group: 'performance', label: 'MTBF and MTTR by area', description: 'Mean time between failures and mean restoration time for every area.', defaults: {} },
   { id: 'failure_rate', group: 'performance', label: 'Failure rate by area', description: 'Failures per 1,000 operating hours for every area.', defaults: {} },

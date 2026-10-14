@@ -365,13 +365,13 @@ function dailySection(env: Env): DailySection {
   const all = days.length <= 31;
   const picked = all ? days : [...dataDays].sort((a, b) => b.downtimeHours - a.downtimeHours || (a.date < b.date ? -1 : 1)).slice(0, 10);
   const table: ReportTable = {
-    columns: [col(t('Day')), col(t('Failure h'), 'hours'), col(t('Planned h'), 'hours'), col(t('Other h'), 'hours'), col(t('Total h'), 'hours'), col(t('{n}-day average h', { n: ROLLING_DAYS }), 'hours')],
+    columns: [col(t('Day')), col(t('Failure h'), 'hours'), col(t('Planned h'), 'hours'), col(t('CIR h'), 'hours'), col(t('Total h'), 'hours'), col(t('{n}-day average h', { n: ROLLING_DAYS }), 'hours')],
     rows: picked.map((d) => (d.hasData ? [d.date, d.failureHours, d.plannedHours, d.otherHours, d.downtimeHours, d.rollingDowntimeHours] : [d.date, d.notUploaded ? t('Not uploaded') : null, null, null, null, null])),
   };
   const emptyText = env.noData ?? (dataDays.length === 0 ? t('No daily data in this period.') : null);
   return {
     ...section('daily', dailyTakeaway({ days: dataDays.length, totalHours: total, peak }), emptyText, [
-      t('Failure, planned and other hours per day, summed over the areas in scope (area-hours). Days without data show no bar; the line is the {n}-day average of the total.', { n: ROLLING_DAYS }),
+      t('Failure, planned and CIR hours per day, summed over the areas in scope (area-hours). Days without data show no bar; the line is the {n}-day average of the total.', { n: ROLLING_DAYS }),
       ...(all ? [] : [t('The table lists the 10 days with the most stopped hours; the chart shows every day.')]),
     ]),
     data: { days, rollingDays: ROLLING_DAYS, total, dataDays: dataDays.length, peak, tableKind: all ? 'all' : 'peaks', table },
@@ -387,7 +387,7 @@ function monthlySection(env: Env): MonthlySection {
     return !b || h > b.hours ? { month: m.month, hours: h } : b;
   }, null);
   const table: ReportTable = {
-    columns: [col(t('Month')), col(t('Failure h'), 'hours'), col(t('Planned h'), 'hours'), col(t('Other h'), 'hours'), col(t('Total h'), 'hours'), col(t('Failures'), 'count')],
+    columns: [col(t('Month')), col(t('Failure h'), 'hours'), col(t('Planned h'), 'hours'), col(t('CIR h'), 'hours'), col(t('Total h'), 'hours'), col(t('Failures'), 'count')],
     rows: months.map((m) => [m.partial ? `${monthLabel(m.month)} (${t('partial')})` : monthLabel(m.month),
       ...(m.hasData ? [m.failureHours, m.plannedHours, m.otherHours, m.failureHours + m.plannedHours + m.otherHours, m.failureCount] : m.notUploaded ? [t('Not uploaded'), null, null, null, null] : [null, null, null, null, null])]),
     total: withData.length > 1 ? [t('Total'), sum((m) => m.failureHours), sum((m) => m.plannedHours), sum((m) => m.otherHours), sum((m) => m.failureHours + m.plannedHours + m.otherHours), sum((m) => m.failureCount)] : undefined,
@@ -396,7 +396,7 @@ function monthlySection(env: Env): MonthlySection {
     ...section('monthly', monthlyTakeaway({
       months: withData.length, failureHours: sum((m) => m.failureHours), plannedHours: sum((m) => m.plannedHours), otherHours: sum((m) => m.otherHours), peak,
     }), env.noData ?? (withData.length === 0 ? t('No monthly data in this period.') : null), [
-      t('Failure, planned and other hours per month, summed over the areas in scope (area-hours). A month still in progress or only partly covered by data is marked and outlined with a dashed line.'),
+      t('Failure, planned and CIR hours per month, summed over the areas in scope (area-hours). A month still in progress or only partly covered by data is marked and outlined with a dashed line.'),
       ...(months.some((m) => m.notUploaded) ? [t('Not uploaded (no records at all, left out, never 0 h): {m}.', { m: months.filter((m) => m.notUploaded).map((m) => monthLabel(m.month)).join(', ') })] : []),
     ]),
     data: { months, table },
@@ -428,7 +428,7 @@ function areaDowntimeSection(env: Env): AreaDowntimeSection {
   const total = rows.reduce((s, r) => s + r.total, 0);
   const top = rows[0];
   const table: ReportTable = {
-    columns: [col(t('Area')), col(t('Failure h'), 'hours'), col(t('Planned h'), 'hours'), col(t('Other h'), 'hours'), col(t('Total h'), 'hours'), col(t('Share'), 'pct')],
+    columns: [col(t('Area')), col(t('Failure h'), 'hours'), col(t('Planned h'), 'hours'), col(t('CIR h'), 'hours'), col(t('Total h'), 'hours'), col(t('Share'), 'pct')],
     rows: rows.map((r) => [r.areaId, r.failureHours, r.plannedHours, r.otherHours, r.total, total > 0 ? (r.total / total) * 100 : null]),
     total: rows.length > 1 ? [t('All areas'), rows.reduce((s, r) => s + r.failureHours, 0), rows.reduce((s, r) => s + r.plannedHours, 0), rows.reduce((s, r) => s + r.otherHours, 0), total, total > 0 ? 100 : null] : undefined,
   };
@@ -598,7 +598,7 @@ function paretoSection(env: Env): ParetoSection {
   return {
     ...section('pareto', paretoSectionTakeaway({ what, area: lead(area), line: lead(line), classification: lead(cls), areaTo80: area?.referenceIndex != null ? area.referenceIndex + 1 : null }),
       env.noData ?? (parts.length === 0 ? t('No failures in this period.') : null), [
-        t('Bars descend from the largest; the line is the cumulative share and the dashed line marks 80%. "Others" merges the remaining items. Percentages are against the complete total, not the bars shown. Failure events only (planned and other stops are not causes).'),
+        t('Bars descend from the largest; the line is the cumulative share and the dashed line marks 80%. "Others" merges the remaining items. Percentages are against the complete total, not the bars shown. Failure events only (planned and CIR stops are not causes).'),
       ]),
     data: { measure, top, parts },
   };
@@ -797,7 +797,7 @@ function methodologySection(env: Env): MethodologySection {
       term: t('MTBF and failure rate'),
       paragraphs: [
         t('MTBF is the operating hours divided by the failure events (a failure event starts with a row that has Freq 1 and Failure YES and is not PL or CIR); the failure rate is failure events per 1,000 operating hours. Per area they use the area\'s hours; MTBF · all areas (area-hours) uses the summed operating area-hours of all areas and all failure events. When there are no failures they are not defined, and the report says so instead of showing a zero.'),
-        t('Stops of one area that overlap in time are counted once: the shared time goes to planned (PL) first, then incidental, then other (CIR); between stops of the same kind, to the one that started first. Exact duplicate records count once.'),
+        t('Stops of one area that overlap in time are counted once: the shared time goes to planned (PL) first, then incidental, then CIR; between stops of the same kind, to the one that started first. Exact duplicate records count once.'),
         t('Months inside the data with no record at all are shown as Not uploaded and left out of the scheduled time, never as 0 h or 100%. When less than 90% of the comparison period has data, totals are compared per day and not called better or worse.'),
       ],
     },

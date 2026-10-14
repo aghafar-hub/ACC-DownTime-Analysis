@@ -49,7 +49,7 @@ export function ClassCard({ ctx, filters, dark, classNames, onOpen }: { ctx: Das
   const name = (c: string) => classNames.get(c) ?? c;
   const topCls = ['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'].reduce<string | null>((b, c) => (m.hours[c]! > (b ? m.hours[b]! : 0) ? c : b), null);
   const summary = m.total > 0
-    ? t('{t} h stopped. Incidental {i} h: {c}. Planned {p} h, other {o} h.', { t: fh(m.total), i: fh(incTotal), c: inc.map((c) => `${c} ${fh(m.hours[c]!)} h`).join(', '), p: fh(m.hours.PL!), o: fh(m.hours.CIR!) })
+    ? t('{t} h stopped. Incidental {i} h: {c}. Planned {p} h, CIR {o} h.', { t: fh(m.total), i: fh(incTotal), c: inc.map((c) => `${c} ${fh(m.hours[c]!)} h`).join(', '), p: fh(m.hours.PL!), o: fh(m.hours.CIR!) })
     : t('No stopped hours in this period.');
   const row = (c: string) => (
     <tr key={c} data-testid="class-row" data-code={c}>
@@ -72,7 +72,7 @@ export function ClassCard({ ctx, filters, dark, classNames, onOpen }: { ctx: Das
           <tbody>
             <tr className="class-group"><th scope="rowgroup" colSpan={3}>{t('Incidental (INC) · {h} h', { h: fh(incTotal) })}</th></tr>
             {inc.map(row)}
-            <tr className="class-group"><th scope="rowgroup" colSpan={3}>{t('Planned and other')}</th></tr>
+            <tr className="class-group"><th scope="rowgroup" colSpan={3}>{t('Planned and CIR')}</th></tr>
             {['PL', 'CIR'].map(row)}
           </tbody>
         </table>
@@ -218,7 +218,7 @@ export function PlannedCard({ ctx, filters, dark, onOpen, wholeLines }: { ctx: D
   const paints = typePaints(dark);
   if (!m) return null;
   const rows = [...m.lines, ...(m.lines.length > 1 ? [m.all] : [])];
-  const summary = rows.map((r) => `${r.label}: ${t('incidental {a}%, planned {b}%, other {c}%, {h} h', { a: pct0(r.inc, r.total), b: pct0(r.pl, r.total), c: pct0(r.cir, r.total), h: fh(r.total) })}`).join('. ');
+  const summary = rows.map((r) => `${r.label}: ${t('incidental {a}%, planned {b}%, CIR {c}%, {h} h', { a: pct0(r.inc, r.total), b: pct0(r.pl, r.total), c: pct0(r.cir, r.total), h: fh(r.total) })}`).join('. ');
   return (
     <DashCard
       id="planned" testid="chart-planned-line" span="narrow" title={t('Planned or incidental?')}
@@ -291,7 +291,7 @@ export function AreaDownCard({ ctx, filters, dark, onOpen }: { ctx: DashCtx; fil
           const n = byArea.get(r.key)?.length ?? 0;
           return mobile
             ? <div key={r.key} className="hb-row" role="listitem" data-testid="area-down-row">{inner}</div>
-            : <button key={r.key} type="button" className="hb-row" role="listitem" data-testid="area-down-row" data-count={n} onClick={() => onOpen({ ids: byArea.get(r.key) ?? [], label: t('the area {a}', { a: r.key }) })} aria-label={t('{a}: {h} h stopped (incidental {i}, planned {p}, other {o}). Open {n} records', { a: r.key, h: fh(r.total), i: fh(r.inc), p: fh(r.pl), o: fh(r.cir), n: num(n) })}>{inner}</button>;
+            : <button key={r.key} type="button" className="hb-row" role="listitem" data-testid="area-down-row" data-count={n} onClick={() => onOpen({ ids: byArea.get(r.key) ?? [], label: t('the area {a}', { a: r.key }) })} aria-label={t('{a}: {h} h stopped (incidental {i}, planned {p}, CIR {o}). Open {n} records', { a: r.key, h: fh(r.total), i: fh(r.inc), p: fh(r.pl), o: fh(r.cir), n: num(n) })}>{inner}</button>;
         })}
         <div className="hb-row hb-row--axis" aria-hidden="true"><span /><span className="hb-track"><BarAxis max={max} unit="h" /></span></div>
       </div>

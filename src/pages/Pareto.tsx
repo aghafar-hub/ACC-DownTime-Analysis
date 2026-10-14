@@ -241,14 +241,14 @@ export default function Pareto() {
             </div>
             <AlsoOnDashboard title={t('Classifications by hours')} testid="dup-pareto-class">
                 <ParetoCard
-                  title={t('Classifications by hours')} subtitle={classAll ? t('All events, including planned (PL) and other (CIR)') : t('Failure events only')} all={cls} what={t('hours')} unit="h" fmt={fh}
+                  title={t('Classifications by hours')} subtitle={classAll ? t('All events, including planned (PL) and CIR') : t('Failure events only')} all={cls} what={t('hours')} unit="h" fmt={fh}
                   testid="pareto-class" help="pareto-class-hours" onOpen={open(t('the Pareto bar'))}
                   controls={<Toggle value={classAll ? 'all' : 'fail'} options={[{ value: 'all', label: t('All events') }, { value: 'fail', label: t('Failures only') }]} onChange={(v) => setClassAll(v === 'all')} label={t('Classification scope')} testid="class-scope" />}
                 />
             </AlsoOnDashboard>
             <AlsoOnDashboard title={t('Classifications by frequency')} testid="dup-pareto-class-count">
                 <ParetoCard
-                  title={t('Classifications by frequency')} subtitle={classAll ? t('All events, including planned (PL) and other (CIR)') : t('Failure events only')} all={clsCount} what={t('events')} unit={t('events')} fmt={fint}
+                  title={t('Classifications by frequency')} subtitle={classAll ? t('All events, including planned (PL) and CIR') : t('Failure events only')} all={clsCount} what={t('events')} unit={t('events')} fmt={fint}
                   testid="pareto-class-count" help="pareto-class-count" onOpen={open(t('the Pareto bar'))}
                   controls={<Toggle value={classAll ? 'all' : 'fail'} options={[{ value: 'all', label: t('All events') }, { value: 'fail', label: t('Failures only') }]} onChange={(v) => setClassAll(v === 'all')} label={t('Classification scope')} testid="class-count-scope" />}
                 />

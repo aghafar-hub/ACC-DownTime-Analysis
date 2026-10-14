@@ -342,7 +342,7 @@ test.describe('dashboards (desktop)', () => {
     await card.locator('[data-testid="col-hit"][data-key="2026-08"]').click();
     const detail = card.getByTestId('trend-detail');
     await expect(detail).toContainText('Aug 2026');
-    for (const w of ['Incidental (INC)', 'Planned (PL)', 'Other (CIR)', 'All types', 'vs Jul']) await expect(detail).toContainText(w);
+    for (const w of ['Incidental (INC)', 'Planned (PL)', 'CIR', 'All types', 'vs Jul']) await expect(detail).toContainText(w);
     const total = num(await detail.getByTestId('trend-detail-total').textContent());
     expect(total).toBeCloseTo(num(await page.getByTestId('kpi-total-hours-value').textContent()), 1);
     const openBtn = detail.getByTestId('trend-detail-open');

@@ -212,7 +212,7 @@ export interface MonthlyFacts {
 }
 export function monthlyTakeaway(f: MonthlyFacts): string {
   if (f.months === 0 || !f.peak) return t('No monthly data in this period.');
-  const base = t('Failure {f} h, planned {p} h and other {o} h in total', { f: fh(f.failureHours), p: fh(f.plannedHours), o: fh(f.otherHours) });
+  const base = t('Failure {f} h, planned {p} h and CIR {o} h in total', { f: fh(f.failureHours), p: fh(f.plannedHours), o: fh(f.otherHours) });
   return f.months === 1
     ? `${base}.`
     : `${base}; ${t('the highest month was {m} with {v} h stopped', { m: monthLabel(f.peak.month), v: fh(f.peak.hours) })}.`;

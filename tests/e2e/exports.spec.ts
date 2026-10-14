@@ -144,7 +144,7 @@ test.describe('desktop', () => {
     const file = await grab(page, () => page.getByTestId('rb-csv-daily').click());
     expect(file.name).toBe('ACC-downtime-custom_2026-09_daily-stopped-hours.csv');
     const lines = new TextDecoder().decode(file.bytes).split('\r\n');
-    expect(lines[0]).toMatch(/^Day,Failure h,Planned h,Other h,Total h,7-day average h$/);
+    expect(lines[0]).toMatch(/^Day,Failure h,Planned h,CIR h,Total h,7-day average h$/);
     expect(lines.length - 2).toBe(30); // September: every day of the period
     await page.getByTestId('rb-sec-none').click();
     await expect(page.getByTestId('rb-excel')).toBeDisabled();

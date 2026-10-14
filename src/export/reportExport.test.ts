@@ -108,7 +108,7 @@ describe('report workbook', () => {
   it('daily: every plotted day; classes: month by classification with the totals row; pareto: the three charts in one table; when: the hour by weekday grid', async () => {
     const daily = get(model, 'daily').data;
     const d = await sheet(wb.bytes, SHEET_TITLES.daily);
-    expect(d[0]).toEqual(['Day', 'Failure h', 'Planned h', 'Other h', 'Total h', `${daily.rollingDays}-day average h`]);
+    expect(d[0]).toEqual(['Day', 'Failure h', 'Planned h', 'CIR h', 'Total h', `${daily.rollingDays}-day average h`]);
     daily.days.forEach((p, i) => {
       expect(d[1 + i]![0]).toBe(serialOfStamp(p.date));
       if (p.hasData) {

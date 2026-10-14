@@ -25,7 +25,7 @@ function Legend() {
     <ul className="chart-legend tl-legend" data-testid="tl-legend">
       <li>{sw('failure')}<span>{t('Failure (INC) solid')}</span></li>
       <li>{sw('planned')}<span>{t('Planned (PL) stripes')}</span></li>
-      <li>{sw('other')}<span>{t('Other (CIR) dots')}</span></li>
+      <li>{sw('other')}<span>{t('CIR dots')}</span></li>
       <li><span className="tl-sw tl-vis tl-vis--failure tl-vis--na" aria-hidden="true" /><span>{t('N/A whole area, heavy outline')}</span></li>
       <li><span className="tl-sw tl-vis tl-vis--failure tl-vis--blocked" aria-hidden="true" /><span>{t('Dashed ◆ data problem')}</span></li>
     </ul>

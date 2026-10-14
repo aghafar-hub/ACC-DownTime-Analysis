@@ -19,7 +19,7 @@ import {
 
 /** Derived INFORMATION: the record overlaps another of the same area (counted once; nothing to fix). */
 export const OVERLAP_FLAG = 'overlap_in_area';
-/** Derived WARNING: Failure = YES on a planned/other or continuation row. */
+/** Derived WARNING: Failure = YES on a planned/CIR or continuation row. */
 export const MISMATCH_FLAG = 'failure_flag_mismatch';
 
 /** Every problem of the catalogue in display order: blocking first, then warnings (the derived mismatch last). */

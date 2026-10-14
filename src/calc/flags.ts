@@ -28,7 +28,7 @@ export const DERIVED_FLAGS = ['overlap_in_area', 'failure_flag_mismatch'] as con
 /** Derived flags that are information only (nothing to fix). */
 export const DERIVED_INFO_FLAGS = ['overlap_in_area'] as const;
 
-/** P2: Failure says YES on a planned/other (PL, CIR) or continuation (Freq = 0) row. */
+/** P2: Failure says YES on a planned/CIR (PL, CIR) or continuation (Freq = 0) row. */
 export function hasFailureFlagMismatch(e: Pick<EventRow, 'is_failure' | 'classification' | 'freq'>): boolean {
   return e.is_failure === true && (e.classification === 'PL' || e.classification === 'CIR' || e.freq === 0);
 }
@@ -110,12 +110,12 @@ export const FLAG_INFO: Record<EventFlag, FlagInfo> = {
   },
   overlap_in_area: {
     flag: 'overlap_in_area', blocking: false, info: true, label: 'Overlaps another stop',
-    problem: 'Another record in the same area covers part of the same time. The shared time is counted once: planned (PL) before incidental before other (CIR); between records of the same kind, the one that started first.',
+    problem: 'Another record in the same area covers part of the same time. The shared time is counted once: planned (PL) before incidental before CIR; between records of the same kind, the one that started first.',
     fix: 'Nothing to fix. Correct the times only if one of the records is a mistake.',
   },
   failure_flag_mismatch: {
     flag: 'failure_flag_mismatch', blocking: false, label: 'Failure flag mismatch',
-    problem: 'Failure says YES on a planned/other or continuation row. Only the first row (Freq = 1) of an incidental stop can be a failure, so this row is not counted as one.',
+    problem: 'Failure says YES on a planned/CIR or continuation row. Only the first row (Freq = 1) of an incidental stop can be a failure, so this row is not counted as one.',
     fix: 'Set Failure to NO, or correct the classification or Freq. Keep it as entered if it is right; it still does not count as a failure.',
   },
 };

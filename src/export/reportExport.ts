@@ -67,7 +67,7 @@ export function sectionTable(s: SectionModel, model: ReportModel): ExportTable |
       const d = s.data;
       return withNotes({
         id: s.id, sheet: t(SHEET_TITLES.daily),
-        columns: [exportCol(t('Day'), 'date'), exportCol(t('Failure h'), 'h1'), exportCol(t('Planned h'), 'h1'), exportCol(t('Other h'), 'h1'), exportCol(t('Total h'), 'h1'), exportCol(t('{n}-day average h', { n: d.rollingDays }), 'h1')],
+        columns: [exportCol(t('Day'), 'date'), exportCol(t('Failure h'), 'h1'), exportCol(t('Planned h'), 'h1'), exportCol(t('CIR h'), 'h1'), exportCol(t('Total h'), 'h1'), exportCol(t('{n}-day average h', { n: d.rollingDays }), 'h1')],
         rows: d.days.map((p) => (p.hasData ? [p.date, p.failureHours, p.plannedHours, p.otherHours, p.downtimeHours, p.rollingDowntimeHours] : [p.date, p.notUploaded ? 'Not uploaded' : null, null, null, null, null])),
       }, s);
     }

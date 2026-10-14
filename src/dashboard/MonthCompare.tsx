@@ -27,7 +27,7 @@ function rowLabel(id: CompareId, basis: string): string {
     case 'stoppage': return t('Stoppage hours');
     case 'failureHours': return t('Failure hours');
     case 'planned': return t('Planned hours');
-    case 'other': return t('Other hours');
+    case 'other': return t('CIR hours');
     case 'failureCount': return t('Failure count');
     case 'operating': return t('Operating hours');
     case 'availability': return t('Availability (basis {b})', { b: basis });

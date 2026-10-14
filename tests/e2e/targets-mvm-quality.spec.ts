@@ -171,7 +171,7 @@ test.describe('month vs month', () => {
     const rows = sec.getByTestId('mvm-row');
     await expect(rows).toHaveCount(10);
     const labels = await rows.locator('th').allTextContents();
-    expect(labels).toEqual(['Stoppage hours', 'Failure hours', 'Planned hours', 'Other hours', 'Failure count', 'Operating hours', 'Availability (basis B)', 'MTTR', 'MTBF · all areas (area-hours)', 'Repeated failures']);
+    expect(labels).toEqual(['Stoppage hours', 'Failure hours', 'Planned hours', 'CIR hours', 'Failure count', 'Operating hours', 'Availability (basis B)', 'MTTR', 'MTBF · all areas (area-hours)', 'Repeated failures']);
     // the change reads as arrow + sign + words
     await expect(rows.first().getByTestId('mvm-change')).toHaveText(/^[▲▼■] .*(better|worse|no change)/);
     await expect(sec.getByTestId('chart-mvm-hours')).toBeVisible();

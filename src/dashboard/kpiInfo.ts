@@ -50,7 +50,7 @@ function baseInfo(id: HeroId, basis: 'A' | 'B' | 'C'): KpiInfo {
         paragraphs: [
           t('Every hour an area stood still in the selected range: failures, planned stops (PL) and other circumstantial stops (CIR) added together.'),
           t('The hours are counted per area and then added up (area-hours), so two areas stopped at the same time count twice. A stop that crosses midnight or the end of the range counts only the hours inside the range.'),
-          t('Inside one area, stops that overlap in time are counted once. The shared time goes to planned (PL) first, then incidental, then other (CIR); between stops of the same kind, to the one that started first. An exact duplicate record counts once.'),
+          t('Inside one area, stops that overlap in time are counted once. The shared time goes to planned (PL) first, then incidental, then CIR; between stops of the same kind, to the one that started first. An exact duplicate record counts once.'),
           t('Records with a blocking data problem and voided records are left out.'),
         ],
       };
@@ -58,7 +58,7 @@ function baseInfo(id: HeroId, basis: 'A' | 'B' | 'C'): KpiInfo {
       return {
         title: t('Failure count'),
         paragraphs: [
-          t('How many failure events started in the selected range. A failure event starts with a row that has Freq 1 and Failure YES and is not planned (PL) or other (CIR); the rows that carry it on are the same failure and are not counted again.'),
+          t('How many failure events started in the selected range. A failure event starts with a row that has Freq 1 and Failure YES and is not planned (PL) or CIR; the rows that carry it on are the same failure and are not counted again.'),
           t('Planned stops and other circumstantial stops are not failures, even when their Failure column says YES (Validate lists those rows).'),
         ],
       };

@@ -568,7 +568,7 @@ export default function Validate() {
 
       {dataReady && view === 'overlaps' && summary.overlapping > 0 && (
         <p className="v-hint" data-testid="v-overlap-hint">
-          {t('Information only: these records overlap another record of the same area. The shared time is counted once: planned (PL) before incidental before other (CIR); between records of the same kind, the one that started first. Nothing needs fixing unless a time was entered wrongly.')}
+          {t('Information only: these records overlap another record of the same area. The shared time is counted once: planned (PL) before incidental before CIR; between records of the same kind, the one that started first. Nothing needs fixing unless a time was entered wrongly.')}
         </p>
       )}
 

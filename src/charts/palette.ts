@@ -42,13 +42,13 @@ export interface Paint { key: string; label: string; short: string; color: strin
 const TYPE_LIGHT = { inc: '#C2512A', pl: '#2F6BC2', cir: '#17927E' };
 const TYPE_DARK = { inc: '#E27A4E', pl: '#5E9CF2', cir: '#2FB89F' };
 
-/** Incidental (INC), planned (PL) and other (CIR): the three stop types, always in this order. */
+/** Incidental (INC), planned (PL) and CIR: the three stop types, always in this order. */
 export function typePaints(dark: boolean): Paint[] {
   const c = dark ? TYPE_DARK : TYPE_LIGHT;
   return [
     { key: 'inc', label: 'Incidental (INC)', short: 'INC', color: c.inc, pattern: 'solid' },
     { key: 'pl', label: 'Planned (PL)', short: 'PL', color: c.pl, pattern: 'hatch' },
-    { key: 'cir', label: 'Other (CIR)', short: 'CIR', color: c.cir, pattern: 'dots' },
+    { key: 'cir', label: 'CIR', short: 'CIR', color: c.cir, pattern: 'dots' },
   ];
 }
 

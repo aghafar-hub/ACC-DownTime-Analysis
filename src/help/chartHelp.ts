@@ -34,7 +34,7 @@ const MTTR_F = 'MTTR = sum of the failure events’ full durations ÷ number of 
 const RATE_F = 'Failures per 1,000 h = failure events ÷ operating hours × 1,000';
 const SHARE_F = 'Share = item ÷ complete total × 100; cumulative % = running sum ÷ complete total × 100';
 
-const P1 = 'Overlapping stops in one area are counted once: the shared time goes to planned (PL) first, then incidental, then other (CIR); between stops of the same kind, to the one that started first. An exact duplicate record counts once (P1).';
+const P1 = 'Overlapping stops in one area are counted once: the shared time goes to planned (PL) first, then incidental, then CIR; between stops of the same kind, to the one that started first. An exact duplicate record counts once (P1).';
 const P2 = 'A failure is an event whose first row has Freq 1 and Failure YES and is not PL or CIR; the rows that carry it on are the same failure and are not counted again (P2).';
 const OWN = 'Own-stop rule: an equipment code counts here only when it belongs to the area that stopped. Codes of other areas, N/A (whole area) and codes not in the master go to separate buckets, so a cause is never counted twice.';
 const CLIP = 'Hours are clipped to the selected period: a stop that crosses the start or end counts only its hours inside it.';
@@ -49,7 +49,7 @@ export const CHART_HELP = {
   // ------------------------------------------------------------ Dashboard cards
   'trend': {
     title: 'Stoppage by month or day',
-    what: 'Stopped hours per month (or per day), split by type (incidental, planned, other) or by classification.',
+    what: 'Stopped hours per month (or per day), split by type (incidental, planned, CIR) or by classification.',
     formulas: ['Stopped hours = PL + INC + CIR (each hour owned by one stop)'],
     how: [P1, CLIP, AREA_H, 'A month still in progress is marked partial; ' + P6, BLOCKED],
     example: 'Here: {slot} has {h} h stopped.',
@@ -70,17 +70,17 @@ export const CHART_HELP = {
   },
   'planned': {
     title: 'Planned or incidental, by line',
-    what: 'Stopped hours of each production line split into incidental, planned (PL) and other (CIR), as a share of the line total.',
+    what: 'Stopped hours of each production line split into incidental, planned (PL) and CIR, as a share of the line total.',
     formulas: ['Share = hours of the type ÷ stopped hours of the line × 100'],
     how: ['Whole lines: the Area and Equipment filters do not apply to this card, so L.1 always means every area of line 1 (period, line and type filters still apply).', 'The line of a stop is the line of its area in the master data.', 'Incidental = every stop that is not PL or CIR (failures and their continuations).', P1, CLIP, AREA_H],
-    example: 'Here, all lines: incidental {i} h, planned {p} h, other {o} h = {t} h.',
+    example: 'Here, all lines: incidental {i} h, planned {p} h, CIR {o} h = {t} h.',
   },
   'area-down': {
     title: 'Downtime by area',
     what: 'Stopped hours of every area by type, most first. This is all stoppage (total hours), not only failures.',
     formulas: ['Stopped hours of an area = incidental + PL + CIR of that area'],
     how: [P1, CLIP, BLOCKED],
-    example: 'Here: {a} {h} h (incidental {i}, planned {p}, other {o}).',
+    example: 'Here: {a} {h} h (incidental {i}, planned {p}, CIR {o}).',
   },
   'area-target': {
     title: 'Availability by area against the target',
