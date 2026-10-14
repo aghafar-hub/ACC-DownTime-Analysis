@@ -1674,7 +1674,7 @@ var SCHEMA = {
    },
    {
     "code": "CIR",
-    "name": "CIR",
+    "name": "Circumstantial",
     "is_incident": false,
     "sort_order": 6
    }

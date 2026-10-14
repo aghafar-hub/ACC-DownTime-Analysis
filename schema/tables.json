@@ -434,7 +434,7 @@
     {"code": "ELE", "name": "Electrical", "is_incident": true, "sort_order": 3},
     {"code": "AUT", "name": "Automation", "is_incident": true, "sort_order": 4},
     {"code": "PL", "name": "Planned", "is_incident": false, "sort_order": 5},
-    {"code": "CIR", "name": "CIR", "is_incident": false, "sort_order": 6}
+    {"code": "CIR", "name": "Circumstantial", "is_incident": false, "sort_order": 6}
   ],
   "lineSeeds": [
     {"line_id": "L.1", "name": "Line 1", "sort_order": 1, "active": true},
