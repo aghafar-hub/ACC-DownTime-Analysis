@@ -51,7 +51,11 @@ var ACTION_RULES = {
   saveContractors: { auth: 'tabs', tabs: ['settings'], level: 'Edit' },
   getAreaTargets: { auth: 'session' },
   saveAreaTargets: { auth: 'tabs', tabs: ['settings'], level: 'Edit' },
-  runActionChecks: { auth: 'tabs', tabs: ['settings'], level: 'Edit' }
+  runActionChecks: { auth: 'tabs', tabs: ['settings'], level: 'Edit' },
+  // 1.6.0: signing out is logged; who is online and the change log are for the Admin role only.
+  logout: { auth: 'session', mustChangeOk: true },
+  listActiveUsers: { auth: 'admin' },
+  listAuditLog: { auth: 'admin' }
 };
 
 function levelRank_(level) { return LEVELS.indexOf(level); }

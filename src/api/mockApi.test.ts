@@ -228,7 +228,7 @@ describe('edit and void semantics', () => {
     expect(hist.map((h) => h.field).sort()).toEqual(['description', 'start_ts', 'stop_ts']);
     expect(hist.every((h) => h.note === 'Corrected from the log' && h.edited_by === 'U-DEMO-ENG')).toBe(true);
     expect(hist.find((h) => h.field === 'stop_ts')).toMatchObject({ old_value: e.stop_ts, new_value: '2026-04-01 11:00:00.000' });
-    expect(a.__db().audit_log.some((l) => l.action === 'editEvent' && l.entity_id === e.event_id)).toBe(true);
+    expect(a.__db().audit_log.some((l) => l.action === 'edit_event' && l.entity_id === e.event_id)).toBe(true);
     // the stored row is what getEvents returns afterwards
     expect((await a.getEvents(s.token, 2026)).find((x) => x.event_id === e.event_id)!.edited).toBe(true);
   });
@@ -542,5 +542,63 @@ describe('areas switched on and off, and the theme with the account (backend 1.5
     await a.saveNotificationPrefs(v.token, { theme: 'Warm Paper' });
     expect((await a.getMyAccess(v.token)).theme).toBe('Warm Paper');
     expect((await a.login('viewer@demo.test', DEMO_PASSWORD, false)).theme).toBe('Warm Paper');
+  });
+});
+
+describe('who is online and the activity log (backend 1.6.0) in the mock', () => {
+  it('demo mode: a few people online, Admin only, and a varied log newest first', async () => {
+    const a = createMockApi({ seed: 8, demoActions: true });
+    const admin = await a.login('admin@demo.test', DEMO_PASSWORD, false);
+    for (const r of ['manager', 'engineer', 'viewer']) {
+      const s = await a.login(`${r}@demo.test`, DEMO_PASSWORD, false);
+      expect(await code(a.listActiveUsers(s.token)), r).toBe('forbidden');
+      expect(await code(a.listAuditLog(s.token, {})), r).toBe('forbidden');
+    }
+    const out = await a.listActiveUsers(admin.token);
+    expect(out.online_count).toBeGreaterThanOrEqual(3);
+    const online = out.users.filter((u) => u.online).map((u) => u.display_name);
+    expect(online).toEqual(expect.arrayContaining(['Demo Admin', 'Demo Manager', 'Demo Engineer']));
+    const log = await a.listAuditLog(admin.token, { limit: 200 });
+    expect(new Set(log.entries.map((e) => e.group)).size).toBeGreaterThanOrEqual(8);
+    expect(log.entries.every((e, i) => i === 0 || log.entries[i - 1]!.at >= e.at)).toBe(true);
+    const finish = log.entries.find((e) => e.action === 'upload_finish');
+    expect(finish?.detail).toMatch(/^File July_2026\.xlsx\. Read 2606, added 2594/);
+  });
+
+  it('demo people seen a while ago keep their page and device', async () => {
+    const a = createMockApi({ seed: 8, demoActions: true });
+    const admin = await a.login('admin@demo.test', DEMO_PASSWORD, false);
+    const out = await a.listActiveUsers(admin.token);
+    expect(out.users.find((u) => u.display_name === 'Demo Manager')).toMatchObject({ device: 'phone', last_page: '/pareto', online: true });
+    expect(out.users.find((u) => u.display_name === 'Demo Viewer')).toMatchObject({ online: false });
+  });
+
+  it('every write is logged with the server names and before -> after values; personal preferences are not', async () => {
+    const a = createMockApi({ seed: 9 });
+    const admin = (await a.login('admin@demo.test', DEMO_PASSWORD, false)).token;
+    const last = () => a.__db().audit_log[a.__db().audit_log.length - 1]!;
+    const st = await a.getStartup(admin);
+    const target = st.settings.find((x) => x.key === 'availability_target_pct')!.value;
+    const next = target === '88' ? '87' : '88';
+    await a.saveSettings(admin, { availability_target_pct: next });
+    expect(last()).toMatchObject({ action: 'save_setting', entity_id: 'availability_target_pct', detail: `${target} -> ${next}` });
+    const eq = st.equipment[0]!;
+    await a.saveEquipment(admin, { ...eq, description: 'Renamed in the test' }, st.equipment_areas.filter((x) => x.equipment_id === eq.equipment_id).map((x) => x.area_id));
+    expect(last().action).toBe('update_equipment');
+    expect(last().detail).toContain('-> Renamed in the test');
+    const view = a.__db().users.find((u) => u.role_id === 'ROLE-VIEW')!;
+    await a.updateUser(admin, view.user_id, { role_id: 'ROLE-ENG' });
+    expect(last()).toMatchObject({ action: 'update_user', detail: 'role_id: ROLE-VIEW -> ROLE-ENG' });
+    await a.setUserTabAccess(admin, view.user_id, { upload: 'Edit' });
+    expect(last()).toMatchObject({ action: 'set_tab_access', detail: 'upload: role default -> Edit' });
+    const created = await a.createAction(admin, { title: 'Log me', scope_kind: 'area', area_id: 'K.1', owner: 'MEC', status: 'Open' } as never);
+    await a.addActionComment(admin, created.action.action_id, 'A comment for the log');
+    expect(last()).toMatchObject({ action: 'comment_action', entity_id: created.action.action_id, detail: 'A comment for the log' });
+    const n = a.__db().audit_log.length;
+    await a.saveNotificationPrefs(admin, { digest: 'daily' });
+    await a.getMyAccess(admin, { page: '/dashboard', device: 'desktop' });
+    expect(a.__db().audit_log.length).toBe(n);
+    await a.logout(admin);
+    expect(last()).toMatchObject({ action: 'logout' });
   });
 });

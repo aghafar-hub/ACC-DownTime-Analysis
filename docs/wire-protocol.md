@@ -66,6 +66,8 @@ wins over the role row. Missing row = Hidden.
 | `createAction`, `updateAction`, `addActionComment` | `actions` Edit (closing, cancelling, reopening and changing a closed action also need the caller in `actions_closers` or the Admin role, checked in the action: section 10) |
 | `getAreaTargets` | any valid session |
 | `saveContractors`, `saveAreaTargets`, `runActionChecks` | `settings` Edit |
+| `logout` | any valid session, also with a temporary password (backend 1.6.0, section 12) |
+| `listActiveUsers`, `listAuditLog` | the Admin role (`ROLE-ADMIN`), whatever the tab access (backend 1.6.0, section 12) |
 
 `getStartup.years` is sorted newest first.
 
@@ -469,3 +471,68 @@ everything back.
 - The app applies the account's theme at sign-in, when it opens with a kept session and when the value changes on another device (the
   access refresh every 2 minutes); the theme kept on the device stays the fallback (sign-in page, offline, and a backend older than
   1.5.0, which refuses the unknown preference: the app then keeps the choice on the device without a message).
+
+## 12. Who is online and the activity log (backend 1.6.0)
+
+Two Settings subtabs for the Admin role only: **Active users** and **Activity log**. Both read-only; nothing in the existing data
+changes. One new sheet, `user_activity` (run `ensureSchema`).
+
+### 12.1 Activity (who is online)
+
+| Action | Params | Result |
+|---|---|---|
+| `getMyAccess` | optional `activity`: `{ page, device }` | as before (section 2); the call is also the heartbeat |
+| `listActiveUsers` | none | `{ now, online_minutes, online_count, today_count, users: [{ user_id, display_name, role_id, active, last_seen_at, last_page, device, online, today }] }` |
+| `logout` | none | `null`; writes `logout` to the audit log |
+
+- **Every** signed-in call (and every successful `login`) notes the caller's activity before the action runs. Noting never fails a
+  call and never needs a separate request: the app's access check every 2 minutes (`getMyAccess`, skipped while the app is in the
+  background, run again when it comes back to the front) is the heartbeat and carries `activity`.
+- `activity.page`: the app address open (`/dashboard`, `/settings/areas`...; `^/[A-Za-z0-9/_.-]{0,79}$`); `activity.device`: `phone`
+  (narrow window, or a small touch screen) or `desktop`. Anything else is ignored silently, never an error.
+- **Throttle.** The script cache (`CacheService`, key `ua:<user_id>`, 6 h) keeps the exact last-seen time, page and device; it is read
+  on every call and rewritten at most every 30 s (or when a hint arrives). The `user_activity` sheet (one row per user, upserted) is
+  written at most once every **3 minutes** per user; with the cache empty or unavailable the sheet row itself is the throttle (read
+  without the lock, written under a short lock of 1.5 s that is skipped, not waited for, when busy). Before `ensureSchema` has added the
+  sheet nothing is written and everything else works.
+- `listActiveUsers` merges the sheet, the cache (fresher) and `users.last_login_at` (a sign-in is activity too). `online` = active
+  account and last seen in the last `online_minutes` (5) minutes; `today` = seen on today's plant date. Sorted online first, then
+  last seen newest first. No e-mail addresses. The app refreshes the list every 60 s while the subtab is open.
+
+### 12.2 Activity log
+
+| Action | Params | Result |
+|---|---|---|
+| `listAuditLog` | `filter` `{ user_id?, group?, from?, to?, q?, limit? }`, `cursor?` | `{ entries: [{ at, user_id, action, entity, entity_id, detail, group }], next_cursor, scanned, users: [{ user_id, display_name }] }` |
+
+- Newest first. `limit` 1-200 (default 100). `from` / `to` are plant dates, inclusive. `q` is case-insensitive text over action,
+  record, record id, detail, user id and the user's name. `group` is one of the plain-English kinds: `signin` (login, login_failed,
+  login_locked, logout, change_password), `users` (create_user, update_user, reset_password, set_tab_access, create_first_admin),
+  `settings` (save_setting, save_contractors, save_area_targets), `master` (add_/update_ equipment, area, reason, alias; delete_alias),
+  `events` (edit_event, void_event, unvoid_event, accept_event_flags, revalidate_events), `upload` (upload_start, upload_chunk,
+  upload_finish), `actions` (create_action, merge_action, update_action, comment_action, action_check), `areas` (activate_area,
+  deactivate_area), `notifications` (notification_check, notification_failed, digest_sent, digest_failed), `system` (seed_defaults and
+  any action not listed). Mirrors: `AUDIT_GROUPS_` in `Audit.js` and `src/api/auditGroups.ts` (a test keeps them equal).
+- `bad_request` for an unknown filter field or kind, a date that is not `YYYY-MM-DD`, a start after the end, a bad `limit` or a
+  cursor that is not `r<row>`.
+- **Reading a big log.** The audit sheet is only ever appended to, in time order, and never deleted from (retention: everything is
+  kept). The server reads blocks of 1,000 rows from the bottom up and stops as soon as the page is full, so a page costs about the
+  same however long the log grows. With an end date in the past it first finds the last row of that day by a binary search on the `at`
+  column (about 17 single-cell reads for 100,000 rows); it stops at the first row older than the start date. At most 20,000 rows are
+  looked at per call: a rare filter on a very long log may return fewer entries than `limit` together with a `next_cursor` ("Load
+  more" continues). The cursor is the sheet row to continue from, which stays valid because rows are never moved.
+- The app turns the stored details into sentences (`src/admin/settings/activityText.ts`) and shows names instead of ids; the CSV
+  export pages through every entry of the filter in force (up to 20,000).
+
+### 12.3 What is written to the audit log
+
+Every write action leaves one row (a table-driven backend test calls each one): sign-in, failed sign-in, lock-out, sign-out, password
+change; users (create, change with `field: old -> new`, password reset, page access `tab: old -> new`); settings (`old -> new` per
+key), contractors and area targets (what changed per row); master data (equipment, areas, reasons, aliases with the changed fields
+`old -> new`; alias deletes); events (edit with every changed field `old -> new` and the note, void, restore, keep as entered,
+re-check); upload start, every chunk and the finish (file name, counts and the review decisions such as `late_month added 18`);
+actions (create, merge, every change incl. status and evidence, comments from 1.6.0); areas on / off; manual runs of the alert and
+action checks. Not logged: reads, a person's own notification state (seen, snoozed, dismissed) and own preferences (alert types, areas
+followed, digest, saved views and report templates, theme). Passwords, temporary passwords and tokens are never written; details are
+cut at 500 characters.
+

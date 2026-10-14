@@ -587,7 +587,9 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       if (!newLogs.length) throw bad('Nothing was changed.');
       Object.assign(row, patch, { updated_at: stamp, updated_by: u.user_id });
       logs.push(...newLogs);
-      deps.audit(u.user_id, 'update_action', row.action_id, newLogs.map((l) => l.kind + (l.to_status ? ` ${l.from_status} -> ${l.to_status}` : '')).join(', '));
+      deps.audit(u.user_id, 'update_action', row.action_id, newLogs.map((l) => (l.kind === 'status'
+        ? `status: ${l.from_status || '(new)'} -> ${l.to_status}${l.text ? ` (${l.text.slice(0, 80)})` : ''}`
+        : `${l.kind}: ${(l.text || '(blank)').slice(0, 200)}`)).join('. '));
       return result(row);
     },
 
@@ -600,6 +602,7 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       logs.push(logRow(row.action_id, u.user_id, 'comment', '', '', body, stamp));
       row.updated_at = stamp;
       row.updated_by = u.user_id;
+      deps.audit(u.user_id, 'comment_action', row.action_id, body.length > 160 ? `${body.slice(0, 159)}…` : body);
       return result(row);
     },
 

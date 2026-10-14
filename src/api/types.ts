@@ -318,6 +318,42 @@ export function contractorForArea(contractors: readonly Contractor[], areaId: st
   return contractors.find((c) => c.active && c.kind === 'contractor' && c.areas.includes(areaId)) ?? null;
 }
 
+// ---------------------------------------------------------------- who is online and the change log (backend 1.6.0)
+
+/** The device a person uses, as the browser says (a small touch screen = phone). */
+export type DeviceKind = 'phone' | 'desktop';
+/** Sent with the 2-minute access check (getMyAccess): the address open in the app and the device. Anything invalid is ignored. */
+export interface ActivityHint { page?: string; device?: DeviceKind }
+/** online = a call in the last `online_minutes` (5); today = seen today (plant date). last_seen_at '' = never seen. */
+export interface ActiveUser {
+  user_id: string; display_name: string; role_id: string; active: boolean;
+  last_seen_at: string; last_page: string; device: DeviceKind | '';
+  online: boolean; today: boolean;
+}
+export interface ActiveUsersPayload {
+  /** the server's plant-local time when the list was made (relative times are counted from it) */
+  now: string; online_minutes: number; online_count: number; today_count: number; users: ActiveUser[];
+}
+
+/** The plain-English groups of the Activity log filter (backend Audit.js AUDIT_GROUPS_). */
+export const AUDIT_GROUPS = ['signin', 'users', 'settings', 'master', 'events', 'upload', 'actions', 'areas', 'notifications', 'system'] as const;
+export type AuditGroup = (typeof AUDIT_GROUPS)[number];
+/** Every field optional; from / to are plant dates (inclusive); q is case-insensitive text; limit 1-200 (100). */
+export interface AuditFilter { user_id?: string; group?: AuditGroup; from?: string; to?: string; q?: string; limit?: number }
+export interface AuditEntry {
+  at: string; user_id: string; action: string; entity: string; entity_id: string; detail: string; group: AuditGroup;
+}
+export interface AuditPage {
+  /** newest first */
+  entries: AuditEntry[];
+  /** pass back to get the next (older) page; null = nothing older matches */
+  next_cursor: string | null;
+  /** rows looked at for this page (a rare filter may return fewer entries than the page size with a cursor) */
+  scanned: number;
+  /** every user's name, to show names instead of ids */
+  users: { user_id: string; display_name: string }[];
+}
+
 export class ApiError extends Error {
   code: string;
   accessDenied: boolean;
@@ -333,8 +369,14 @@ export interface Api {
   // --- auth ---
   login(email: string, password: string, keepSignedIn: boolean): Promise<Session>;
   changePassword(token: string, current: string, next: string): Promise<Session>;
-  /** Also the theme saved with the account (backend 1.5.0; absent from older servers). */
-  getMyAccess(token: string): Promise<{ user: SessionUser; access: Access; must_change: boolean; theme?: string }>;
+  /**
+   * Also the theme saved with the account (backend 1.5.0; absent from older servers). The app calls it every 2 minutes
+   * while it is open and visible: it is also the heartbeat of Settings > Active users (backend 1.6.0), carrying the
+   * address open and the device in `activity` (older servers ignore it).
+   */
+  getMyAccess(token: string, activity?: ActivityHint): Promise<{ user: SessionUser; access: Access; must_change: boolean; theme?: string }>;
+  /** Writes the sign-out to the activity log (backend 1.6.0). Best effort: the app signs out whatever the answer. */
+  logout(token: string): Promise<void>;
 
   // --- reads ---
   getStartup(token: string): Promise<Startup>;
@@ -426,4 +468,10 @@ export interface Api {
   saveAreaTargets(token: string, year: number, rows: AreaTargetInput[]): Promise<AreaTarget[]>;
   /** Runs the draft rules and the effectiveness check now (settings Edit). Also runs after every upload and notification check. */
   runActionChecks(token: string): Promise<ActionCheckResult>;
+
+  // --- admin only (backend 1.6.0, the Admin role ROLE-ADMIN whatever the tab access says) ---
+  /** Every user with when they were last seen, the page open and the device; online ones first. */
+  listActiveUsers(token: string): Promise<ActiveUsersPayload>;
+  /** The audit log newest first, filtered on the server, one page at a time (cursor from the previous page). */
+  listAuditLog(token: string, filter?: AuditFilter, cursor?: string | null): Promise<AuditPage>;
 }

@@ -85,7 +85,7 @@ function updateUser_(session, userId, changes) {
     }
     if (patch.role_id && patch.role_id !== u.role_id) roleChange = { user: u, from: u.role_id, to: patch.role_id };
     updateRow_(T.USERS, u._row, patch);
-    auditLog_(session.user.user_id, 'update_user', T.USERS, u.user_id, Object.keys(patch).map(function (k) { return k + '=' + patch[k]; }).join('; '));
+    auditLog_(session.user.user_id, 'update_user', T.USERS, u.user_id, auditChanges_(u, patch, ['display_name', 'role_id', 'active']) || 'No change');
   });
   if (roleChange) notifyUserEvent_('role_changed', session.user, roleChange.user, 'from ' + roleChange.from + ' to ' + roleChange.to);
   return adminUser_(userOrThrow_(userId), readTable_(T.TAB_ACCESS));
@@ -127,8 +127,12 @@ function setUserTabAccess_(session, userId, overrides) {
     appendRows_(T.TAB_ACCESS, Object.keys(clean).map(function (tab) {
       return { subject_type: 'user', subject_id: u.user_id, tab_id: tab, level: clean[tab] };
     }));
-    auditLog_(session.user.user_id, 'set_tab_access', T.USERS, u.user_id,
-      Object.keys(clean).map(function (t) { return t + '=' + clean[t]; }).join('; ') || '(overrides cleared)');
+    var was = {};
+    existing.forEach(function (r) { was[r.tab_id] = r.level; });
+    var tabs = TAB_IDS.filter(function (t) { return was[t] !== clean[t]; });
+    auditLog_(session.user.user_id, 'set_tab_access', T.USERS, u.user_id, tabs.map(function (t) {
+      return t + ': ' + (was[t] || 'role default') + ' -> ' + (clean[t] || 'role default');
+    }).join('; ') || 'No change');
   });
   return adminUser_(userOrThrow_(userId), readTable_(T.TAB_ACCESS));
 }

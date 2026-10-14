@@ -59,7 +59,11 @@ var HANDLERS = {
   saveContractors: function (s, p) { return saveContractors_(s, p.rows); },
   getAreaTargets: function (s, p) { return getAreaTargets_(p.year); },
   saveAreaTargets: function (s, p) { return saveAreaTargets_(s, p.year, p.rows); },
-  runActionChecks: function (s) { return runActionChecksAction_(s); }
+  runActionChecks: function (s) { return runActionChecksAction_(s); },
+  // 1.6.0: sign-out (audited), and the two Admin-only pages Settings > Active users and Settings > Activity log
+  logout: function (s) { return logout_(s); },
+  listActiveUsers: function () { return listActiveUsers_(); },
+  listAuditLog: function (s, p) { return listAuditLog_(p.filter, p.cursor); }
 };
 
 /** Runs one request and returns the response envelope (an object, never throws). */
@@ -76,12 +80,16 @@ function handleRequest_(body) {
     var session = null;
     if (rule.auth !== 'none') {
       session = requireSession_(body.token);
+      // 1.6.0: who is using the app. Throttled (a cache read per call, a sheet write every few minutes); never fails a call.
+      noteActivity_(session.user.user_id, params.activity);
       if (session.user.must_change && !rule.mustChangeOk) {
         throw apiError_(ERR.FORBIDDEN, 'You must change your temporary password first.');
       }
       requireAccess_(action, session.access, session.user);
     }
-    return okEnvelope_(HANDLERS[action](session, params));
+    var data = HANDLERS[action](session, params);
+    if (action === 'login' && data && data.user) noteActivity_(data.user.user_id, params.activity);
+    return okEnvelope_(data);
   } catch (err) {
     if (err && err.isApiError) return errorEnvelope_(err.code, err.message);
     console.error('Unexpected error: ' + (err && err.stack ? err.stack : err));

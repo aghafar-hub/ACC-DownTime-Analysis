@@ -1002,4 +1002,66 @@ describe.each([
     await s.api.saveNotificationPrefs(admin, { theme: '' });
     expect((await s.api.getMyAccess(admin)).theme).toBe('');
   });
+
+  // ------------------------------------------------------------------ backend 1.6.0: who is online, the activity log
+  it('active users: Admin only; the 2-minute check-in carries the page and the device; the shapes agree', async () => {
+    s.setClock(Date.parse('2026-10-14T09:00:00Z'));
+    const admin = (await s.api.login(s.admin.email, s.admin.password, true)).token;
+    const created = await s.api.createUser(admin, { email: 'eng.online@example.com', display_name: 'Online Engineer', role_id: 'ROLE-ENG' });
+    const first = await s.api.login('eng.online@example.com', created.temp_password, false);
+    const eng = (await s.api.changePassword(first.token, created.temp_password, 'A-New-Strong-Pass-99')).token;
+    await s.api.getMyAccess(eng, { page: '/validate', device: 'phone' });
+    for (const call of [s.api.listActiveUsers(eng), s.api.listAuditLog(eng, {})]) {
+      const r = await rejection(call);
+      expect(r.code).toBe('forbidden');
+      expect(r.accessDenied).toBe(true);
+    }
+    const out = await s.api.listActiveUsers(admin);
+    expect(Object.keys(out).sort()).toEqual(['now', 'online_count', 'online_minutes', 'today_count', 'users']);
+    expect(out.online_minutes).toBe(5);
+    const me = out.users.find((u) => u.user_id === created.user.user_id)!;
+    expect(Object.keys(me).sort()).toEqual(['active', 'device', 'display_name', 'last_page', 'last_seen_at', 'online', 'role_id', 'today', 'user_id']);
+    expect(me).toMatchObject({ display_name: 'Online Engineer', role_id: 'ROLE-ENG', online: true, today: true, last_page: '/validate', device: 'phone' });
+    expect(out.users[0].online).toBe(true);
+    expect(out.online_count).toBe(out.users.filter((u) => u.online).length);
+    expect(JSON.stringify(out)).not.toContain('@');
+    // a bad hint is ignored, never an error
+    await s.api.getMyAccess(eng, { page: 'javascript:alert(1)', device: 'fridge' as never });
+    expect((await s.api.listActiveUsers(admin)).users.find((u) => u.user_id === created.user.user_id)).toMatchObject({ last_page: '/validate', device: 'phone' });
+  });
+
+  it('activity log: writes are logged under the same names; paging, filters and refusals agree', async () => {
+    const admin = (await s.api.login(s.admin.email, s.admin.password, true)).token;
+    const before = (await s.api.getStartup(admin)).settings.find((x) => x.key === 'repeat_window_days')!.value;
+    const next = before === '41' ? '42' : '41';
+    await s.api.saveSettings(admin, { repeat_window_days: next });
+    const settings = await s.api.listAuditLog(admin, { group: 'settings', limit: 1 });
+    expect(settings.entries).toHaveLength(1);
+    expect(settings.entries[0]).toMatchObject({ action: 'save_setting', entity_id: 'repeat_window_days', detail: `${before} -> ${next}`, group: 'settings' });
+    expect(Object.keys(settings.entries[0]).sort()).toEqual(['action', 'at', 'detail', 'entity', 'entity_id', 'group', 'user_id']);
+    expect(settings.next_cursor).toBeTruthy();
+    const edits = await s.api.listAuditLog(admin, { group: 'events', q: eventId });
+    expect(edits.entries.map((e) => e.action)).toEqual(expect.arrayContaining(['edit_event', 'void_event', 'unvoid_event']));
+    expect(edits.entries.every((e) => e.entity_id === eventId || e.detail.includes(eventId))).toBe(true);
+    // paging: two pages of two do not overlap and the second is older
+    const p1 = await s.api.listAuditLog(admin, { limit: 2 });
+    const p2 = await s.api.listAuditLog(admin, { limit: 2 }, p1.next_cursor);
+    expect(p1.entries).toHaveLength(2);
+    expect(p2.entries).toHaveLength(2);
+    expect([...p1.entries, ...p2.entries]).toEqual((await s.api.listAuditLog(admin, { limit: 4 })).entries);
+    expect(p1.users.find((u) => u.display_name)?.user_id).toBeTruthy();
+    // sign-out is logged; a failed sign-in too (sign-in group)
+    const extra = (await s.api.login(s.admin.email, s.admin.password, false)).token;
+    await s.api.logout(extra);
+    await rejection(s.api.login(s.admin.email, 'not-the-password-2', false));
+    const signin = await s.api.listAuditLog(admin, { group: 'signin', limit: 3 });
+    expect(signin.entries.map((e) => e.action)).toEqual(['login_failed', 'logout', 'login']);
+    expect(JSON.stringify(signin)).not.toContain('not-the-password');
+    // refusals
+    for (const bad of [{ group: 'nope' }, { from: '2026-10-14', to: '2026-10-01' }, { limit: 0 }, { from: 'yesterday' }]) {
+      expect((await rejection(s.api.listAuditLog(admin, bad as never))).code, JSON.stringify(bad)).toBe('bad_request');
+    }
+    expect((await rejection(s.api.listAuditLog(admin, {}, 'page-2'))).code).toBe('bad_request');
+    expect((await s.api.listAuditLog(admin, { from: '2099-01-01' })).entries).toEqual([]);
+  });
 });

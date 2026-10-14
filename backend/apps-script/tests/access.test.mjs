@@ -25,6 +25,7 @@ const REQ = {
   addActionComment: [['actions'], 'Edit'], saveContractors: [['settings'], 'Edit'], getAreaTargets: 'session',
   saveAreaTargets: [['settings'], 'Edit'], runActionChecks: [['settings'], 'Edit'],
   setAreaActive: 'admin',
+  logout: 'session', listActiveUsers: 'admin', listAuditLog: 'admin',
 };
 const RANK = { Hidden: 0, View: 1, Edit: 2 };
 

@@ -62,7 +62,8 @@ export function createSheetsApi(url: string): Api {
   return {
     login: (email, password, keepSignedIn) => call('login', '', { email, password, keepSignedIn }),
     changePassword: (token, current, next) => call('changePassword', token, { current, next }),
-    getMyAccess: (token) => call('getMyAccess', token),
+    getMyAccess: (token, activity) => call('getMyAccess', token, activity === undefined ? {} : { activity }),
+    logout: (token) => call('logout', token),
 
     getStartup: (token) => call('getStartup', token),
     getEvents: (token, year) => call('getEvents', token, { year }),
@@ -107,5 +108,8 @@ export function createSheetsApi(url: string): Api {
     getAreaTargets: (token, year) => call('getAreaTargets', token, year === undefined ? {} : { year }),
     saveAreaTargets: (token, year, rows) => call('saveAreaTargets', token, { year, rows }),
     runActionChecks: (token) => call('runActionChecks', token),
+
+    listActiveUsers: (token) => call('listActiveUsers', token),
+    listAuditLog: (token, filter, cursor) => call('listAuditLog', token, { filter: filter ?? {}, ...(cursor ? { cursor } : {}) }),
   };
 }

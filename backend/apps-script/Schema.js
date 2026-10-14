@@ -1,7 +1,7 @@
 // GENERATED FILE - do not edit by hand.
 // Source: schema/tables.json. Regenerate with: node tools/gen-apps-script-schema.mjs
 var SCHEMA = {
- "version": 4,
+ "version": 5,
  "tableOrder": [
   "lines",
   "areas",
@@ -25,7 +25,8 @@ var SCHEMA = {
   "actions",
   "action_log",
   "contractors",
-  "area_targets"
+  "area_targets",
+  "user_activity"
  ],
  "tables": {
   "lines": {
@@ -1375,6 +1376,43 @@ var SCHEMA = {
      "name": "updated_by",
      "type": "text",
      "required": false
+    }
+   ]
+  },
+  "user_activity": {
+   "description": "Who used the app and when (1.6.0): one row per user, upserted by the server at most once every 3 minutes per user. Shown to Admins in Settings > Active users.",
+   "key": [
+    "user_id"
+   ],
+   "columns": [
+    {
+     "name": "user_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "last_seen_at",
+     "type": "timestamp",
+     "required": true
+    },
+    {
+     "name": "last_page",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "device",
+     "type": "enum",
+     "required": false,
+     "enum": [
+      "phone",
+      "desktop"
+     ]
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp",
+     "required": true
     }
    ]
   }

@@ -244,7 +244,7 @@ function editEvent_(session, eventId, changes, note) {
     updateRow_(T.EVENTS, ev._row, patch);
     appendRows_(T.EDITS, editRows_(session, ev, pairs, why));
     auditLog_(session.user.user_id, 'edit_event', T.EVENTS, ev.event_id,
-      'Changed ' + pairs.map(function (p) { return p.field; }).join(', ') + '. Note: ' + why);
+      pairs.map(function (p) { return p.field + ': ' + auditValue_(p.oldValue, 40) + ' -> ' + auditValue_(p.newValue, 40); }).join('; ') + '. Note: ' + why);
     return readRowAt_(T.EVENTS, ev._row);
   });
 }
