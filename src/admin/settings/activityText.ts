@@ -28,7 +28,14 @@ export function actorName(userId: string, names: ReadonlyMap<string, string>): s
   return names.get(userId) ?? userId;
 }
 
-const roleText = (s: string): string => s.replace(/\bROLE-[A-Z]+\b/g, (r) => ROLE_LABELS[r] ?? r);
+/** Action sources (task templates' "suggested first for") in words. */
+const SOURCE_WORDS: Record<string, string> = {
+  auto_repeat: 'repeated failure drafts', auto_chronic: 'chronic equipment drafts', auto_long_stop: 'long stop drafts',
+  auto_planned_overrun: 'planned overrun drafts', notification: 'notifications', report: 'reports', pareto: 'Pareto', event: 'records', manual: 'new actions',
+};
+const roleText = (s: string): string => s
+  .replace(/\bROLE-[A-Z]+\b/g, (r) => ROLE_LABELS[r] ?? r)
+  .replace(/\b(auto_repeat|auto_chronic|auto_long_stop|auto_planned_overrun)\b/g, (x) => SOURCE_WORDS[x] ?? x);
 
 /** Column names in words (anything else: underscores become spaces). */
 const FIELD_WORDS: Record<string, string> = {
@@ -136,7 +143,7 @@ export function auditSentence(e: AuditEntry, name: (id: string) => string): stri
     case 'apply_template': return withNote(t('Applied a task template to action {id}', { id }), d.replace(/^Template /, ''));
     case 'save_task_templates': return withNote(t('Saved task templates {ids}', { ids: id.replace(/,/g, ', ') }), d === 'No change' ? ''
       : changesText(d.replace(/\. (?=TT-)/g, '; ').replace(/(TT-\S+) ([a-z_]+): /g, (_x, tid: string, f: string) => `${tid} ${fieldWord(f)} `)));
-    case 'migrate_actions': return withNote(t('Moved the old action statuses Contractor informed and Waiting stoppage to tasks (version 1.7.0)'), d);
+    case 'migrate_actions': return withNote(t('Version 1.7.0: the action statuses Contractor informed and Waiting stoppage now live on tasks'), d);
     case 'activate_area': return t('Switched area {id} on (its records count again)', { id });
     case 'deactivate_area': return t('Switched area {id} off (its records are left out everywhere)', { id });
     case 'notification_check': return withNote(t('Ran the alert checks'), d.toLowerCase());

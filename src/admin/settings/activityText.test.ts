@@ -43,9 +43,9 @@ describe('activity log sentences', () => {
     expect(auditSentence(e('apply_template', 'AC-1', 'Template Planned overrun: 2 tasks added (Review planned work, Adjust allowance or plan)'), name))
       .toBe('Applied a task template to action AC-1: Planned overrun: 2 tasks added (Review planned work, Adjust allowance or plan)');
     expect(auditSentence(e('save_task_templates', 'TT-PLANNED,TT-1', 'TT-PLANNED applies_to: auto_planned_overrun -> auto_planned_overrun,manual. TT-1 added: Belt (1 tasks: Look (MEC, +3 d))'), name))
-      .toBe('Saved task templates TT-PLANNED, TT-1: TT-PLANNED suggested first for auto_planned_overrun → auto_planned_overrun,manual, TT-1 added Belt (1 tasks: Look (MEC, +3 d))');
+      .toBe('Saved task templates TT-PLANNED, TT-1: TT-PLANNED suggested first for planned overrun drafts → planned overrun drafts,manual, TT-1 added Belt (1 tasks: Look (MEC, +3 d))');
     expect(auditSentence(e('migrate_actions', '', 'Moved 2 action(s) to tasks: AC-1 (Contractor informed), AC-2 (Waiting stoppage)', 'setup'), name))
-      .toBe('Moved the old action statuses Contractor informed and Waiting stoppage to tasks (version 1.7.0): Moved 2 action(s) to tasks: AC-1 (Contractor informed), AC-2 (Waiting stoppage)');
+      .toBe('Version 1.7.0: the action statuses Contractor informed and Waiting stoppage now live on tasks: Moved 2 action(s) to tasks: AC-1 (Contractor informed), AC-2 (Waiting stoppage)');
     for (const a of ['create_task', 'update_task', 'apply_template']) expect(auditGroupOf(a)).toBe('actions');
     expect(auditGroupOf('save_task_templates')).toBe('settings');
     expect(auditGroupOf('migrate_actions')).toBe('system');
