@@ -856,6 +856,27 @@ describe.each([
       },
     ]);
     expect(got.every((a) => /^AC-204506-\d{4}$/.test(a.action_id))).toBe(true);
+    // backend 1.7.0: each draft carries the proposed tasks of the template that applies to its rule (due from the drafting day)
+    const all = await s.api.listActions(atoken);
+    const tv = (a: Action) => (all.tasks ?? []).filter((t) => t.action_id === a.action_id)
+      .map((t) => [t.seq, t.title, t.owner, t.owner_kind, t.due_date, t.status, t.needs_stop, t.template_step === t.title]);
+    expect(got.map((a) => [a.source, a.template_id, a.due_date_derived, tv(a)])).toEqual([
+      ['auto_chronic', 'TT-REPEAT', '2045-07-11', [
+        [1, 'Repair', 'RHI', 'contractor', '2045-06-22', 'Open', true, true], [2, 'Root cause (5-why)', 'MEC', 'internal', '2045-06-27', 'Open', false, true],
+        [3, 'Corrective action', 'RHI', 'contractor', '2045-07-11', 'Open', true, true], [4, 'Spare parts', 'MEC', 'internal', '2045-07-04', 'Open', false, true]]],
+      ['auto_long_stop', 'TT-LONGSTOP', '2045-07-11', [
+        [1, 'Restore and report', 'RHI', 'contractor', '2045-06-21', 'Open', false, true], [2, 'Root cause (5-why)', 'MEC', 'internal', '2045-06-27', 'Open', false, true],
+        [3, 'Corrective action', 'RHI', 'contractor', '2045-07-11', 'Open', true, true]]],
+      ['auto_planned_overrun', 'TT-PLANNED', '2045-07-04', [
+        [1, 'Review planned work', 'PRO', 'internal', '2045-06-27', 'Open', false, true], [2, 'Adjust allowance or plan', 'PRO', 'internal', '2045-07-04', 'Open', false, true]]],
+      ['auto_repeat', 'TT-REPEAT', '2045-07-11', [
+        [1, 'Repair', 'RHI', 'contractor', '2045-06-22', 'Open', true, true], [2, 'Root cause (5-why)', 'MEC', 'internal', '2045-06-27', 'Open', false, true],
+        [3, 'Corrective action', 'RHI', 'contractor', '2045-07-11', 'Open', true, true], [4, 'Spare parts', 'MEC', 'internal', '2045-07-04', 'Open', false, true]]],
+    ]);
+    expect((all.templates ?? []).map((t) => [t.template_id, t.name, t.applies_to, t.active, t.steps.length])).toEqual([
+      ['TT-REPEAT', 'Repeated failure', ['auto_repeat', 'auto_chronic'], true, 4], ['TT-LONGSTOP', 'Long stop', ['auto_long_stop'], true, 3],
+      ['TT-PLANNED', 'Planned overrun', ['auto_planned_overrun'], true, 2],
+    ]);
     expect(await s.api.runActionChecks(atoken)).toEqual({ created: 0, merged: 0, effectiveness: 0 });
   });
 
@@ -867,24 +888,38 @@ describe.each([
     expect(merged.merged).toBe(true);
     expect(merged.action.action_id).toBe(repeat.action_id);
     expect(merged.action.evidence).toHaveLength(4);
-    expect(merged.logs.map((l) => l.kind)).toEqual(['status', 'evidence']);
+    expect(merged.logs.map((l) => l.kind)).toEqual(['status', 'task_create', 'task_create', 'task_create', 'task_create', 'evidence']);
 
     // an engineer with Edit on actions, not a closer
     const email = 'actions.eng@example.com';
     const created = await s.api.createUser(atoken, { email, display_name: 'Actions Engineer', role_id: 'ROLE-ENG' });
     const first = await s.api.login(email, created.temp_password, false);
     const eng = (await s.api.changePassword(first.token, created.temp_password, 'A-New-Strong-Pass-77')).token;
+    const engId = (await s.api.listActions(eng)).people.find((p) => p.display_name === 'Actions Engineer')!.user_id;
     expect((await s.api.listActions(eng)).can_close).toBe(false);
-    const moved = await s.api.updateAction(eng, repeat.action_id, { status: 'Contractor informed', priority: 'High', due_date: '2045-06-01' });
-    expect(moved.action.status).toBe('Contractor informed');
+    // accepting the draft: the tasks say Open (none started)
+    const moved = await s.api.updateAction(eng, repeat.action_id, { status: 'Open', priority: 'High' });
+    expect(moved.action.status).toBe('Open');
     expect(moved.logs.slice(-2).map((l) => [l.kind, l.from_status, l.to_status, l.text])).toEqual([
-      ['status', 'Draft', 'Contractor informed', ''], ['edit', '', '', 'priority: Medium -> High; due_date: (blank) -> 2045-06-01'],
+      ['status', 'Draft', 'Open', ''], ['edit', '', '', 'priority: Medium -> High'],
+    ]);
+    const [repair, rootCause] = moved.tasks!;
+    // tasks (backend 1.7.0): Contractor informed only for a contractor; the first task to leave Open moves the action to In progress
+    expect((await rejection(s.api.updateTask(eng, rootCause!.task_id, { status: 'Contractor informed' }))).code).toBe('bad_request');
+    expect((await rejection(s.api.updateTask(eng, repair!.task_id, { status: 'Done', note: 'ok' }))).code).toBe('bad_request');
+    const informed = await s.api.updateTask(eng, repair!.task_id, { status: 'Contractor informed', note: 'told RHI in the morning meeting', due_date: '2045-06-01', assignee: engId });
+    expect([informed.action.status, informed.task?.status, informed.action.due_date_derived]).toEqual(['In progress', 'Contractor informed', '2045-07-11']);
+    expect(informed.logs.slice(-3).map((l) => [l.kind, l.from_status, l.to_status, l.text, l.task_id ? 'task' : ''])).toEqual([
+      ['task_status', 'Open', 'Contractor informed', 'told RHI in the morning meeting', 'task'],
+      ['task_edit', '', '', `#1 assignee: (blank) -> ${engId}; due_date: 2045-06-22 -> 2045-06-01`, 'task'],
+      ['status', 'Open', 'In progress', 'Follows the tasks: a task has started', ''],
     ]);
     const refused = await rejection(s.api.updateAction(eng, repeat.action_id, { status: 'Closed', closure_note: 'fixed it' }));
     expect([refused.code, refused.accessDenied]).toEqual(['forbidden', true]);
     for (const [changes, code] of [
-      [{ status: 'Closed' }, 'bad_request'], [{ status: 'Closed', closure_note: 'ok' }, 'bad_request'], [{ closure_note: 'early' }, 'bad_request'],
-      [{ priority: 'Urgent' }, 'bad_request'], [{ due_date: '2045-13-01' }, 'bad_request'], [{ owner: 'NOBODY' }, 'bad_request'], [{ status: 'Contractor informed' }, 'bad_request'],
+      [{ status: 'Closed' }, 'tasks_open'], [{ status: 'Closed', closure_note: 'all fixed' }, 'tasks_open'], [{ closure_note: 'early' }, 'bad_request'],
+      [{ priority: 'Urgent' }, 'bad_request'], [{ due_date: '2045-13-01' }, 'bad_request'], [{ due_date: '2045-07-01' }, 'bad_request'], [{ status: 'Open' }, 'bad_request'],
+      [{ owner: 'NOBODY' }, 'bad_request'], [{ status: 'Contractor informed' }, 'bad_request'], [{ status: 'Waiting stoppage' }, 'bad_request'],
       [{ equipment_id: '999.NONE' }, 'bad_request'], [{}, 'bad_request'], [{ colour: 'red' }, 'bad_request'],
     ] as [Record<string, unknown>, string][]) {
       expect((await rejection(s.api.updateAction(atoken, repeat.action_id, changes as never))).code, JSON.stringify(changes)).toBe(code);
@@ -893,27 +928,100 @@ describe.each([
     for (const input of [
       { title: '', scope_kind: 'plant' }, { title: 'x', scope_kind: 'galaxy' }, { title: 'x', scope_kind: 'area' }, { title: 'x', scope_kind: 'plant', status: 'Cancelled' },
       { title: 'x', scope_kind: 'plant', evidence: [{ event_id: 'EV-x' }] }, { title: 'x', scope_kind: 'plant', root_cause: 'XYZ' },
+      { title: 'x', scope_kind: 'plant', status: 'Waiting stoppage' }, { title: 'x', scope_kind: 'plant', template_id: 'TT-NONE' },
+      { title: 'x', scope_kind: 'plant', tasks: [{ title: '' }] }, { title: 'x', scope_kind: 'plant', tasks: [{ title: 'x', est_stop_h: 5000 }] },
     ]) {
       expect((await rejection(s.api.createAction(atoken, input as never))).code, JSON.stringify(input)).toBe('bad_request');
     }
 
-    // action_due: overdue and not closed raises an alert for everyone; closing resolves it
+    // task_overdue: to the task's person (and the action owner); action_due follows the latest open task due date (2045-07-11: not yet)
     expect(await s.api.runNotificationChecks(atoken)).toMatchObject({ created: 1, resolved: 0 });
-    const due = (await s.api.getNotifications(eng)).items.find((n) => n.type === 'action_due');
-    expect(due && { ...view(due), category: due.category }).toEqual({
-      type: 'action_due', severity: 'alert', dedupe_key: `action_due|${repeat.action_id}|2045-06-01`, title: `Action overdue: ${repeat.action_id} - ${repeat.title}`,
-      detail: 'Due 2045-06-01, 19 days ago. Status Contractor informed, owner RHI.', area_id: 'K.1', line_id: 'L.1', source_ref: repeat.action_id, category: 'Actions',
+    const due = (await s.api.getNotifications(eng)).items.find((n) => n.type === 'task_overdue');
+    expect(due && { ...view(due), category: due.category, recipients: due.recipients }).toEqual({
+      type: 'task_overdue', severity: 'alert', dedupe_key: `task_due|${repair!.task_id}|2045-06-01`, title: `Task overdue: ${repeat.action_id} - Repair`,
+      detail: `Due 2045-06-01, 19 days ago. Task 1 of ${repeat.action_id}, status Contractor informed, owner RHI, person ${engId}.`,
+      area_id: 'K.1', line_id: 'L.1', source_ref: repeat.action_id, category: 'Actions', recipients: engId,
     });
+    expect((await s.api.getNotifications(atoken)).items.some((n) => n.type === 'task_overdue' || n.type === 'action_due')).toBe(false);
 
-    // a closer closes; effectiveness starts Watching; a comment is fine afterwards; the alert resolves
-    await s.api.saveSettings(atoken, { actions_closers: (await s.api.listActions(eng)).people.find((p) => p.display_name === 'Actions Engineer')!.user_id });
+    // the last task done: ready to close for the closers (the Admin here; the engineer once on the list)
+    await s.api.updateTask(eng, repair!.task_id, { status: 'Done', note: 'Chain links replaced' });
+    for (const t of moved.tasks!.slice(1)) await s.api.updateTask(eng, t.task_id, { status: 'Not needed', note: 'covered by the repair' });
+    const ready = (await s.api.getNotifications(atoken)).items.find((n) => n.type === 'action_ready_to_close');
+    expect(ready && { ...view(ready), recipients: ready.recipients }).toEqual({
+      type: 'action_ready_to_close', severity: 'alert', dedupe_key: `ready|${repeat.action_id}|4`, title: `Ready to close: ${repeat.action_id} - ${repeat.title}`,
+      detail: 'All 4 tasks done or not needed (1 done, 3 not needed). Only the people on the "Who can close actions" list can close it.',
+      area_id: 'K.1', line_id: 'L.1', source_ref: repeat.action_id, recipients: '@closers',
+    });
+    expect((await s.api.getNotifications(eng)).items.some((n) => n.type === 'action_ready_to_close')).toBe(false);
+
+    // a closer closes; effectiveness starts Watching; a comment is fine afterwards; the alerts resolve
+    await s.api.saveSettings(atoken, { actions_closers: engId });
+    expect((await s.api.getNotifications(eng)).items.filter((n) => n.type === 'action_ready_to_close')).toHaveLength(1);
     expect((await rejection(s.api.saveSettings(atoken, { actions_closers: 'U-NOBODY' }))).code).toBe('bad_request');
     const closed = await s.api.updateAction(eng, repeat.action_id, { status: 'Closed', closure_note: 'Bearing and seal replaced' });
     expect([closed.action.status, closed.action.effectiveness, closed.action.closure_note]).toEqual(['Closed', 'Watching', 'Bearing and seal replaced']);
+    expect((await s.api.getNotifications(eng)).items.some((n) => n.type === 'action_ready_to_close')).toBe(false);
     expect((await s.api.addActionComment(eng, repeat.action_id, 'Watching it')).logs.at(-1)?.kind).toBe('comment');
     expect(await s.api.runNotificationChecks(atoken)).toMatchObject({ created: 0, resolved: 1 });
     expect((await rejection(s.api.updateAction(eng, repeat.action_id, { status: 'In progress' }))).code).toBe('bad_request');
+    expect((await rejection(s.api.updateTask(eng, repair!.task_id, { status: 'Open' }))).code).toBe('bad_request');
     await s.api.saveSettings(atoken, { actions_closers: '' });
+  });
+
+  it('tasks: addTask, applyTemplate, listTasks and saveTaskTemplates agree', async () => {
+    const t0 = await s.api.createAction(atoken, { title: 'CM.1 belt', scope_kind: 'area', area_id: 'CM.1', status: 'Open', tasks: [
+      { title: 'Inform ASEC', owner: 'ASEC', due_date: '2045-06-25', needs_stop: true, est_stop_h: 1.5 }, { title: 'Review', template_step: 'Review planned work' },
+    ] });
+    const id = t0.action.action_id;
+    expect([t0.action.status, t0.action.due_date_derived, t0.tasks!.map((t) => [t.seq, t.owner_kind, t.est_stop_h])]).toEqual(['Open', '2045-06-25', [[1, 'contractor', 1.5], [2, 'internal', null]]]);
+    const added = await s.api.addTask(atoken, id, { title: 'Recalibrate the belt scale', owner: 'ELE', due_date: '2045-06-10' });
+    expect([added.task?.seq, added.task?.status, added.action.status]).toEqual([3, 'Open', 'Open']);
+    const ap = await s.api.applyTemplate(atoken, id, 'TT-PLANNED');
+    expect([ap.added, ap.tasks.map((t) => [t.seq, t.title, t.owner, t.due_date]), ap.action.template_id]).toEqual([1, [
+      [1, 'Inform ASEC', 'ASEC', '2045-06-25'], [2, 'Review', '', ''], [3, 'Recalibrate the belt scale', 'ELE', '2045-06-10'], [4, 'Adjust allowance or plan', 'PRO', '2045-07-04'],
+    ], 'TT-PLANNED']);
+    expect((await s.api.applyTemplate(atoken, id, 'TT-PLANNED')).added).toBe(0);
+    expect((await rejection(s.api.applyTemplate(atoken, id, 'TT-NONE'))).code).toBe('not_found');
+    expect((await rejection(s.api.addTask(atoken, id, { title: '' }))).code).toBe('bad_request');
+    expect((await rejection(s.api.updateTask(atoken, 'AT-000000000000', { note: 'x' }))).code).toBe('not_found');
+    await s.api.updateTask(atoken, t0.tasks![0]!.task_id, { status: 'Waiting stoppage' });
+    const list = await s.api.listTasks(atoken, { action_id: id });
+    expect(list.today).toBe('2045-06-20');
+    expect(list.tasks.map((t) => [t.seq, t.overdue, t.area_id, t.action_status, !!t.waiting_since])).toEqual([
+      [3, true, 'CM.1', 'In progress', false], [1, false, 'CM.1', 'In progress', true], [4, false, 'CM.1', 'In progress', false], [2, false, 'CM.1', 'In progress', false],
+    ]);
+    expect((await s.api.listTasks(atoken, { action_id: id, needs_stop: true })).tasks.map((t) => t.seq)).toEqual([1]);
+    expect((await s.api.listTasks(atoken, { action_id: id, overdue: true })).tasks.map((t) => t.seq)).toEqual([3]);
+    for (const f of [{ status: 'later' }, { mine: 'yes' }, { done_since: '2045-13-01' }, { colour: 'red' }]) {
+      expect((await rejection(s.api.listTasks(atoken, f as never))).code, JSON.stringify(f)).toBe('bad_request');
+    }
+    // templates: validation and conflicts, then a new one with the steps as sent
+    const step = { title: 'Look', default_owner: 'MEC', due_offset_days: 3, needs_stop: false, est_stop_h: null };
+    for (const [list2, code] of [
+      [[{ name: 'Long stop', applies_to: [], active: true, steps: [step] }], 'conflict'],
+      [[{ name: 'New', applies_to: ['auto_long_stop'], active: true, steps: [step] }], 'conflict'],
+      [[{ name: 'New', applies_to: ['nowhere'], active: true, steps: [step] }], 'bad_request'],
+      [[{ name: 'New', applies_to: [], active: true, steps: [] }], 'bad_request'],
+      [[{ name: 'New', applies_to: [], active: true, steps: [{ ...step, default_owner: 'NOBODY' }] }], 'bad_request'],
+      [[{ template_id: 'TT-GONE', name: 'New', applies_to: [], active: true, steps: [step] }], 'not_found'],
+    ] as [unknown[], string][]) {
+      expect((await rejection(s.api.saveTaskTemplates(atoken, list2 as never))).code, JSON.stringify(list2)).toBe(code);
+    }
+    const saved = await s.api.saveTaskTemplates(atoken, [{ name: 'Belt tear', applies_to: ['manual'], active: true, sort_order: 9, steps: [
+      { title: 'Replace belt', default_owner: 'area_contractor', due_offset_days: 2, needs_stop: true, est_stop_h: 8 }, step,
+    ] }]);
+    const belt = saved.find((t) => t.name === 'Belt tear')!;
+    expect([saved.length, belt.template_id.startsWith('TT-'), belt.steps.map((x) => [x.seq, x.title, x.default_owner, x.est_stop_h])]).toEqual([
+      4, true, [[1, 'Replace belt', 'area_contractor', 8], [2, 'Look', 'MEC', null]],
+    ]);
+    expect((await s.api.listTaskTemplates(atoken)).map((t) => t.name)).toEqual(['Repeated failure', 'Long stop', 'Planned overrun', 'Belt tear']);
+    const fromTemplate = await s.api.createAction(atoken, { title: 'PK.1 belt', scope_kind: 'area', area_id: 'PK.1', status: 'Open', template_id: belt.template_id });
+    expect(fromTemplate.tasks!.map((t) => [t.title, t.owner, t.due_date, t.needs_stop, t.est_stop_h])).toEqual([
+      ['Replace belt', 'ASEC', '2045-06-22', true, 8], ['Look', 'MEC', '2045-06-23', false, null],
+    ]);
+    await s.api.saveTaskTemplates(atoken, [{ ...belt, active: false }]);
+    expect((await rejection(s.api.applyTemplate(atoken, id, belt.template_id))).code).toBe('bad_request');
   });
 
   it('actions: effectiveness is judged the same way once the window has passed in the data', async () => {
@@ -1043,6 +1151,14 @@ describe.each([
     const edits = await s.api.listAuditLog(admin, { group: 'events', q: eventId });
     expect(edits.entries.map((e) => e.action)).toEqual(expect.arrayContaining(['edit_event', 'void_event', 'unvoid_event']));
     expect(edits.entries.every((e) => e.entity_id === eventId || e.detail.includes(eventId))).toBe(true);
+    // backend 1.7.0: task writes, with before -> after
+    const taskEdit = (await s.api.listAuditLog(admin, { group: 'actions', q: 'told RHI' })).entries[0];
+    expect(taskEdit?.action).toBe('update_task');
+    expect(taskEdit?.detail).toMatch(/^AC-204506-\d{4} #1: status: Open -> Contractor informed \(told RHI in the morning meeting\); assignee: \(blank\) -> \S+; due_date: 2045-06-22 -> 2045-06-01; action status: Open -> In progress$/);
+    expect((await s.api.listAuditLog(admin, { group: 'actions', q: 'Adjust allowance' })).entries.map((e) => [e.action, e.detail]))
+      .toContainEqual(['apply_template', 'Template Planned overrun: 1 task added (Adjust allowance or plan)']);
+    expect((await s.api.listAuditLog(admin, { group: 'actions', q: 'Recalibrate' })).entries[0]?.detail).toMatch(/^AC-204506-\d{4}: #3 Recalibrate the belt scale \(ELE, due 2045-06-10\)$/);
+    expect((await s.api.listAuditLog(admin, { group: 'settings', q: 'Belt tear' })).entries.map((e) => e.action)).toContain('save_task_templates');
     // paging: two pages of two do not overlap and the second is older
     const p1 = await s.api.listAuditLog(admin, { limit: 2 });
     const p2 = await s.api.listAuditLog(admin, { limit: 2 }, p1.next_cursor);

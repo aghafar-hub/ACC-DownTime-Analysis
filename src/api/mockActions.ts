@@ -3,10 +3,12 @@
 // formulas and checks. tests/unit/contract.test.ts runs both over the same scenarios, so the two cannot drift apart.
 import tables from '../../schema/tables.json';
 import {
-  ACTION_EVIDENCE_MAX, ACTION_PRIORITIES, ACTION_ROOT_CAUSES, ACTION_SCOPES, ACTION_SOURCES, ACTION_STATUSES, ApiError, evenMonthlySplit,
-  isTerminalStatus, type Action, type ActionCheckResult, type ActionEvidence, type ActionLog, type ActionLogKind,
-  type ActionsPayload, type AreaTarget, type Contractor, type CreateActionResult, type EventRow,
-  type Notification, type Setting,
+  ACTION_EVIDENCE_MAX, ACTION_PRIORITIES, ACTION_ROOT_CAUSES, ACTION_SCOPES, ACTION_SOURCES, ACTION_STATUSES, actionDueDate, ApiError, AREA_CONTRACTOR,
+  deriveActionStatus, evenMonthlySplit, isTaskOpen, isTerminalStatus, REMOVED_ACTION_STATUSES, TASK_CLOSED_STATUSES, TASK_NOTE_MIN, TASK_STATUSES,
+  TASKS_PER_ACTION_MAX, TEMPLATE_STEPS_MAX,
+  type Action, type ActionCheckResult, type ActionEvidence, type ActionLog, type ActionLogKind, type ActionResult, type ActionSource,
+  type ActionsPayload, type ActionTask, type AreaTarget, type Contractor, type CreateActionResult, type EventRow,
+  type Notification, type Setting, type TaskList, type TaskResult, type TaskStatus, type TaskTemplate, type TaskTemplateStep, type TaskView,
 } from './types';
 import {
   addDays, attributedHours, attributeRows, buildFailureEvents, findClusters, groupOccurrences, isAnalysable, lastDayOfMonth, matchKey,
@@ -27,7 +29,14 @@ const EDIT_FIELDS = [
 const INPUT_FIELDS = [
   'title', 'detail', 'status', 'priority', 'source', 'source_ref', 'scope_kind', 'area_id', 'line_id', 'equipment_id',
   'reason_key', 'owner', 'assignee', 'due_date', 'needs_stop', 'root_cause', 'required_action', 'evidence', 'dedupe_key',
+  'tasks', 'template_id',
 ];
+// backend 1.7.0 (Tasks.js)
+const TASK_TITLE_MAX = 200;
+const TEMPLATES_MAX = 30;
+const TASK_INPUT_FIELDS = ['title', 'owner', 'assignee', 'due_date', 'needs_stop', 'est_stop_h', 'notes', 'template_step'];
+const TASK_CHANGE_FIELDS = ['title', 'owner', 'assignee', 'due_date', 'status', 'needs_stop', 'est_stop_h', 'notes', 'note'];
+const TASK_FILTER_FIELDS = ['mine', 'overdue', 'needs_stop', 'status', 'owner', 'assignee', 'area_id', 'line_id', 'action_id', 'done_since', 'include_drafts'];
 const CONTRACTOR_ID = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/;
 const EVENT_ID = /^EV-[0-9a-f]{16}$/;
 
@@ -135,18 +144,75 @@ export function plannedOverrunText(o: PlannedOverrun): { title: string; detail: 
   };
 }
 
-/** action_due candidates (port of notifRuleActionDue_): not closed or cancelled, due date before today. */
-export function actionDueAlerts(actions: Action[], today: string): { key: string; title: string; detail: string; area: string; line: string; ref: string }[] {
-  return actions.filter((a) => !isTerminalStatus(a.status) && a.due_date && isValidDate(a.due_date) && a.due_date < today)
-    .sort((a, b) => byText(a.action_id, b.action_id))
-    .map((a) => {
-      const days = Math.round((parseDate(today)! - parseDate(a.due_date)!) / MS_DAY);
-      return {
-        key: `action_due|${a.action_id}|${a.due_date}`, title: `Action overdue: ${a.action_id} - ${oneLine(a.title, 120)}`,
-        detail: `Due ${a.due_date}, ${days} day${days === 1 ? '' : 's'} ago. Status ${a.status}, owner ${a.owner || 'nobody yet'}.`,
-        area: a.area_id, line: a.line_id, ref: a.action_id,
-      };
+/** One action-category alert candidate (action_due, task_overdue, action_ready_to_close). */
+export interface TaskAlert {
+  type: 'action_due' | 'task_overdue' | 'action_ready_to_close';
+  key: string; title: string; detail: string; area: string; line: string; ref: string;
+  /** backend 1.7.0: '' = everyone, else user ids and/or @closers */
+  recipients: string;
+}
+const tasksOf = (actionId: string, tasks: readonly ActionTask[]): ActionTask[] =>
+  tasks.filter((t) => t.action_id === actionId).sort((a, b) => a.seq - b.seq || byText(a.task_id, b.task_id));
+const daysAgo = (today: string, due: string): number => Math.round((parseDate(today)! - parseDate(due)!) / MS_DAY);
+
+/**
+ * action_due candidates (port of notifRuleActionDue_): not closed or cancelled, due date before today. 1.7.0: an action with
+ * tasks uses the latest open task due date and is left out while it is a Draft.
+ */
+export function actionDueAlerts(actions: Action[], tasks: readonly ActionTask[], today: string): TaskAlert[] {
+  const out: TaskAlert[] = [];
+  for (const a of actions.filter((x) => !isTerminalStatus(x.status)).sort((x, y) => byText(x.action_id, y.action_id))) {
+    const mine = tasksOf(a.action_id, tasks);
+    if (mine.length && a.status === 'Draft') continue;
+    const due = actionDueDate(a, mine);
+    if (!due || !isValidDate(due) || !(due < today)) continue;
+    const days = daysAgo(today, due);
+    out.push({
+      type: 'action_due', key: `action_due|${a.action_id}|${due}`, title: `Action overdue: ${a.action_id} - ${oneLine(a.title, 120)}`,
+      detail: `Due ${due}, ${days} day${days === 1 ? '' : 's'} ago. Status ${a.status}, owner ${a.owner || 'nobody yet'}.`,
+      area: a.area_id, line: a.line_id, ref: a.action_id, recipients: '',
     });
+  }
+  return out;
+}
+
+/** task_overdue (port of notifRuleTaskOverdue_): open tasks of accepted, open actions due before today; to the task person and the action owner. */
+export function taskOverdueAlerts(actions: Action[], tasks: readonly ActionTask[], today: string): TaskAlert[] {
+  const out: TaskAlert[] = [];
+  for (const a of actions.filter((x) => x.status !== 'Draft' && !isTerminalStatus(x.status)).sort((x, y) => byText(x.action_id, y.action_id))) {
+    for (const t of tasksOf(a.action_id, tasks)) {
+      if (!isTaskOpen(t) || !t.due_date || !isValidDate(t.due_date) || !(t.due_date < today)) continue;
+      const days = daysAgo(today, t.due_date);
+      const people = [...new Set([t.assignee, a.assignee].filter(Boolean))];
+      out.push({
+        type: 'task_overdue', key: `task_due|${t.task_id}|${t.due_date}`, title: `Task overdue: ${a.action_id} - ${oneLine(t.title, 120)}`,
+        detail: `Due ${t.due_date}, ${days} day${days === 1 ? '' : 's'} ago. Task ${t.seq} of ${a.action_id}, status ${t.status}, owner ${t.owner || 'nobody yet'}, person ${t.assignee || 'nobody yet'}.`,
+        area: a.area_id, line: a.line_id, ref: a.action_id, recipients: people.length ? people.join(',') : '@closers',
+      });
+    }
+  }
+  return out;
+}
+
+/** action_ready_to_close (port of readyCandidate_): accepted, open, every task Done or Not needed; to the closers. */
+export function readyAlert(a: Action, actionTasks: readonly ActionTask[]): TaskAlert | null {
+  if (a.status === 'Draft' || isTerminalStatus(a.status) || !actionTasks.length || actionTasks.some(isTaskOpen)) return null;
+  const n = actionTasks.length;
+  const notNeeded = actionTasks.filter((t) => t.status === 'Not needed').length;
+  return {
+    type: 'action_ready_to_close', key: `ready|${a.action_id}|${n}`, title: `Ready to close: ${a.action_id} - ${oneLine(a.title, 120)}`,
+    detail: `All ${n} task${n === 1 ? '' : 's'} done or not needed (${n - notNeeded} done, ${notNeeded} not needed). Only the people on the "Who can close actions" list can close it.`,
+    area: a.area_id, line: a.line_id, ref: a.action_id, recipients: '@closers',
+  };
+}
+
+export function readyAlerts(actions: Action[], tasks: readonly ActionTask[]): TaskAlert[] {
+  const out: TaskAlert[] = [];
+  for (const a of [...actions].sort((x, y) => byText(x.action_id, y.action_id))) {
+    const r = readyAlert(a, tasksOf(a.action_id, tasks));
+    if (r) out.push(r);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- draft rules
@@ -298,7 +364,8 @@ function effectivenessOf(x: RuleCtx, a: Action, days: number): { verdict: Action
 
 // ---------------------------------------------------------------- the store
 
-const TABLES = tables as unknown as { contractorSeeds: (Omit<Contractor, 'areas'> & { areas: string })[] };
+type TemplateSeed = Omit<TaskTemplate, 'applies_to' | 'steps' | 'updated_at' | 'updated_by'> & { applies_to: string; steps: Omit<TaskTemplateStep, 'seq'>[] };
+const TABLES = tables as unknown as { contractorSeeds: (Omit<Contractor, 'areas'> & { areas: string })[]; taskTemplateSeeds: TemplateSeed[] };
 
 export interface ActionStoreDeps {
   db: () => SyntheticDb;
@@ -308,6 +375,8 @@ export interface ActionStoreDeps {
   /** retention days of the notifications (recency of the planned-overrun months) */
   retentionDays: () => number;
   audit: (userId: string, action: string, entityId: string, detail: string) => void;
+  /** backend 1.7.0 (syncReadyToClose_): the action's ready-to-close alert now (null = none), raised, re-opened or resolved at once */
+  syncReady?: (actionId: string, alert: TaskAlert | null) => void;
 }
 
 export interface ActionUser { user_id: string; role_id: string }
@@ -315,14 +384,23 @@ export interface ActionUser { user_id: string; role_id: string }
 export interface ActionStore {
   list(u: ActionUser): ActionsPayload;
   create(u: ActionUser, input: unknown, options: unknown): CreateActionResult;
-  update(u: ActionUser, actionId: unknown, changes: unknown): { action: Action; logs: ActionLog[] };
-  comment(u: ActionUser, actionId: unknown, text: unknown): { action: Action; logs: ActionLog[] };
+  update(u: ActionUser, actionId: unknown, changes: unknown): ActionResult;
+  comment(u: ActionUser, actionId: unknown, text: unknown): ActionResult;
   saveContractors(u: ActionUser, rows: unknown): Contractor[];
   getTargets(year: unknown): AreaTarget[];
   saveTargets(u: ActionUser, year: unknown, rows: unknown): AreaTarget[];
   runChecks(): ActionCheckResult;
+  // backend 1.7.0: tasks inside actions
+  addTask(u: ActionUser, actionId: unknown, task: unknown): TaskResult;
+  updateTask(u: ActionUser, taskId: unknown, changes: unknown): TaskResult;
+  applyTemplate(u: ActionUser, actionId: unknown, templateId: unknown): TaskResult;
+  listTasks(u: ActionUser, filter: unknown): TaskList;
+  listTemplates(): TaskTemplate[];
+  saveTemplates(u: ActionUser, list: unknown): TaskTemplate[];
+  isCloser(u: ActionUser): boolean;
   /** read-only views for the notification rules */
   actions(): Action[];
+  tasks(): ActionTask[];
   targets(): AreaTarget[];
   /** test helper: clean the closers setting the way saveSettings does */
   cleanClosers(value: string): string;
@@ -331,18 +409,33 @@ export interface ActionStore {
 export function createActionStore(deps: ActionStoreDeps): ActionStore {
   const actions: Action[] = [];
   const logs: ActionLog[] = [];
+  const tasks: ActionTask[] = [];
   const contractors: Contractor[] = TABLES.contractorSeeds.map((c) => ({ ...c, areas: csv(c.areas), default_assignee: c.default_assignee ?? '' }));
+  const templates: TaskTemplate[] = (TABLES.taskTemplateSeeds ?? []).map((t) => ({
+    template_id: t.template_id, name: t.name, applies_to: csv(t.applies_to) as ActionSource[], active: t.active, sort_order: t.sort_order,
+    updated_at: '', updated_by: 'setup',
+    steps: t.steps.map((s, i) => ({ seq: i + 1, title: s.title, default_owner: s.default_owner, due_offset_days: s.due_offset_days, needs_stop: !!s.needs_stop, est_stop_h: s.needs_stop ? s.est_stop_h ?? null : null })),
+  }));
   const targets: AreaTarget[] = [];
   let logCounter = 0;
+  let taskCounter = 0;
+  let templateCounter = 0;
 
   const settings = (): ActionSettings => parseActionSettings(deps.db().settings);
   const isCloser = (u: ActionUser): boolean => u.role_id === 'ROLE-ADMIN' || settings().closers.includes(u.user_id);
   const clone = <T,>(x: T): T => structuredClone(x);
-  const logRow = (actionId: string, by: string, kind: ActionLogKind, from: string, to: string, text: string, at: string): ActionLog => ({
+  const logRow = (actionId: string, by: string, kind: ActionLogKind, from: string, to: string, text: string, at: string, taskId = ''): ActionLog => ({
     log_id: `AL-${(++logCounter).toString(16).padStart(16, '0')}`, action_id: actionId, at, by, kind, from_status: from, to_status: to, text: String(text ?? '').slice(0, LONG_MAX),
+    task_id: taskId,
   });
   const logsOf = (id: string): ActionLog[] => logs.filter((l) => l.action_id === id).sort((a, b) => byText(a.at, b.at));
-  const result = (a: Action) => clone({ action: a, logs: logsOf(a.action_id) });
+  const taskList = (id: string): ActionTask[] => tasksOf(id, tasks);
+  const out = (a: Action): Action => ({ ...a, template_id: a.template_id ?? '', due_date_derived: actionDueDate(a, taskList(a.action_id)) });
+  const result = (a: Action): ActionResult => clone({ action: out(a), logs: logsOf(a.action_id), tasks: taskList(a.action_id) });
+  const syncReady = (a: Action): void => {
+    try { deps.syncReady?.(a.action_id, readyAlert(a, taskList(a.action_id))); } catch { /* never fails the change, like the server */ }
+  };
+  const today = (): string => deps.nowTs().slice(0, 10);
   const nextId = (stamp: string): string => {
     const prefix = `AC-${stamp.slice(0, 4)}${stamp.slice(5, 7)}-`;
     let max = 0;
@@ -438,22 +531,134 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
   };
 
   function newAction(c: Omit<Action, 'action_id' | 'created_by' | 'created_at' | 'updated_at' | 'updated_by' | 'closed_by' | 'closed_at' | 'closure_note' | 'effectiveness' | 'effectiveness_checked_at' | 'evidence'>, by: string, stamp: string, evidence: ActionEvidence[]): Action {
-    return {
+    const a: Action = {
       action_id: nextId(stamp), ...c, created_by: by, created_at: stamp, updated_at: stamp, updated_by: by,
       closed_by: '', closed_at: '', closure_note: '', effectiveness: '', effectiveness_checked_at: '', evidence: mergeEvidence([], evidence).list,
     };
+    a.template_id = c.template_id ?? '';
+    delete a.due_date_derived;
+    return a;
   }
+
+  // ------------------------------------------------------------ tasks (port of Tasks.js)
+
+  interface TaskInput {
+    title: string; owner: string; owner_kind: Action['owner_kind']; assignee: string; due_date: string; needs_stop: boolean; est_stop_h: number | null;
+    notes: string; template_step: string;
+  }
+  const cleanEst = (v: unknown): number | null => {
+    if (v === undefined || v === null || v === '') return null;
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 1000) throw bad('Estimated stop hours must be a number from 0 to 1000, or blank.');
+    return v;
+  };
+  function cleanTaskInput(input: unknown): TaskInput {
+    if (!isObj(input)) throw bad('Each task must be an object.');
+    onlyKeys(input, TASK_INPUT_FIELDS, 'A task');
+    const owner = cleanOwner(input.owner);
+    const needs = cleanNeedsStop(input.needs_stop);
+    const est = cleanEst(input.est_stop_h);
+    return {
+      title: cleanText(input.title, 'Task title', true, TASK_TITLE_MAX), ...owner, assignee: cleanText(input.assignee, 'Person', false, 100),
+      due_date: cleanDue(input.due_date), needs_stop: needs, est_stop_h: needs ? est : null, notes: cleanText(input.notes, 'Task notes', false, LONG_MAX),
+      template_step: cleanText(input.template_step, 'Template step', false, TASK_TITLE_MAX),
+    };
+  }
+  function cleanTaskList(list: unknown): TaskInput[] | null {
+    if (list === undefined || list === null) return null;
+    if (!Array.isArray(list)) throw bad('Tasks must be a list.');
+    if (list.length > TASKS_PER_ACTION_MAX) throw bad(`An action can have at most ${TASKS_PER_ACTION_MAX} tasks.`);
+    return list.map(cleanTaskInput);
+  }
+  const taskCreateText = (t: ActionTask): string =>
+    `#${t.seq} ${t.title} (${t.owner || 'no owner'}${t.due_date ? `, due ${t.due_date}` : ''}${t.needs_stop ? ', needs a stop' : ''})`;
+  function newTask(actionId: string, seq: number, c: TaskInput, by: string, stamp: string): ActionTask {
+    return {
+      task_id: `AT-${(++taskCounter).toString(16).padStart(12, '0')}`, action_id: actionId, seq, title: c.title, owner_kind: c.owner ? c.owner_kind : 'internal',
+      owner: c.owner, assignee: c.assignee, due_date: c.due_date, status: 'Open', needs_stop: c.needs_stop, est_stop_h: c.needs_stop ? c.est_stop_h : null,
+      notes: c.notes, template_step: c.template_step, created_at: stamp, created_by: by, updated_at: stamp, updated_by: by, done_at: '', done_by: '', done_note: '',
+    };
+  }
+  /** buildTaskRows_: new tasks (and their task_create history); skipSteps leaves out a template step the action already has. */
+  function buildTasks(actionId: string, existing: ActionTask[], inputs: TaskInput[], by: string, stamp: string, skipSteps: boolean): { rows: ActionTask[]; logs: ActionLog[] } {
+    let seq = existing.reduce((m, t) => Math.max(m, t.seq), 0);
+    const have = new Set(existing.map((t) => t.template_step).filter(Boolean));
+    const rows: ActionTask[] = [];
+    const newLogs: ActionLog[] = [];
+    for (const c of inputs) {
+      if (skipSteps && c.template_step && have.has(c.template_step)) continue;
+      if (c.template_step) have.add(c.template_step);
+      const t = newTask(actionId, ++seq, c, by, stamp);
+      rows.push(t);
+      newLogs.push(logRow(actionId, by, 'task_create', '', 'Open', taskCreateText(t), stamp, t.task_id));
+    }
+    if (existing.length + rows.length > TASKS_PER_ACTION_MAX) throw bad(`An action can have at most ${TASKS_PER_ACTION_MAX} tasks.`);
+    return { rows, logs: newLogs };
+  }
+  /** followTasks_: the status the tasks set, with its history row; null when it does not change. */
+  function follow(a: Action, all: ActionTask[], by: string, stamp: string): { from: Action['status']; to: Action['status']; log: ActionLog } | null {
+    const to = deriveActionStatus(a, all);
+    if (to === a.status) return null;
+    return { from: a.status, to, log: logRow(a.action_id, by, 'status', a.status, to, to === 'In progress' ? 'Follows the tasks: a task has started' : 'Follows the tasks: no task has started', stamp) };
+  }
+  /** storeNewTasks_: writes the tasks, lets the action follow, syncs the ready alert. */
+  function storeTasks(a: Action, built: { rows: ActionTask[]; logs: ActionLog[] }, by: string, stamp: string, extra: Partial<Action> = {}) {
+    tasks.push(...built.rows);
+    const newLogs = [...built.logs];
+    const f = follow(a, taskList(a.action_id), by, stamp);
+    Object.assign(a, extra, { updated_at: stamp, updated_by: by });
+    if (f) { a.status = f.to; newLogs.push(f.log); }
+    logs.push(...newLogs);
+    syncReady(a);
+    return f;
+  }
+  function stepOwner(step: TaskTemplateStep, areaId: string): { owner: string; owner_kind: Action['owner_kind']; assignee: string } {
+    const c = step.default_owner === AREA_CONTRACTOR ? contractorFor(areaId) : contractors.find((x) => x.contractor_id === step.default_owner && x.active) ?? null;
+    return c ? { owner: c.contractor_id, owner_kind: c.kind, assignee: c.default_assignee || '' } : { owner: '', owner_kind: 'internal', assignee: '' };
+  }
+  const templateInputs = (t: TaskTemplate, areaId: string, day: string): TaskInput[] => t.steps.map((s) => ({
+    title: s.title, ...stepOwner(s, areaId), due_date: addDays(day, s.due_offset_days || 0), needs_stop: s.needs_stop, est_stop_h: s.needs_stop ? s.est_stop_h : null,
+    notes: '', template_step: s.title,
+  }));
+  const sortedTemplates = (): TaskTemplate[] => [...templates].sort((a, b) => a.sort_order - b.sort_order || byText(a.name, b.name) || byText(a.template_id, b.template_id));
+  const templateFor = (source: string): TaskTemplate | null => sortedTemplates().find((t) => t.active && t.applies_to.includes(source as ActionSource)) ?? null;
+  const findAction = (actionId: unknown): Action => {
+    const id = cleanText(actionId, 'Action', true, 40);
+    const row = actions.find((a) => a.action_id === id);
+    if (!row) throw new ApiError('Action not found.', 'not_found');
+    return row;
+  };
+  const taskResult = (a: Action, taskId = '', added?: number): TaskResult => {
+    const r: TaskResult = { action: out(a), tasks: taskList(a.action_id), logs: logsOf(a.action_id) };
+    if (taskId) r.task = tasks.find((t) => t.task_id === taskId);
+    if (added !== undefined) r.added = added;
+    return clone(r);
+  };
+  const refuseRemoved = (status: unknown): void => {
+    if ((REMOVED_ACTION_STATUSES as readonly unknown[]).includes(status)) {
+      throw bad(`"${String(status)}" is a task status since version 1.7.0: set it on a task of the action. An action is Draft, Open, In progress, Closed or Cancelled.`);
+    }
+  };
+  const showValue = (v: unknown) => (v === true ? 'yes' : v === false ? 'no' : v === '' || v === null || v === undefined ? '(blank)' : String(v));
+  const auditVal = (v: unknown, max = 60): string => {
+    if (v === true) return 'yes';
+    if (v === false) return 'no';
+    const s = v === null || v === undefined ? '' : String(v).replace(/\s+/g, ' ').trim();
+    if (!s) return '(blank)';
+    return s.length > max ? `${s.slice(0, max - 1)}…` : s;
+  };
 
   const store: ActionStore = {
     list(u) {
       const d = deps.db();
       const st = settings();
       return clone({
-        actions: [...actions].sort((a, b) => byText(b.created_at, a.created_at) || byText(b.action_id, a.action_id)),
+        actions: [...actions].sort((a, b) => byText(b.created_at, a.created_at) || byText(b.action_id, a.action_id)).map(out),
         logs: [...logs].sort((a, b) => byText(a.at, b.at)),
         contractors: [...contractors].sort((a, b) => a.sort_order - b.sort_order || byText(a.contractor_id, b.contractor_id)),
         people: d.users.filter((x) => x.active).map((x) => ({ user_id: x.user_id, display_name: x.display_name })).sort((a, b) => byText(a.display_name, b.display_name)),
         closers: st.closers, can_close: isCloser(u),
+        tasks: [...tasks].sort((a, b) => byText(a.action_id, b.action_id) || a.seq - b.seq || byText(a.task_id, b.task_id)),
+        templates: sortedTemplates(),
       });
     },
 
@@ -467,6 +672,7 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       if (!isObj(input)) throw bad('Action is missing.');
       onlyKeys(input, INPUT_FIELDS, 'An action');
       const stamp = deps.nowTs();
+      refuseRemoved(input.status);
       const status = pickEnum(input.status, ACTION_STATUSES, 'Status', 'Draft');
       if (isTerminalStatus(status)) throw bad(`A new action cannot start ${status}.`);
       const scope = cleanScope(input, true);
@@ -487,6 +693,15 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       if (c.scope_kind !== 'equipment' && c.scope_kind !== 'area') c.reason_key = '';
       if (!c.dedupe_key && c.scope_kind === 'equipment' && c.reason_key) c.dedupe_key = `repeat|${c.equipment_id}|${c.reason_key}`;
       const evidence = cleanEvidence(input.evidence, u.user_id, stamp);
+      const templateId = cleanText(input.template_id === null ? '' : input.template_id, 'Template', false, 40);
+      const taskIn = cleanTaskList(input.tasks);
+      let tmpl: TaskTemplate | null = null;
+      if (templateId) {
+        tmpl = templates.find((t) => t.template_id === templateId) ?? null;
+        if (!tmpl) throw bad(`Task template ${oneLine(templateId, 40)} not found.`);
+        if (!tmpl.active && taskIn === null) throw bad(`The template "${tmpl.name}" is switched off.`);
+      }
+      const inputs = taskIn !== null ? taskIn : tmpl ? templateInputs(tmpl, c.area_id, stamp.slice(0, 10)) : [];
       if (merge && c.dedupe_key) {
         const open = oldestOpen(c.dedupe_key);
         if (open) {
@@ -496,15 +711,27 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
           open.updated_by = u.user_id;
           logs.push(logRow(open.action_id, u.user_id, 'evidence', '', '',
             `Merged instead of a new action (${c.source}): ${c.title}. ${m.added} evidence item${m.added === 1 ? '' : 's'} added.`, stamp));
-          deps.audit(u.user_id, 'merge_action', open.action_id, `Merged a new ${c.source} action, ${m.added} evidence items added`);
+          let mergedTasks = '';
+          if (inputs.length) {
+            const built = buildTasks(open.action_id, taskList(open.action_id), inputs, u.user_id, stamp, true);
+            if (built.rows.length) {
+              storeTasks(open, built, u.user_id, stamp);
+              mergedTasks = `, ${built.rows.length} task${built.rows.length === 1 ? '' : 's'} added`;
+            }
+          }
+          deps.audit(u.user_id, 'merge_action', open.action_id, `Merged a new ${c.source} action, ${m.added} evidence items added${mergedTasks}`);
           return { ...result(open), merged: true };
         }
       }
-      const a = newAction(c, u.user_id, stamp, evidence);
+      const a = newAction({ ...c, template_id: templateId }, u.user_id, stamp, evidence);
+      const built = buildTasks(a.action_id, [], inputs, u.user_id, stamp, false);
+      a.status = deriveActionStatus(a, built.rows);
       actions.push(a);
+      tasks.push(...built.rows);
       logs.push(logRow(a.action_id, u.user_id, 'status', '', a.status, `Created (${a.source})`, stamp));
       if (evidence.length) logs.push(logRow(a.action_id, u.user_id, 'evidence', '', '', `${evidence.length} evidence item${evidence.length === 1 ? '' : 's'} added.`, stamp));
-      deps.audit(u.user_id, 'create_action', a.action_id, `${a.status}: ${a.title}`);
+      logs.push(...built.logs);
+      deps.audit(u.user_id, 'create_action', a.action_id, `${a.status}: ${a.title}${built.rows.length ? ` (${built.rows.length} task${built.rows.length === 1 ? '' : 's'}${tmpl ? `, template ${tmpl.name}` : ''})` : ''}`);
       return { ...result(a), merged: false };
     },
 
@@ -512,10 +739,12 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       if (!isObj(changes)) throw bad('Changes is missing.');
       onlyKeys(changes, [...EDIT_FIELDS, 'add_evidence'], 'Changes');
       if (!Object.keys(changes).length) throw bad('No changes to save.');
+      if ('status' in changes) refuseRemoved(changes.status);
       const stamp = deps.nowTs();
       const id = cleanText(actionId, 'Action', true, 40);
       const row = actions.find((a) => a.action_id === id);
       if (!row) throw new ApiError('Action not found.', 'not_found');
+      const mine = taskList(row.action_id);
       const closer = isCloser(u);
       const from = row.status;
       const has = (k: string) => Object.prototype.hasOwnProperty.call(changes, k);
@@ -528,6 +757,9 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       if (has('reason_key')) next.reason_key = matchKey(cleanText(changes.reason_key, 'Reason', false, 200));
       if (has('assignee')) next.assignee = cleanText(changes.assignee, 'Assignee', false, 100);
       if (has('due_date')) next.due_date = cleanDue(changes.due_date);
+      if (has('due_date') && mine.length && next.due_date !== row.due_date) {
+        throw bad('The due date of an action with tasks follows its tasks: change the due dates of the tasks.');
+      }
       if (has('needs_stop')) next.needs_stop = cleanNeedsStop(changes.needs_stop);
       if (has('root_cause')) next.root_cause = pickEnum(changes.root_cause === null ? '' : changes.root_cause, ACTION_ROOT_CAUSES, 'Root cause', '');
       if (has('owner')) Object.assign(next, cleanOwner(changes.owner));
@@ -540,7 +772,7 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
         };
         Object.assign(next, cleanScope(cand, has('equipment_id') || (has('scope_kind') && changes.scope_kind !== row.scope_kind)));
       }
-      const to = next.status ?? from;
+      let to = next.status ?? from;
       const note = has('closure_note') ? cleanText(changes.closure_note, 'Closing note', false, TEXT_MAX) : null;
       const evidence = has('add_evidence') ? cleanEvidence(changes.add_evidence, u.user_id, stamp) : [];
 
@@ -548,6 +780,20 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
         throw new ApiError('Only people on the "Who can close actions" list can close, cancel, reopen or change a closed action.', 'forbidden', true);
       }
       if (isTerminalStatus(from) && !isTerminalStatus(to) && to !== 'Open') throw bad('A closed or cancelled action can only be reopened to Open.');
+      // backend 1.7.0: with tasks, Open and In progress follow the tasks; accepting a draft or reopening lands on what they say
+      if (mine.length && (to === 'Open' || to === 'In progress')) {
+        const target = deriveActionStatus({ action_id: row.action_id, status: 'Open' }, mine);
+        if (to !== target && from !== 'Draft' && !isTerminalStatus(from)) {
+          throw bad('The status of an action with tasks follows its tasks: it is In progress as soon as a task has started, else Open.');
+        }
+        to = target;
+      }
+      if (to === 'Closed' && from !== 'Closed') {
+        const stillOpen = mine.filter(isTaskOpen).length;
+        if (stillOpen) {
+          throw new ApiError(`${stillOpen} task${stillOpen === 1 ? ' is' : 's are'} still open: every task must be Done or Not needed before the action can be closed.`, 'tasks_open');
+        }
+      }
       if (note !== null && !isTerminalStatus(to)) throw bad('A closing note can only be written when the action is closed or cancelled.');
       if (isTerminalStatus(to) && to !== from && (!note || note.length < NOTE_MIN)) throw bad(`Write a closing note of at least ${NOTE_MIN} characters.`);
 
@@ -590,6 +836,7 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       deps.audit(u.user_id, 'update_action', row.action_id, newLogs.map((l) => (l.kind === 'status'
         ? `status: ${l.from_status || '(new)'} -> ${l.to_status}${l.text ? ` (${l.text.slice(0, 80)})` : ''}`
         : `${l.kind}: ${(l.text || '(blank)').slice(0, 200)}`)).join('. '));
+      if (to !== from) syncReady(row);
       return result(row);
     },
 
@@ -750,14 +997,21 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
             if (dr.source !== 'auto_repeat' || !(dr.latestTs > lastClosed)) continue;
           }
           const owner = contractorFor(dr.area_id);
+          const tmpl = templateFor(dr.source);
           const a = newAction({
             title: oneLine(dr.title, TITLE_MAX), detail: oneLine(dr.detail, LONG_MAX), status: 'Draft', priority: dr.priority, source: dr.source,
             source_ref: dr.source_ref, scope_kind: dr.scope_kind, area_id: dr.area_id, line_id: dr.line_id, equipment_id: dr.equipment_id,
             reason_key: dr.reason_key, owner_kind: owner ? 'contractor' : 'internal', owner: owner?.contractor_id ?? '', assignee: owner?.default_assignee ?? '',
-            due_date: '', needs_stop: false, root_cause: '', required_action: '', dedupe_key: dr.dedupe_key,
+            due_date: '', needs_stop: false, root_cause: '', required_action: '', dedupe_key: dr.dedupe_key, template_id: tmpl?.template_id ?? '',
           }, 'system', stamp, items);
           actions.push(a);
-          logs.push(logRow(a.action_id, 'system', 'status', '', 'Draft', `Drafted by rule ${dr.source}`, stamp));
+          logs.push(logRow(a.action_id, 'system', 'status', '', 'Draft', `Drafted by rule ${dr.source}${tmpl ? ` with the tasks of template ${tmpl.name}` : ''}`, stamp));
+          if (tmpl) {
+            // backend 1.7.0: the draft gets the tasks of the template that applies to its rule (proposed, Open)
+            const built = buildTasks(a.action_id, [], templateInputs(tmpl, dr.area_id, stamp.slice(0, 10)), 'system', stamp, false);
+            tasks.push(...built.rows);
+            logs.push(...built.logs);
+          }
           res.created++;
         }
       }
@@ -774,7 +1028,247 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       return res;
     },
 
+    addTask(u, actionId, task) {
+      const stamp = deps.nowTs();
+      const row = findAction(actionId);
+      if (isTerminalStatus(row.status)) throw bad(`The action is ${row.status.toLowerCase()}: reopen it before adding tasks.`);
+      const c = cleanTaskInput(task);
+      const built = buildTasks(row.action_id, taskList(row.action_id), [c], u.user_id, stamp, false);
+      const f = storeTasks(row, built, u.user_id, stamp);
+      const t = built.rows[0]!;
+      deps.audit(u.user_id, 'create_task', t.task_id, `${row.action_id}: ${taskCreateText(t)}${f ? `. Action status: ${f.from} -> ${f.to}` : ''}`);
+      return taskResult(row, t.task_id);
+    },
+
+    updateTask(u, taskId, changes) {
+      if (!isObj(changes)) throw bad('Changes is missing.');
+      onlyKeys(changes, TASK_CHANGE_FIELDS, 'Changes');
+      if (!Object.keys(changes).length) throw bad('No changes to save.');
+      const stamp = deps.nowTs();
+      const id = cleanText(taskId, 'Task', true, 40);
+      const task = tasks.find((t) => t.task_id === id);
+      if (!task) throw new ApiError('Task not found.', 'not_found');
+      const row = findAction(task.action_id);
+      const has = (k: string) => Object.prototype.hasOwnProperty.call(changes, k);
+      if (isTerminalStatus(row.status) && Object.keys(changes).some((k) => k !== 'note')) {
+        throw bad(`The action is ${row.status.toLowerCase()}: reopen it before changing its tasks. A note can still be added.`);
+      }
+      const next: Partial<ActionTask> = {};
+      if (has('title')) next.title = cleanText(changes.title, 'Task title', true, TASK_TITLE_MAX);
+      if (has('assignee')) next.assignee = cleanText(changes.assignee, 'Person', false, 100);
+      if (has('due_date')) next.due_date = cleanDue(changes.due_date);
+      if (has('notes')) next.notes = cleanText(changes.notes, 'Task notes', false, LONG_MAX);
+      if (has('owner')) Object.assign(next, cleanOwner(changes.owner));
+      if (has('needs_stop')) next.needs_stop = cleanNeedsStop(changes.needs_stop);
+      if (has('est_stop_h')) next.est_stop_h = cleanEst(changes.est_stop_h);
+      const to: TaskStatus = has('status') ? pickEnum(changes.status, TASK_STATUSES, 'Task status') : task.status;
+      const note = has('note') ? cleanText(changes.note, 'Note', false, LONG_MAX) : '';
+      const ownerKind = next.owner_kind ?? task.owner_kind;
+      const from = task.status;
+      if (to === 'Contractor informed' && ownerKind !== 'contractor') throw bad('Contractor informed is only for a task owned by an external contractor.');
+      if (to !== from && to === 'Done' && note.length < TASK_NOTE_MIN) throw bad(`Write what was done (at least ${TASK_NOTE_MIN} characters).`);
+      if (to !== from && to === 'Not needed' && note.length < TASK_NOTE_MIN) throw bad(`Write why the task is not needed (at least ${TASK_NOTE_MIN} characters).`);
+      const needsAfter = next.needs_stop ?? task.needs_stop;
+      const estBefore = task.needs_stop ? task.est_stop_h : null;
+      if (has('needs_stop') || has('est_stop_h')) next.est_stop_h = needsAfter ? (has('est_stop_h') ? next.est_stop_h ?? null : estBefore) : null;
+
+      const patch: Partial<ActionTask> = {};
+      const edits: string[] = [];
+      for (const k of ['title', 'owner', 'assignee', 'due_date', 'needs_stop', 'est_stop_h', 'notes'] as const) {
+        if (next[k] === undefined) continue;
+        const old = k === 'est_stop_h' ? estBefore : task[k];
+        if (next[k] === old) continue;
+        (patch as Record<string, unknown>)[k] = next[k];
+        if (k === 'owner') patch.owner_kind = next.owner_kind;
+        edits.push(k === 'title' || k === 'notes' ? `${k} changed` : `${k}: ${showValue(old)} -> ${showValue(next[k])}`);
+      }
+      const newLogs: ActionLog[] = [];
+      if (to !== from) {
+        patch.status = to;
+        if (TASK_CLOSED_STATUSES.includes(to)) Object.assign(patch, { done_at: stamp, done_by: u.user_id, done_note: note });
+        else if (TASK_CLOSED_STATUSES.includes(from)) Object.assign(patch, { done_at: '', done_by: '', done_note: '' });
+        newLogs.push(logRow(row.action_id, u.user_id, 'task_status', from, to, note, stamp, task.task_id));
+      } else if (note) {
+        newLogs.push(logRow(row.action_id, u.user_id, 'task_note', '', '', note, stamp, task.task_id));
+      }
+      if (edits.length) newLogs.push(logRow(row.action_id, u.user_id, 'task_edit', '', '', `#${task.seq} ${edits.join('; ')}`, stamp, task.task_id));
+      if (!newLogs.length) throw bad('Nothing was changed.');
+      Object.assign(task, patch, { updated_at: stamp, updated_by: u.user_id });
+      const f = follow(row, taskList(row.action_id), u.user_id, stamp);
+      Object.assign(row, { updated_at: stamp, updated_by: u.user_id });
+      if (f) { row.status = f.to; newLogs.push(f.log); }
+      logs.push(...newLogs);
+      syncReady(row);
+      const said: string[] = [];
+      if (to !== from) said.push(`status: ${from} -> ${to}${note ? ` (${auditVal(note, 80)})` : ''}`);
+      else if (note) said.push(`note: ${auditVal(note, 160)}`);
+      if (edits.length) said.push(edits.join('; '));
+      if (f) said.push(`action status: ${f.from} -> ${f.to}`);
+      deps.audit(u.user_id, 'update_task', task.task_id, `${row.action_id} #${task.seq}: ${said.join('; ')}`);
+      return taskResult(row, task.task_id);
+    },
+
+    applyTemplate(u, actionId, templateId) {
+      const tid = cleanText(templateId, 'Template', true, 40);
+      const stamp = deps.nowTs();
+      const row = findAction(actionId);
+      if (isTerminalStatus(row.status)) throw bad(`The action is ${row.status.toLowerCase()}: reopen it before adding tasks.`);
+      const tmpl = templates.find((t) => t.template_id === tid);
+      if (!tmpl) throw new ApiError('Task template not found.', 'not_found');
+      if (!tmpl.active) throw bad(`The template "${tmpl.name}" is switched off.`);
+      const built = buildTasks(row.action_id, taskList(row.action_id), templateInputs(tmpl, row.area_id, stamp.slice(0, 10)), u.user_id, stamp, true);
+      if (!built.rows.length) return taskResult(row, '', 0);
+      const f = storeTasks(row, built, u.user_id, stamp, row.template_id ? {} : { template_id: tmpl.template_id });
+      const n = built.rows.length;
+      deps.audit(u.user_id, 'apply_template', row.action_id, `Template ${tmpl.name}: ${n} task${n === 1 ? '' : 's'} added (${built.rows.map((t) => t.title).join(', ')})${f ? `. Action status: ${f.from} -> ${f.to}` : ''}`);
+      return taskResult(row, '', n);
+    },
+
+    listTasks(u, filter) {
+      const f = filter === undefined || filter === null ? {} : filter;
+      if (!isObj(f)) throw bad('Filter is missing.');
+      onlyKeys(f, TASK_FILTER_FIELDS, 'Filter');
+      for (const k of ['mine', 'overdue', 'needs_stop', 'include_drafts']) {
+        if (f[k] !== undefined && f[k] !== null && typeof f[k] !== 'boolean') throw bad(`Filter ${k} must be true or false.`);
+      }
+      const status = f.status === undefined || f.status === null || f.status === '' ? 'open' : f.status;
+      if (Array.isArray(status)) {
+        for (const s of status) if (!(TASK_STATUSES as readonly unknown[]).includes(s)) throw bad(`Filter status must be one of: ${TASK_STATUSES.join(', ')}.`);
+      } else if (!['open', 'closed', 'all'].includes(status as string)) {
+        throw bad('Filter status must be open, closed, all or a list of task statuses.');
+      }
+      const txt = (k: string) => cleanText(f[k] === null ? '' : f[k], `Filter ${k}`, false, 100);
+      const owner = txt('owner'), assignee = txt('assignee'), area = txt('area_id'), line = txt('line_id'), actionF = txt('action_id');
+      const doneSince = cleanText(f.done_since === null ? '' : f.done_since, 'Filter done_since', false, 20);
+      if (doneSince && !isValidDate(doneSince)) throw bad('Filter done_since must be a date like 2026-07-01.');
+      const day = today();
+      const waiting = new Map<string, string>();
+      for (const l of logs) {
+        if (l.kind === 'task_status' && l.to_status === 'Waiting stoppage' && l.task_id && !((waiting.get(l.task_id) ?? '') > l.at)) waiting.set(l.task_id, l.at);
+      }
+      const byId = new Map(actions.map((a) => [a.action_id, a]));
+      const list: TaskView[] = [];
+      for (const t of [...tasks].sort((a, b) => byText(a.action_id, b.action_id) || a.seq - b.seq || byText(a.task_id, b.task_id))) {
+        const a = byId.get(t.action_id);
+        if (!a || a.status === 'Cancelled' || (a.status === 'Draft' && f.include_drafts !== true)) continue;
+        const open = isTaskOpen(t);
+        if (status === 'open' && !open) continue;
+        if (status === 'closed' && open) continue;
+        if (Array.isArray(status) && !status.includes(t.status)) continue;
+        const overdue = open && !!t.due_date && t.due_date < day;
+        if (f.mine === true && t.assignee !== u.user_id) continue;
+        if (f.overdue === true && !overdue) continue;
+        if (f.needs_stop === true && !t.needs_stop) continue;
+        if (owner && t.owner !== owner) continue;
+        if (assignee && t.assignee !== assignee) continue;
+        if (area && a.area_id !== area) continue;
+        if (line && a.line_id !== line) continue;
+        if (actionF && t.action_id !== actionF) continue;
+        if (doneSince && !(t.done_at.slice(0, 10) >= doneSince)) continue;
+        list.push({
+          ...t, action_title: a.title, action_status: a.status, action_assignee: a.assignee, action_owner: a.owner, area_id: a.area_id, line_id: a.line_id,
+          equipment_id: a.equipment_id, overdue, waiting_since: t.status === 'Waiting stoppage' ? waiting.get(t.task_id) ?? t.updated_at : '',
+        });
+      }
+      list.sort((a, b) => {
+        if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+        if (a.due_date !== b.due_date) return !a.due_date ? 1 : !b.due_date ? -1 : byText(a.due_date, b.due_date);
+        return byText(a.action_id, b.action_id) || a.seq - b.seq || byText(a.task_id, b.task_id);
+      });
+      return clone({ tasks: list, today: day });
+    },
+
+    listTemplates: () => clone(sortedTemplates()),
+
+    saveTemplates(u, list) {
+      if (!Array.isArray(list) || !list.length) throw bad('Send at least one template.');
+      if (list.length > TEMPLATES_MAX) throw bad(`At most ${TEMPLATES_MAX} templates at once.`);
+      const seenIds = new Set<string>();
+      const clean = list.map((t: unknown): Omit<TaskTemplate, 'updated_at' | 'updated_by'> => {
+        if (!isObj(t)) throw bad('Each template must be an object.');
+        onlyKeys(t, ['template_id', 'name', 'applies_to', 'active', 'sort_order', 'steps', 'updated_at', 'updated_by'], 'A template');
+        const id = cleanText(t.template_id === null ? '' : t.template_id, 'Template id', false, 40);
+        if (id && !/^TT-[A-Za-z0-9_-]{1,37}$/.test(id)) throw bad('A template id must look like TT-REPEAT.');
+        if (id && seenIds.has(id)) throw bad(`Template ${id} is listed twice.`);
+        if (id) seenIds.add(id);
+        const name = cleanText(t.name, 'Template name', true, 80);
+        if (!Array.isArray(t.applies_to)) throw bad(`${name}: "suggested first for" must be a list.`);
+        const applies: ActionSource[] = [];
+        for (const s of t.applies_to) {
+          if (!(ACTION_SOURCES as readonly unknown[]).includes(s)) throw bad(`${name}: "${oneLine(String(s), 40)}" is not an action source.`);
+          if (!applies.includes(s as ActionSource)) applies.push(s as ActionSource);
+        }
+        if (typeof t.active !== 'boolean') throw bad(`${name}: active must be true or false.`);
+        const order = t.sort_order === undefined || t.sort_order === null ? 0 : t.sort_order;
+        if (typeof order !== 'number' || order % 1 !== 0 || order < 0 || order > 1000) throw bad(`${name}: sort order must be a whole number from 0 to 1000.`);
+        if (!Array.isArray(t.steps) || !t.steps.length) throw bad(`${name}: add at least one task.`);
+        if (t.steps.length > TEMPLATE_STEPS_MAX) throw bad(`${name}: at most ${TEMPLATE_STEPS_MAX} tasks.`);
+        const titles = new Set<string>();
+        const steps = t.steps.map((s: unknown, i: number): TaskTemplateStep => {
+          if (!isObj(s)) throw bad(`${name}: each task must be an object.`);
+          onlyKeys(s, ['seq', 'title', 'default_owner', 'due_offset_days', 'needs_stop', 'est_stop_h'], `${name}: a task`);
+          const title = cleanText(s.title, `${name}: task title`, true, TASK_TITLE_MAX);
+          const owner = cleanText(s.default_owner, `${name}: default owner`, true, 40);
+          if (owner !== AREA_CONTRACTOR && !contractors.some((c) => c.contractor_id === owner && c.active)) {
+            throw bad(`${name}: default owner "${oneLine(owner, 40)}" is not area_contractor or an active contractor or team.`);
+          }
+          const days = s.due_offset_days === undefined || s.due_offset_days === null ? 0 : s.due_offset_days;
+          if (typeof days !== 'number' || days % 1 !== 0 || days < 0 || days > 365) throw bad(`${name}: due after must be a whole number of days from 0 to 365.`);
+          const needs = cleanNeedsStop(s.needs_stop);
+          const est = cleanEst(s.est_stop_h);
+          if (titles.has(title.toLowerCase())) throw bad(`${name}: the task "${title}" is listed twice.`);
+          titles.add(title.toLowerCase());
+          return { seq: i + 1, title, default_owner: owner, due_offset_days: days, needs_stop: needs, est_stop_h: needs ? est : null };
+        });
+        return { template_id: id, name, applies_to: applies, active: t.active, sort_order: order, steps };
+      });
+      const stamp = deps.nowTs();
+      const byId = new Map(templates.map((t) => [t.template_id, t]));
+      for (const c of clean) {
+        if (c.template_id && !byId.has(c.template_id)) throw new ApiError(`Template ${c.template_id} not found.`, 'not_found');
+        if (!c.template_id) do { c.template_id = `TT-${(++templateCounter).toString(16).toUpperCase().padStart(8, '0')}`; } while (byId.has(c.template_id));
+      }
+      const after = new Map<string, Pick<TaskTemplate, 'name' | 'active' | 'applies_to'>>(templates.map((t) => [t.template_id, t]));
+      for (const c of clean) after.set(c.template_id, c);
+      const names = new Map<string, string>();
+      const owners = new Map<string, string>();
+      for (const id of [...after.keys()].sort()) {
+        const t = after.get(id)!;
+        const k = t.name.toLowerCase();
+        if (names.has(k) && names.get(k) !== id) throw new ApiError(`Two templates would be called "${t.name}".`, 'conflict');
+        names.set(k, id);
+        if (!t.active) continue;
+        for (const s of t.applies_to) {
+          const o = owners.get(s);
+          if (o && o !== id) throw new ApiError(`Source ${s} would be suggested by both "${after.get(o)!.name}" and "${t.name}".`, 'conflict');
+          owners.set(s, id);
+        }
+      }
+      const stepText = (steps: TaskTemplateStep[]) => steps.map((s) => `${s.title} (${s.default_owner}, +${s.due_offset_days} d${s.needs_stop ? `, stop${s.est_stop_h !== null ? ` ${s.est_stop_h} h` : ''}` : ''})`).join(', ');
+      const said: string[] = [];
+      for (const c of clean) {
+        const old = byId.get(c.template_id);
+        const rec: TaskTemplate = { ...c, updated_at: stamp, updated_by: u.user_id };
+        const at = templates.findIndex((t) => t.template_id === c.template_id);
+        if (at >= 0) templates[at] = rec; else templates.push(rec);
+        if (!old) {
+          said.push(`${c.template_id} added: ${c.name} (${c.steps.length} tasks: ${stepText(c.steps)})`);
+          continue;
+        }
+        const parts: string[] = [];
+        const pairs: [string, unknown, unknown][] = [['name', old.name, c.name], ['applies_to', old.applies_to.join(','), c.applies_to.join(',')], ['active', old.active, c.active], ['sort_order', old.sort_order, c.sort_order]];
+        for (const [k, a, b] of pairs) if (auditVal(a, 500) !== auditVal(b, 500)) parts.push(`${k}: ${auditVal(a, 80)} -> ${auditVal(b, 80)}`);
+        const o = stepText(old.steps), n = stepText(c.steps);
+        if (o !== n) parts.push(`tasks: ${auditVal(o, 150)} -> ${auditVal(n, 150)}`);
+        if (parts.length) said.push(`${c.template_id} ${parts.join('; ')}`);
+      }
+      deps.audit(u.user_id, 'save_task_templates', clean.map((c) => c.template_id).join(','), said.join('. ') || 'No change');
+      return clone(sortedTemplates());
+    },
+
+    isCloser,
     actions: () => actions,
+    tasks: () => tasks,
     targets: () => targets,
 
     cleanClosers(value) {

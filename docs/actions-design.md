@@ -20,6 +20,17 @@ To be built AFTER the redesign (R1-R5) is finished. Mockups first.
   (evenly by default, editable) with planned overhaul shutdowns assigned to their month; notify (and optionally draft an
   action) when a month's planned hours exceed that month's allowance and show YTD used vs YTD allowance.
 
+## Tasks inside actions (owner decision, backend 1.7.0)
+
+Mockups: `docs/actions-mockups/tasks/`. An action is the problem; it holds tasks (two levels only). Action statuses: Draft, Open,
+In progress, Closed, Cancelled (Contractor informed and Waiting stoppage are task statuses now). Task statuses: Open, Contractor
+informed (external contractors only), Waiting stoppage, In progress, Done (needs a note), Not needed (needs a reason); tasks are never
+deleted. The action follows its tasks, closes only when every task is Done or Not needed, and the closers get "ready to close". Task
+templates fill new actions and the auto drafts; "check after 60 days" stays the effectiveness check on close. The calls, the
+migration of the old statuses and the alerts are in `docs/wire-protocol.md` section 13; owner steps in `backend/apps-script/README.md`
+section 16. The screens (Tasks and Shutdown list tabs, task rows in the detail, template picker, Settings › Task templates) are built
+separately on top of that API.
+
 ## Implementation notes (backend and API, version 1.4.0)
 
 The server and API side is built: tables `actions`, `action_log`, `contractors`, `area_targets`, the `actions` access tab, the settings

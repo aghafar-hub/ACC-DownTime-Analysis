@@ -1,7 +1,7 @@
 // GENERATED FILE - do not edit by hand.
 // Source: schema/tables.json. Regenerate with: node tools/gen-apps-script-schema.mjs
 var SCHEMA = {
- "version": 5,
+ "version": 6,
  "tableOrder": [
   "lines",
   "areas",
@@ -24,8 +24,11 @@ var SCHEMA = {
   "notification_prefs",
   "actions",
   "action_log",
+  "action_tasks",
   "contractors",
   "area_targets",
+  "task_templates",
+  "task_template_steps",
   "user_activity"
  ],
  "tables": {
@@ -884,7 +887,9 @@ var SCHEMA = {
       "upload_done",
       "user_event",
       "planned_overrun",
-      "action_due"
+      "action_due",
+      "action_ready_to_close",
+      "task_overdue"
      ]
     },
     {
@@ -949,6 +954,11 @@ var SCHEMA = {
     {
      "name": "resolved_at",
      "type": "timestamp",
+     "required": false
+    },
+    {
+     "name": "recipients",
+     "type": "text",
      "required": false
     }
    ]
@@ -1049,8 +1059,6 @@ var SCHEMA = {
      "enum": [
       "Draft",
       "Open",
-      "Contractor informed",
-      "Waiting stoppage",
       "In progress",
       "Closed",
       "Cancelled"
@@ -1226,6 +1234,11 @@ var SCHEMA = {
      "name": "dedupe_key",
      "type": "text",
      "required": false
+    },
+    {
+     "name": "template_id",
+     "type": "text",
+     "required": false
     }
    ]
   },
@@ -1263,7 +1276,11 @@ var SCHEMA = {
       "status",
       "comment",
       "edit",
-      "evidence"
+      "evidence",
+      "task_create",
+      "task_status",
+      "task_edit",
+      "task_note"
      ]
     },
     {
@@ -1278,6 +1295,131 @@ var SCHEMA = {
     },
     {
      "name": "text",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "task_id",
+     "type": "text",
+     "required": false
+    }
+   ]
+  },
+  "action_tasks": {
+   "description": "1.7.0: the tasks (the work) of an action. Never deleted: a task that is not needed gets the status Not needed.",
+   "key": [
+    "task_id"
+   ],
+   "columns": [
+    {
+     "name": "task_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "action_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "seq",
+     "type": "int",
+     "required": true
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "owner_kind",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "contractor",
+      "internal"
+     ]
+    },
+    {
+     "name": "owner",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "assignee",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "due_date",
+     "type": "date",
+     "required": false
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "required": true,
+     "enum": [
+      "Open",
+      "Contractor informed",
+      "Waiting stoppage",
+      "In progress",
+      "Done",
+      "Not needed"
+     ]
+    },
+    {
+     "name": "needs_stop",
+     "type": "bool",
+     "required": false
+    },
+    {
+     "name": "est_stop_h",
+     "type": "float",
+     "required": false
+    },
+    {
+     "name": "notes",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "template_step",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "required": true
+    },
+    {
+     "name": "created_by",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp",
+     "required": true
+    },
+    {
+     "name": "updated_by",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "done_at",
+     "type": "timestamp",
+     "required": false
+    },
+    {
+     "name": "done_by",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "done_note",
      "type": "text",
      "required": false
     }
@@ -1375,6 +1517,93 @@ var SCHEMA = {
     {
      "name": "updated_by",
      "type": "text",
+     "required": false
+    }
+   ]
+  },
+  "task_templates": {
+   "description": "1.7.0: ready-made task lists picked when an action is created; an auto draft gets the active template that applies to its rule.",
+   "key": [
+    "template_id"
+   ],
+   "columns": [
+    {
+     "name": "template_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "name",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "applies_to",
+     "type": "text",
+     "required": false
+    },
+    {
+     "name": "active",
+     "type": "bool",
+     "required": true
+    },
+    {
+     "name": "sort_order",
+     "type": "int",
+     "required": true
+    },
+    {
+     "name": "updated_at",
+     "type": "timestamp",
+     "required": false
+    },
+    {
+     "name": "updated_by",
+     "type": "text",
+     "required": false
+    }
+   ]
+  },
+  "task_template_steps": {
+   "description": "1.7.0: the steps (tasks) of each task template, in order. Saving a template replaces all its steps.",
+   "key": [
+    "template_id",
+    "seq"
+   ],
+   "columns": [
+    {
+     "name": "template_id",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "seq",
+     "type": "int",
+     "required": true
+    },
+    {
+     "name": "title",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "default_owner",
+     "type": "text",
+     "required": true
+    },
+    {
+     "name": "due_offset_days",
+     "type": "int",
+     "required": true
+    },
+    {
+     "name": "needs_stop",
+     "type": "bool",
+     "required": false
+    },
+    {
+     "name": "est_stop_h",
+     "type": "float",
      "required": false
     }
    ]
@@ -1885,6 +2114,98 @@ var SCHEMA = {
     "active": true,
     "sort_order": 6,
     "default_assignee": ""
+   }
+  ],
+  "taskTemplates": [
+   {
+    "template_id": "TT-REPEAT",
+    "name": "Repeated failure",
+    "applies_to": "auto_repeat,auto_chronic",
+    "active": true,
+    "sort_order": 1,
+    "steps": [
+     {
+      "title": "Repair",
+      "default_owner": "area_contractor",
+      "due_offset_days": 2,
+      "needs_stop": true,
+      "est_stop_h": null
+     },
+     {
+      "title": "Root cause (5-why)",
+      "default_owner": "MEC",
+      "due_offset_days": 7,
+      "needs_stop": false,
+      "est_stop_h": null
+     },
+     {
+      "title": "Corrective action",
+      "default_owner": "area_contractor",
+      "due_offset_days": 21,
+      "needs_stop": true,
+      "est_stop_h": null
+     },
+     {
+      "title": "Spare parts",
+      "default_owner": "MEC",
+      "due_offset_days": 14,
+      "needs_stop": false,
+      "est_stop_h": null
+     }
+    ]
+   },
+   {
+    "template_id": "TT-LONGSTOP",
+    "name": "Long stop",
+    "applies_to": "auto_long_stop",
+    "active": true,
+    "sort_order": 2,
+    "steps": [
+     {
+      "title": "Restore and report",
+      "default_owner": "area_contractor",
+      "due_offset_days": 1,
+      "needs_stop": false,
+      "est_stop_h": null
+     },
+     {
+      "title": "Root cause (5-why)",
+      "default_owner": "MEC",
+      "due_offset_days": 7,
+      "needs_stop": false,
+      "est_stop_h": null
+     },
+     {
+      "title": "Corrective action",
+      "default_owner": "area_contractor",
+      "due_offset_days": 21,
+      "needs_stop": true,
+      "est_stop_h": null
+     }
+    ]
+   },
+   {
+    "template_id": "TT-PLANNED",
+    "name": "Planned overrun",
+    "applies_to": "auto_planned_overrun",
+    "active": true,
+    "sort_order": 3,
+    "steps": [
+     {
+      "title": "Review planned work",
+      "default_owner": "PRO",
+      "due_offset_days": 7,
+      "needs_stop": false,
+      "est_stop_h": null
+     },
+     {
+      "title": "Adjust allowance or plan",
+      "default_owner": "PRO",
+      "due_offset_days": 14,
+      "needs_stop": false,
+      "est_stop_h": null
+     }
+    ]
    }
   ]
  }

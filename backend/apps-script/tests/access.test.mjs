@@ -26,6 +26,8 @@ const REQ = {
   saveAreaTargets: [['settings'], 'Edit'], runActionChecks: [['settings'], 'Edit'],
   setAreaActive: 'admin',
   logout: 'session', listActiveUsers: 'admin', listAuditLog: 'admin',
+  addTask: [['actions'], 'Edit'], updateTask: [['actions'], 'Edit'], applyTemplate: [['actions'], 'Edit'], listTasks: [['actions'], 'View'],
+  listTaskTemplates: 'session', saveTaskTemplates: [['settings'], 'Edit'],
 };
 const RANK = { Hidden: 0, View: 1, Edit: 2 };
 

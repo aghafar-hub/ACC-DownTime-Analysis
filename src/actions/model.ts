@@ -11,8 +11,11 @@ import { dayText, monthShort } from '../util/dates';
 
 // ---------------------------------------------------------------- labels
 
-/** The six statuses shown as board columns (Cancelled only when asked for). */
-export const BOARD_STATUSES: ActionStatus[] = ['Draft', 'Open', 'Contractor informed', 'Waiting stoppage', 'In progress', 'Closed'];
+/**
+ * The statuses shown as board columns (Cancelled only when asked for). Backend 1.7.0: Contractor informed and Waiting stoppage
+ * are task statuses now (TASK_STATUSES); the UI for tasks is built separately.
+ */
+export const BOARD_STATUSES: ActionStatus[] = ['Draft', 'Open', 'In progress', 'Closed'];
 /** The open statuses (everything before Closed / Cancelled). */
 export const OPEN_STATUSES: ActionStatus[] = ACTION_STATUSES.filter((s) => !isTerminalStatus(s));
 
@@ -355,12 +358,12 @@ export interface StatusOption {
 }
 
 /**
- * The status an action normally moves to next: Draft -> Open -> Contractor informed -> (Waiting stoppage when it needs a
- * stop) -> In progress -> Closed (only for people who may close). Null when there is no such step for this person.
+ * The status an action normally moves to next: Draft -> Open -> In progress -> Closed (only for people who may close). Null
+ * when there is no such step for this person. (Backend 1.7.0: with tasks, Open and In progress follow the tasks.)
  */
 export function nextStatus(a: Pick<Action, 'status' | 'needs_stop'>, canClose: boolean): ActionStatus | null {
   if (isTerminalStatus(a.status)) return null;
-  const order = BOARD_STATUSES.filter((s) => s !== 'Waiting stoppage' || a.needs_stop || a.status === 'Waiting stoppage');
+  const order = BOARD_STATUSES;
   const at = order.indexOf(a.status);
   const next = at >= 0 ? order[at + 1] : 'In progress';
   if (!next) return null;

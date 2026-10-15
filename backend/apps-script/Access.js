@@ -52,6 +52,13 @@ var ACTION_RULES = {
   getAreaTargets: { auth: 'session' },
   saveAreaTargets: { auth: 'tabs', tabs: ['settings'], level: 'Edit' },
   runActionChecks: { auth: 'tabs', tabs: ['settings'], level: 'Edit' },
+  // 1.7.0: anyone with Edit on actions works the tasks; the templates are part of Settings.
+  addTask: { auth: 'tabs', tabs: ['actions'], level: 'Edit' },
+  updateTask: { auth: 'tabs', tabs: ['actions'], level: 'Edit' },
+  applyTemplate: { auth: 'tabs', tabs: ['actions'], level: 'Edit' },
+  listTasks: { auth: 'tabs', tabs: ['actions'], level: 'View' },
+  listTaskTemplates: { auth: 'session' },
+  saveTaskTemplates: { auth: 'tabs', tabs: ['settings'], level: 'Edit' },
   // 1.6.0: signing out is logged; who is online and the change log are for the Admin role only.
   logout: { auth: 'session', mustChangeOk: true },
   listActiveUsers: { auth: 'admin' },

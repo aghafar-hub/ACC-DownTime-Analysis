@@ -43,7 +43,8 @@ export const ALERT_TYPE_GROUPS: AlertTypeGroup[] = [
   { id: 'availability_low', label: 'Availability below target', help: 'An area ended its latest month under the target.', types: ['availability_low'] },
   { id: 'planned_overrun', label: 'Planned stops over allowance', help: 'An area used more planned-stop hours in a month than its allowance.', types: ['planned_overrun'] },
   { id: 'upload_gap', label: 'No recent upload', help: 'No new data has arrived for a while.', types: ['upload_gap'] },
-  { id: 'action_due', label: 'Overdue actions', help: 'An action passed its due date and is not closed.', types: ['action_due'] },
+  { id: 'action_due', label: 'Overdue actions and tasks', help: 'An action or one of its tasks passed its due date and is not finished.', types: ['action_due', 'task_overdue'] },
+  { id: 'action_ready_to_close', label: 'Actions ready to close', help: 'Every task of an action is done or not needed (for the people who can close).', types: ['action_ready_to_close'] },
   { id: 'updates', label: 'Updates', help: 'Workbook uploads and, for administrators, user changes.', types: ['upload_done', 'user_event'] },
 ];
 

@@ -44,7 +44,10 @@ function applyColumnFormats_(sheet, table, headers) {
   }
 }
 
-/** Adds the starting lines, areas, classifications, roles, settings, role access and contractors. Never overwrites. */
+/**
+ * Adds the starting lines, areas, classifications, roles, settings, role access, contractors and task templates. Never
+ * overwrites. 1.7.0: also moves the old action statuses to tasks, once (migrateActions_ in Tasks.js).
+ */
 function seedDefaults() {
   var seeds = SCHEMA.seeds;
   var added = {};
@@ -75,6 +78,11 @@ function seedDefaults() {
     seed(T.TAB_ACCESS, function (r) { return r.subject_type + '|' + r.subject_id + '|' + r.tab_id; }, access);
     // contractors and internal teams of the Actions page (1.4.0); an existing id is never touched
     seed(T.CONTRACTORS, function (r) { return r.contractor_id; }, seeds.contractors || []);
+    // 1.7.0: the three task templates (an existing template id is never touched), then the one-time move of the old action
+    // statuses Contractor informed / Waiting stoppage / In progress to tasks (Tasks.js migrateActions_; runs once)
+    added[T.TASK_TEMPLATES] = seedTaskTemplates_(seeds.taskTemplates || []);
+    var moved = migrateActions_();
+    added.actions_moved_to_tasks = moved.migrated;
     auditLog_('setup', 'seed_defaults', '', '', JSON.stringify(added));
   });
   Logger.log('Defaults added: ' + JSON.stringify(added));

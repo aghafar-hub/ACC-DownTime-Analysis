@@ -60,6 +60,13 @@ var HANDLERS = {
   getAreaTargets: function (s, p) { return getAreaTargets_(p.year); },
   saveAreaTargets: function (s, p) { return saveAreaTargets_(s, p.year, p.rows); },
   runActionChecks: function (s) { return runActionChecksAction_(s); },
+  // 1.7.0: tasks inside actions and task templates (Tasks.js)
+  addTask: function (s, p) { return addTask_(s, p.actionId, p.task); },
+  updateTask: function (s, p) { return updateTask_(s, p.taskId, p.changes); },
+  applyTemplate: function (s, p) { return applyTemplate_(s, p.actionId, p.templateId); },
+  listTasks: function (s, p) { return listTasks_(s, p.filter); },
+  listTaskTemplates: function () { return listTaskTemplates_(); },
+  saveTaskTemplates: function (s, p) { return saveTaskTemplates_(s, p.templates); },
   // 1.6.0: sign-out (audited), and the two Admin-only pages Settings > Active users and Settings > Activity log
   logout: function (s) { return logout_(s); },
   listActiveUsers: function () { return listActiveUsers_(); },

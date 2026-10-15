@@ -54,7 +54,9 @@ export function storedTarget(n: Notification, env: LinkEnv): Target {
       return { link: env.canView('upload') ? { to: '/upload' } : null, label: t('Open Upload') };
     case 'user_event':
       return { link: env.canView('users') ? { to: '/settings/users' } : null, label: t('Open users') };
-    case 'action_due': {
+    case 'action_due':
+    case 'task_overdue': // backend 1.7.0: source_ref is the action; the task is in the key task_due|<task_id>|<due>
+    case 'action_ready_to_close': {
       const id = n.source_ref || keyParts(n)[1] || '';
       return { link: env.canView('actions') ? { to: id ? `/actions${qs([['id', id]])}` : '/actions' } : null, label: id ? t('Open action {id}', { id }) : t('Open Actions') };
     }

@@ -68,6 +68,10 @@ wins over the role row. Missing row = Hidden.
 | `saveContractors`, `saveAreaTargets`, `runActionChecks` | `settings` Edit |
 | `logout` | any valid session, also with a temporary password (backend 1.6.0, section 12) |
 | `listActiveUsers`, `listAuditLog` | the Admin role (`ROLE-ADMIN`), whatever the tab access (backend 1.6.0, section 12) |
+| `addTask`, `updateTask`, `applyTemplate` | `actions` Edit (backend 1.7.0, section 13) |
+| `listTasks` | `actions` View (backend 1.7.0) |
+| `listTaskTemplates` | any valid session (backend 1.7.0) |
+| `saveTaskTemplates` | `settings` Edit (backend 1.7.0) |
 
 `getStartup.years` is sorted newest first.
 
@@ -246,7 +250,9 @@ derived by the app from live data and are never stored.
 
 - `items`: stored rows with `status = open` that have not passed `expires_at` (resolved and expired rows stay in the sheet
   but are never returned), newest first. Rows of type `user_event` are returned only to people whose access to the `users`
-  tab is not Hidden. Everyone signed in sees all other alerts and updates; the app filters them with the person's watched areas.
+  tab is not Hidden. Backend 1.7.0: a row with `recipients` (comma-separated user ids and/or `@closers` = the people in
+  `actions_closers` and the Admins, resolved when read) is returned only to them; blank `recipients` = everyone. Everyone signed in
+  sees all other alerts and updates; the app filters them with the person's watched areas.
 - `state`: only the caller's rows, only for returned items. `prefs`: only the caller's rows. Neither can be read or written for
   another person; a `userId` sent by the client is ignored.
 - `setNotificationState`: the notification must be visible to the caller (else `not_found`). `snoozed` needs `snoozeUntil`:
@@ -298,7 +304,9 @@ class other than PL and CIR (owner decision P2; `src/calc/events.ts` `isFailureH
 | `upload_done` (update) | `uploadFinish` completes an upload | `upload\|<batch_id>` | never |
 | `user_event` (update) | a user is created, a password is reset, a role is changed | `user\|<kind>\|<user_id>\|<epoch ms>` (kind: `created`, `password_reset`, `role_changed`) | never |
 | `planned_overrun` (1.4.0) | an area with `area_targets` for the year used more planned hours in a complete month than that month's allowance (`monthly_split`); section 10.4 | `planned\|<area>\|<yyyy-mm>` | stays until it expires |
-| `action_due` (1.4.0) | an action that is not Closed or Cancelled has a `due_date` before today (plant date, server clock) | `action_due\|<action_id>\|<due_date>` | the action is closed or cancelled, or its due date moves |
+| `action_due` (1.4.0) | an action that is not Closed or Cancelled has a `due_date` before today (plant date, server clock). 1.7.0: an action with tasks uses its `due_date_derived` (the latest due date of its open tasks) and is left out while it is a Draft | `action_due\|<action_id>\|<due date used>` | the action is closed or cancelled, or its due date moves |
+| `task_overdue` (1.7.0) | an open task (not Done / Not needed) of an action that is not Draft, Closed or Cancelled has a `due_date` before today. `recipients` = the task's person and the action's owner (`assignee`); `@closers` when neither is set. `source_ref` = the action | `task_due\|<task_id>\|<due_date>` | the task is done or not needed, its due date moves, or the action is closed or cancelled |
+| `action_ready_to_close` (1.7.0) | an action that is not Draft, Closed or Cancelled has at least one task and every task is Done or Not needed. `recipients` = `@closers`. Raised at once by the task change (and kept by the checks) | `ready\|<action_id>\|<number of tasks>` | a task is reopened or added, or the action is closed or cancelled (at once) |
 
 Recency: a `long_stop` or `repeat_group` alert is only raised when the event (the last event of the cluster) started no more than
 `notif_retention_days` before `L`. Older ones would expire at once, and without this the first check on a database with years of
@@ -307,14 +315,17 @@ history would raise hundreds of alerts. `failure_spike` and `availability_low` a
 Dedupe: `dedupe_key` is unique over all statuses. A check never creates a second row for a key. A `resolved` row is re-opened (new
 expiry, same `notification_id`) if its condition returns; an `expired` row is never re-opened. Expiry: `expires_at = created_at +
 notif_retention_days`; open rows past it become `expired` at the next check and are hidden from `getNotifications` right away.
-`long_stop`, `repeat_group` and `upload_gap` rows whose key is no longer produced by the rules become `resolved` at the next check.
+`long_stop`, `repeat_group`, `upload_gap`, `action_due`, `task_overdue` and `action_ready_to_close` rows whose key is no longer produced
+by the rules become `resolved` at the next check. When an open row's `recipients` change (a new person on the task), the check updates
+them (1.7.0).
 
 When checks run: at the end of `uploadFinish` (never fails the upload; also writes `upload_done`), on `runNotificationChecks`, and in
 the daily job. Each time, the action checks (section 10.4) run right after them, best effort.
 
 **Category** (1.4.0). Every item returned by `getNotifications` carries `category`, derived from `type` and not stored:
 Reliability (`long_stop`, `repeat_group`, `failure_spike`), Availability & planned (`availability_low`, `planned_overrun`),
-Data quality (`upload_gap`, `upload_done`), Actions (`action_due`), System (`user_event`). The table is `NOTIF_CATEGORY_` in
+Data quality (`upload_gap`, `upload_done`), Actions (`action_due`, `task_overdue`, `action_ready_to_close`), System (`user_event`).
+Alerts of the Actions category stay visible while their area is switched off (section 11). The table is `NOTIF_CATEGORY_` in
 `Notifications.js` and `NOTIFICATION_CATEGORY_OF` in `src/api/types.ts`. `user_event` rows are written by `createUser`, `resetPassword` and `updateUser` (role change), best effort.
 
 ### 9.4 Digest e-mail
@@ -331,14 +342,18 @@ Content (plain text and simple HTML, counts and titles only, never event rows):
   unknown or placeholder code (needs `master` Edit), equipment to review (`needs_review`, needs `master` Edit). Pending late months
   are known to the browser only and are not in the e-mail.
 - New alerts since the person's `last_digest_at`: open alerts of the person's `alert_types` and `watch_areas` (an alert without an
-  area always matches), not dismissed by the person, at most 10, most severe first (long stop, availability, spike, repeated group,
-  upload gap), the rest as "and N more".
+  area always matches), not dismissed by the person and meant for them (`recipients`, 1.7.0), at most 10, most severe first (long stop,
+  availability, planned overrun, spike, repeated group, task overdue, action overdue, ready to close, upload gap), the rest as "and N more".
 - A link from `app_url` (omitted when blank).
 
 `MailApp` quota, permission and send errors are written to `audit_log` (`digest_failed`, with the user id, never the address) and never
 raise; when the daily quota is used up the run stops. `last_digest_at` is saved only after a successful send.
 
 ## 10. Actions (backend 1.4.0)
+
+**Backend 1.7.0 changed the statuses** (section 13): an action is Draft, Open, In progress, Closed or Cancelled; Contractor informed and
+Waiting stoppage are task statuses; Open and In progress follow the tasks; closing needs every task Done or Not needed. What follows is
+the 1.4.0 behaviour, which still holds for an action without tasks.
 
 Design: `docs/actions-design.md` and the mockups in `docs/actions-mockups/`. Code: `backend/apps-script/Actions.js` (plain JS) and
 `src/api/mockActions.ts` (the same rules for the mock, written with `src/calc`). `tests/unit/contract.test.ts` runs one scenario against
@@ -531,8 +546,108 @@ change; users (create, change with `field: old -> new`, password reset, page acc
 key), contractors and area targets (what changed per row); master data (equipment, areas, reasons, aliases with the changed fields
 `old -> new`; alias deletes); events (edit with every changed field `old -> new` and the note, void, restore, keep as entered,
 re-check); upload start, every chunk and the finish (file name, counts and the review decisions such as `late_month added 18`);
-actions (create, merge, every change incl. status and evidence, comments from 1.6.0); areas on / off; manual runs of the alert and
-action checks. Not logged: reads, a person's own notification state (seen, snoozed, dismissed) and own preferences (alert types, areas
+actions (create, merge, every change incl. status and evidence, comments from 1.6.0); tasks (1.7.0: `create_task`, `update_task` with
+every change `old -> new`, the note and the action status it moved, `apply_template`, `save_task_templates` with the old and new steps,
+`migrate_actions` once by setup); areas on / off; manual runs of the alert and action checks. Not logged: reads, a person's own notification state (seen, snoozed, dismissed) and own preferences (alert types, areas
 followed, digest, saved views and report templates, theme). Passwords, temporary passwords and tokens are never written; details are
 cut at 500 characters.
 
+## 13. Tasks inside actions (backend 1.7.0)
+
+Design: `docs/actions-mockups/tasks/` (README and screens, owner-approved). Code: `backend/apps-script/Tasks.js` (plus the changes in
+`Actions.js` and `Notifications.js`) and `src/api/mockActions.ts`; `tests/unit/contract.test.ts` runs the same task scenario against both.
+Two levels only: an **action** is the problem (one event or a group: equipment + reason), its **tasks** are the work.
+
+### 13.1 Tables
+
+- `action_tasks`: `task_id` (`AT-` + 12 hex), `action_id`, `seq` (1, 2, 3 within the action), `title`, `owner_kind` / `owner` (a contractor
+  or team as for actions; blank owner = `internal`), `assignee` (the person: a user id or a free name), `due_date`, `status`, `needs_stop`,
+  `est_stop_h` (blank when not estimated, always blank without a stop), `notes`, `template_step` (the template step title it came from;
+  blank = added by hand), `created_*`, `updated_*`, `done_at` / `done_by` / `done_note` (set when it becomes Done or Not needed, cleared
+  when it is reopened). **Tasks are never deleted**: a task that is not needed gets the status Not needed. At most 50 per action.
+- `action_log` gains `task_id` and the kinds `task_create`, `task_status` (task statuses in `from_status` / `to_status`, the text is the
+  note), `task_edit` (`#<seq> field: old -> new; ...`) and `task_note`.
+- `actions` gains `template_id` (the template the tasks were first made from).
+- `task_templates` (`template_id`, `name`, `applies_to` csv of action sources, `active`, `sort_order`, `updated_*`) and
+  `task_template_steps` (`template_id`, `seq`, `title`, `default_owner` = `area_contractor` or a contractor / team id, `due_offset_days`
+  0-365, `needs_stop`, `est_stop_h`). Seeded by `seedDefaults` when the id is missing (an existing template is never touched):
+  - `TT-REPEAT` Repeated failure (for `auto_repeat`, `auto_chronic`): Repair (area contractor, 2 d, needs a stop) · Root cause (5-why)
+    (MEC, 7 d) · Corrective action (area contractor, 21 d, needs a stop) · Spare parts (MEC, 14 d).
+  - `TT-LONGSTOP` Long stop (for `auto_long_stop`): Restore and report (area contractor, 1 d) · Root cause (5-why) (MEC, 7 d) ·
+    Corrective action (area contractor, 21 d, needs a stop).
+  - `TT-PLANNED` Planned overrun (for `auto_planned_overrun`): Review planned work (PRO, 7 d) · Adjust allowance or plan (PRO, 14 d).
+  - "Check after 60 days" is **not a task**: it is the action's effectiveness check (section 10.4), which starts when the action is
+    closed. As a task it would block closing for 60 days.
+- `notifications` gains `recipients` (section 9.1) and the types `task_overdue` and `action_ready_to_close` (section 9.3).
+
+### 13.2 Statuses
+
+- **Task**: Open, Contractor informed, Waiting stoppage, In progress, Done, Not needed. Any status may move to any other, with three
+  rules: Contractor informed only for a task whose owner is an external contractor (`owner_kind = contractor`; changing the owner of
+  such a task to a team is refused too); Done needs `note` (what was done) and Not needed needs `note` (the reason), at least 3
+  characters. "Waiting stoppage" is the status; `needs_stop` says the work needs the area stopped (the Shutdown list).
+- **Action**: Draft, Open, In progress, Closed, Cancelled. Draft stays until it is accepted by hand (`updateAction` to Open). With
+  tasks, Open and In progress **follow the tasks**: In progress as soon as any task is not Open, Open when all are Open (the change
+  is written by the caller as a `status` row "Follows the tasks: ..."). Accepting a draft or reopening a closed action lands on what
+  the tasks say. Asking for Open or In progress against the tasks is refused (`bad_request`). Closed and Cancelled stay manual (closers
+  only, note of 3+ characters, as in 1.4.0). **Closing is refused while any task is open** (error code `tasks_open`, "N tasks are still
+  open: ..."); cancelling is not. An action without tasks behaves as in 1.4.0 (In progress by hand, its own due date, closing allowed).
+- `updateAction` and `createAction` refuse the removed statuses Contractor informed and Waiting stoppage with a clear message
+  (`bad_request`, "... is a task status since version 1.7.0 ...").
+- **Due date**: an action with tasks returns `due_date_derived` = the latest due date of its open tasks ('' when none has one);
+  `due_date` stays stored and is the due date of an action without tasks. `updateAction` refuses a new `due_date` on an action with tasks.
+- On a Closed or Cancelled action, tasks cannot be added or changed; a note can still be added (`updateTask` with `note` only).
+
+TS helpers for the app (`src/api/types.ts`): `TASK_STATUSES`, `TASK_CLOSED_STATUSES`, `isTaskOpen`, `actionProgress(action, tasks, today?)`
+→ `{ done, total, open, overdue, nextDue, notNeeded, needsStop, stopHours }` (done counts Done and Not needed), `deriveActionStatus`,
+`actionDueDate`, `canClose`, `isReadyToClose`, `taskStatusProblem`, `localToday`.
+
+### 13.3 Calls
+
+| Action | Params | Result |
+|---|---|---|
+| `listActions` | none | as 1.4.0 plus `tasks` (every task of the returned actions, by action and seq) and `templates` (every template with its steps) |
+| `createAction` | `input` (`NewAction` + `tasks?: NewTask[]`, `template_id?`), `options` | `{ action, logs, tasks, merged }` |
+| `updateAction`, `addActionComment` | as 1.4.0 | `{ action, logs, tasks }` |
+| `addTask` | `actionId`, `task` (`NewTask`) | `TaskResult` `{ action, tasks, logs, task }` |
+| `updateTask` | `taskId`, `changes` (`TaskChanges`: `title`, `owner`, `assignee`, `due_date`, `status`, `needs_stop`, `est_stop_h`, `notes`, `note`) | `TaskResult` |
+| `applyTemplate` | `actionId`, `templateId` | `TaskResult` with `added` (0 when every step is already there) |
+| `listTasks` | `filter` (`TaskFilter`, optional) | `{ tasks: TaskView[], today }` |
+| `listTaskTemplates` | none | `TaskTemplate[]` |
+| `saveTaskTemplates` | `templates` (`TaskTemplateInput[]`, 1-30) | every template |
+
+- `createAction`: `tasks` (at most 50, each starts Open) are created with the action; when `tasks` is left out and `template_id` is given,
+  the template's steps are created (owner `area_contractor` = the active external contractor of the action's area, else the named
+  contractor or team; person = that owner's `default_assignee`; due = today + `due_offset_days`); with both, the tasks are created and
+  `template_id` is only recorded. A switched-off or unknown template is refused. When the action is merged into an open one (dedupe), the
+  tasks whose `template_step` that action does not have yet are added to it. The action's status follows its tasks from the start.
+- `applyTemplate` adds the steps whose title is not yet the `template_step` of a task of the action; it sets `template_id` when the action
+  has none.
+- `updateTask` with only `note` adds a `task_note` row; with a status change the note goes on the `task_status` row (and into `done_note`
+  for Done / Not needed). "Nothing was changed." when nothing would change.
+- **Ready to close**: when the last open task of an accepted action closes, the closers get `action_ready_to_close` at once; reopening a
+  task or adding one resolves it; closing or cancelling the action resolves it. Never for a Draft.
+- **listTasks** (server-side filter; the same data is also in `listActions` for the board): tasks of actions that are not Draft
+  (unless `include_drafts`) or Cancelled. `status` = `open` (default), `closed`, `all` or a list; `mine` (the caller is the task's
+  person), `overdue` (open and due before today), `needs_stop`, `owner`, `assignee`, `area_id`, `line_id` (of the action), `action_id`,
+  `done_since` (date). Each `TaskView` adds the action's title, status, owner, assignee, area, line, equipment, `overdue` and
+  `waiting_since` (when it last moved to Waiting stoppage). Sorted overdue first, then by due date (no date last), action and seq. The
+  Tasks tab uses it as is; the Shutdown list is `{ needs_stop: true }` grouped by area in the app.
+- `saveTaskTemplates`: inserts (blank `template_id` gets `TT-` + 8 hex) or updates the templates sent and replaces their steps. Names
+  are unique (case-insensitive, `conflict`), an action source belongs to at most one active template (`conflict`), 1-20 steps with
+  unique titles, `default_owner` = `area_contractor` or an active contractor / team, `due_offset_days` 0-365, `est_stop_h` 0-1000 or blank
+  (kept only with `needs_stop`). An unknown `template_id` is `not_found`. Templates are never deleted: switch one off. Changes apply
+  to new actions only; existing tasks are not touched.
+- **Auto drafts** (section 10.3): a new draft gets the tasks of the active template whose `applies_to` has the rule's source (lowest
+  `sort_order` first), proposed (Open), with owners from the draft's area and due dates from the drafting day; `template_id` is set.
+  An auto draft whose key has an open action only adds evidence, as before.
+
+### 13.4 The 1.7.0 migration
+
+`migrateActions_` (Tasks.js) runs **once**, from `seedDefaults`, after `ensureSchema` has made `action_tasks` (if the sheet is missing it
+does nothing and says so; run `seedDefaults` again after `ensureSchema`). Every action in Contractor informed, Waiting stoppage or In
+progress that has no task yet becomes In progress with **one task carrying the old status**: title = `required_action`, else the title;
+owner, person and due date from the action; Waiting stoppage also sets `needs_stop`; Contractor informed on an action owned by an
+internal team (not allowed for tasks) becomes In progress. History: a `task_create` row and a `status` row "Moved to tasks (backend
+1.7.0)", by `system`; one audit row `migrate_actions` by `setup`. Draft, Open, Closed and Cancelled stay as they are. It is idempotent: the
+Script Property `ACTIONS_TASKS_MIGRATED` marks it done, and an action that already has tasks is never touched.

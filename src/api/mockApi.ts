@@ -4,7 +4,7 @@
 // passwords. Data lives in memory only: a page reload starts again.
 import type {
   Access, AccessLevel, ActiveUser, AdminUser, Api, Area, AuditEntry, AuditGroup, DeviceKind, ClassificationCode, Equipment, EquipmentAlias, EventChanges,
-  EventRow, Notification, NotificationCheckResult, NotificationPrefs, NotificationState, Reason, Session, SessionUser,
+  EventRow, NewTask, Notification, NotificationCheckResult, NotificationPrefs, NotificationState, Reason, Session, SessionUser, TaskStatus,
   TabId, UploadBatch, UploadRow,
 } from './types';
 import {
@@ -360,7 +360,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
   const stored = (v: string | undefined): string | undefined => v || undefined;
 
   // ------------------------------------------------------------ notifications (rules: mockNotifications.ts; the server has its own port)
-  const RESOLVABLE = ['long_stop', 'repeat_group', 'upload_gap', 'action_due'];
+  const RESOLVABLE = ['long_stop', 'repeat_group', 'upload_gap', 'action_due', 'action_ready_to_close', 'task_overdue'];
   const SNOOZE_MAX_DAYS = 366;
   let notifications: Notification[] = [];
   let notifState: NotificationState[] = [];
@@ -378,6 +378,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       notification_id: `NT-${(++notifCounter).toString(16).padStart(16, '0')}`, type: c.type, severity: c.severity,
       dedupe_key: c.dedupe_key, title: c.title, detail: c.detail, area_id: c.area_id, line_id: c.line_id, source_ref: c.source_ref,
       created_at: tsAt(nowMs), expires_at: tsAt(nowMs + retentionDays * 86_400_000), status: 'open', resolved_at: '',
+      recipients: c.recipients ?? '',
     };
   }
 
@@ -395,6 +396,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
     const inactive = inactiveAreas();
     const cands = notificationCandidates({
       events: d.events.filter((e) => !inactive.has(e.area_id)), areas: d.areas, index: lookup(), settings: st, today: stamp.slice(0, 10), targets: actionStore.targets(), actions: actionStore.actions(),
+      tasks: actionStore.tasks(),
     });
     if (batch) cands.push(uploadDoneCandidate(batch));
     const byKey = new Map(notifications.map((n) => [n.dedupe_key, n]));
@@ -412,7 +414,10 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         ex.status = 'open';
         ex.resolved_at = '';
         ex.expires_at = tsAt(nowMs + st.retentionDays * 86_400_000);
+        ex.recipients = c.recipients ?? '';
         res.created++;
+      } else if (ex.status === 'open' && (ex.recipients ?? '') !== (c.recipients ?? '')) {
+        ex.recipients = c.recipients ?? ''; // backend 1.7.0: the alert follows a new task person or action owner
       }
     }
     for (const n of notifications) {
@@ -439,6 +444,24 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
     db: () => get(), index: () => lookup(), nowTs: () => nowTs(), notifications: () => notifications,
     retentionDays: () => parseNotifSettings(get().settings).retentionDays,
     audit: (userId, action, entityId, detail) => audit(userId, action, 'actions', entityId, detail),
+    // backend 1.7.0 (syncReadyToClose_): the ready-to-close alert follows the tasks at once
+    syncReady: (actionId, al) => {
+      const st = parseNotifSettings(get().settings);
+      const nowMs = now();
+      const stamp = tsAt(nowMs);
+      const rows = notifications.filter((n) => n.type === 'action_ready_to_close' && n.source_ref === actionId);
+      for (const r of rows) if (r.status === 'open' && (!al || r.dedupe_key !== al.key)) { r.status = 'resolved'; r.resolved_at = stamp; }
+      if (!al) return;
+      const ex = rows.find((r) => r.dedupe_key === al.key);
+      if (!ex) {
+        notifications.push(makeNotification({
+          type: al.type, severity: 'alert', dedupe_key: al.key, title: oneLine(al.title, 200), detail: oneLine(al.detail, 500), area_id: al.area,
+          line_id: al.line, source_ref: al.ref, recipients: al.recipients,
+        }, st.retentionDays, nowMs));
+      } else if (ex.status === 'resolved') {
+        Object.assign(ex, { status: 'open', resolved_at: '', expires_at: tsAt(nowMs + st.retentionDays * 86_400_000) });
+      }
+    },
   });
   let demoSeeded = !opts.demoActions;
 
@@ -465,39 +488,95 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       ]);
       runChecks();
       actionStore.runChecks();
-      // the auto drafts stay in Draft; demo actions from the other sources fill the other columns
+      // the auto drafts stay in Draft with their proposed template tasks; the demo actions below fill the other columns and show
+      // tasks in every state (backend 1.7.0): one action ready to close, overdue tasks, and tasks waiting for a stop in K.1, RM.1,
+      // CR, AFR and CM.1 (the Shutdown list)
       const due = (days: number) => tsAt(now() + days * 86_400_000).slice(0, 10);
       const eqOf = (area: string): string => d.equipment_areas.find((r) => r.area_id === area)?.equipment_id ?? '';
-      const steps: [string, string, Record<string, unknown>, string?][] = [
-        ['K.2', 'Open', { source: 'pareto', priority: 'High', due_date: due(10), assignee: mgr?.user_id ?? '', reason_key: 'Hydraulic pressure low' }, 'Owner asked for the last three shift reports.'],
-        ['RM.1', 'Contractor informed', { source: 'report', due_date: due(14), reason_key: 'Chute blockage' }, 'Contractor informed by phone in the morning meeting (outside the app).'],
-        ['K.1', 'Waiting stoppage', { source: 'event', needs_stop: true, due_date: due(20), reason_key: 'Chain slack' }],
-        ['FM.1', 'In progress', { source: 'notification', due_date: due(-3), root_cause: 'MEC', required_action: 'Replace the worn part and check the alignment.', reason_key: 'Liner worn' }],
-        ['CM.2', 'Closed', { source: 'pareto', reason_key: 'Belt torn', closure_note: 'Belt replaced and alignment checked; watching for repeats.' }],
-        ['PK.1', 'Cancelled', { source: 'manual', reason_key: 'Spout wear', closure_note: 'Duplicate of an older action.' }],
-      ];
-      steps.forEach(([area, status, extra, comment]) => {
+      const eng = d.users.find((u) => u.role_id === 'ROLE-ENG');
+      type DemoTask = NewTask & { status?: TaskStatus; note?: string };
+      const demo = (area: string, problem: string, extra: Record<string, unknown>, list: DemoTask[], opts2: { template?: string; comment?: string; close?: string } = {}): string => {
         const eq = eqOf(area);
-        if (!eq) return;
-        const { closure_note: note, ...fields } = extra;
         const created = actionStore.create(admin, {
-          title: `${eq} - ${String(fields.reason_key)} (demo)`, scope_kind: 'equipment', equipment_id: eq, status: 'Open',
-          owner: contractorOf(area), ...fields,
+          title: `${eq || area} - ${problem} (demo)`, status: 'Open', owner: contractorOf(area), reason_key: problem,
+          ...(eq ? { scope_kind: 'equipment', equipment_id: eq } : { scope_kind: 'area', area_id: area }),
+          ...(opts2.template ? { template_id: opts2.template } : { tasks: list.map(({ status: _s, note: _n, ...t }) => t) }), ...extra,
         }, { merge: false });
         const id = created.action.action_id;
-        if (status !== 'Open') actionStore.update(admin, id, note === undefined ? { status } : { status, closure_note: note });
-        if (comment) actionStore.comment(admin, id, comment);
+        (created.tasks ?? []).forEach((t, i) => {
+          const want = list[i];
+          if (!want) return;
+          const changes: Record<string, unknown> = {};
+          if (opts2.template) Object.assign(changes, Object.fromEntries(Object.entries(want).filter(([k]) => !['status', 'note', 'title', 'template_step'].includes(k))));
+          if (want.status && want.status !== 'Open') Object.assign(changes, { status: want.status, note: want.note ?? '' });
+          else if (want.note) changes.note = want.note;
+          if (Object.keys(changes).length) actionStore.updateTask(admin, t.task_id, changes);
+        });
+        if (opts2.template) list.slice((created.tasks ?? []).length).forEach(({ status, note, ...t }) => {
+          const added = actionStore.addTask(admin, id, t).task!;
+          if (status && status !== 'Open') actionStore.updateTask(admin, added.task_id, { status, note: note ?? '' });
+        });
+        if (opts2.comment) actionStore.comment(admin, id, opts2.comment);
+        if (opts2.close) actionStore.update(admin, id, { status: 'Closed', closure_note: opts2.close });
+        return id;
+      };
+      const each = (fn: () => void) => safely(fn);
+      each(() => demo('K.2', 'Hydraulic pressure low', { source: 'pareto', priority: 'High', assignee: mgr?.user_id ?? '' }, [], { template: 'TT-REPEAT', comment: 'Owner asked for the last three shift reports.' }));
+      each(() => demo('RM.1', 'Chute blockage', { source: 'report', priority: 'High', assignee: mgr?.user_id ?? '' }, [
+        { title: 'Repair', status: 'Done', note: 'Flap linkage pin replaced, actuator set to full stroke in the RM.1 stop.', est_stop_h: 4, needs_stop: true },
+        { title: 'Root cause (5-why)', status: 'In progress', note: 'Wet clay build-up after rain; flap stroke too short.', due_date: due(-2), assignee: eng?.user_id ?? '' },
+        { title: 'Corrective action', status: 'Waiting stoppage', note: 'Booked for the next RM.1 stop.', due_date: due(10), est_stop_h: 6 },
+        { title: 'Spare parts', status: 'Done', note: 'Liner plates and air blaster delivered to store 7.' },
+        { title: 'Moisture alarm at the clay feeder (8.5 % limit)', owner: 'AUT', due_date: due(5) },
+      ], { template: 'TT-REPEAT', comment: 'Planning confirmed the RM.1 stop. RHI will bring 4 fitters for the liner and the air blaster.' }));
+      each(() => demo('K.1', 'Inlet seal worn', { source: 'event' }, [
+        { title: 'Replace inlet seal plates (8 of 24)', owner: 'RHI', needs_stop: true, est_stop_h: 8, due_date: due(6), status: 'Waiting stoppage' },
+        { title: 'Burner tip inspection and swap', owner: 'MEC', needs_stop: true, est_stop_h: 3, due_date: due(16), status: 'Waiting stoppage' },
+        { title: 'Clean cyclone 4 cone, check the flap valve', owner: 'RHI', needs_stop: true, est_stop_h: 2, due_date: due(5), status: 'Contractor informed', note: 'Told the RHI supervisor at the morning meeting.' },
+      ]));
+      each(() => demo('CR', 'Reclaimer chain break', { source: 'notification', priority: 'High' }, [
+        { title: 'Replace chain links (12 pcs)', owner: 'RHI', needs_stop: true, est_stop_h: 8, due_date: due(-3), assignee: eng?.user_id ?? '', status: 'Contractor informed', note: 'RHI informed by phone.' },
+        { title: 'Root cause (5-why)', owner: 'MEC', due_date: due(-1) },
+      ]));
+      each(() => demo('AFR', 'Rotary feeder wear', { source: 'manual', scope_kind: 'area', area_id: 'AFR', equipment_id: undefined }, [
+        { title: 'Replace rotor tips', owner: 'RHI', needs_stop: true, est_stop_h: 2.5, due_date: due(-2), status: 'Waiting stoppage' },
+        { title: 'Fit an inspection door on the chute', owner: 'RHI', needs_stop: true, due_date: due(18), status: 'Waiting stoppage' },
+      ]));
+      each(() => demo('CM.1', 'Feed belt misalignment', { source: 'report' }, [
+        { title: 'Fit self-aligning idlers (3)', owner: 'ASEC', needs_stop: true, est_stop_h: 1.5, due_date: due(5), status: 'Contractor informed', note: 'ASEC site office informed.' },
+        { title: 'Belt scale re-calibration after the idlers', owner: 'ELE', due_date: due(9) },
+        { title: 'Order idlers', owner: 'MEC', status: 'Done', note: 'Three idlers in store 2.' },
+      ]));
+      each(() => demo('FM.1', 'Liner worn', { source: 'notification', root_cause: 'MEC' }, [
+        { title: 'Replace the worn liner', owner: 'RHI', needs_stop: true, est_stop_h: 5, status: 'Done', note: 'Liner replaced in the FM.1 stop.' },
+        { title: 'Check the alignment', owner: 'MEC', status: 'Done', note: 'Alignment within 0.05 mm.' },
+        { title: 'Spare liner on stock', owner: 'MEC', status: 'Not needed', note: 'One spare liner already in store 4.' },
+      ], { comment: 'All work done - waiting for a closer.' }));
+      each(() => demo('CM.2', 'Belt torn', { source: 'pareto' }, [
+        { title: 'Replace the belt', owner: 'ASEC', needs_stop: true, est_stop_h: 10, status: 'Done', note: 'Belt replaced.' },
+        { title: 'Check the alignment', owner: 'MEC', status: 'Done', note: 'Alignment checked.' },
+      ], { close: 'Belt replaced and alignment checked; watching for repeats.' }));
+      each(() => {
+        const id = demo('PK.1', 'Spout wear', { source: 'manual' }, [{ title: 'Inform ASEC: spout wear', owner: 'ASEC', due_date: due(-1) }]);
+        actionStore.update(admin, id, { status: 'Cancelled', closure_note: 'Duplicate of an older action.' });
       });
-      actionStore.create(admin, {
+      each(() => actionStore.create(admin, {
         title: 'Diaphragm slots clogged - inspect and clean', scope_kind: 'area', area_id: 'CM.3', status: 'Open', priority: 'Low',
         owner: 'MEC', due_date: due(7), detail: 'Seen at the last inspection round (demo).',
-      }, undefined);
+      }, undefined));
       runChecks();
     });
   }
 
-  const notifVisible = (n: Notification, access: Access, stamp: string): boolean =>
-    n.status === 'open' && !(n.expires_at && n.expires_at <= stamp) && !(n.type === 'user_event' && access.users === 'Hidden');
+  /** backend 1.7.0 (notifForUser_): blank recipients = everyone; else one of the user ids, or @closers for the closers and Admins. */
+  const forUser = (n: Notification, user: MockUser): boolean => {
+    const list = String(n.recipients ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    if (!list.length) return true;
+    const closer = actionStore.isCloser(user);
+    return list.some((r) => (r === '@closers' ? closer : r === user.user_id));
+  };
+  const notifVisible = (n: Notification, access: Access, stamp: string, user: MockUser): boolean =>
+    n.status === 'open' && !(n.expires_at && n.expires_at <= stamp) && !(n.type === 'user_event' && access.users === 'Hidden') && forUser(n, user);
 
   /** The theme saved with the account, '' when none (accountTheme_ in Notifications.js). */
   const accountTheme = (userId: string): string => {
@@ -507,7 +586,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
   /** Areas switched off (backend 1.5.0): their records are left out of every rule, as on the server. */
   const inactiveAreas = (): Set<string> => new Set(get().areas.filter((x) => !x.active).map((x) => x.area_id));
   /** An alert about an area that is switched off is not shown (overdue actions are). */
-  const ofInactiveArea = (n: Notification, inactive: Set<string>): boolean => !!n.area_id && inactive.has(n.area_id) && n.type !== 'action_due';
+  const ofInactiveArea = (n: Notification, inactive: Set<string>): boolean => !!n.area_id && inactive.has(n.area_id) && NOTIFICATION_CATEGORY_OF[n.type] !== 'Actions';
 
   const prefsOf = (userId: string): NotificationPrefs => {
     const out: NotificationPrefs = {};
@@ -1141,7 +1220,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       if (!notifSeeded) runChecks();
       const stamp = nowTs();
       const inactive = inactiveAreas();
-      const items = notifications.filter((n) => notifVisible(n, a.access, stamp) && !ofInactiveArea(n, inactive))
+      const items = notifications.filter((n) => notifVisible(n, a.access, stamp, a.user) && !ofInactiveArea(n, inactive))
         .sort((x, y) => (x.created_at < y.created_at ? 1 : x.created_at > y.created_at ? -1 : x.notification_id < y.notification_id ? -1 : 1));
       const ids = new Set(items.map((n) => n.notification_id));
       return clone({
@@ -1167,7 +1246,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         if (until > tsAt(now() + SNOOZE_MAX_DAYS * 86_400_000)) throw new ApiError('The snooze time is too far ahead.', 'bad_request');
       }
       const n = notifications.find((x) => x.notification_id === id);
-      if (!n || !notifVisible(n, a.access, nowTs())) throw new ApiError('Notification not found.', 'not_found');
+      if (!n || !notifVisible(n, a.access, nowTs(), a.user)) throw new ApiError('Notification not found.', 'not_found');
       const rec: NotificationState = { user_id: a.user.user_id, notification_id: id, state, snooze_until: until, updated_at: nowTs() };
       const at = notifState.findIndex((s) => s.user_id === rec.user_id && s.notification_id === id);
       if (at >= 0) notifState[at] = rec; else notifState.push(rec);
@@ -1268,6 +1347,32 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       const res = actionStore.runChecks();
       audit(a.user.user_id, 'action_check', 'actions', '', `Created ${res.created}, merged ${res.merged}, effectiveness ${res.effectiveness}`);
       return res;
+    },
+    // --- tasks inside actions (backend 1.7.0)
+    async addTask(token, actionId, task) {
+      const a = need(token, ['actions'], 'Edit');
+      return actionStore.addTask(a.user, actionId, task);
+    },
+    async updateTask(token, taskId, changes) {
+      const a = need(token, ['actions'], 'Edit');
+      return actionStore.updateTask(a.user, taskId, changes);
+    },
+    async applyTemplate(token, actionId, templateId) {
+      const a = need(token, ['actions'], 'Edit');
+      return actionStore.applyTemplate(a.user, actionId, templateId);
+    },
+    async listTasks(token, filter) {
+      const a = need(token, ['actions'], 'View');
+      seedDemoActions();
+      return actionStore.listTasks(a.user, filter ?? {});
+    },
+    async listTaskTemplates(token) {
+      auth(token);
+      return actionStore.listTemplates();
+    },
+    async saveTaskTemplates(token, templates) {
+      const a = need(token, ['settings'], 'Edit');
+      return actionStore.saveTemplates(a.user, templates);
     },
 
     // --- admin only (backend 1.6.0)

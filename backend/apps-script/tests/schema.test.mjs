@@ -45,11 +45,11 @@ test('notification tables follow docs/notifications-design.md section 4', () => 
   const schema = env.json(env.run('SCHEMA'));
   assert.ok(schema.version >= 2);
   const cols = (t) => schema.tables[t].columns.map((c) => c.name);
-  assert.deepEqual(cols('notifications'), ['notification_id', 'type', 'severity', 'dedupe_key', 'title', 'detail', 'area_id', 'line_id', 'source_ref', 'created_at', 'expires_at', 'status', 'resolved_at']);
+  assert.deepEqual(cols('notifications'), ['notification_id', 'type', 'severity', 'dedupe_key', 'title', 'detail', 'area_id', 'line_id', 'source_ref', 'created_at', 'expires_at', 'status', 'resolved_at', 'recipients']);
   assert.deepEqual(cols('notification_state'), ['user_id', 'notification_id', 'state', 'snooze_until', 'updated_at']);
   assert.deepEqual(cols('notification_prefs'), ['user_id', 'key', 'value', 'updated_at']);
   const col = (t, c) => schema.tables[t].columns.find((x) => x.name === c);
-  assert.deepEqual(col('notifications', 'type').enum, ['long_stop', 'repeat_group', 'failure_spike', 'availability_low', 'upload_gap', 'upload_done', 'user_event', 'planned_overrun', 'action_due']);
+  assert.deepEqual(col('notifications', 'type').enum, ['long_stop', 'repeat_group', 'failure_spike', 'availability_low', 'upload_gap', 'upload_done', 'user_event', 'planned_overrun', 'action_due', 'action_ready_to_close', 'task_overdue']);
   assert.deepEqual(col('notifications', 'severity').enum, ['alert', 'update']);
   assert.deepEqual(col('notifications', 'status').enum, ['open', 'resolved', 'expired']);
   assert.deepEqual(col('notification_state', 'state').enum, ['seen', 'snoozed', 'dismissed']);
@@ -70,13 +70,13 @@ test('action tables follow docs/wire-protocol.md section 10; contractor seeds us
   for (const c of ['action_id', 'title', 'detail', 'status', 'priority', 'source', 'source_ref', 'scope_kind', 'area_id', 'line_id', 'equipment_id',
     'reason_key', 'owner_kind', 'owner', 'due_date', 'created_by', 'created_at', 'updated_at', 'updated_by', 'closed_by', 'closed_at',
     'closure_note', 'effectiveness', 'effectiveness_checked_at', 'evidence', 'dedupe_key']) assert.ok(cols('actions').includes(c), c);
-  assert.deepEqual(cols('action_log'), ['log_id', 'action_id', 'at', 'by', 'kind', 'from_status', 'to_status', 'text']);
+  assert.deepEqual(cols('action_log'), ['log_id', 'action_id', 'at', 'by', 'kind', 'from_status', 'to_status', 'text', 'task_id']);
   for (const c of ['contractor_id', 'name', 'areas', 'kind', 'active', 'sort_order']) assert.ok(cols('contractors').includes(c), c);
   for (const c of ['area_id', 'year', 'availability_target_pct', 'planned_allowance_h_year', 'monthly_split', 'overhaul_months', 'updated_at', 'updated_by']) {
     assert.ok(cols('area_targets').includes(c), c);
   }
   const col = (t, c) => schema.tables[t].columns.find((x) => x.name === c);
-  assert.deepEqual(col('actions', 'status').enum, ['Draft', 'Open', 'Contractor informed', 'Waiting stoppage', 'In progress', 'Closed', 'Cancelled']);
+  assert.deepEqual(col('actions', 'status').enum, ['Draft', 'Open', 'In progress', 'Closed', 'Cancelled']);
   assert.deepEqual(col('actions', 'effectiveness').enum, ['', 'Watching', 'Effective', 'Not effective']);
   const areas = new Set(schema.seeds.areas.map((a) => a.area_id));
   const seeded = schema.seeds.contractors;

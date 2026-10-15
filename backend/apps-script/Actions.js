@@ -15,6 +15,8 @@
  * - "Now" for the rules is the latest stored event date (as for the notifications), never the wall clock.
  * - Closed and Cancelled need a closing note, and only people in actions_closers (or an Admin) may close, cancel,
  *   reopen (only to Open) or change a closed action. Everyone with Edit may comment.
+ * - 1.7.0 (Tasks.js, docs/wire-protocol.md section 13): statuses Draft, Open, In progress, Closed, Cancelled. With tasks, Open and
+ *   In progress follow the tasks, the due date is derived from them, and closing needs every task Done or Not needed (tasks_open).
  */
 
 var ACTION_TERMINAL_ = ['Closed', 'Cancelled'];
@@ -28,7 +30,8 @@ var ACTION_EDIT_FIELDS_ = [
 ];
 var ACTION_INPUT_FIELDS_ = [
   'title', 'detail', 'status', 'priority', 'source', 'source_ref', 'scope_kind', 'area_id', 'line_id', 'equipment_id',
-  'reason_key', 'owner', 'assignee', 'due_date', 'needs_stop', 'root_cause', 'required_action', 'evidence', 'dedupe_key'
+  'reason_key', 'owner', 'assignee', 'due_date', 'needs_stop', 'root_cause', 'required_action', 'evidence', 'dedupe_key',
+  'tasks', 'template_id' // 1.7.0 (Tasks.js)
 ];
 var CONTRACTOR_ID_PATTERN_ = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,39}$/;
 var EVENT_ID_PATTERN_ = /^EV-[0-9a-f]{16}$/;
@@ -85,11 +88,16 @@ function parseEvidence_(text) {
   }
 }
 
-/** The API shape of an action row: evidence as a list (stored as JSON text). */
-function actionOut_(r) {
+/**
+ * The API shape of an action row: evidence as a list (stored as JSON text); 1.7.0: template_id, and due_date_derived from the
+ * action's tasks (`tasks`; the stored due date when it has none).
+ */
+function actionOut_(r, tasks) {
   var o = {};
   Object.keys(r).forEach(function (k) { o[k] = r[k]; });
   o.evidence = parseEvidence_(r.evidence);
+  o.template_id = r.template_id || '';
+  o.due_date_derived = derivedDue_(r, tasks || []);
   return o;
 }
 
@@ -135,7 +143,8 @@ function mergeEvidence_(list, add) {
 function actionLogRow_(actionId, by, kind, from, to, text, at) {
   return {
     log_id: newId_('AL-', 16), action_id: actionId, at: at, by: by, kind: kind,
-    from_status: from || '', to_status: to || '', text: String(text === null || text === undefined ? '' : text).slice(0, ACTION_LONG_TEXT_MAX_)
+    from_status: from || '', to_status: to || '', text: String(text === null || text === undefined ? '' : text).slice(0, ACTION_LONG_TEXT_MAX_),
+    task_id: ''
   };
 }
 
@@ -259,6 +268,7 @@ function cleanNeedsStop_(v) {
 function cleanActionInput_(input, mctx, by, at) {
   requireObject_(input, 'Action');
   onlyKeys_(input, ACTION_INPUT_FIELDS_, 'An action');
+  refuseRemovedStatus_(input.status);
   var status = pickEnum_(input.status, actionEnum_('status'), 'Status', 'Draft');
   if (isTerminal_(status)) throw apiError_(ERR.BAD_REQUEST, 'A new action cannot start ' + status + '.');
   var scope = cleanScope_(input, mctx, true);
@@ -282,14 +292,24 @@ function cleanActionInput_(input, mctx, by, at) {
   };
   if (c.scope_kind !== 'equipment') c.reason_key = c.scope_kind === 'area' ? c.reason_key : '';
   if (!c.dedupe_key && c.scope_kind === 'equipment' && c.reason_key) c.dedupe_key = 'repeat|' + c.equipment_id + '|' + c.reason_key;
-  return { row: c, evidence: cleanEvidenceInput_(input.evidence, by, at) };
+  c.template_id = cleanText_(input.template_id === null ? '' : input.template_id, 'Template', false, 40);
+  return { row: c, evidence: cleanEvidenceInput_(input.evidence, by, at), tasks: cleanTaskList_(input.tasks, mctx) };
+}
+
+/** 1.7.0: Contractor informed and Waiting stoppage are task statuses now; say so instead of a bare "must be one of". */
+function refuseRemovedStatus_(status) {
+  if (REMOVED_ACTION_STATUSES_.indexOf(status) >= 0) {
+    throw apiError_(ERR.BAD_REQUEST, '"' + status + '" is a task status since version 1.7.0: set it on a task of the action. An action is Draft, Open, In progress, Closed or Cancelled.');
+  }
 }
 
 // ---------- reads ----------
 
 function listActions_(session) {
   var ast = actionSettings_();
-  var actions = readTable_(T.ACTIONS).map(actionOut_)
+  var tasks = readAllTasks_();
+  var byAction = tasksByAction_(tasks);
+  var actions = readTable_(T.ACTIONS).map(function (r) { return actionOut_(r, byAction[r.action_id]); })
     .sort(function (a, b) { return a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : (a.action_id < b.action_id ? 1 : -1); });
   // by time; rows written in the same millisecond keep the order they were written in (a stable sort)
   var logs = readTable_(T.ACTION_LOG).sort(function (a, b) { return a.at < b.at ? -1 : a.at > b.at ? 1 : 0; });
@@ -298,14 +318,16 @@ function listActions_(session) {
     .sort(function (a, b) { return a.display_name < b.display_name ? -1 : a.display_name > b.display_name ? 1 : 0; });
   return {
     actions: actions, logs: logs, contractors: sortContractors_(readTable_(T.CONTRACTORS).map(contractorOut_)),
-    people: people, closers: ast.closers, can_close: isCloser_(session, ast)
+    people: people, closers: ast.closers, can_close: isCloser_(session, ast),
+    tasks: tasks.map(taskOut_), templates: readTemplates_() // 1.7.0
   };
 }
 
 // ---------- writes ----------
 
 function actionResult_(row, merged) {
-  var out = { action: actionOut_(row), logs: actionLogsOf_(row.action_id) };
+  var tasks = tasksOfAction_(row.action_id);
+  var out = { action: actionOut_(row, tasks), logs: actionLogsOf_(row.action_id), tasks: tasks.map(taskOut_) };
   if (merged !== undefined) out.merged = merged;
   return out;
 }
@@ -327,6 +349,14 @@ function createAction_(session, input, options) {
     var clean = cleanActionInput_(input, actionMasterCtx_(), uid, stamp);
     var rows = readTable_(T.ACTIONS);
     var c = clean.row;
+    // 1.7.0: the tasks sent, or else the template's steps (due from today, owners from the action's area)
+    var tmpl = null;
+    if (c.template_id) {
+      tmpl = readTemplates_().filter(function (t) { return t.template_id === c.template_id; })[0];
+      if (!tmpl) throw apiError_(ERR.BAD_REQUEST, 'Task template ' + oneLine_(c.template_id, 40) + ' not found.');
+      if (!tmpl.active && clean.tasks === null) throw apiError_(ERR.BAD_REQUEST, 'The template "' + tmpl.name + '" is switched off.');
+    }
+    var taskInputs = clean.tasks !== null ? clean.tasks : tmpl ? templateTaskInputs_(tmpl, c.area_id, optionalTable_(T.CONTRACTORS), stamp.slice(0, 10)) : [];
     if (merge && c.dedupe_key) {
       var open = rows.filter(function (r) { return r.dedupe_key === c.dedupe_key && !isTerminal_(r.status); })
         .sort(function (a, b) { return a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : (a.action_id < b.action_id ? -1 : 1); })[0];
@@ -336,17 +366,30 @@ function createAction_(session, input, options) {
         updateRow_(T.ACTIONS, open._row, patch);
         appendRow_(T.ACTION_LOG, actionLogRow_(open.action_id, uid, 'evidence', '', '',
           'Merged instead of a new action (' + c.source + '): ' + c.title + '. ' + m.added + ' evidence item' + (m.added === 1 ? '' : 's') + ' added.', stamp));
-        auditLog_(uid, 'merge_action', T.ACTIONS, open.action_id, 'Merged a new ' + c.source + ' action, ' + m.added + ' evidence items added');
         Object.keys(patch).forEach(function (k) { open[k] = patch[k]; });
+        var mergedTasks = '';
+        if (taskInputs.length) {
+          var have = tasksOfAction_(open.action_id);
+          var built = buildTaskRows_(open.action_id, have, taskInputs, uid, stamp, true);
+          if (built.rows.length) {
+            storeNewTasks_(open, have, built, uid, stamp);
+            mergedTasks = ', ' + built.rows.length + ' task' + (built.rows.length === 1 ? '' : 's') + ' added';
+          }
+        }
+        auditLog_(uid, 'merge_action', T.ACTIONS, open.action_id, 'Merged a new ' + c.source + ' action, ' + m.added + ' evidence items added' + mergedTasks);
         return actionResult_(open, true);
       }
     }
     var row = actionRowFrom_(c, nextActionId_(rows, stamp), uid, stamp, clean.evidence);
+    var built2 = buildTaskRows_(row.action_id, [], taskInputs, uid, stamp, false);
+    row.status = deriveActionStatus_(row.status, built2.rows);
     appendRow_(T.ACTIONS, row);
+    appendRows_(T.ACTION_TASKS, built2.rows);
     var logs = [actionLogRow_(row.action_id, uid, 'status', '', row.status, 'Created (' + row.source + ')', stamp)];
     if (clean.evidence.length) logs.push(actionLogRow_(row.action_id, uid, 'evidence', '', '', clean.evidence.length + ' evidence item' + (clean.evidence.length === 1 ? '' : 's') + ' added.', stamp));
-    appendRows_(T.ACTION_LOG, logs);
-    auditLog_(uid, 'create_action', T.ACTIONS, row.action_id, row.status + ': ' + row.title);
+    appendRows_(T.ACTION_LOG, logs.concat(built2.logs));
+    auditLog_(uid, 'create_action', T.ACTIONS, row.action_id, row.status + ': ' + row.title +
+      (built2.rows.length ? ' (' + built2.rows.length + ' task' + (built2.rows.length === 1 ? '' : 's') + (tmpl ? ', template ' + tmpl.name : '') + ')' : ''));
     return actionResult_(row, false);
   });
 }
@@ -359,7 +402,7 @@ function actionRowFrom_(c, id, by, stamp, evidence) {
     assignee: c.assignee || '', due_date: c.due_date || '', needs_stop: !!c.needs_stop, root_cause: c.root_cause || '',
     required_action: c.required_action || '', created_by: by, created_at: stamp, updated_at: stamp, updated_by: by,
     closed_by: '', closed_at: '', closure_note: '', effectiveness: '', effectiveness_checked_at: '',
-    evidence: JSON.stringify(mergeEvidence_([], evidence || []).list), dedupe_key: c.dedupe_key || ''
+    evidence: JSON.stringify(mergeEvidence_([], evidence || []).list), dedupe_key: c.dedupe_key || '', template_id: c.template_id || ''
   };
 }
 
@@ -385,12 +428,14 @@ function updateAction_(session, actionId, changes) {
   requireObject_(changes, 'Changes');
   onlyKeys_(changes, ACTION_EDIT_FIELDS_.concat(['add_evidence']), 'Changes');
   if (!Object.keys(changes).length) throw apiError_(ERR.BAD_REQUEST, 'No changes to save.');
+  if (Object.prototype.hasOwnProperty.call(changes, 'status')) refuseRemovedStatus_(changes.status);
   var uid = session.user.user_id;
   return withLock_(function () {
     var stamp = nowTs_();
     var ast = actionSettings_();
     var mctx = actionMasterCtx_();
     var row = findActionOrThrow_(actionId);
+    var tasks = tasksOfAction_(row.action_id); // 1.7.0
     var closer = isCloser_(session, ast);
     var from = row.status;
     var has = function (k) { return Object.prototype.hasOwnProperty.call(changes, k); };
@@ -403,6 +448,9 @@ function updateAction_(session, actionId, changes) {
     if (has('reason_key')) next.reason_key = matchKey_(cleanText_(changes.reason_key, 'Reason', false, 200));
     if (has('assignee')) next.assignee = cleanText_(changes.assignee, 'Assignee', false, 100);
     if (has('due_date')) next.due_date = cleanDue_(changes.due_date);
+    if (has('due_date') && tasks.length && next.due_date !== row.due_date) {
+      throw apiError_(ERR.BAD_REQUEST, 'The due date of an action with tasks follows its tasks: change the due dates of the tasks.');
+    }
     if (has('needs_stop')) next.needs_stop = cleanNeedsStop_(changes.needs_stop);
     if (has('root_cause')) next.root_cause = pickEnum_(changes.root_cause === null ? '' : changes.root_cause, actionEnum_('root_cause'), 'Root cause', '');
     if (has('owner')) {
@@ -429,6 +477,20 @@ function updateAction_(session, actionId, changes) {
       throw apiError_(ERR.FORBIDDEN, 'Only people on the "Who can close actions" list can close, cancel, reopen or change a closed action.');
     }
     if (isTerminal_(from) && !isTerminal_(to) && to !== 'Open') throw apiError_(ERR.BAD_REQUEST, 'A closed or cancelled action can only be reopened to Open.');
+    // 1.7.0: with tasks, Open and In progress follow the tasks; accepting a draft or reopening lands on what the tasks say
+    if (tasks.length && (to === 'Open' || to === 'In progress')) {
+      var target = deriveActionStatus_('Open', tasks);
+      if (to !== target && from !== 'Draft' && !isTerminal_(from)) {
+        throw apiError_(ERR.BAD_REQUEST, 'The status of an action with tasks follows its tasks: it is In progress as soon as a task has started, else Open.');
+      }
+      to = target;
+    }
+    if (to === 'Closed' && from !== 'Closed') {
+      var stillOpen = tasks.filter(isTaskOpen_).length;
+      if (stillOpen) {
+        throw apiError_(ERR.TASKS_OPEN, stillOpen + ' task' + (stillOpen === 1 ? ' is' : 's are') + ' still open: every task must be Done or Not needed before the action can be closed.');
+      }
+    }
     if (note !== null && !isTerminal_(to)) throw apiError_(ERR.BAD_REQUEST, 'A closing note can only be written when the action is closed or cancelled.');
     if (isTerminal_(to) && to !== from) {
       if (!note || note.length < ACTION_NOTE_MIN_) throw apiError_(ERR.BAD_REQUEST, 'Write a closing note of at least ' + ACTION_NOTE_MIN_ + ' characters.');
@@ -484,6 +546,7 @@ function updateAction_(session, actionId, changes) {
       return l.kind + ': ' + auditValue_(l.text, 200);
     }).join('. '));
     Object.keys(patch).forEach(function (k) { row[k] = patch[k]; });
+    if (to !== from) syncReadyToClose_(row, tasks); // 1.7.0: closing resolves "ready to close"; reopening or accepting may raise it
     return actionResult_(row);
   });
 }
@@ -897,7 +960,9 @@ function runActionChecks_() {
     var ctx = notifLoadContext_(notifSettings_());
     var chains = notifBuildChains_(ctx.rows);
     var contractors = optionalTable_(T.CONTRACTORS);
-    var fresh = [], patches = [], logs = [];
+    var fresh = [], patches = [], logs = [], freshTasks = [];
+    var templates = readTemplates_(); // 1.7.0: a new draft gets the tasks of the template that applies to its rule
+    var canTask = !!getSpreadsheet_().getSheetByName(T.ACTION_TASKS);
 
     if (ast.autoDraft && ctx.latest) {
       var notifications = readTable_(T.NOTIFICATIONS);
@@ -927,14 +992,20 @@ function runActionChecks_() {
           if (d.source !== 'auto_repeat' || !(d.latestTs > lastClosed)) return;
         }
         var owner = contractorForArea_(contractors, d.area_id);
+        var tmpl = canTask ? templateForSource_(templates, d.source) : null;
         var row = actionRowFrom_({
           title: oneLine_(d.title, ACTION_TITLE_MAX_), detail: oneLine_(d.detail, ACTION_LONG_TEXT_MAX_), status: 'Draft', priority: d.priority,
           source: d.source, source_ref: d.source_ref, scope_kind: d.scope_kind, area_id: d.area_id, line_id: d.line_id,
           equipment_id: d.equipment_id, reason_key: d.reason_key, owner: owner ? owner.contractor_id : '', owner_kind: owner ? 'contractor' : 'internal',
-          assignee: owner ? owner.default_assignee || '' : '', dedupe_key: d.dedupe_key
+          assignee: owner ? owner.default_assignee || '' : '', dedupe_key: d.dedupe_key, template_id: tmpl ? tmpl.template_id : ''
         }, nextActionId_(actions.concat(fresh), stamp), 'system', stamp, items);
         fresh.push(row);
-        logs.push(actionLogRow_(row.action_id, 'system', 'status', '', 'Draft', 'Drafted by rule ' + d.source, stamp));
+        logs.push(actionLogRow_(row.action_id, 'system', 'status', '', 'Draft', 'Drafted by rule ' + d.source + (tmpl ? ' with the tasks of template ' + tmpl.name : ''), stamp));
+        if (tmpl) {
+          var built = buildTaskRows_(row.action_id, [], templateTaskInputs_(tmpl, d.area_id, contractors, stamp.slice(0, 10)), 'system', stamp, false);
+          freshTasks = freshTasks.concat(built.rows);
+          logs = logs.concat(built.logs);
+        }
         res.created++;
       });
     }
@@ -951,6 +1022,7 @@ function runActionChecks_() {
     });
 
     appendRows_(T.ACTIONS, fresh);
+    appendRows_(T.ACTION_TASKS, freshTasks);
     patches.forEach(function (p) { updateRow_(T.ACTIONS, p.row._row, p.patch); });
     appendRows_(T.ACTION_LOG, logs);
     return res;

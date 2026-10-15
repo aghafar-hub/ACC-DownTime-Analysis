@@ -29,6 +29,28 @@ describe('activity log sentences', () => {
     expect(auditSentence(e('something_new', 'X', 'detail'), name)).toBe('something new X: detail');
   });
 
+  it('backend 1.7.0: task writes read in plain English, with before → after', () => {
+    expect(auditSentence(e('create_task', 'AT-1', 'AC-202610-0012: #5 Moisture alarm (AUT, due 2026-10-20)'), name))
+      .toBe('Added task 5 to action AC-202610-0012: Moisture alarm (AUT, due 2026-10-20)');
+    expect(auditSentence(e('create_task', 'AT-1', 'AC-202610-0012: #1 Repair (RHI). Action status: Open -> In progress'), name))
+      .toBe('Added task 1 to action AC-202610-0012: Repair (RHI). Action status Open → In progress');
+    expect(auditSentence(e('update_task', 'AT-1', 'AC-202610-0012 #2: status: In progress -> Done (5-why sheet attached); due_date: 2026-10-12 -> 2026-10-15; action status: Open -> In progress'), name))
+      .toBe('Changed task 2 of action AC-202610-0012: status In progress → Done (5-why sheet attached), due date 2026-10-12 → 2026-10-15, action status Open → In progress');
+    expect(auditSentence(e('update_task', 'AT-1', 'AC-202610-0012 #3: note: booked for the RM.1 stop'), name))
+      .toBe('Changed task 3 of action AC-202610-0012: note “booked for the RM.1 stop”');
+    expect(auditSentence(e('update_task', 'AT-1', 'AC-1 #1: est_stop_h: (blank) -> 6; assignee: (blank) -> U-1'), name))
+      .toBe('Changed task 1 of action AC-1: estimated stop hours (blank) → 6, person (blank) → U-1');
+    expect(auditSentence(e('apply_template', 'AC-1', 'Template Planned overrun: 2 tasks added (Review planned work, Adjust allowance or plan)'), name))
+      .toBe('Applied a task template to action AC-1: Planned overrun: 2 tasks added (Review planned work, Adjust allowance or plan)');
+    expect(auditSentence(e('save_task_templates', 'TT-PLANNED,TT-1', 'TT-PLANNED applies_to: auto_planned_overrun -> auto_planned_overrun,manual. TT-1 added: Belt (1 tasks: Look (MEC, +3 d))'), name))
+      .toBe('Saved task templates TT-PLANNED, TT-1: TT-PLANNED suggested first for auto_planned_overrun → auto_planned_overrun,manual, TT-1 added Belt (1 tasks: Look (MEC, +3 d))');
+    expect(auditSentence(e('migrate_actions', '', 'Moved 2 action(s) to tasks: AC-1 (Contractor informed), AC-2 (Waiting stoppage)', 'setup'), name))
+      .toBe('Moved the old action statuses Contractor informed and Waiting stoppage to tasks (version 1.7.0): Moved 2 action(s) to tasks: AC-1 (Contractor informed), AC-2 (Waiting stoppage)');
+    for (const a of ['create_task', 'update_task', 'apply_template']) expect(auditGroupOf(a)).toBe('actions');
+    expect(auditGroupOf('save_task_templates')).toBe('settings');
+    expect(auditGroupOf('migrate_actions')).toBe('system');
+  });
+
   it('names people, and the server itself in plain words', () => {
     expect(name('U-1')).toBe('Mona Engineer');
     expect(name('system')).toBe('System (automatic)');

@@ -17,14 +17,15 @@
  *   an expired row is never re-opened.
  */
 
-var NOTIF_RESOLVABLE_ = ['long_stop', 'repeat_group', 'upload_gap', 'action_due'];
+var NOTIF_RESOLVABLE_ = ['long_stop', 'repeat_group', 'upload_gap', 'action_due', 'action_ready_to_close', 'task_overdue'];
 // Most severe first (used by the digest).
-var NOTIF_SEVERITY_ORDER_ = ['long_stop', 'availability_low', 'planned_overrun', 'failure_spike', 'repeat_group', 'action_due', 'upload_gap'];
+var NOTIF_SEVERITY_ORDER_ = ['long_stop', 'availability_low', 'planned_overrun', 'failure_spike', 'repeat_group', 'task_overdue', 'action_due', 'action_ready_to_close', 'upload_gap'];
 // The inbox category of each type (1.4.0). Returned with every item by getNotifications; not stored.
 var NOTIF_CATEGORY_ = {
   long_stop: 'Reliability', repeat_group: 'Reliability', failure_spike: 'Reliability',
   availability_low: 'Availability & planned', planned_overrun: 'Availability & planned',
-  upload_gap: 'Data quality', upload_done: 'Data quality', action_due: 'Actions', user_event: 'System'
+  upload_gap: 'Data quality', upload_done: 'Data quality', action_due: 'Actions', user_event: 'System',
+  action_ready_to_close: 'Actions', task_overdue: 'Actions' // 1.7.0
 };
 var NOTIF_PREF_KEYS_ = ['alert_types', 'watch_areas', 'digest', 'last_seen_at', 'saved_views', 'saved_reports', 'theme'];
 // The person's theme (1.5.0), kept with their account so it follows them to every device. Mirrored in src/theme/themes.ts.
@@ -501,16 +502,23 @@ function notifRulePlanned_(ctx) {
   });
 }
 
-/** action_due (1.4.0): an action that is not closed or cancelled and whose due date is before today (plant date). */
-function notifRuleActionDue_(ctx) {
+/**
+ * action_due (1.4.0): an action that is not closed or cancelled and whose due date is before today (plant date). 1.7.0: an
+ * action with tasks uses the latest due date of its open tasks (due_date_derived) and is left out while it is a Draft.
+ */
+function notifRuleActionDue_(ctx, actions, byAction) {
   var out = [];
-  optionalTable_(T.ACTIONS).filter(function (a) { return !isTerminal_(a.status) && a.due_date && isValidDate_(a.due_date) && a.due_date < ctx.today; })
+  actions.filter(function (a) { return !isTerminal_(a.status); })
     .sort(function (a, b) { return a.action_id < b.action_id ? -1 : 1; })
     .forEach(function (a) {
-      var days = Math.round((dateMs_(ctx.today) - dateMs_(a.due_date)) / MS_DAY_);
-      out.push(notifCandidate_('action_due', 'action_due|' + a.action_id + '|' + a.due_date,
+      var tasks = byAction[a.action_id] || [];
+      if (tasks.length && a.status === 'Draft') return;
+      var due = derivedDue_(a, tasks);
+      if (!due || !isValidDate_(due) || !(due < ctx.today)) return;
+      var days = Math.round((dateMs_(ctx.today) - dateMs_(due)) / MS_DAY_);
+      out.push(notifCandidate_('action_due', 'action_due|' + a.action_id + '|' + due,
         'Action overdue: ' + a.action_id + ' - ' + oneLine_(a.title, 120),
-        'Due ' + a.due_date + ', ' + days + ' day' + (days === 1 ? '' : 's') + ' ago. Status ' + a.status + ', owner ' + (a.owner || 'nobody yet') + '.',
+        'Due ' + due + ', ' + days + ' day' + (days === 1 ? '' : 's') + ' ago. Status ' + a.status + ', owner ' + (a.owner || 'nobody yet') + '.',
         a.area_id, a.line_id, a.action_id));
     });
   return out;
@@ -519,9 +527,12 @@ function notifRuleActionDue_(ctx) {
 /** All data-driven candidates, in a fixed order. */
 function notifCandidates_(ctx) {
   var chains = notifBuildChains_(ctx.rows);
+  var actions = optionalTable_(T.ACTIONS);
+  var byAction = tasksByAction_(readAllTasks_());
   return [].concat(
     notifRuleLongStop_(ctx, chains), notifRuleRepeat_(ctx, chains), notifRuleSpike_(ctx, chains),
-    notifRuleAvailability_(ctx), notifRulePlanned_(ctx), notifRuleGap_(ctx), notifRuleActionDue_(ctx)
+    notifRuleAvailability_(ctx), notifRulePlanned_(ctx), notifRuleGap_(ctx), notifRuleActionDue_(ctx, actions, byAction),
+    notifRuleTaskOverdue_(ctx, actions, byAction), notifRuleReady_(actions, byAction) // 1.7.0 (Tasks.js)
   );
 }
 
@@ -542,7 +553,8 @@ function notifRowFrom_(c, st, nowMs) {
   return {
     notification_id: newId_('NT-', 16), type: c.type, severity: c.severity, dedupe_key: c.dedupe_key, title: c.title,
     detail: c.detail, area_id: c.area_id, line_id: c.line_id, source_ref: c.source_ref,
-    created_at: fmtTsMs_(nowMs), expires_at: fmtTsMs_(nowMs + st.retentionDays * MS_DAY_), status: 'open', resolved_at: ''
+    created_at: fmtTsMs_(nowMs), expires_at: fmtTsMs_(nowMs + st.retentionDays * MS_DAY_), status: 'open', resolved_at: '',
+    recipients: c.recipients || ''
   };
 }
 
@@ -584,9 +596,13 @@ function runNotificationChecks_(opts) {
         byKey[c.dedupe_key] = row;
         res.created++;
       } else if (ex.status === 'resolved' && resolvable) {
-        patches.push({ row: ex, patch: { status: 'open', resolved_at: '', expires_at: fmtTsMs_(nowMs + st.retentionDays * MS_DAY_) } });
+        patches.push({ row: ex, patch: { status: 'open', resolved_at: '', expires_at: fmtTsMs_(nowMs + st.retentionDays * MS_DAY_), recipients: c.recipients || '' } });
         ex.status = 'open';
         res.created++;
+      } else if (ex.status === 'open' && ex._row && (ex.recipients || '') !== (c.recipients || '')) {
+        // 1.7.0: a task's person or the action owner changed: the alert follows them
+        patches.push({ row: ex, patch: { recipients: c.recipients || '' } });
+        ex.recipients = c.recipients || '';
       }
     });
 
@@ -669,14 +685,26 @@ function notifLogFailure_(what, err) {
  * It comes back when the area is switched on again and the alert has not expired.
  */
 function notifOfInactiveArea_(n, inactive) {
-  return !!n.area_id && !!inactive[n.area_id] && n.type !== 'action_due';
+  return !!n.area_id && !!inactive[n.area_id] && NOTIF_CATEGORY_[n.type] !== 'Actions';
 }
 
-function notifVisible_(n, access, stamp) {
+/** 1.7.0: who a person is for the recipients column: their user id and whether they may close actions. */
+function notifWho_(user, ast) {
+  return { user_id: user.user_id, closer: isCloser_({ user: user }, ast || actionSettings_()) };
+}
+
+/** 1.7.0: blank recipients = everyone; else one of the user ids, or @closers for the closers and Admins. */
+function notifForUser_(n, who) {
+  var list = csv_(n.recipients);
+  if (!list.length || !who) return !list.length;
+  return list.some(function (r) { return r === '@closers' ? who.closer : r === who.user_id; });
+}
+
+function notifVisible_(n, access, stamp, who) {
   if (n.status !== 'open') return false;
   if (n.expires_at && n.expires_at <= stamp) return false;
   if (n.type === 'user_event' && access.users === 'Hidden') return false; // only people who can see the Users page
-  return true;
+  return notifForUser_(n, who);
 }
 
 function prefsOf_(userId) {
@@ -699,7 +727,8 @@ function accountTheme_(userId) {
 function getNotifications_(session) {
   var uid = session.user.user_id, stamp = nowTs_();
   var inactive = inactiveAreaIds_();
-  var items = readTable_(T.NOTIFICATIONS).filter(function (n) { return notifVisible_(n, session.access, stamp) && !notifOfInactiveArea_(n, inactive); })
+  var who = notifWho_(session.user);
+  var items = readTable_(T.NOTIFICATIONS).filter(function (n) { return notifVisible_(n, session.access, stamp, who) && !notifOfInactiveArea_(n, inactive); })
     .sort(function (a, b) {
       return a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : (a.notification_id < b.notification_id ? -1 : 1);
     });
@@ -727,7 +756,7 @@ function setNotificationState_(session, notificationId, state, snoozeUntil) {
   var uid = session.user.user_id;
   return withLock_(function () {
     var n = findBy_(T.NOTIFICATIONS, 'notification_id', id);
-    if (!n || !notifVisible_(n, session.access, nowTs_())) throw apiError_(ERR.NOT_FOUND, 'Notification not found.');
+    if (!n || !notifVisible_(n, session.access, nowTs_(), notifWho_(session.user))) throw apiError_(ERR.NOT_FOUND, 'Notification not found.');
     var rec = { user_id: uid, notification_id: id, state: state, snooze_until: until, updated_at: nowTs_() };
     var mine = readTable_(T.NOTIFICATION_STATE, function (row, idx) { return row[idx.user_id] === uid && row[idx.notification_id] === id; })[0];
     if (mine) updateRow_(T.NOTIFICATION_STATE, mine._row, rec); else appendRow_(T.NOTIFICATION_STATE, rec);
@@ -927,7 +956,7 @@ function digestContext_() {
   readTable_(T.NOTIFICATION_STATE).forEach(function (r) { (stateBy[r.user_id] = stateBy[r.user_id] || {})[r.notification_id] = r.state; });
   return {
     st: st, stamp: stamp, today: stamp.slice(0, 10),
-    users: readUsers_(), accessRows: readTable_(T.TAB_ACCESS), prefsBy: prefsBy, stateBy: stateBy,
+    users: readUsers_(), accessRows: readTable_(T.TAB_ACCESS), prefsBy: prefsBy, stateBy: stateBy, ast: actionSettings_(),
     alerts: readTable_(T.NOTIFICATIONS).filter(function (n) {
       return n.severity === 'alert' && n.status === 'open' && !(n.expires_at && n.expires_at <= stamp) && !notifOfInactiveArea_(n, inactive);
     }),
@@ -964,7 +993,9 @@ function buildDigest_(user, dctx) {
   var types = csv_(prefs.alert_types), watch = csv_(prefs.watch_areas);
   var since = prefs.last_digest_at || '';
   var dismissed = dctx.stateBy[user.user_id] || {};
+  var who = notifWho_(user, dctx.ast);
   var alerts = dctx.alerts.filter(function (n) {
+    if (!notifForUser_(n, who)) return false; // 1.7.0: alerts for some people only (recipients)
     if (since && n.created_at <= since) return false;
     if (types.length && types.indexOf(n.type) < 0) return false;
     if (watch.length && n.area_id && watch.indexOf(n.area_id) < 0) return false;

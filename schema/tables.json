@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "notes": [
     "Single source of truth for the database spreadsheet, the Apps Script backend and the TypeScript types.",
     "Timestamps are plain text 'YYYY-MM-DD HH:MM:SS.mmm' in plant-local time (no time zone). Dates are 'YYYY-MM-DD'.",
@@ -254,9 +254,9 @@
       "key": ["notification_id"],
       "columns": [
         {"name": "notification_id", "type": "text", "required": true, "description": "NT- + 16 hex characters"},
-        {"name": "type", "type": "enum", "required": true, "enum": ["long_stop", "repeat_group", "failure_spike", "availability_low", "upload_gap", "upload_done", "user_event", "planned_overrun", "action_due"], "description": "Which rule raised it"},
+        {"name": "type", "type": "enum", "required": true, "enum": ["long_stop", "repeat_group", "failure_spike", "availability_low", "upload_gap", "upload_done", "user_event", "planned_overrun", "action_due", "action_ready_to_close", "task_overdue"], "description": "Which rule raised it"},
         {"name": "severity", "type": "enum", "required": true, "enum": ["alert", "update"], "description": "alert = needs attention; update = informational"},
-        {"name": "dedupe_key", "type": "text", "required": true, "description": "Unique. One row per cause, e.g. long_stop|<event_id>, repeat|<area>|<code>|<reason_key>|<first_event_id>, spike|<area>|<yyyy-mm-dd>, upload_gap|<latest_event_date>, availability|<area>|<yyyy-mm>, upload|<batch_id>, planned|<area>|<yyyy-mm>, action_due|<action_id>|<due_date>"},
+        {"name": "dedupe_key", "type": "text", "required": true, "description": "Unique. One row per cause, e.g. long_stop|<event_id>, repeat|<area>|<code>|<reason_key>|<first_event_id>, spike|<area>|<yyyy-mm-dd>, upload_gap|<latest_event_date>, availability|<area>|<yyyy-mm>, upload|<batch_id>, planned|<area>|<yyyy-mm>, action_due|<action_id>|<due_date>, ready|<action_id>|<number of tasks>, task_due|<task_id>|<due_date>"},
         {"name": "title", "type": "text", "required": true, "description": "One line, with the count"},
         {"name": "detail", "type": "text", "required": false, "description": "Plain-English explanation, no event rows"},
         {"name": "area_id", "type": "text", "required": false, "description": "References areas.area_id; blank when not about one area"},
@@ -265,7 +265,8 @@
         {"name": "created_at", "type": "timestamp", "required": true, "description": ""},
         {"name": "expires_at", "type": "timestamp", "required": true, "description": "created_at plus notif_retention_days"},
         {"name": "status", "type": "enum", "required": true, "enum": ["open", "resolved", "expired"], "description": "resolved = the condition no longer holds; expired = retention passed"},
-        {"name": "resolved_at", "type": "timestamp", "required": false, "description": ""}
+        {"name": "resolved_at", "type": "timestamp", "required": false, "description": ""},
+        {"name": "recipients", "type": "text", "required": false, "description": "1.7.0: who sees it: comma-separated user ids and/or @closers (actions_closers and the Admins); blank = everyone"}
       ]
     },
     {
@@ -299,7 +300,7 @@
         {"name": "action_id", "type": "text", "required": true, "description": "AC-<yyyymm>-<4-digit sequence within the month>"},
         {"name": "title", "type": "text", "required": true, "description": "Problem statement, one line"},
         {"name": "detail", "type": "text", "required": false, "description": "Longer description"},
-        {"name": "status", "type": "enum", "required": true, "enum": ["Draft", "Open", "Contractor informed", "Waiting stoppage", "In progress", "Closed", "Cancelled"], "description": "Closed and Cancelled only by people in actions_closers (or an Admin)"},
+        {"name": "status", "type": "enum", "required": true, "enum": ["Draft", "Open", "In progress", "Closed", "Cancelled"], "description": "1.7.0: Draft until accepted; Open and In progress follow the tasks (In progress as soon as a task leaves Open); Closed (needs every task Done or Not needed) and Cancelled only by people in actions_closers (or an Admin)"},
         {"name": "priority", "type": "enum", "required": true, "enum": ["High", "Medium", "Low"], "description": ""},
         {"name": "source", "type": "enum", "required": true, "enum": ["auto_repeat", "auto_chronic", "auto_long_stop", "auto_planned_overrun", "notification", "report", "pareto", "event", "manual"], "description": "Where the action came from"},
         {"name": "source_ref", "type": "text", "required": false, "description": "notification_id, event_id, report name ... the action came from"},
@@ -325,7 +326,8 @@
         {"name": "effectiveness", "type": "enum", "required": false, "enum": ["", "Watching", "Effective", "Not effective"], "description": "Set after closing (equipment scope only)"},
         {"name": "effectiveness_checked_at", "type": "timestamp", "required": false, "description": "When the verdict was last set"},
         {"name": "evidence", "type": "text", "required": false, "description": "JSON list of {event_id?, note?, added_at, added_by}; at most 200 entries"},
-        {"name": "dedupe_key", "type": "text", "required": false, "description": "repeat|<equipment>|<reason_key>, chronic|<equipment>|<yyyy-mm>, long_stop|<event_id>, planned|<area>|<yyyy-mm>; at most one OPEN action per key"}
+        {"name": "dedupe_key", "type": "text", "required": false, "description": "repeat|<equipment>|<reason_key>, chronic|<equipment>|<yyyy-mm>, long_stop|<event_id>, planned|<area>|<yyyy-mm>; at most one OPEN action per key"},
+        {"name": "template_id", "type": "text", "required": false, "description": "1.7.0: task_templates.template_id the tasks were first made from; blank = none"}
       ]
     },
     {
@@ -337,10 +339,38 @@
         {"name": "action_id", "type": "text", "required": true, "description": "References actions.action_id"},
         {"name": "at", "type": "timestamp", "required": true, "description": ""},
         {"name": "by", "type": "text", "required": true, "description": "user_id or 'system'"},
-        {"name": "kind", "type": "enum", "required": true, "enum": ["status", "comment", "edit", "evidence"], "description": ""},
+        {"name": "kind", "type": "enum", "required": true, "enum": ["status", "comment", "edit", "evidence", "task_create", "task_status", "task_edit", "task_note"], "description": "task_* (1.7.0) are about the task in task_id"},
         {"name": "from_status", "type": "text", "required": false, "description": "kind status only"},
         {"name": "to_status", "type": "text", "required": false, "description": "kind status only"},
-        {"name": "text", "type": "text", "required": false, "description": "Comment, summary of the change, or the closing note"}
+        {"name": "text", "type": "text", "required": false, "description": "Comment, summary of the change, or the closing note"},
+        {"name": "task_id", "type": "text", "required": false, "description": "1.7.0: action_tasks.task_id for the task_* kinds; blank otherwise"}
+      ]
+    },
+    {
+      "name": "action_tasks",
+      "description": "1.7.0: the tasks (the work) of an action. Never deleted: a task that is not needed gets the status Not needed.",
+      "key": ["task_id"],
+      "columns": [
+        {"name": "task_id", "type": "text", "required": true, "description": "AT- + 12 hex characters"},
+        {"name": "action_id", "type": "text", "required": true, "description": "References actions.action_id"},
+        {"name": "seq", "type": "int", "required": true, "description": "1, 2, 3 ... within the action"},
+        {"name": "title", "type": "text", "required": true, "description": "What has to be done, one line"},
+        {"name": "owner_kind", "type": "enum", "required": true, "enum": ["contractor", "internal"], "description": "Kind of the owner (follows the contractors row); internal when there is no owner"},
+        {"name": "owner", "type": "text", "required": false, "description": "contractors.contractor_id (external contractor or internal team); blank = nobody yet"},
+        {"name": "assignee", "type": "text", "required": false, "description": "Person doing or following the task: user_id or a free name; gets the overdue alert"},
+        {"name": "due_date", "type": "date", "required": false, "description": ""},
+        {"name": "status", "type": "enum", "required": true, "enum": ["Open", "Contractor informed", "Waiting stoppage", "In progress", "Done", "Not needed"], "description": "Contractor informed only for an external contractor; Done needs a note and Not needed a reason (3+ characters)"},
+        {"name": "needs_stop", "type": "bool", "required": false, "description": "The work needs the area stopped (Shutdown list)"},
+        {"name": "est_stop_h", "type": "float", "required": false, "description": "Estimated stop hours; blank = not estimated (always blank when needs_stop is FALSE)"},
+        {"name": "notes", "type": "text", "required": false, "description": "Free notes"},
+        {"name": "template_step", "type": "text", "required": false, "description": "Title of the template step it was made from; blank = added by hand"},
+        {"name": "created_at", "type": "timestamp", "required": true, "description": ""},
+        {"name": "created_by", "type": "text", "required": true, "description": "user_id or 'system'"},
+        {"name": "updated_at", "type": "timestamp", "required": true, "description": ""},
+        {"name": "updated_by", "type": "text", "required": false, "description": "user_id or 'system'"},
+        {"name": "done_at", "type": "timestamp", "required": false, "description": "When it became Done or Not needed; blank while open"},
+        {"name": "done_by", "type": "text", "required": false, "description": ""},
+        {"name": "done_note", "type": "text", "required": false, "description": "What was done (Done) or why it is not needed (Not needed)"}
       ]
     },
     {
@@ -370,6 +400,34 @@
         {"name": "overhaul_months", "type": "text", "required": false, "description": "Comma-separated month numbers 1-12 with a planned overhaul"},
         {"name": "updated_at", "type": "timestamp", "required": false, "description": ""},
         {"name": "updated_by", "type": "text", "required": false, "description": ""}
+      ]
+    },
+    {
+      "name": "task_templates",
+      "description": "1.7.0: ready-made task lists picked when an action is created; an auto draft gets the active template that applies to its rule.",
+      "key": ["template_id"],
+      "columns": [
+        {"name": "template_id", "type": "text", "required": true, "description": "TT- + id"},
+        {"name": "name", "type": "text", "required": true, "description": "Display name, unique"},
+        {"name": "applies_to", "type": "text", "required": false, "description": "Comma-separated action sources the template is suggested for first (auto_repeat, auto_long_stop, manual ...); a source belongs to at most one active template"},
+        {"name": "active", "type": "bool", "required": true, "description": "Switched-off templates are kept but not offered"},
+        {"name": "sort_order", "type": "int", "required": true, "description": "Display order"},
+        {"name": "updated_at", "type": "timestamp", "required": false, "description": ""},
+        {"name": "updated_by", "type": "text", "required": false, "description": ""}
+      ]
+    },
+    {
+      "name": "task_template_steps",
+      "description": "1.7.0: the steps (tasks) of each task template, in order. Saving a template replaces all its steps.",
+      "key": ["template_id", "seq"],
+      "columns": [
+        {"name": "template_id", "type": "text", "required": true, "description": "References task_templates.template_id"},
+        {"name": "seq", "type": "int", "required": true, "description": "1, 2, 3 ..."},
+        {"name": "title", "type": "text", "required": true, "description": "Task title; unique within the template (kept on the task as template_step)"},
+        {"name": "default_owner", "type": "text", "required": true, "description": "area_contractor (the active external contractor of the action's area) or a contractors.contractor_id"},
+        {"name": "due_offset_days", "type": "int", "required": true, "description": "Due this many days after the task is made (0-365)"},
+        {"name": "needs_stop", "type": "bool", "required": false, "description": ""},
+        {"name": "est_stop_h", "type": "float", "required": false, "description": "blank = not estimated"}
       ]
     },
     {
@@ -447,6 +505,11 @@
     {"contractor_id": "ELE", "name": "Electrical", "areas": "", "kind": "internal", "active": true, "sort_order": 4, "default_assignee": ""},
     {"contractor_id": "AUT", "name": "Automation", "areas": "", "kind": "internal", "active": true, "sort_order": 5, "default_assignee": ""},
     {"contractor_id": "PRO", "name": "Production", "areas": "", "kind": "internal", "active": true, "sort_order": 6, "default_assignee": ""}
+  ],
+  "taskTemplateSeeds": [
+    {"template_id": "TT-REPEAT", "name": "Repeated failure", "applies_to": "auto_repeat,auto_chronic", "active": true, "sort_order": 1, "steps": [{"title": "Repair", "default_owner": "area_contractor", "due_offset_days": 2, "needs_stop": true, "est_stop_h": null}, {"title": "Root cause (5-why)", "default_owner": "MEC", "due_offset_days": 7, "needs_stop": false, "est_stop_h": null}, {"title": "Corrective action", "default_owner": "area_contractor", "due_offset_days": 21, "needs_stop": true, "est_stop_h": null}, {"title": "Spare parts", "default_owner": "MEC", "due_offset_days": 14, "needs_stop": false, "est_stop_h": null}]},
+    {"template_id": "TT-LONGSTOP", "name": "Long stop", "applies_to": "auto_long_stop", "active": true, "sort_order": 2, "steps": [{"title": "Restore and report", "default_owner": "area_contractor", "due_offset_days": 1, "needs_stop": false, "est_stop_h": null}, {"title": "Root cause (5-why)", "default_owner": "MEC", "due_offset_days": 7, "needs_stop": false, "est_stop_h": null}, {"title": "Corrective action", "default_owner": "area_contractor", "due_offset_days": 21, "needs_stop": true, "est_stop_h": null}]},
+    {"template_id": "TT-PLANNED", "name": "Planned overrun", "applies_to": "auto_planned_overrun", "active": true, "sort_order": 3, "steps": [{"title": "Review planned work", "default_owner": "PRO", "due_offset_days": 7, "needs_stop": false, "est_stop_h": null}, {"title": "Adjust allowance or plan", "default_owner": "PRO", "due_offset_days": 14, "needs_stop": false, "est_stop_h": null}]}
   ],
   "areaSeeds": [
     {"area_id": "CR", "name": "Crusher", "line_id": "L.1", "sort_order": 1, "in_downtime_sheet": true},

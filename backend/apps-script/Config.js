@@ -4,7 +4,7 @@
  * at load time, so file order does not matter.
  */
 
-var APP_VERSION = '1.6.0';
+var APP_VERSION = '1.7.0';
 var TIMEZONE = 'Africa/Cairo';
 
 // Password hashing cost. Run benchmarkHashRounds() and, if it suggests a
@@ -54,7 +54,8 @@ var ERR = {
   NOT_FOUND: 'not_found',
   CONFLICT: 'conflict',
   BUSY: 'busy',
-  SERVER: 'server'
+  SERVER: 'server',
+  TASKS_OPEN: 'tasks_open'
 };
 
 // Table (sheet) names. A test checks each one exists in the schema.
@@ -65,7 +66,7 @@ var T = {
   ROLES: 'roles', USERS: 'users', TAB_ACCESS: 'tab_access', SETTINGS: 'settings', AUDIT: 'audit_log',
   NOTIFICATIONS: 'notifications', NOTIFICATION_STATE: 'notification_state', NOTIFICATION_PREFS: 'notification_prefs',
   ACTIONS: 'actions', ACTION_LOG: 'action_log', CONTRACTORS: 'contractors', AREA_TARGETS: 'area_targets',
-  USER_ACTIVITY: 'user_activity'
+  USER_ACTIVITY: 'user_activity', ACTION_TASKS: 'action_tasks', TASK_TEMPLATES: 'task_templates', TASK_TEMPLATE_STEPS: 'task_template_steps'
 };
 
 // Script Property names.
@@ -73,5 +74,6 @@ var PROP = {
   SECRET: 'SESSION_SIGNING_SECRET',
   PEPPER: 'PASSWORD_PEPPER',
   SPREADSHEET: 'SPREADSHEET_ID',
-  ROUNDS: 'HASH_ROUNDS'
+  ROUNDS: 'HASH_ROUNDS',
+  TASKS_MIGRATED: 'ACTIONS_TASKS_MIGRATED'
 };

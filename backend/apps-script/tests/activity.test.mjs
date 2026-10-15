@@ -223,7 +223,7 @@ test('listAuditLog reads a bounded number of rows per call and continues with th
 const NOT_LOGGED = {
   personal: ['setNotificationState', 'saveNotificationPrefs'],
   read: ['getMyAccess', 'getStartup', 'getEvents', 'getEventEdits', 'getUploadHistory', 'getUploadWarnings', 'listUsers', 'getNotifications',
-    'listActions', 'getAreaTargets', 'listActiveUsers', 'listAuditLog'],
+    'listActions', 'getAreaTargets', 'listActiveUsers', 'listAuditLog', 'listTasks', 'listTaskTemplates'],
 };
 
 function writeCases(w) {
@@ -255,6 +255,15 @@ function writeCases(w) {
     ['createAction', () => ({ params: { input: { title: 'Audit action', scope_kind: 'area', area_id: 'K.1', owner: 'MEC', status: 'Open' } } }), 'create_action'],
     ['updateAction', () => ({ params: { actionId: w.actionId(), changes: { priority: 'High' } } }), 'update_action', /priority: .* -> High/],
     ['addActionComment', () => ({ params: { actionId: w.actionId(), text: 'Seal ordered' } }), 'comment_action', /^Seal ordered$/],
+    // 1.7.0: tasks inside actions and the task templates
+    ['addTask', () => ({ params: { actionId: w.actionId(), task: { title: 'Audit task', owner: 'MEC', due_date: '2026-10-20' } } }), 'create_task',
+      /^AC-\d{6}-\d{4}: #1 Audit task \(MEC, due 2026-10-20\)$/],
+    ['updateTask', () => ({ params: { taskId: w.taskId(), changes: { status: 'In progress', due_date: '2026-10-25', note: 'started' } } }), 'update_task',
+      /#1: status: Open -> In progress \(started\); due_date: 2026-10-20 -> 2026-10-25; action status: Open -> In progress$/],
+    ['applyTemplate', () => ({ params: { actionId: w.actionId(), templateId: 'TT-PLANNED' } }), 'apply_template',
+      /^Template Planned overrun: 2 tasks added \(Review planned work, Adjust allowance or plan\)$/],
+    ['saveTaskTemplates', () => ({ params: { templates: [{ name: 'Audit template', applies_to: ['manual'], active: true, steps: [{ title: 'Look', default_owner: 'MEC', due_offset_days: 3 }] }] } }),
+      'save_task_templates', /added: Audit template \(1 tasks: Look \(MEC, \+3 d\)\)/],
     ['saveContractors', () => ({ params: { rows: [{ contractor_id: 'NEWCO', name: 'New Co', areas: [], kind: 'internal', active: true, sort_order: 9 }] } }), 'save_contractors'],
     ['saveAreaTargets', () => ({ params: { year: 2026, rows: [{ area_id: 'K.1', availability_target_pct: 90, planned_allowance_h_year: 120 }] } }), 'save_area_targets', /K\.1 availability_target_pct: \(blank\) -> 90/],
     ['runActionChecks', () => ({ params: {} }), 'action_check'],
@@ -273,6 +282,7 @@ test('every write action leaves an audit row (table-driven over the router), rea
     clean: events.find((e) => e.code_raw === '100.AA01' && e.flags === ''),
     batch: null,
     actionId: () => env.rows('actions')[0].action_id,
+    taskId: () => env.rows('action_tasks')[0].task_id,
   };
   assert.ok(w.warn && w.clean);
   const cases = writeCases(w);
@@ -303,6 +313,7 @@ test('every write action leaves an audit row (table-driven over the router), rea
     ['getMyAccess', {}], ['getStartup', {}], ['getEvents', { year: 2026 }], ['getEventEdits', { eventId: ev.event_id }],
     ['getUploadHistory', {}], ['getUploadWarnings', { batchId: ev.batch_id }], ['listUsers', {}], ['getNotifications', {}],
     ['listActions', {}], ['getAreaTargets', { year: 2026 }], ['listActiveUsers', {}], ['listAuditLog', { filter: {} }],
+    ['listTasks', { filter: { status: 'all' } }], ['listTaskTemplates', {}],
     ['saveNotificationPrefs', { prefs: { digest: 'daily' } }],
   ];
   if (nid) quiet.push(['setNotificationState', { notificationId: nid, state: 'seen' }]);

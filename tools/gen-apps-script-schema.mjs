@@ -42,6 +42,7 @@ export function buildSchema(src) {
       lines: src.lineSeeds,
       areas: src.areaSeeds,
       contractors: src.contractorSeeds || [],
+      taskTemplates: src.taskTemplateSeeds || [],
     },
   };
 }

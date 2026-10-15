@@ -2,7 +2,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { createMockApi, type MockApi } from './mockApi';
 import { parseActionSettings, plannedOverruns } from './mockActions';
 import {
-  ACTION_STATUSES, ApiError, contractorForArea, evenMonthlySplit, NOTIFICATION_CATEGORY_OF, NOTIFICATION_TYPES, type AreaTarget, type Contractor, type EventRow,
+  ACTION_STATUSES, actionDueDate, actionProgress, ApiError, canClose, contractorForArea, deriveActionStatus, evenMonthlySplit, isReadyToClose, isTaskOpen,
+  NOTIFICATION_CATEGORY_OF, NOTIFICATION_TYPES, TASK_STATUSES, taskStatusProblem, type ActionTask, type AreaTarget, type Contractor, type EventRow,
   type Session,
 } from './types';
 import { DEMO_PASSWORD } from '../mock/synthetic';
@@ -138,5 +139,80 @@ describe('demo mode', () => {
     const plain = createMockApi();
     const t = (await plain.login('admin@demo.test', DEMO_PASSWORD, true)).token;
     expect((await plain.listActions(t)).actions).toEqual([]);
+  });
+
+  it('backend 1.7.0: tasks in every state, one action ready to close, overdue tasks and a Shutdown list across K.1, RM.1, CR, AFR and CM.1', async () => {
+    const api = createMockApi({ demoActions: true });
+    api.__setNow(() => NOW);
+    const admin = await api.login('admin@demo.test', DEMO_PASSWORD, true);
+    const engineer = await api.login('engineer@demo.test', DEMO_PASSWORD, true);
+    const list = await api.listActions(admin.token);
+    const tasks = list.tasks ?? [];
+    expect(new Set(tasks.map((x) => x.status))).toEqual(new Set(TASK_STATUSES));
+    expect((list.templates ?? []).map((x) => x.name)).toEqual(['Repeated failure', 'Long stop', 'Planned overrun']);
+    // the auto drafts carry their proposed tasks
+    const drafts = list.actions.filter((a) => a.status === 'Draft' && a.created_by === 'system');
+    expect(drafts.length).toBeGreaterThan(0);
+    expect(drafts.every((a) => a.template_id && tasks.some((x) => x.action_id === a.action_id && x.status === 'Open'))).toBe(true);
+    // the derived fields follow the helpers
+    for (const a of list.actions) {
+      expect(a.due_date_derived, a.action_id).toBe(actionDueDate(a, tasks));
+      expect(deriveActionStatus(a, tasks), a.action_id).toBe(a.status);
+    }
+    const ready = list.actions.filter((a) => isReadyToClose(a, tasks));
+    expect(ready.map((a) => a.area_id)).toEqual(['FM.1']);
+    expect(actionProgress(ready[0]!, tasks)).toMatchObject({ done: 3, total: 3, open: 0, notNeeded: 1, overdue: 0 });
+    // the Shutdown list: open tasks that need a stop, in five areas, overdue first
+    const shutdown = await api.listTasks(admin.token, { needs_stop: true });
+    expect([...new Set(shutdown.tasks.map((x) => x.area_id))]).toEqual(expect.arrayContaining(['K.1', 'RM.1', 'CR', 'AFR', 'CM.1']));
+    expect(shutdown.tasks[0]!.overdue).toBe(true);
+    expect(shutdown.tasks.some((x) => x.status === 'Waiting stoppage' && x.waiting_since)).toBe(true);
+    expect((await api.listTasks(admin.token, { overdue: true })).tasks.length).toBeGreaterThanOrEqual(3);
+    expect((await api.listTasks(engineer.token, { mine: true })).tasks.map((x) => x.title)).toEqual(['Replace chain links (12 pcs)', 'Root cause (5-why)']);
+    // alerts: ready to close for the closers (the Admin and the Demo Manager), overdue tasks to their people
+    const items = (await api.getNotifications(admin.token)).items;
+    expect(items.filter((n) => n.type === 'action_ready_to_close').map((n) => n.dedupe_key)).toEqual([`ready|${ready[0]!.action_id}|3`]);
+    expect(items.some((n) => n.type === 'action_due')).toBe(true);
+    expect(items.some((n) => n.type === 'task_overdue')).toBe(true);
+    const engItems = (await api.getNotifications(engineer.token)).items;
+    expect(engItems.some((n) => n.type === 'action_ready_to_close')).toBe(false);
+    expect(engItems.filter((n) => n.type === 'task_overdue').map((n) => n.title)).toEqual(expect.arrayContaining([expect.stringMatching(/Replace chain links/)]));
+  });
+});
+
+describe('task helpers (src/api/types.ts)', () => {
+  const task = (over: Partial<ActionTask>): ActionTask => ({
+    task_id: 'AT-1', action_id: 'AC-1', seq: 1, title: 't', owner_kind: 'internal', owner: '', assignee: '', due_date: '', status: 'Open', needs_stop: false,
+    est_stop_h: null, notes: '', template_step: '', created_at: '', created_by: '', updated_at: '', updated_by: '', done_at: '', done_by: '', done_note: '', ...over,
+  });
+  const a = { action_id: 'AC-1', status: 'Open' as const, due_date: '2026-12-01' };
+  it('isTaskOpen, actionProgress, the derived due date and status', () => {
+    const list = [
+      task({ task_id: 'A', status: 'Done', due_date: '2026-10-01' }), task({ task_id: 'B', status: 'Waiting stoppage', due_date: '2026-10-10', needs_stop: true, est_stop_h: 6 }),
+      task({ task_id: 'C', due_date: '2026-10-20', needs_stop: true }), task({ task_id: 'D', status: 'Not needed' }), task({ task_id: 'X', action_id: 'AC-2' }),
+    ];
+    expect(TASK_STATUSES.filter((s) => isTaskOpen({ status: s }))).toEqual(['Open', 'Contractor informed', 'Waiting stoppage', 'In progress']);
+    expect(actionProgress(a, list, '2026-10-15')).toEqual({ done: 2, total: 4, open: 2, overdue: 1, nextDue: '2026-10-10', notNeeded: 1, needsStop: 2, stopHours: 6 });
+    expect(actionDueDate(a, list)).toBe('2026-10-20');
+    expect(actionDueDate(a, [])).toBe('2026-12-01');
+    expect(deriveActionStatus(a, list)).toBe('In progress');
+    expect(deriveActionStatus(a, [task({})])).toBe('Open');
+    expect(deriveActionStatus({ ...a, status: 'In progress' }, [])).toBe('In progress');
+    expect(deriveActionStatus({ ...a, status: 'Draft' }, list)).toBe('Draft');
+    expect(deriveActionStatus({ ...a, status: 'Closed' }, [task({})])).toBe('Closed');
+  });
+  it('canClose, isReadyToClose and the status-change checks', () => {
+    expect(canClose(a, [task({ status: 'Done' }), task({ status: 'Open' })])).toBe(false);
+    expect(canClose(a, [task({ status: 'Done' }), task({ status: 'Not needed' })])).toBe(true);
+    expect(canClose(a, [])).toBe(true);
+    expect(canClose({ ...a, status: 'Closed' }, [])).toBe(false);
+    expect(isReadyToClose(a, [])).toBe(false);
+    expect(isReadyToClose(a, [task({ status: 'Done' })])).toBe(true);
+    expect(isReadyToClose({ ...a, status: 'Draft' }, [task({ status: 'Done' })])).toBe(false);
+    expect(taskStatusProblem({ owner_kind: 'internal' }, 'Contractor informed', '')).toMatch(/external contractor/);
+    expect(taskStatusProblem({ owner_kind: 'contractor' }, 'Contractor informed', '')).toBe('');
+    expect(taskStatusProblem({ owner_kind: 'internal' }, 'Done', 'ok')).toMatch(/what was done/);
+    expect(taskStatusProblem({ owner_kind: 'internal' }, 'Not needed', ' ')).toMatch(/not needed/);
+    expect(taskStatusProblem({ owner_kind: 'internal' }, 'Done', 'Fixed')).toBe('');
   });
 });

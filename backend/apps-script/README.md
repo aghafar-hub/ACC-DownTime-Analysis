@@ -37,7 +37,7 @@ The repository is public. Secrets live only in **Script Properties** (step 4).
    of `backend/apps-script/appsscript.json` from this repository.
 4. For each `.js` file in this folder (`Schema.js`, `Config.js`, `Utils.js`,
    `Crypto.js`, `Audit.js`, `Settings.js`, `Access.js`, `Auth.js`, `Users.js`,
-   `Master.js`, `Events.js`, `Upload.js`, `Notifications.js`, `Actions.js`, `Setup.js`, `Code.js`): click **+** next
+   `Master.js`, `Events.js`, `Upload.js`, `Notifications.js`, `Actions.js`, `Tasks.js`, `Activity.js`, `Setup.js`, `Code.js`): click **+** next
    to **Files > Script**, name it the same without `.js` (for example `Utils`),
    and paste the content. Delete the empty default `Code.gs` first, or paste
    `Code.js` into it.
@@ -396,6 +396,49 @@ Good to know:
 - An older app build keeps working against 1.6.0 (it does not send the page or device). The new app build against a 1.5.0 server
   shows the two subtabs with the message "Unknown action"; everything else works.
 - The exact rules are in `docs/wire-protocol.md` section 12.
+
+## 16. Tasks inside actions (1.7.0)
+
+Version 1.7.0 splits every action into **tasks**: the action is the problem, the tasks are the work (who does what, by when, and
+whether the area has to be stopped). The action statuses become Draft, Open, In progress, Closed and Cancelled; **Contractor
+informed** and **Waiting stoppage** move to the tasks. The action follows its tasks (In progress as soon as a task starts), can only be
+closed when every task is Done or Not needed, and the people on "Who can close actions" get a "ready to close" notification. A task
+past its due date alerts the task's person and the action owner. Task templates (Repeated failure, Long stop, Planned overrun) fill
+the tasks of new actions and of the automatic drafts. Do these steps in order; all of them are safe to repeat.
+
+1. **Paste these 9 files** into the Apps Script project, replacing the old content of each:
+   `Tasks.js` (**new**: add it with **+** next to **Files > Script** and name it `Tasks`), `Schema.js`, `Config.js`, `Access.js`,
+   `Code.js`, `Audit.js`, `Actions.js`, `Notifications.js`, `Setup.js`.
+   The other files (`Utils.js`, `Crypto.js`, `Settings.js`, `Auth.js`, `Users.js`, `Master.js`, `Events.js`, `Upload.js`,
+   `Activity.js`) and `appsscript.json` did not change from 1.6.0: leave them alone. With the one-file bundle (option A2), run
+   `node tools/bundle-apps-script.mjs` (it includes `Tasks.js`) and paste `ACC_Downtime_Backend.gs` over `Code.gs` instead.
+2. **Run `ensureSchema`.** It adds three sheets, `action_tasks`, `task_templates` and `task_template_steps`, and four columns:
+   `template_id` on `actions`, `task_id` on `action_log`, `recipients` on `notifications`. It never touches existing rows.
+3. **Run `seedDefaults`** (needed this time). It adds the three task templates (only the ones that are missing) and then, **once**,
+   moves the old statuses to tasks: every action that is Contractor informed, Waiting stoppage or In progress and has no task yet
+   becomes In progress with one task that carries the old status (title from "Required action", else the action title; owner,
+   person and due date from the action; a Waiting stoppage task is marked as needing a stop). Draft, Open, Closed and Cancelled
+   actions do not change. The log (**Executions**) shows `actions_moved_to_tasks` with the number moved, and the Activity log has one
+   row "Moved the old action statuses ... to tasks". Running `seedDefaults` again moves nothing (the Script Property
+   `ACTIONS_TASKS_MIGRATED` remembers it; do not delete it). If you run `seedDefaults` before `ensureSchema`, nothing is moved: run
+   `ensureSchema` and then `seedDefaults` again.
+4. **Deploy a new version** as in section 10 (**Manage deployments**, pencil, **Version: New version**, **Deploy**). The web app
+   address stays the same, and no new permission is asked.
+5. **Check.** Open the web app address with `?action=ping`: it must answer version `1.7.0`. Run **installCheck**: the three new sheets
+   must say `is ready`. In the app, Settings › Actions & targets › Task templates lists the three templates.
+
+Good to know:
+
+- **"Check after 60 days" is not a task.** It is the action's existing effectiveness check, which starts when the action is closed (a
+  task would block closing for 60 days).
+- **Who may do what.** Everyone with Edit on Actions adds and changes tasks; closing and cancelling stay with the people on "Who can
+  close actions" (and Admins). Templates are edited by people with Edit on Settings. Tasks are never deleted: set **Not needed** with a
+  reason instead. Every task change is in the Activity log with its old and new values.
+- **Notifications.** "Ready to close" goes only to the closers and Admins; "Task overdue" only to the task's person and the action
+  owner (to the closers when neither is set). The daily digest follows the same rule.
+- An older app build against 1.7.0 still shows the actions, but cannot set the two removed statuses (the server says why). The new app
+  build against a 1.6.0 server shows no tasks and "Unknown action" on the task buttons; deploy the backend first.
+- The exact rules are in `docs/wire-protocol.md` section 13.
 
 ## Good to know
 

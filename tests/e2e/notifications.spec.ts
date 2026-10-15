@@ -279,7 +279,7 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('digest-note')).toContainText('installed the daily job');
     await expect(page.getByTestId('pref-save')).toBeDisabled();
     // nothing switched on is refused with a plain message
-    for (const id of ['long_stop', 'repeat_group', 'failure_spike', 'availability_low', 'planned_overrun', 'upload_gap', 'action_due', 'updates']) await page.getByTestId(`pref-type-${id}`).uncheck();
+    for (const id of ['long_stop', 'repeat_group', 'failure_spike', 'availability_low', 'planned_overrun', 'upload_gap', 'action_due', 'action_ready_to_close', 'updates']) await page.getByTestId(`pref-type-${id}`).uncheck();
     await page.getByTestId('pref-save').click();
     await expect(page.getByTestId('pref-types-error')).toHaveText('Keep at least one type switched on.');
     await page.getByTestId('pref-type-long_stop').check();

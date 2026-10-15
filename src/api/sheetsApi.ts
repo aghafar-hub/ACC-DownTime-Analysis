@@ -108,6 +108,12 @@ export function createSheetsApi(url: string): Api {
     getAreaTargets: (token, year) => call('getAreaTargets', token, year === undefined ? {} : { year }),
     saveAreaTargets: (token, year, rows) => call('saveAreaTargets', token, { year, rows }),
     runActionChecks: (token) => call('runActionChecks', token),
+    addTask: (token, actionId, task) => call('addTask', token, { actionId, task }),
+    updateTask: (token, taskId, changes) => call('updateTask', token, { taskId, changes }),
+    applyTemplate: (token, actionId, templateId) => call('applyTemplate', token, { actionId, templateId }),
+    listTasks: (token, filter) => call('listTasks', token, { filter: filter ?? {} }),
+    listTaskTemplates: (token) => call('listTaskTemplates', token),
+    saveTaskTemplates: (token, templates) => call('saveTaskTemplates', token, { templates }),
 
     listActiveUsers: (token) => call('listActiveUsers', token),
     listAuditLog: (token, filter, cursor) => call('listAuditLog', token, { filter: filter ?? {}, ...(cursor ? { cursor } : {}) }),

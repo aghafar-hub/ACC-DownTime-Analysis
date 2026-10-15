@@ -37,6 +37,8 @@ const FIELD_WORDS: Record<string, string> = {
   equipment_type: 'type', parent_id: 'parent', in_downtime_sheet: 'in the downtime sheet', sort_order: 'order', is_void: 'void',
   planned_allowance_h_year: 'planned hours a year', availability_target_pct: 'availability target %', overhaul_months: 'overhaul months',
   default_assignee: 'default assignee', due_date: 'due date', needs_stop: 'needs a stop', root_cause: 'root cause', required_action: 'required action',
+  // backend 1.7.0: tasks and task templates
+  est_stop_h: 'estimated stop hours', assignee: 'person', action_status: 'action status', applies_to: 'suggested first for', tasks: 'tasks',
 };
 export const fieldWord = (f: string): string => t(FIELD_WORDS[f] ?? f.replace(/_/g, ' '));
 
@@ -118,6 +120,22 @@ export function auditSentence(e: AuditEntry, name: (id: string) => string): stri
     case 'update_action': return withNote(t('Changed action {id}', { id }), changesText(d.replace(/\. (?=[a-z]+: )/g, '; ')));
     case 'comment_action': return t('Commented on action {id}: “{text}”', { id, text: d });
     case 'action_check': return withNote(t('Ran the action checks'), d.toLowerCase());
+    // backend 1.7.0: tasks inside actions
+    case 'create_task': {
+      const m = /^(\S+): #(\d+) (.*)$/.exec(d);
+      return m ? t('Added task {n} to action {action}: {what}', { n: m[2]!, action: m[1]!, what: m[3]!.replace(/\. Action status: (.*) -> (.*)$/, `. ${t('Action status')} $1 → $2`) })
+        : withNote(t('Added task {id}', { id }), d);
+    }
+    case 'update_task': {
+      const m = /^(\S+) #(\d+): (.*)$/.exec(d);
+      if (!m) return withNote(t('Changed task {id}', { id }), d);
+      const what = changesText(m[3]!.replace(/(^|; )action status: /, '$1action_status: ').replace(/(^|; )note: (.*?)(?=; [a-z_]+: |$)/, (_x, p: string, n: string) => `${p}note: “${n}”`));
+      return t('Changed task {n} of action {action}: {what}', { n: m[2]!, action: m[1]!, what });
+    }
+    case 'apply_template': return withNote(t('Applied a task template to action {id}', { id }), d.replace(/^Template /, ''));
+    case 'save_task_templates': return withNote(t('Saved task templates {ids}', { ids: id.replace(/,/g, ', ') }), d === 'No change' ? ''
+      : changesText(d.replace(/\. (?=TT-)/g, '; ').replace(/(TT-\S+) ([a-z_]+): /g, (_x, tid: string, f: string) => `${tid} ${fieldWord(f)} `)));
+    case 'migrate_actions': return withNote(t('Moved the old action statuses Contractor informed and Waiting stoppage to tasks (version 1.7.0)'), d);
     case 'activate_area': return t('Switched area {id} on (its records count again)', { id });
     case 'deactivate_area': return t('Switched area {id} off (its records are left out everywhere)', { id });
     case 'notification_check': return withNote(t('Ran the alert checks'), d.toLowerCase());

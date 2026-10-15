@@ -149,8 +149,12 @@ test('closers: only actions_closers or an Admin closes, cancels, reopens or chan
 test('updateAction: any open status to any other, edits logged in one row, nothing changed refused, viewers refused', () => {
   const { env, eng, viewer } = setup();
   const id = env.ok('createAction', eng.token, { input: NEW() }).action.action_id;
-  for (const s of ['Open', 'Waiting stoppage', 'Contractor informed', 'Draft', 'In progress']) {
+  for (const s of ['Open', 'In progress', 'Draft', 'In progress']) {
     assert.equal(env.ok('updateAction', eng.token, { actionId: id, changes: { status: s } }).action.status, s);
+  }
+  // 1.7.0: the two statuses that moved to the tasks are refused in plain words
+  for (const s of ['Waiting stoppage', 'Contractor informed']) {
+    assert.match(env.call('updateAction', eng.token, { actionId: id, changes: { status: s } }).error.message, /is a task status since version 1\.7\.0/);
   }
   const r = env.ok('updateAction', eng.token, {
     actionId: id, changes: { priority: 'High', due_date: '2026-10-30', owner: 'RHI', needs_stop: true, root_cause: 'MEC', title: 'New title', add_evidence: [{ note: 'photo' }] },
@@ -243,6 +247,13 @@ test('rule repeat: N failures of the same equipment and reason within D days dra
   assert.equal(a.evidence.length, 3);
   assert.equal(a.title, '100.AA01 - Bearing failure: 3 failures in 30 days');
   assert.match(a.detail, /^3 failures within 30 days \(3\.0 h stopped\), latest 2026-03-20 in K\.1/);
+  // 1.7.0: the draft carries the tasks of the Repeated failure template (owners from the area, due from the day it was drafted)
+  assert.equal(a.template_id, 'TT-REPEAT');
+  const drafted = env.ok('listActions', admin.token).tasks.filter((t) => t.action_id === a.action_id);
+  assert.deepEqual(drafted.map((t) => [t.seq, t.title, t.owner, t.status, t.due_date, t.needs_stop]), [
+    [1, 'Repair', 'RHI', 'Open', '2026-10-14', true], [2, 'Root cause (5-why)', 'MEC', 'Open', '2026-10-19', false],
+    [3, 'Corrective action', 'RHI', 'Open', '2026-11-02', true], [4, 'Spare parts', 'MEC', 'Open', '2026-10-26', false],
+  ]);
   uploadAll(env, admin.token, [failure('2026-03-25 10:00')]);
   const after = env.ok('listActions', admin.token);
   assert.equal(after.actions.length, 1);
@@ -251,6 +262,7 @@ test('rule repeat: N failures of the same equipment and reason within D days dra
   assert.deepEqual(env.ok('runActionChecks', admin.token), { created: 0, merged: 0, effectiveness: 0 });
   // closed: it drafts again only when the failure comes back after the closing
   env.clock.now = Date.parse('2026-04-01T08:00:00Z');
+  for (const t of drafted) env.ok('updateTask', admin.token, { taskId: t.task_id, changes: { status: 'Not needed', note: 'covered by the bearing change' } });
   env.ok('updateAction', admin.token, { actionId: a.action_id, changes: { status: 'Closed', closure_note: 'replaced the bearing' } });
   assert.equal(env.ok('runActionChecks', admin.token).created, 0);
   uploadAll(env, admin.token, [failure('2026-10-11 01:00'), failure('2026-10-11 03:00'), failure('2026-10-11 05:00')]);

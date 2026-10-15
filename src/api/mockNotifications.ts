@@ -1,8 +1,8 @@
 // The notification rules for the mock API (docs/notifications-design.md). They are written with the calc library
 // (the same code the screens use), while backend/apps-script/Notifications.js has its own plain-JS port of the same
 // formulas. tests/unit/contract.test.ts runs both over the same scenarios, so the two cannot drift apart.
-import { ApiError, REPORT_PRESETS, REPORT_SECTION_IDS, REPORT_TEMPLATES, SAVED_REPORTS_MAX, type Action, type Area, type AreaTarget, type EventRow, type NotificationSeverity, type NotificationType, type Setting, type UploadBatch } from './types';
-import { actionDueAlerts, plannedOverruns, plannedOverrunText } from './mockActions';
+import { ApiError, REPORT_PRESETS, REPORT_SECTION_IDS, REPORT_TEMPLATES, SAVED_REPORTS_MAX, type Action, type ActionTask, type Area, type AreaTarget, type EventRow, type NotificationSeverity, type NotificationType, type Setting, type UploadBatch } from './types';
+import { actionDueAlerts, plannedOverruns, plannedOverrunText, readyAlerts, taskOverdueAlerts } from './mockActions';
 import { isValidDate } from '../util/normalize';
 import {
   addDays, buildFailureEvents, computeKpis, findClusters, groupOccurrences, lastDayOfMonth, matchKey, monthRange, parseSettings, rowCode,
@@ -42,6 +42,8 @@ export function parseNotifSettings(settings: Setting[]): NotifSettings {
 export interface Candidate {
   type: NotificationType; severity: NotificationSeverity; dedupe_key: string; title: string; detail: string;
   area_id: string; line_id: string; source_ref: string;
+  /** backend 1.7.0: who sees it ('' = everyone; user ids and/or @closers) */
+  recipients?: string;
 }
 
 export const oneLine = (s: string | undefined | null, max: number): string => {
@@ -65,6 +67,8 @@ export interface RuleInput {
   targets?: AreaTarget[];
   /** actions (action_due, backend 1.4.0) */
   actions?: Action[];
+  /** tasks of the actions (task_overdue, action_ready_to_close and the action due date, backend 1.7.0) */
+  tasks?: ActionTask[];
 }
 
 /** Data-driven candidates in a fixed order: long stops, repeated groups, spikes, availability, upload gap. */
@@ -73,8 +77,12 @@ export function notificationCandidates(input: RuleInput): Candidate[] {
   const events = input.events.filter((e) => !e.is_void);
   let latest = '';
   for (const e of events) if (e.event_date > latest) latest = e.event_date;
-  // action_due does not depend on the events (port of notifRuleActionDue_)
-  const due = actionDueAlerts(input.actions ?? [], today).map((a) => alert('action_due', a.key, a.title, a.detail, a.area, a.line, a.ref));
+  // action_due, task_overdue and action_ready_to_close do not depend on the events (ports of notifRuleActionDue_,
+  // notifRuleTaskOverdue_ and notifRuleReady_), in the server's order
+  const acts = input.actions ?? [];
+  const tasks = input.tasks ?? [];
+  const due = [...actionDueAlerts(acts, tasks, today), ...taskOverdueAlerts(acts, tasks, today), ...readyAlerts(acts, tasks)]
+    .map((a) => ({ ...alert(a.type, a.key, a.title, a.detail, a.area, a.line, a.ref), recipients: a.recipients }));
   if (!latest) return due;
   const cutoff = addDays(latest, -st.retentionDays);
   const lineOf = (area: string, fallback = ''): string => areas.find((a) => a.area_id === area)?.line_id ?? fallback;

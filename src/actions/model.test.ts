@@ -83,7 +83,7 @@ describe('filters', () => {
   });
   it('the counts per status ignore the status filter', () => {
     const c = countByStatus(filterActionsExceptStatus(list, { ...emptyFilters(), status: 'Closed' }, env));
-    expect(c).toMatchObject({ Draft: 1, Open: 1, Closed: 1, Cancelled: 1, 'In progress': 1, 'Waiting stoppage': 0 });
+    expect(c).toMatchObject({ Draft: 1, Open: 1, Closed: 1, Cancelled: 1, 'In progress': 1 });
   });
   it('round trip through the address', () => {
     const f = { ...emptyFilters(), q: 'belt', status: 'Open' as const, areas: ['K.1', 'K.2'], owners: ['RHI'], mine: true, overdue: true, priorities: ['High' as const], sources: ['report' as const] };
@@ -112,28 +112,27 @@ describe('sorting and grouping', () => {
   });
   it('groups every status, empty ones included', () => {
     const g = groupByStatus([act({ status: 'Draft' }), act({ status: 'Draft' }), act({ status: 'Closed' })]);
-    expect(Object.keys(g)).toEqual(['Draft', 'Open', 'Contractor informed', 'Waiting stoppage', 'In progress', 'Closed', 'Cancelled']);
+    expect(Object.keys(g)).toEqual(['Draft', 'Open', 'In progress', 'Closed', 'Cancelled']);
     expect(g.Draft).toHaveLength(2);
     expect(g.Open).toHaveLength(0);
   });
 });
 
 describe('status changes', () => {
-  it('next status follows the board; waiting stoppage only when a stop is needed; closing only for closers', () => {
+  it('next status follows the board (Draft, Open, In progress, Closed); closing only for closers', () => {
     expect(nextStatus(act({ status: 'Draft' }), false)).toBe('Open');
-    expect(nextStatus(act({ status: 'Contractor informed' }), false)).toBe('In progress');
-    expect(nextStatus(act({ status: 'Contractor informed', needs_stop: true }), false)).toBe('Waiting stoppage');
+    expect(nextStatus(act({ status: 'Open' }), false)).toBe('In progress');
     expect(nextStatus(act({ status: 'In progress' }), false)).toBeNull();
     expect(nextStatus(act({ status: 'In progress' }), true)).toBe('Closed');
     expect(nextStatus(act({ status: 'Closed' }), true)).toBeNull();
   });
   it('options: any open status freely; Closed / Cancelled only for closers; a closed action only reopens to Open', () => {
     const allowed = (s: ActionStatus, close: boolean) => statusOptions(act({ status: s }), close).filter((o) => o.allowed).map((o) => o.status);
-    expect(allowed('Open', false)).toEqual(['Draft', 'Contractor informed', 'Waiting stoppage', 'In progress']);
-    expect(allowed('Open', true)).toEqual(['Draft', 'Contractor informed', 'Waiting stoppage', 'In progress', 'Closed', 'Cancelled']);
+    expect(allowed('Open', false)).toEqual(['Draft', 'In progress']);
+    expect(allowed('Open', true)).toEqual(['Draft', 'In progress', 'Closed', 'Cancelled']);
     expect(allowed('Closed', true)).toEqual(['Open']);
     expect(allowed('Closed', false)).toEqual([]);
-    expect(statusOptions(act({ status: 'Open' }), true).find((o) => o.next)?.status).toBe('Contractor informed');
+    expect(statusOptions(act({ status: 'Open' }), true).find((o) => o.next)?.status).toBe('In progress');
   });
   it('closing and cancelling need a note of at least 3 characters', () => {
     expect(noteProblem('Closed', '  ok ')).not.toBeNull();

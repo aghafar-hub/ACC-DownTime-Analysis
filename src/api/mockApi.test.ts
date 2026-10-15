@@ -527,7 +527,7 @@ describe('areas switched on and off, and the theme with the account (backend 1.5
     expect((await a.getEvents(admin.token, 2026)).some((e) => e.area_id === 'AFR')).toBe(true);
     // the rules leave AFR out: no alert or new draft about it
     await a.runNotificationChecks(admin.token);
-    expect((await a.getNotifications(admin.token)).items.some((n) => n.area_id === 'AFR' && n.type !== 'action_due')).toBe(false);
+    expect((await a.getNotifications(admin.token)).items.some((n) => n.area_id === 'AFR' && !['action_due', 'task_overdue', 'action_ready_to_close'].includes(n.type))).toBe(false);
     const autoAfr = async () => (await a.listActions(admin.token)).actions.filter((x) => x.area_id === 'AFR' && x.created_by === 'system').length;
     const n = await autoAfr();
     await a.runActionChecks(admin.token);

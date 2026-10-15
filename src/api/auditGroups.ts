@@ -5,14 +5,14 @@ import type { AuditGroup } from './types';
 export const AUDIT_GROUP_ACTIONS: Record<AuditGroup, readonly string[]> = {
   signin: ['login', 'login_failed', 'login_locked', 'logout', 'change_password'],
   users: ['create_user', 'update_user', 'reset_password', 'set_tab_access', 'create_first_admin'],
-  settings: ['save_setting', 'save_contractors', 'save_area_targets'],
+  settings: ['save_setting', 'save_contractors', 'save_area_targets', 'save_task_templates'],
   master: ['add_equipment', 'update_equipment', 'add_area', 'update_area', 'add_reason', 'update_reason', 'add_alias', 'update_alias', 'delete_alias'],
   events: ['edit_event', 'void_event', 'unvoid_event', 'accept_event_flags', 'revalidate_events'],
   upload: ['upload_start', 'upload_chunk', 'upload_finish'],
-  actions: ['create_action', 'merge_action', 'update_action', 'comment_action', 'action_check'],
+  actions: ['create_action', 'merge_action', 'update_action', 'comment_action', 'action_check', 'create_task', 'update_task', 'apply_template'],
   areas: ['activate_area', 'deactivate_area'],
   notifications: ['notification_check', 'notification_failed', 'digest_sent', 'digest_failed'],
-  system: ['seed_defaults'],
+  system: ['seed_defaults', 'migrate_actions'],
 };
 
 export function auditGroupOf(action: string): AuditGroup {

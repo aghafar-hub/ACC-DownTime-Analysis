@@ -22,12 +22,14 @@ export const categoryKey = (c: string): string => c.toLowerCase().replace(/[^a-z
 const TYPE_LABEL: Record<string, string> = {
   long_stop: 'Long stop', repeat_group: 'Repeated failure', failure_spike: 'Failure spike', availability_low: 'Availability below target',
   planned_overrun: 'Planned overrun', upload_gap: 'No upload', upload_done: 'Upload', action_due: 'Overdue', user_event: 'Users',
+  task_overdue: 'Task overdue', action_ready_to_close: 'Ready to close',
   validate: 'Records to check', unknown_code: 'Unknown code', needs_review: 'Equipment to review',
 };
 export const typeLabel = (type: string): string => t(TYPE_LABEL[type] ?? type);
 
 /** 'Create action' is offered on alerts about the plant (not on overdue-action reminders, updates or derived items). */
-export const canCreateFrom = (item: Pick<FeedItem, 'kind' | 'type'>): boolean => item.kind === 'alert' && item.type !== 'action_due';
+export const canCreateFrom = (item: Pick<FeedItem, 'kind' | 'type'>): boolean =>
+  item.kind === 'alert' && item.type !== 'action_due' && item.type !== 'task_overdue' && item.type !== 'action_ready_to_close';
 
 export function countByCategory(items: readonly FeedItem[]): Record<NotificationCategory, { total: number; fresh: number }> {
   const out = Object.fromEntries(CATEGORIES.map((c) => [c, { total: 0, fresh: 0 }])) as Record<NotificationCategory, { total: number; fresh: number }>;

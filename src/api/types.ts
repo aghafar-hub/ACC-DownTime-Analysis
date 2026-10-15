@@ -119,10 +119,10 @@ export interface Startup {
 /** Stored notification types. Action items are derived by the app and are not stored. */
 export type NotificationType =
   | 'long_stop' | 'repeat_group' | 'failure_spike' | 'availability_low' | 'upload_gap' | 'upload_done' | 'user_event'
-  | 'planned_overrun' | 'action_due';
+  | 'planned_overrun' | 'action_due' | 'action_ready_to_close' | 'task_overdue';
 export const NOTIFICATION_TYPES: NotificationType[] = [
   'long_stop', 'repeat_group', 'failure_spike', 'availability_low', 'upload_gap', 'upload_done', 'user_event',
-  'planned_overrun', 'action_due',
+  'planned_overrun', 'action_due', 'action_ready_to_close', 'task_overdue',
 ];
 /** Inbox categories (backend 1.4.0). The server derives the category from the type; it is not stored. */
 export const NOTIFICATION_CATEGORIES = ['Reliability', 'Availability & planned', 'Data quality', 'Actions', 'System'] as const;
@@ -132,6 +132,7 @@ export const NOTIFICATION_CATEGORY_OF: Record<NotificationType, NotificationCate
   long_stop: 'Reliability', repeat_group: 'Reliability', failure_spike: 'Reliability',
   availability_low: 'Availability & planned', planned_overrun: 'Availability & planned',
   upload_gap: 'Data quality', upload_done: 'Data quality', action_due: 'Actions', user_event: 'System',
+  action_ready_to_close: 'Actions', task_overdue: 'Actions',
 };
 export type NotificationSeverity = 'alert' | 'update';
 /** getNotifications only returns 'open' items; resolved and expired ones stay in the table for the record. */
@@ -142,9 +143,17 @@ export interface Notification {
   /** unique over all statuses, e.g. 'long_stop|EV-1234abcd5678ef90' */
   dedupe_key: string;
   title: string; detail?: string; area_id?: string; line_id?: string;
-  /** event_id, batch_id or user_id the notification is about */
+  /**
+   * event_id, batch_id, user_id or action_id the notification is about. action_due, action_ready_to_close and task_overdue
+   * carry the action_id; task_overdue names its task in the dedupe key 'task_due|<task_id>|<due_date>'.
+   */
   source_ref?: string;
   created_at: string; expires_at: string; status: NotificationStatus; resolved_at?: string;
+  /**
+   * Backend 1.7.0: who sees it. Comma-separated user ids and/or '@closers' (actions_closers and the Admins); blank or absent =
+   * everyone. getNotifications only returns the caller's own, so the app never needs to filter on it.
+   */
+  recipients?: string;
   /** derived from `type` by getNotifications (backend 1.4.0); older servers leave it out: use NOTIFICATION_CATEGORY_OF */
   category?: NotificationCategory;
 }
@@ -195,8 +204,15 @@ export interface NotificationCheckResult { created: number; resolved: number; ex
 
 // ---- actions (docs/actions-design.md, docs/wire-protocol.md section 10, backend 1.4.0) ----
 
-export const ACTION_STATUSES = ['Draft', 'Open', 'Contractor informed', 'Waiting stoppage', 'In progress', 'Closed', 'Cancelled'] as const;
+/**
+ * Backend 1.7.0: Draft (until accepted, by hand) -> Open -> In progress (set by the tasks: as soon as any task leaves Open) ->
+ * Closed (by a closer, every task Done or Not needed), or Cancelled. 'Contractor informed' and 'Waiting stoppage' moved to the
+ * tasks (TASK_STATUSES); updateAction refuses them.
+ */
+export const ACTION_STATUSES = ['Draft', 'Open', 'In progress', 'Closed', 'Cancelled'] as const;
 export type ActionStatus = (typeof ACTION_STATUSES)[number];
+/** The two action statuses of backend 1.4.0-1.6.0 that are task statuses since 1.7.0 (refused by updateAction). */
+export const REMOVED_ACTION_STATUSES = ['Contractor informed', 'Waiting stoppage'] as const;
 /** Closed and Cancelled: only people in actions_closers (or an Admin) move an action to or from them. */
 export const ACTION_TERMINAL_STATUSES: readonly ActionStatus[] = ['Closed', 'Cancelled'];
 export const isTerminalStatus = (s: ActionStatus): boolean => ACTION_TERMINAL_STATUSES.includes(s);
@@ -235,8 +251,15 @@ export interface Action {
   owner: string;
   /** the person following it up: a user_id (see ActionsPayload.people) or a free name; '' = nobody */
   assignee: string;
-  /** 'YYYY-MM-DD' or '' */
+  /** 'YYYY-MM-DD' or ''. Set by hand only while the action has no tasks (backend 1.7.0); see due_date_derived. */
   due_date: string;
+  /**
+   * Backend 1.7.0: the due date to show. With tasks: the latest due date of the open tasks ('' when no open task has one);
+   * without tasks: due_date. Absent from older servers: use actionDueDate().
+   */
+  due_date_derived?: string;
+  /** Backend 1.7.0: the task template the tasks were first made from ('' = none). */
+  template_id?: string;
   needs_stop: boolean; root_cause: ActionRootCause; required_action: string;
   created_by: string; created_at: string; updated_at: string; updated_by: string;
   closed_by: string; closed_at: string; closure_note: string;
@@ -246,12 +269,15 @@ export interface Action {
   dedupe_key: string;
 }
 
-export type ActionLogKind = 'status' | 'comment' | 'edit' | 'evidence';
+/** task_* (backend 1.7.0): the history of one task (task_id). task_status carries the task statuses in from_status / to_status. */
+export type ActionLogKind = 'status' | 'comment' | 'edit' | 'evidence' | 'task_create' | 'task_status' | 'task_edit' | 'task_note';
 export interface ActionLog {
   log_id: string; action_id: string; at: string;
   /** user_id or 'system' */
   by: string;
   kind: ActionLogKind; from_status: string; to_status: string; text: string;
+  /** backend 1.7.0: the task of a task_* row ('' otherwise; absent from older servers) */
+  task_id?: string;
 }
 
 /** An external contractor or an internal team. `areas` is stored as csv and sent as a list. */
@@ -269,6 +295,10 @@ export interface ActionsPayload {
   closers: string[];
   /** may the caller close, cancel or reopen actions */
   can_close: boolean;
+  /** backend 1.7.0: every task of the returned actions, by action and seq (absent from older servers) */
+  tasks?: ActionTask[];
+  /** backend 1.7.0: every task template with its steps, active or not (absent from older servers) */
+  templates?: TaskTemplate[];
 }
 
 /** createAction input. Defaults: status Draft, priority Medium, source manual. Closed / Cancelled are refused here. */
@@ -280,15 +310,198 @@ export interface NewAction {
   evidence?: ActionEvidenceInput[];
   /** blank: equipment scope with a reason uses 'repeat|<equipment>|<reason_key>' */
   dedupe_key?: string;
+  /**
+   * Backend 1.7.0: the tasks to create with the action (at most TASKS_PER_ACTION_MAX, all start Open). When they are left out
+   * and template_id is given, the template's steps are created instead; with both, the tasks are created and template_id is
+   * only recorded on the action. When the action is merged into an open one, the tasks whose template_step that action does
+   * not have yet are added to it.
+   */
+  tasks?: NewTask[];
+  template_id?: string;
 }
 export type ActionEditableField =
   | 'title' | 'detail' | 'status' | 'priority' | 'scope_kind' | 'area_id' | 'line_id' | 'equipment_id' | 'reason_key' | 'owner'
   | 'assignee' | 'due_date' | 'needs_stop' | 'root_cause' | 'required_action' | 'closure_note';
 export type ActionChanges = Partial<Pick<Action, ActionEditableField>> & { add_evidence?: ActionEvidenceInput[] };
-export interface ActionResult { action: Action; logs: ActionLog[] }
+/** `tasks` (backend 1.7.0): every task of the action, by seq. */
+export interface ActionResult { action: Action; logs: ActionLog[]; tasks?: ActionTask[] }
 /** merged = an open action with the same dedupe_key received the evidence instead (that action is returned). */
 export interface CreateActionResult extends ActionResult { merged: boolean }
 export interface ActionCheckResult { created: number; merged: number; effectiveness: number }
+
+// ---- tasks inside actions (backend 1.7.0, docs/wire-protocol.md section 13) ----
+
+/** Contractor informed only for an external contractor; Done needs a note, Not needed a reason (TASK_NOTE_MIN characters). */
+export const TASK_STATUSES = ['Open', 'Contractor informed', 'Waiting stoppage', 'In progress', 'Done', 'Not needed'] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+/** A task in one of these no longer blocks closing the action. */
+export const TASK_CLOSED_STATUSES: readonly TaskStatus[] = ['Done', 'Not needed'];
+export const TASK_NOTE_MIN = 3;
+export const TASKS_PER_ACTION_MAX = 50;
+export const TEMPLATE_STEPS_MAX = 20;
+/** default_owner of a template step: the active external contractor of the action's area. */
+export const AREA_CONTRACTOR = 'area_contractor';
+
+export interface ActionTask {
+  /** 'AT-' + 12 hex characters */
+  task_id: string; action_id: string;
+  /** 1, 2, 3 ... within the action */
+  seq: number;
+  title: string;
+  owner_kind: ActionOwnerKind;
+  /** a Contractor.contractor_id; '' = nobody yet (then owner_kind 'internal') */
+  owner: string;
+  /** user_id or a free name; '' = nobody. Gets the task_overdue alert. */
+  assignee: string;
+  /** 'YYYY-MM-DD' or '' */
+  due_date: string;
+  status: TaskStatus;
+  needs_stop: boolean;
+  /** estimated stop hours; null = not estimated (always null when needs_stop is false) */
+  est_stop_h: number | null;
+  notes: string;
+  /** the template step title it was made from; '' = added by hand */
+  template_step: string;
+  created_at: string; created_by: string; updated_at: string; updated_by: string;
+  /** set when it becomes Done or Not needed, cleared when it is reopened */
+  done_at: string; done_by: string; done_note: string;
+}
+
+/** addTask / createAction input. A new task always starts Open. */
+export interface NewTask {
+  title: string; owner?: string; assignee?: string; due_date?: string; needs_stop?: boolean; est_stop_h?: number | null; notes?: string;
+  template_step?: string;
+}
+/**
+ * updateTask changes. `note` goes with a status change (required for Done: what was done; for Not needed: the reason; optional
+ * otherwise) or, alone, adds a note to the task history.
+ */
+export type TaskChanges = Partial<Pick<ActionTask, 'title' | 'owner' | 'assignee' | 'due_date' | 'status' | 'needs_stop' | 'est_stop_h' | 'notes'>> & { note?: string };
+/**
+ * addTask / updateTask / applyTemplate: the action (its status may have followed the tasks), all its tasks and its history.
+ * `task` is the task added or changed (addTask, updateTask); `added` how many tasks were added (applyTemplate).
+ */
+export interface TaskResult { action: Action; tasks: ActionTask[]; logs: ActionLog[]; task?: ActionTask; added?: number }
+
+export interface TaskTemplateStep {
+  seq: number; title: string;
+  /** AREA_CONTRACTOR or a Contractor.contractor_id */
+  default_owner: string;
+  due_offset_days: number; needs_stop: boolean; est_stop_h: number | null;
+}
+export interface TaskTemplate {
+  /** 'TT-…' */
+  template_id: string; name: string;
+  /** action sources the template is suggested for first; a source belongs to at most one active template */
+  applies_to: ActionSource[];
+  active: boolean; sort_order: number; updated_at: string; updated_by: string;
+  steps: TaskTemplateStep[];
+}
+/** saveTaskTemplates input: template_id blank = a new template. The steps replace the template's steps (1-20, unique titles). */
+export interface TaskTemplateInput {
+  template_id?: string; name: string; applies_to: ActionSource[]; active: boolean; sort_order?: number;
+  steps: Omit<TaskTemplateStep, 'seq'>[];
+}
+
+/**
+ * listTasks filter (all optional). status: 'open' (default) = not Done / Not needed, 'closed' = Done / Not needed, 'all', or a
+ * list. mine = the caller is the task's person. overdue = open and due before today. needs_stop = needs a stop (with the
+ * default status: the Shutdown list). done_since ('YYYY-MM-DD') keeps only tasks finished on or after that day. Tasks of Draft
+ * and Cancelled actions are left out (include_drafts adds the Draft ones).
+ */
+export interface TaskFilter {
+  mine?: boolean; overdue?: boolean; needs_stop?: boolean;
+  status?: 'open' | 'closed' | 'all' | TaskStatus[];
+  owner?: string; assignee?: string; area_id?: string; line_id?: string; action_id?: string;
+  done_since?: string; include_drafts?: boolean;
+}
+/** A task with what the Tasks and Shutdown lists show of its action. */
+export interface TaskView extends ActionTask {
+  action_title: string; action_status: ActionStatus; action_assignee: string; action_owner: string;
+  area_id: string; line_id: string; equipment_id: string;
+  /** open and due before `today` */
+  overdue: boolean;
+  /** when it last moved to Waiting stoppage ('' when it is not waiting) */
+  waiting_since: string;
+}
+/** listTasks: overdue first, then by due date (no date last), action and seq. `today` is the server's plant date. */
+export interface TaskList { tasks: TaskView[]; today: string }
+
+export const isTaskOpen = (t: Pick<ActionTask, 'status'>): boolean => !TASK_CLOSED_STATUSES.includes(t.status);
+
+const tasksOfAction = <T extends Pick<ActionTask, 'action_id'>>(a: Pick<Action, 'action_id'>, tasks: readonly T[]): T[] =>
+  tasks.filter((t) => t.action_id === a.action_id);
+
+/** Today's plant date as the browser sees it ('YYYY-MM-DD', local clock). */
+export function localToday(now: Date = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+}
+
+export interface ActionProgress {
+  /** Done + Not needed */
+  done: number; total: number;
+  /** total - done */
+  open: number;
+  /** open tasks due before today */
+  overdue: number;
+  /** earliest due date of the open tasks ('' when none has one) */
+  nextDue: string;
+  /** Not needed (included in done) */
+  notNeeded: number;
+  /** open tasks that need a stop, and their estimated hours */
+  needsStop: number; stopHours: number;
+}
+/** Progress of one action (all tasks may be passed; only this action's count). */
+export function actionProgress(action: Pick<Action, 'action_id'>, tasks: readonly ActionTask[], today: string = localToday()): ActionProgress {
+  const mine = tasksOfAction(action, tasks);
+  const open = mine.filter(isTaskOpen);
+  const dues = open.map((t) => t.due_date).filter(Boolean).sort();
+  return {
+    done: mine.length - open.length, total: mine.length, open: open.length,
+    overdue: open.filter((t) => t.due_date && t.due_date < today).length,
+    nextDue: dues[0] ?? '', notNeeded: mine.filter((t) => t.status === 'Not needed').length,
+    needsStop: open.filter((t) => t.needs_stop).length,
+    stopHours: Math.round(open.reduce((s, t) => s + (t.needs_stop && t.est_stop_h ? t.est_stop_h : 0), 0) * 10) / 10,
+  };
+}
+
+/**
+ * The status the server keeps (backend 1.7.0): Draft, Closed and Cancelled stay; an action without tasks keeps its own status;
+ * otherwise In progress as soon as any task has left Open, else Open.
+ */
+export function deriveActionStatus(action: Pick<Action, 'action_id' | 'status'>, tasks: readonly ActionTask[]): ActionStatus {
+  if (action.status === 'Draft' || isTerminalStatus(action.status)) return action.status;
+  const mine = tasksOfAction(action, tasks);
+  if (!mine.length) return action.status;
+  return mine.some((t) => t.status !== 'Open') ? 'In progress' : 'Open';
+}
+
+/** The action's due date (due_date_derived): the latest open task due date with tasks, else the stored due_date. */
+export function actionDueDate(action: Pick<Action, 'action_id' | 'due_date'>, tasks: readonly ActionTask[]): string {
+  const mine = tasksOfAction(action, tasks);
+  if (!mine.length) return action.due_date;
+  return mine.filter(isTaskOpen).map((t) => t.due_date).filter(Boolean).sort().pop() ?? '';
+}
+
+/** May the action be closed as far as its tasks go: not closed or cancelled, and no open task (an action without tasks may). */
+export function canClose(action: Pick<Action, 'action_id' | 'status'>, tasks: readonly ActionTask[]): boolean {
+  return !isTerminalStatus(action.status) && !tasksOfAction(action, tasks).some(isTaskOpen);
+}
+
+/** Accepted, not closed, at least one task and every task Done or Not needed (the action_ready_to_close condition). */
+export function isReadyToClose(action: Pick<Action, 'action_id' | 'status'>, tasks: readonly ActionTask[]): boolean {
+  return action.status !== 'Draft' && tasksOfAction(action, tasks).length > 0 && canClose(action, tasks);
+}
+
+/** Why a task status change would be refused ('' when fine): the same checks as the server. */
+export function taskStatusProblem(task: Pick<ActionTask, 'owner_kind'>, status: TaskStatus, note: string): string {
+  const n = note.trim();
+  if (status === 'Contractor informed' && task.owner_kind !== 'contractor') return 'Contractor informed is only for a task owned by an external contractor.';
+  if (status === 'Done' && n.length < TASK_NOTE_MIN) return `Write what was done (at least ${TASK_NOTE_MIN} characters).`;
+  if (status === 'Not needed' && n.length < TASK_NOTE_MIN) return `Write why the task is not needed (at least ${TASK_NOTE_MIN} characters).`;
+  return '';
+}
 
 /** Per area and year. `monthly_split` (12 hours, Jan..Dec) adds up to the allowance; overhaul months are 1-12. */
 export interface AreaTarget {
@@ -468,6 +681,24 @@ export interface Api {
   saveAreaTargets(token: string, year: number, rows: AreaTargetInput[]): Promise<AreaTarget[]>;
   /** Runs the draft rules and the effectiveness check now (settings Edit). Also runs after every upload and notification check. */
   runActionChecks(token: string): Promise<ActionCheckResult>;
+
+  // --- tasks inside actions (backend 1.7.0) ---
+  /** Adds one task (Open) to an action that is not Closed / Cancelled (actions Edit). */
+  addTask(token: string, actionId: string, task: NewTask): Promise<TaskResult>;
+  /**
+   * Changes one task (actions Edit). Done needs `note` (what was done) and Not needed a reason, 3+ characters; Contractor informed
+   * only for an external contractor's task. The action's status follows (Open <-> In progress); when the last open task closes,
+   * the closers get action_ready_to_close. On a Closed / Cancelled action only a note may be added. Tasks are never deleted.
+   */
+  updateTask(token: string, taskId: string, changes: TaskChanges): Promise<TaskResult>;
+  /** Adds the template's steps the action does not have yet (matched by template_step), due from today (actions Edit). */
+  applyTemplate(token: string, actionId: string, templateId: string): Promise<TaskResult>;
+  /** Tasks across all actions, filtered on the server (actions View): the Tasks tab and the Shutdown list. */
+  listTasks(token: string, filter?: TaskFilter): Promise<TaskList>;
+  /** Every task template with its steps (any signed-in user; also part of listActions). */
+  listTaskTemplates(token: string): Promise<TaskTemplate[]>;
+  /** Inserts or updates the templates sent, replacing their steps (settings Edit). Returns all templates. */
+  saveTaskTemplates(token: string, templates: TaskTemplateInput[]): Promise<TaskTemplate[]>;
 
   // --- admin only (backend 1.6.0, the Admin role ROLE-ADMIN whatever the tab access says) ---
   /** Every user with when they were last seen, the page open and the device; online ones first. */
