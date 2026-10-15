@@ -129,7 +129,8 @@ export function auditSentence(e: AuditEntry, name: (id: string) => string): stri
     case 'update_task': {
       const m = /^(\S+) #(\d+): (.*)$/.exec(d);
       if (!m) return withNote(t('Changed task {id}', { id }), d);
-      const what = changesText(m[3]!.replace(/(^|; )action status: /, '$1action_status: ').replace(/(^|; )note: (.*?)(?=; [a-z_]+: |$)/, (_x, p: string, n: string) => `${p}note: “${n}”`));
+      // person fields hold user ids: show the names
+      const what = changesText(m[3]!.replace(/\bU-[A-Za-z0-9_-]+/g, (u) => name(u)).replace(/(^|; )action status: /, '$1action_status: ').replace(/(^|; )note: (.*?)(?=; [a-z_]+: |$)/, (_x, p: string, n: string) => `${p}note: “${n}”`));
       return t('Changed task {n} of action {action}: {what}', { n: m[2]!, action: m[1]!, what });
     }
     case 'apply_template': return withNote(t('Applied a task template to action {id}', { id }), d.replace(/^Template /, ''));

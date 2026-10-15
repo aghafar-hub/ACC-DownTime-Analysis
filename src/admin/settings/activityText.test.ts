@@ -39,7 +39,7 @@ describe('activity log sentences', () => {
     expect(auditSentence(e('update_task', 'AT-1', 'AC-202610-0012 #3: note: booked for the RM.1 stop'), name))
       .toBe('Changed task 3 of action AC-202610-0012: note “booked for the RM.1 stop”');
     expect(auditSentence(e('update_task', 'AT-1', 'AC-1 #1: est_stop_h: (blank) -> 6; assignee: (blank) -> U-1'), name))
-      .toBe('Changed task 1 of action AC-1: estimated stop hours (blank) → 6, person (blank) → U-1');
+      .toBe('Changed task 1 of action AC-1: estimated stop hours (blank) → 6, person (blank) → Mona Engineer');
     expect(auditSentence(e('apply_template', 'AC-1', 'Template Planned overrun: 2 tasks added (Review planned work, Adjust allowance or plan)'), name))
       .toBe('Applied a task template to action AC-1: Planned overrun: 2 tasks added (Review planned work, Adjust allowance or plan)');
     expect(auditSentence(e('save_task_templates', 'TT-PLANNED,TT-1', 'TT-PLANNED applies_to: auto_planned_overrun -> auto_planned_overrun,manual. TT-1 added: Belt (1 tasks: Look (MEC, +3 d))'), name))
