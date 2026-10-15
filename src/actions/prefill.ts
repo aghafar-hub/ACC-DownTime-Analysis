@@ -21,7 +21,7 @@ export function notificationPrefill(n: NotifLike, category: NotificationCategory
   const isEq = opts.isEquipment ?? (() => true);
   if (n.type === 'long_stop' && EVENT_ID.test(n.source_ref)) {
     const row = opts.findEvent?.(n.source_ref);
-    const out: ActionPrefill = { ...base, eventIds: [n.source_ref], area_id: row?.area_id ?? n.area_id, line_id: row?.line_id ?? n.line_id };
+    const out: ActionPrefill = { ...base, suggest: 'auto_long_stop', eventIds: [n.source_ref], area_id: row?.area_id ?? n.area_id, line_id: row?.line_id ?? n.line_id };
     if (row) out.hours = (row.duration_s ?? 0) / 3600;
     if (row && row.code_raw && !row.is_area_level && isEq(row.code_raw)) return { ...out, scope_kind: 'equipment', equipment_id: row.code_raw, reason_key: row.reason_raw ?? '' };
     return { ...out, scope_kind: out.area_id ? 'area' : 'plant' };
@@ -29,8 +29,11 @@ export function notificationPrefill(n: NotifLike, category: NotificationCategory
   if (n.type === 'repeat_group') {
     const [, area, code, reason, first] = n.dedupe_key.split('|');
     const ev = first && EVENT_ID.test(first) ? [first] : [];
-    if (code && isEq(code)) return { ...base, scope_kind: 'equipment', equipment_id: code, area_id: area || n.area_id, reason_key: reason ?? '', eventIds: ev };
-    return { ...base, scope_kind: n.area_id ? 'area' : 'plant', area_id: n.area_id, eventIds: ev };
+    if (code && isEq(code)) return { ...base, suggest: 'auto_repeat', scope_kind: 'equipment', equipment_id: code, area_id: area || n.area_id, reason_key: reason ?? '', eventIds: ev };
+    return { ...base, suggest: 'auto_repeat', scope_kind: n.area_id ? 'area' : 'plant', area_id: n.area_id, eventIds: ev };
+  }
+  if (n.type === 'planned_overrun') {
+    if (n.area_id) return { ...base, suggest: 'auto_planned_overrun', scope_kind: 'area', area_id: n.area_id };
   }
   if (n.area_id) return { ...base, scope_kind: 'area', area_id: n.area_id };
   if (n.line_id) return { ...base, scope_kind: 'line', line_id: n.line_id };
@@ -46,7 +49,7 @@ export function paretoPrefill(input: { dim: ParetoDim; key: string; label: strin
   const base: ActionPrefill = { source: 'pareto', source_ref: `${input.chart}: ${input.label}`.slice(0, 200), trail, eventIds: input.eventIds.slice(0, 200), hours: input.hours };
   switch (input.dim) {
     case 'equipment':
-      return { ...base, scope_kind: 'equipment', equipment_id: input.key, title: t('{c} · top failure hours', { c: input.label }) };
+      return { ...base, suggest: 'auto_chronic', scope_kind: 'equipment', equipment_id: input.key, title: t('{c} · top failure hours', { c: input.label }) };
     case 'reason':
       return input.equipment
         ? { ...base, scope_kind: 'equipment', equipment_id: input.equipment, reason_key: input.label, title: `${input.equipment} · ${input.label}` }
@@ -63,7 +66,7 @@ export function paretoPrefill(input: { dim: ParetoDim; key: string; label: strin
 /** From a repeated-failure row: the equipment and the reason, the failure events as evidence. */
 export function repeatPrefill(g: { equipmentId: string; reasonLabel: string; areaIds: string[]; occurrences: number; totalHours: number; eventIds: string[] }, windowDays?: number): ActionPrefill {
   return {
-    source: 'pareto', scope_kind: 'equipment', equipment_id: g.equipmentId, area_id: g.areaIds[0], reason_key: g.reasonLabel,
+    source: 'pareto', suggest: 'auto_repeat', scope_kind: 'equipment', equipment_id: g.equipmentId, area_id: g.areaIds[0], reason_key: g.reasonLabel,
     title: windowDays
       ? t('{c} · {r} · {n} times · {h} h', { c: g.equipmentId, r: g.reasonLabel, n: g.occurrences, h: g.totalHours.toFixed(1) })
       : `${g.equipmentId} · ${g.reasonLabel}`,

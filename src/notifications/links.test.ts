@@ -37,6 +37,13 @@ describe('storedTarget', () => {
     expect(storedTarget(n({ type: 'action_due' }), env(['actions'])).link).toBeNull();
     expect(storedTarget(n({ type: 'planned_overrun', dedupe_key: 'planned|K.1|2026-08' }), env()).link).toEqual({ to: '/dashboard?area=K.1' });
   });
+  it('backend 1.7.0: a task overdue opens the action at that task; ready to close opens the action', () => {
+    const over = storedTarget(n({ type: 'task_overdue', dedupe_key: 'task_due|AT-00000000000a|2026-10-11', source_ref: 'AC-202610-0007' }), env());
+    expect(over).toEqual({ link: { to: '/actions?id=AC-202610-0007&task=AT-00000000000a' }, label: 'Open task' });
+    expect(storedTarget(n({ type: 'task_overdue', dedupe_key: 'task_due|AT-1|2026-10-11', source_ref: 'AC-1' }), env(['actions'])).link).toBeNull();
+    const ready = storedTarget(n({ type: 'action_ready_to_close', dedupe_key: 'ready|AC-202610-0012|5', source_ref: 'AC-202610-0012' }), env());
+    expect(ready).toEqual({ link: { to: '/actions?id=AC-202610-0012' }, label: 'Open action AC-202610-0012' });
+  });
   it('no button when the person may not open the place', () => {
     expect(storedTarget(n({ type: 'upload_gap' }), env(['upload'])).link).toBeNull();
     expect(storedTarget(n({}), env(['events'])).link).toBeNull();

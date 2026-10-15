@@ -41,15 +41,17 @@ test.describe('desktop', () => {
     await page.getByTestId('rail-link-actions').click();
     await expect(page.getByTestId('page-title')).toHaveText('Actions');
     await expect(page.getByTestId('breadcrumb')).toContainText('Act');
-    // the demo FM.1 action is 3 days overdue
-    await expect(page.getByTestId('actions-badge-rail')).toContainText('1');
-    for (const s of ['draft', 'open', 'contractor-informed', 'waiting-stoppage', 'in-progress', 'closed']) {
+    // backend 1.7.0: the badge counts the overdue tasks of the demo (CR 2, RM.1 1, AFR 1)
+    await expect(page.getByTestId('actions-badge-rail')).toContainText('4');
+    for (const s of ['draft', 'open', 'in-progress', 'closed']) {
       await expect(page.getByTestId(`column-${s}`)).toBeVisible();
     }
+    await expect(page.getByTestId('column-contractor-informed')).toHaveCount(0);
+    await expect(page.getByTestId('column-waiting-stoppage')).toHaveCount(0);
     await expect(page.getByTestId('column-cancelled')).toHaveCount(0);
-    await expect(page.getByTestId('column-in-progress').getByTestId('action-card')).toContainText(/overdue/);
+    await expect(page.getByTestId('column-in-progress').getByTestId('action-card').filter({ hasText: /overdue/ }).first()).toBeVisible();
     await expect(page.getByTestId('actions-summary')).toBeVisible();
-    await expect(page.getByTestId('actions-subtitle')).toContainText('1 overdue');
+    await expect(page.getByTestId('actions-subtitle')).toContainText('4 tasks overdue');
     // ids as the backend makes them
     await expect(page.getByTestId('action-card').first()).toContainText(/AC-\d{6}-\d{4}/);
     // cancelled are hidden until asked for
@@ -71,18 +73,19 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('action-card')).toHaveCount(1);
     await expect(page).toHaveURL(/area=CM\.3/);
     await page.getByTestId('filters-reset').click();
-    await page.getByTestId('filter-overdue').click();
-    await expect(page.getByTestId('filter-overdue')).toBeChecked();
-    await expect(page.getByTestId('action-card')).toHaveCount(1);
-    await expect(page.getByTestId('action-card')).toContainText('overdue');
-    await page.getByTestId('filter-overdue').click();
-    await expect(page.getByTestId('filter-overdue')).not.toBeChecked();
+    // backend 1.7.0: "Has overdue tasks" (CR, RM.1 and AFR have an open task past its due date)
+    await page.getByTestId('filter-task-overdue').click();
+    await expect(page.getByTestId('filter-task-overdue')).toBeChecked();
+    await expect(page.getByTestId('action-card')).toHaveCount(3);
+    await expect(page.getByTestId('action-card').first()).toContainText('overdue');
+    await page.getByTestId('filter-task-overdue').click();
+    await expect(page.getByTestId('filter-task-overdue')).not.toBeChecked();
     await page.getByTestId('filter-status').selectOption('Draft');
     await expect(page.getByTestId('column-open')).toHaveCount(0);
     await expect(page.getByTestId('column-draft')).toBeVisible();
     await page.getByTestId('filter-status').selectOption('active');
     await page.getByTestId('filter-source').selectOption('manual');
-    await expect(page.getByTestId('action-card')).toHaveCount(1);
+    await expect(page.getByTestId('action-card')).toHaveCount(2);
     await page.getByTestId('filters-reset').click();
     // the list: a sortable table with the same actions
     await page.getByTestId('view-list').click();
@@ -209,24 +212,29 @@ test.describe('desktop', () => {
   test('status: the next step for anyone with Edit; closing only for closers, with a note', async ({ page }) => {
     // the engineer is not on the closers list
     await openActions(page, 'engineer');
+    // an action without tasks keeps its status by hand (backend 1.7.0: Open -> In progress -> Closed)
     await openCard(page, 'Diaphragm slots clogged');
     await expect(page.getByTestId('action-steps')).toBeVisible();
     await page.getByTestId('action-next').click();
-    await expect(detail(page).getByTestId('action-status')).toHaveText('Contractor informed');
-    await expect(page.getByTestId('history-row').first()).toContainText('Open → Contractor informed');
-    await page.getByTestId('action-close').click();
-    await openCard(page, 'Liner worn');
-    // In progress: the next step would be Closed, which this person may not do
-    await expect(page.getByTestId('action-next')).toHaveCount(0);
-    await expect(page.getByTestId('action-cancel')).toHaveCount(0);
-    await expect(page.getByTestId('action-closers-note')).toContainText('You are not on the list');
+    await expect(detail(page).getByTestId('action-status')).toHaveText('In progress');
+    await expect(page.getByTestId('history-row').first()).toContainText('Open → In progress');
     await page.getByTestId('action-change-status').click();
     await expect(page.getByTestId('status-opt-Closed')).toHaveAttribute('data-allowed', 'false');
     await expect(page.getByTestId('status-opt-Cancelled')).toHaveAttribute('data-allowed', 'false');
     await expect(page.getByTestId('status-closer-note')).toBeVisible();
     await page.getByTestId('status-back').click();
+    await page.getByTestId('action-close').click();
+    // every task done: ready to close, which this person may not do (the In progress column shows 6 cards: search for it)
+    await page.getByTestId('actions-search').fill('Liner worn');
+    await openCard(page, 'Liner worn');
+    await expect(page.getByTestId('action-next')).toHaveCount(0);
+    await expect(page.getByTestId('action-cancel')).toHaveCount(0);
+    await expect(page.getByTestId('action-close-btn')).toBeDisabled();
+    await expect(page.getByTestId('ready-closer-note')).toBeVisible();
+    await expect(page.getByTestId('action-closers-note')).toContainText('You are not on the list');
     // a closed action cannot be changed or reopened by a non-closer
     await page.getByTestId('action-close').click();
+    await page.getByTestId('actions-search').fill('');
     await openCard(page, 'Belt torn (demo)');
     await expect(page.getByTestId('action-change-status')).toHaveCount(0);
     await expect(page.getByTestId('action-assignee')).toBeDisabled();
@@ -235,8 +243,10 @@ test.describe('desktop', () => {
   test('a closer closes with a note (equipment: effectiveness Watching) and reopens to Open only', async ({ page }) => {
     await openActions(page, 'manager');
     await openCard(page, 'Liner worn');
-    await expect(page.getByTestId('action-next')).toContainText('Move to Closed');
-    await page.getByTestId('action-next').click();
+    // every task is done: the closer may close (backend 1.7.0)
+    await expect(page.getByTestId('action-close-btn')).toBeEnabled();
+    await expect(page.getByTestId('ready-banner')).toBeVisible();
+    await page.getByTestId('action-close-btn').click();
     await expect(page.getByTestId('status-modal')).toBeVisible();
     await expect(page.getByTestId('status-opt-Closed').locator('input')).toBeChecked();
     await page.getByTestId('status-apply').click();
@@ -255,21 +265,23 @@ test.describe('desktop', () => {
     const allowed = await page.locator('[data-testid^=status-opt-][data-allowed=true]').allTextContents();
     expect(allowed.map((x) => x.trim())).toEqual([expect.stringContaining('Open')]);
     await page.getByTestId('status-apply').click();
-    await expect(detail(page).getByTestId('action-status')).toHaveText('Open');
+    // reopened, it follows its tasks: they are all done, so In progress (and ready to close again)
+    await expect(detail(page).getByTestId('action-status')).toHaveText('In progress');
     await expect(page.getByTestId('action-closure')).toHaveCount(0);
+    await expect(page.getByTestId('ready-banner')).toBeVisible();
     // cancelling needs a reason too
     await page.getByTestId('action-cancel').click();
     await page.getByTestId('status-note').fill('Duplicate of another action.');
     await page.getByTestId('status-apply').click();
     await expect(detail(page).getByTestId('action-status')).toHaveText('Cancelled');
     await page.getByTestId('action-close').click();
-    // the overdue badge went with it
-    await expect(page.getByTestId('actions-badge-rail')).toHaveCount(0);
+    // its tasks were not overdue: the badge (overdue tasks) is unchanged
+    await expect(page.getByTestId('actions-badge-rail')).toContainText('4');
   });
 
   test('assignment, comments and the edits history', async ({ page }) => {
     await openActions(page, 'engineer');
-    await openCard(page, 'Chain slack (demo)');
+    await openCard(page, 'Diaphragm slots clogged');
     await page.getByTestId('action-assignee').selectOption({ label: 'Demo Engineer' });
     await expect(page.getByTestId('action-saved')).toBeVisible();
     await expect(page.getByTestId('history-row').first()).toContainText('assignee');
@@ -288,7 +300,7 @@ test.describe('desktop', () => {
     await page.getByTestId('action-close').click();
     await page.getByTestId('filter-mine').click();
     await expect(page.getByTestId('filter-mine')).toBeChecked();
-    await expect(card(page, 'Chain slack (demo)')).toBeVisible();
+    await expect(card(page, 'Diaphragm slots clogged')).toBeVisible();
   });
 
   test('View only: everything readable, nothing changeable', async ({ page }) => {
@@ -369,7 +381,8 @@ test.describe('phone 390', () => {
   test('the action full screen, Change status as a sheet; Back closes it', async ({ page }) => {
     await signInAndWait(page, 'manager');
     await page.goto('/#/actions');
-    await openCard(page, 'Chute blockage (demo)');
+    // an action without tasks: its status is set by hand
+    await openCard(page, 'Diaphragm slots clogged');
     const box = (await detail(page).boundingBox())!;
     expect(box.width).toBeGreaterThanOrEqual(389);
     expect(box.x).toBeLessThanOrEqual(1);

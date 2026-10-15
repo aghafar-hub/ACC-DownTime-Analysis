@@ -3,17 +3,25 @@
 // change its status) or a sortable list. Phone: status tabs, filter chips, cards and a New button. The filters, the view
 // and the open action live in the address, so Back and a shared link bring the same view back. Offline the copy saved on
 // the device is shown and changes are switched off with the reason.
+// Backend 1.7.0 (docs/actions-mockups/tasks/01, 07, 08): page tabs Actions · Tasks · Shutdown list (/actions, /actions/tasks,
+// /actions/shutdown). The board columns are Draft, Open, In progress and Closed (Cancelled when asked for); a card shows its task
+// progress, the next task and who still has open tasks. Open and In progress follow the tasks, so a card with tasks cannot be
+// dragged between them: only accepting a draft (Draft -> Open), closing and cancelling stay manual.
 import { useCallback, useMemo, useState, type DragEvent } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ACTION_PRIORITIES, ACTION_STATUSES, isTerminalStatus, type Action, type ActionSource, type ActionStatus } from '../api/types';
+import { useLocation, useSearchParams } from 'react-router-dom';
+import { ACTION_PRIORITIES, ACTION_STATUSES, actionProgress, isTerminalStatus, type Action, type ActionSource, type ActionStatus } from '../api/types';
 import ActionDetail from '../actions/ActionDetail';
 import { useActions } from '../actions/ActionsContext';
 import {
   actionsCsvRows, activeFilterCount, BOARD_STATUSES, contractorName, countByStatus, filterActions, filterActionsExceptStatus, groupByStatus,
-  isOverdue, parseActionFilters, personName, SORT_KEYS, SORT_LABEL, sortActions, SOURCE_LABEL, statusKey, summarize, todayLocal, writeActionFilters,
+  dropRule, isOverdue, parseActionFilters, personName, SORT_KEYS, SORT_LABEL, sortActions, SOURCE_LABEL, statusKey, summarize, taskTally, todayLocal, writeActionFilters,
   type ActionFilters, type SortKey,
 } from '../actions/model';
-import { ActionCard, DueTag, InactiveAreaTag, PriorityTag, StatusChip, StatusDot, scopeText, type CardEnv } from '../actions/parts';
+import { ActionCard, DueTag, InactiveAreaTag, PriorityTag, StatusChip, StatusDot, TaskProgress, scopeText, type CardEnv } from '../actions/parts';
+import ActionsTabs, { useActionOpener } from '../actions/ActionsTabs';
+import ShutdownView from '../actions/ShutdownView';
+import TasksView from '../actions/TasksView';
+import { taskSummary } from '../actions/tasks';
 import { inactiveAreaIds } from '../data/activeAreas';
 import StatusDialog from '../actions/StatusDialog';
 import SummaryCards from '../actions/SummaryCards';
@@ -51,19 +59,25 @@ function FilterSelect({ label, value, options, onChange, testid }: {
   );
 }
 
+/** The Actions page: its tab (the board, every task, the Shutdown list) follows the address. */
 export default function Actions() {
+  const location = useLocation();
+  if (location.pathname.startsWith('/actions/tasks')) return <TasksView />;
+  if (location.pathname.startsWith('/actions/shutdown')) return <ShutdownView />;
+  return <Board />;
+}
+
+function Board() {
   const acts = useActions();
   const { user } = useAuth();
   const { startup } = useStartup();
   const mobile = useIsMobile();
-  const navigate = useNavigate();
-  const location = useLocation();
   const [sp, setSp] = useSearchParams();
   const today = todayLocal();
   const f = useMemo(() => parseActionFilters(sp), [sp]);
   const view: 'board' | 'list' = sp.get('view') === 'list' ? 'list' : 'board';
-  const sort: SortKey = (SORT_KEYS as string[]).includes(sp.get('sort') ?? '') ? (sp.get('sort') as SortKey) : 'due';
-  const openId = sp.get('id');
+  const sort: SortKey = (SORT_KEYS as string[]).includes(sp.get('sort') ?? '') ? (sp.get('sort') as SortKey) : 'next';
+  const { openId, taskId, open, close } = useActionOpener();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [sheet, setSheet] = useState(false);
   const [drop, setDrop] = useState<{ action: Action; to: ActionStatus } | null>(null);
@@ -74,10 +88,11 @@ export default function Actions() {
   const all = useMemo(() => payload?.actions ?? [], [payload]);
   const people = useMemo(() => payload?.people ?? [], [payload]);
   const contractors = useMemo(() => payload?.contractors ?? [], [payload]);
-  const env = useMemo(() => ({ today, me: user?.user_id ?? '', people, contractors }), [today, user, people, contractors]);
+  const tasks = useMemo(() => payload?.tasks ?? [], [payload]);
+  const env = useMemo(() => ({ today, me: user?.user_id ?? '', people, contractors, tasks }), [today, user, people, contractors, tasks]);
   const effectDays = Number(startup?.settings.find((s) => s.key === 'actions_effect_days')?.value) || 60;
   const inactive = useMemo(() => new Set(inactiveAreaIds(startup)), [startup]);
-  const cardEnv: CardEnv = { today, people, contractors, effectDays, inactiveAreas: inactive };
+  const cardEnv: CardEnv = { today, people, contractors, effectDays, inactiveAreas: inactive, tasks };
 
   const setFilters = useCallback((patch: Partial<ActionFilters>) => {
     setSp((cur) => writeActionFilters(cur, { ...parseActionFilters(cur), ...patch }), { replace: true });
@@ -89,22 +104,14 @@ export default function Actions() {
       return n;
     }, { replace: true });
   }, [setSp]);
-  const open = useCallback((id: string) => {
-    const n = new URLSearchParams(sp);
-    n.set('id', id);
-    navigate({ pathname: '/actions', search: n.toString() }, { state: { actionOpen: true } });
-  }, [sp, navigate]);
-  const close = useCallback(() => {
-    if ((location.state as { actionOpen?: boolean } | null)?.actionOpen) navigate(-1);
-    else setParam('id', null);
-  }, [location.state, navigate, setParam]);
 
   const base = useMemo(() => filterActionsExceptStatus(all, f, env), [all, f, env]);
-  const shown = useMemo(() => sortActions(filterActions(all, f, env), sort), [all, f, env, sort]);
-  const groups = useMemo(() => groupByStatus(sortActions(base, sort)), [base, sort]);
+  const shown = useMemo(() => sortActions(filterActions(all, f, env), sort, tasks), [all, f, env, sort, tasks]);
+  const groups = useMemo(() => groupByStatus(sortActions(base, sort, tasks)), [base, sort, tasks]);
   const counts = useMemo(() => countByStatus(base), [base]);
   const cancelledHidden = f.status === 'active' && !f.cancelled ? counts.Cancelled : 0;
   const sum = useMemo(() => summarize(all, today), [all, today]);
+  const tsum = useMemo(() => taskSummary(all, tasks, today), [all, tasks, today]);
   const nf = activeFilterCount(f);
 
   const areas = useMemo(() => (startup?.areas ?? []).slice().sort((a, b) => a.sort_order - b.sort_order), [startup]);
@@ -129,26 +136,28 @@ export default function Actions() {
     const id = e.dataTransfer.getData('text/plain');
     const a = all.find((x) => x.action_id === id);
     if (!a || a.status === to || !acts.canEdit) return;
-    const canClose = !!payload?.can_close;
-    if (isTerminalStatus(to) || isTerminalStatus(a.status)) {
-      if (!canClose) {
-        setNote(t('Only people on the "Who can close actions" list can close, cancel or reopen an action.'));
-        return;
-      }
-      setDrop({ action: a, to: isTerminalStatus(a.status) ? 'Open' : to });
+    const rule = dropRule(a, to, taskTally(a.action_id, tasks), !!payload?.can_close);
+    if (rule.kind === 'refuse') {
+      setNote(rule.text);
+      return;
+    }
+    if (rule.kind === 'dialog') {
+      setDrop({ action: a, to: rule.to });
       return;
     }
     const r = await acts.update(a.action_id, { status: to });
-    setNote(r.ok ? t('{id} moved to {s}.', { id: a.action_id, s: t(to) }) : r.error);
+    setNote(r.ok ? t('{id} moved to {s}.', { id: a.action_id, s: t(r.value.action.status) }) : r.error);
   };
 
   // ---------------------------------------------------------------- states before there is a list
+  const tabsRow = <ActionsTabs />;
   const header = (
     <PageHeader
       title={t('Actions')}
       subtitle={payload ? (
         <span data-testid="actions-subtitle">
-          <b>{t('{n} open', { n: sum.open })}</b> · <b className={sum.overdue ? 'as-od' : undefined}>{t('{n} overdue', { n: sum.overdue })}</b> · <b>{t('{n} drafts', { n: sum.drafts })}</b> {t('to review')}
+          <b>{t('{n} open', { n: sum.open })}</b> · <b className={tsum.overdue ? 'as-od' : undefined}>{tsum.overdue === 1 ? t('1 task overdue') : t('{n} tasks overdue', { n: tsum.overdue })}</b>
+          {' · '}<b className={tsum.ready ? 'as-ok' : undefined}>{t('{n} ready to close', { n: tsum.ready })}</b> · <b>{t('{n} drafts', { n: sum.drafts })}</b> {t('to review')}
           {sum.notEffective > 0 && ` · ${t('{n} not effective in the last 90 days', { n: sum.notEffective })}`}
         </span>
       ) : t('Work that came out of the downtime data, followed until it is closed and checked.')}
@@ -181,6 +190,7 @@ export default function Actions() {
   if (!payload) {
     return (
       <div className="page act-page" data-testid="page-actions">
+        {tabsRow}
         {header}
         {acts.loading || (!acts.error && !acts.accessDenied) ? <p className="callout" role="status" data-testid="actions-loading">{t('Loading the actions…')}</p> : (
           <div className="callout callout--danger" role="alert" data-testid="actions-error">
@@ -189,7 +199,7 @@ export default function Actions() {
             <button type="button" className="btn btn-sm" onClick={acts.reload}>{t('Try again')}</button>
           </div>
         )}
-        {openId && <ActionDetail id={openId} onClose={close} />}
+        {openId && <ActionDetail id={openId} taskId={taskId} onClose={close} />}
       </div>
     );
   }
@@ -214,6 +224,8 @@ export default function Actions() {
       <FilterSelect label={t('Line')} value={single(f.lines)} onChange={(v) => setFilters({ lines: list(v) })} testid="filter-line" options={lines.map((l) => ({ value: l.line_id, label: l.line_id }))} />
       <FilterSelect label={t('Contractor')} value={single(f.owners)} onChange={(v) => setFilters({ owners: list(v) })} testid="filter-owner"
         options={[{ value: '-', label: t('Nobody yet') }, ...contractors.map((c) => ({ value: c.contractor_id, label: c.name }))]} />
+      <FilterSelect label={t('Task owner')} value={single(f.taskOwners)} onChange={(v) => setFilters({ taskOwners: list(v) })} testid="filter-task-owner"
+        options={contractors.map((c) => ({ value: c.contractor_id, label: c.name }))} />
       <FilterSelect label={t('Owner')} value={single(f.assignees)} onChange={(v) => setFilters({ assignees: list(v) })} testid="filter-assignee"
         options={[{ value: '-', label: t('No owner') }, ...assignees]} />
       <FilterSelect label={t('Source')} value={single(f.sources)} onChange={(v) => setFilters({ sources: list(v) as ActionSource[] })} testid="filter-source"
@@ -229,15 +241,19 @@ export default function Actions() {
         <span className="act-switch-ui" aria-hidden="true" /><span>{t('My actions')}</span>
       </label>
       <label className="act-switch af-toggle">
-        <input type="checkbox" checked={f.overdue} onChange={(e) => setFilters({ overdue: e.target.checked })} data-testid="filter-overdue" />
-        <span className="act-switch-ui" aria-hidden="true" /><span>{t('Overdue only')}</span>
+        <input type="checkbox" checked={f.taskOverdue} onChange={(e) => setFilters({ taskOverdue: e.target.checked, overdue: false })} data-testid="filter-task-overdue" />
+        <span className="act-switch-ui" aria-hidden="true" /><span>{t('Has overdue tasks')}</span>
+      </label>
+      <label className="act-switch af-toggle">
+        <input type="checkbox" checked={f.ready} onChange={(e) => setFilters({ ready: e.target.checked })} data-testid="filter-ready" />
+        <span className="act-switch-ui" aria-hidden="true" /><span>{t('Ready to close')}</span>
       </label>
     </>
   );
   const sortSelect = (
     <label className="af-pill af-sort">
       <span className="af-pill-label">{t('Sort')}:</span>
-      <select value={sort} onChange={(e) => setParam('sort', e.target.value === 'due' ? null : e.target.value)} aria-label={t('Sort by')} data-testid="actions-sort">
+      <select value={sort} onChange={(e) => setParam('sort', e.target.value === 'next' ? null : e.target.value)} aria-label={t('Sort by')} data-testid="actions-sort">
         {SORT_KEYS.map((k) => <option key={k} value={k}>{t(SORT_LABEL[k])}</option>)}
       </select>
       <Icon name="chevronDown" size={14} />
@@ -260,6 +276,7 @@ export default function Actions() {
     const tabSum = { open: tabList.filter((a) => !isTerminalStatus(a.status)).length, overdue: tabList.filter((a) => isOverdue(a, today)).length, none: tabList.filter((a) => !a.assignee && !isTerminalStatus(a.status)).length };
     return (
       <div className="page act-page act-page--phone" data-testid="page-actions">
+        {tabsRow}
         {status}
         <nav className="act-tabs" aria-label={t('Status')} data-testid="actions-tabs">
           <button type="button" className={tab === 'active' ? 'act-tab act-tab--on' : 'act-tab'} aria-pressed={tab === 'active'} onClick={() => setFilters({ status: 'active' })} data-testid="tab-active">
@@ -278,11 +295,12 @@ export default function Actions() {
               <Icon name="filter" size={14} /> {t('Filters')}{nf ? ` · ${nf}` : ''}
             </button>
             <button type="button" className={f.mine ? 'chip chip--on' : 'chip'} aria-pressed={f.mine} onClick={() => setFilters({ mine: !f.mine })} data-testid="chip-mine"><Icon name="users" size={14} /> {t('Mine')}</button>
-            <button type="button" className={f.overdue ? 'chip chip--on' : 'chip'} aria-pressed={f.overdue} onClick={() => setFilters({ overdue: !f.overdue })} data-testid="chip-overdue"><Icon name="alert" size={14} /> {t('Overdue')}</button>
+            <button type="button" className={f.taskOverdue ? 'chip chip--on' : 'chip'} aria-pressed={f.taskOverdue} onClick={() => setFilters({ taskOverdue: !f.taskOverdue, overdue: false })} data-testid="chip-overdue"><Icon name="alert" size={14} /> {t('Overdue tasks')}</button>
+            <button type="button" className={f.ready ? 'chip chip--on' : 'chip'} aria-pressed={f.ready} onClick={() => setFilters({ ready: !f.ready })} data-testid="chip-ready"><Icon name="check" size={14} /> {t('Ready to close')}</button>
           </div>
         </div>
         <div className="act-phone-sum">
-          <span data-testid="actions-phone-summary">{t('{n} open', { n: tabSum.open })} · <b className={tabSum.overdue ? 'as-od' : undefined}>{t('{n} overdue', { n: tabSum.overdue })}</b> · {t('{n} no owner', { n: tabSum.none })}</span>
+          <span data-testid="actions-phone-summary">{t('{n} open', { n: tabSum.open })} · <b className={tsum.overdue ? 'as-od' : undefined}>{tsum.overdue === 1 ? t('1 task overdue') : t('{n} tasks overdue', { n: tsum.overdue })}</b> · {t('{n} no owner', { n: tabSum.none })}</span>
           {sortSelect}
         </div>
         <div className="act-phone-list" data-testid="actions-list">
@@ -299,8 +317,8 @@ export default function Actions() {
             <div className="af-sheet">{selects}{toggles}</div>
           </BottomSheet>
         )}
-        {drop && <StatusDialog action={drop.action} canClose={!!payload.can_close} initial={drop.to} onClose={() => setDrop(null)} onDone={(text) => { setDrop(null); setNote(text); }} />}
-        {openId && <ActionDetail id={openId} onClose={close} />}
+        {drop && <StatusDialog action={drop.action} canClose={!!payload.can_close} initial={drop.to} tally={taskTally(drop.action.action_id, tasks)} onClose={() => setDrop(null)} onDone={(text) => { setDrop(null); setNote(text); }} />}
+        {openId && <ActionDetail id={openId} taskId={taskId} onClose={close} />}
       </div>
     );
   }
@@ -310,11 +328,12 @@ export default function Actions() {
     .filter((s) => (f.status === 'active' || f.status === 'all' ? true : f.status === 'open' ? !isTerminalStatus(s) : s === f.status));
   return (
     <div className="page act-page" data-testid="page-actions">
+      {tabsRow}
       {header}
       {status}
-      <SummaryCards actions={all} contractors={contractors} today={today}
+      <SummaryCards actions={all} tasks={tasks} contractors={contractors} today={today}
         onArea={(area) => setFilters({ areas: [area] })} onStatus={(s) => setFilters({ status: s })}
-        onOverdue={() => setFilters({ overdue: true })} onNoOwner={() => setFilters({ assignees: ['-'] })} />
+        onReady={() => setFilters({ ready: true })} onNoOwner={() => setFilters({ assignees: ['-'] })} />
 
       <section className="card af-bar" aria-label={t('Filters')} data-testid="actions-filters">
         <div className="af-row">
@@ -337,7 +356,8 @@ export default function Actions() {
           <span>
             {t('{n} actions in this view', { n: shown.length })}
             {cancelledHidden > 0 && <> · {t('Cancelled hidden ({n})', { n: cancelledHidden })} — <button type="button" className="af-link" onClick={() => setFilters({ cancelled: true })} data-testid="show-cancelled">{t('Show cancelled')}</button></>}
-            {acts.canEdit && view === 'board' && ` · ${t('drag a card to another column to change its status')}`}
+            {view === 'board' && ` · ${t('columns follow the tasks: a card moves to In progress when its first task starts')}`}
+            {acts.canEdit && view === 'board' && ` · ${t('drag to accept a draft, close or cancel')}`}
           </span>
         </p>
       </section>
@@ -358,7 +378,9 @@ export default function Actions() {
                 <header className="ab-col-head">
                   <StatusDot status={s} /><h2 id={`ab-h-${statusKey(s)}`}>{t(s)}</h2><b className="ab-count" data-testid="column-count">{items.length}</b>
                 </header>
-                {s === 'Draft' && items.length > 0 && <p className="ab-col-note"><Icon name="sync" size={13} />{t('{n} auto-created · review', { n: items.filter((a) => a.source.startsWith('auto_')).length })}</p>}
+                {s === 'Draft' && items.length > 0 && <p className="ab-col-note"><Icon name="sync" size={13} />{t('{n} auto-created · review and accept', { n: items.filter((a) => a.source.startsWith('auto_')).length })}</p>}
+                {s === 'Open' && <p className="ab-col-note">{t('No task started yet')}</p>}
+                {s === 'In progress' && <p className="ab-col-note">{t('At least one task started')}</p>}
                 {s === 'Closed' && <p className="ab-col-note">{t('Effectiveness is checked after closing')}</p>}
                 <div className="ab-cards">
                   {vis.map((a) => <ActionCard key={a.action_id} action={a} env={cardEnv} onOpen={open} draggable={acts.canEdit && !acts.blockedReason} onDragStart={onDragStart} />)}
@@ -380,7 +402,7 @@ export default function Actions() {
               <thead>
                 <tr>
                   <th scope="col">{t('Action')}</th><th scope="col">{t('Problem')}</th><th scope="col">{t('Status')}</th><th scope="col">{t('Priority')}</th>
-                  <th scope="col">{t('Area · line')}</th><th scope="col">{t('Contractor')}</th><th scope="col">{t('Owner')}</th><th scope="col">{t('Due')}</th><th scope="col">{t('Source')}</th>
+                  <th scope="col">{t('Tasks')}</th><th scope="col">{t('Area · line')}</th><th scope="col">{t('Contractor')}</th><th scope="col">{t('Owner')}</th><th scope="col">{t('Due')}</th><th scope="col">{t('Source')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -390,6 +412,7 @@ export default function Actions() {
                     <td className="al-title">{a.equipment_id && <b className="mono">{a.equipment_id} </b>}{a.title}</td>
                     <td><StatusChip status={a.status} /></td>
                     <td><PriorityTag priority={a.priority} /></td>
+                    <td className="nowrap">{actionProgress(a, tasks, today).total ? <TaskProgress actionId={a.action_id} tasks={tasks} today={today} /> : <span className="muted">{t('No tasks')}</span>}</td>
                     <td className="nowrap">{scopeText(a)}{a.area_id && inactive.has(a.area_id) && <> <InactiveAreaTag /></>}</td>
                     <td>{contractorName(contractors, a.owner) || <span className="muted">{t('Nobody yet')}</span>}</td>
                     <td>{personName(people, a.assignee) || <span className="muted">{t('No owner')}</span>}</td>
@@ -403,8 +426,8 @@ export default function Actions() {
           </div>
         </div>
       )}
-      {drop && <StatusDialog action={drop.action} canClose={!!payload.can_close} initial={drop.to} onClose={() => setDrop(null)} onDone={(text) => { setDrop(null); setNote(text); }} />}
-      {openId && <ActionDetail id={openId} onClose={close} />}
+      {drop && <StatusDialog action={drop.action} canClose={!!payload.can_close} initial={drop.to} tally={taskTally(drop.action.action_id, tasks)} onClose={() => setDrop(null)} onDone={(text) => { setDrop(null); setNote(text); }} />}
+      {openId && <ActionDetail id={openId} taskId={taskId} onClose={close} />}
     </div>
   );
 }

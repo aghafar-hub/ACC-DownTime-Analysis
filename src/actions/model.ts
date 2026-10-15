@@ -2,8 +2,8 @@
 // grouping the board, the counts of the summary cards, which status an action may move to next, due-date words, the
 // dedupe key the server will use, and the CSV export rows. No React; the clock is passed in.
 import {
-  ACTION_PRIORITIES, ACTION_STATUSES, contractorForArea, isTerminalStatus,
-  type Action, type ActionPerson, type ActionPriority, type ActionSource, type ActionStatus, type Contractor, type NewAction,
+  ACTION_PRIORITIES, ACTION_STATUSES, contractorForArea, isTaskOpen, isTerminalStatus,
+  type Action, type ActionPerson, type ActionPriority, type ActionSource, type ActionStatus, type ActionTask, type Contractor, type NewAction,
 } from '../api/types';
 import { addDays, addMonthsToKey, matchKey, parseDate, MS_DAY } from '../calc';
 import { t } from '../i18n/t';
@@ -13,7 +13,7 @@ import { dayText, monthShort } from '../util/dates';
 
 /**
  * The statuses shown as board columns (Cancelled only when asked for). Backend 1.7.0: Contractor informed and Waiting stoppage
- * are task statuses now (TASK_STATUSES); the UI for tasks is built separately.
+ * are task statuses now (TASK_STATUSES, src/actions/tasks.ts).
  */
 export const BOARD_STATUSES: ActionStatus[] = ['Draft', 'Open', 'In progress', 'Closed'];
 /** The open statuses (everything before Closed / Cancelled). */
@@ -57,19 +57,23 @@ export function daysFrom(a: string, b: string): number {
   return Math.round((y - x) / MS_DAY);
 }
 
+/** The due date to show: backend 1.7.0 derives it from the tasks (due_date_derived); an older server sends only due_date. */
+export const dueOf = (a: Pick<Action, 'due_date'> & { due_date_derived?: string }): string => a.due_date_derived ?? a.due_date;
+
 /** Not Closed or Cancelled, with a due date before today. */
-export const isOverdue = (a: Pick<Action, 'status' | 'due_date'>, today: string): boolean =>
-  !isTerminalStatus(a.status) && !!a.due_date && a.due_date < today;
+export const isOverdue = (a: Pick<Action, 'status' | 'due_date'> & { due_date_derived?: string }, today: string): boolean =>
+  !isTerminalStatus(a.status) && !!dueOf(a) && dueOf(a) < today;
 
 export type DueTone = 'none' | 'ok' | 'soon' | 'overdue' | 'closed';
 /** 'Due 18 Oct', 'Due today', '12 d overdue', 'Due not set'; and how it should look. */
-export function dueInfo(a: Pick<Action, 'status' | 'due_date'>, today: string): { text: string; tone: DueTone; days: number } {
-  if (!a.due_date) return { text: t('Due not set'), tone: 'none', days: 0 };
-  const days = daysFrom(today, a.due_date);
-  if (isTerminalStatus(a.status)) return { text: t('Due {d}', { d: dayText(a.due_date) }), tone: 'closed', days };
+export function dueInfo(a: Pick<Action, 'status' | 'due_date'> & { due_date_derived?: string }, today: string): { text: string; tone: DueTone; days: number } {
+  const due = dueOf(a);
+  if (!due) return { text: t('Due not set'), tone: 'none', days: 0 };
+  const days = daysFrom(today, due);
+  if (isTerminalStatus(a.status)) return { text: t('Due {d}', { d: dayText(due) }), tone: 'closed', days };
   if (days < 0) return { text: t('{n} d overdue', { n: -days }), tone: 'overdue', days };
   if (days === 0) return { text: t('Due today'), tone: 'soon', days };
-  return { text: t('Due {d}', { d: dayText(a.due_date) }), tone: days <= 7 ? 'soon' : 'ok', days };
+  return { text: t('Due {d}', { d: dayText(due) }), tone: days <= 7 ? 'soon' : 'ok', days };
 }
 
 /** A sensible due date for a new action: High 14 days, Medium 30, Low 60. */
@@ -104,9 +108,9 @@ export function defaultOwnerFor(contractors: readonly Contractor[], areaId: stri
 
 /** active: every status but Cancelled (unless shown); open: before Closed; all: every status. */
 export type StatusFilter = 'active' | 'open' | 'all' | ActionStatus;
-export type SortKey = 'due' | 'priority' | 'newest' | 'oldest' | 'updated';
-export const SORT_KEYS: SortKey[] = ['due', 'priority', 'newest', 'oldest', 'updated'];
-export const SORT_LABEL: Record<SortKey, string> = { due: 'Due date', priority: 'Priority', newest: 'Newest', oldest: 'Oldest', updated: 'Last changed' };
+export type SortKey = 'next' | 'due' | 'priority' | 'newest' | 'oldest' | 'updated';
+export const SORT_KEYS: SortKey[] = ['next', 'due', 'priority', 'newest', 'oldest', 'updated'];
+export const SORT_LABEL: Record<SortKey, string> = { next: 'Next task due', due: 'Due date', priority: 'Priority', newest: 'Newest', oldest: 'Oldest', updated: 'Last changed' };
 
 export interface ActionFilters {
   q: string;
@@ -123,10 +127,17 @@ export interface ActionFilters {
   mine: boolean;
   /** Cancelled actions are hidden unless this is on (or the status filter asks for them) */
   cancelled: boolean;
+  /** backend 1.7.0: a contractor / team with an open task in the action ('-' = an open task without owner) */
+  taskOwners: string[];
+  /** has an open task past its due date */
+  taskOverdue: boolean;
+  /** every task Done or Not needed, not closed yet */
+  ready: boolean;
 }
 
 export const emptyFilters = (): ActionFilters => ({
   q: '', status: 'active', areas: [], lines: [], owners: [], assignees: [], sources: [], priorities: [], overdue: false, mine: false, cancelled: false,
+  taskOwners: [], taskOverdue: false, ready: false,
 });
 
 /** Filters read from the page address (?q=belt&st=Open&area=K.1&area=K.2&mine=1 ...). */
@@ -145,11 +156,14 @@ export function parseActionFilters(sp: URLSearchParams): ActionFilters {
     overdue: sp.get('overdue') === '1',
     mine: sp.get('mine') === '1',
     cancelled: sp.get('cancelled') === '1',
+    taskOwners: sp.getAll('towner'),
+    taskOverdue: sp.get('tod') === '1',
+    ready: sp.get('ready') === '1',
   };
 }
 
 /** The filter keys of the page address. */
-export const FILTER_KEYS = ['q', 'st', 'area', 'line', 'owner', 'who', 'src', 'pri', 'overdue', 'mine', 'cancelled'];
+export const FILTER_KEYS = ['q', 'st', 'area', 'line', 'owner', 'who', 'src', 'pri', 'overdue', 'mine', 'cancelled', 'towner', 'tod', 'ready'];
 
 export function writeActionFilters(sp: URLSearchParams, f: ActionFilters): URLSearchParams {
   const out = new URLSearchParams(sp);
@@ -165,12 +179,16 @@ export function writeActionFilters(sp: URLSearchParams, f: ActionFilters): URLSe
   if (f.overdue) out.set('overdue', '1');
   if (f.mine) out.set('mine', '1');
   if (f.cancelled) out.set('cancelled', '1');
+  f.taskOwners.forEach((v) => out.append('towner', v));
+  if (f.taskOverdue) out.set('tod', '1');
+  if (f.ready) out.set('ready', '1');
   return out;
 }
 
 /** Number of narrowing filters that are on (the status filter and the search are not counted). */
 export function activeFilterCount(f: ActionFilters): number {
-  return [f.areas, f.lines, f.owners, f.assignees, f.sources, f.priorities].filter((l) => l.length > 0).length + (f.overdue ? 1 : 0) + (f.mine ? 1 : 0);
+  return [f.areas, f.lines, f.owners, f.assignees, f.sources, f.priorities, f.taskOwners].filter((l) => l.length > 0).length
+    + (f.overdue ? 1 : 0) + (f.mine ? 1 : 0) + (f.taskOverdue ? 1 : 0) + (f.ready ? 1 : 0);
 }
 
 export interface FilterEnv {
@@ -179,6 +197,8 @@ export interface FilterEnv {
   me: string;
   people?: readonly ActionPerson[];
   contractors?: readonly Contractor[];
+  /** backend 1.7.0: every task (task filters, task search, "My actions" includes actions with a task of mine) */
+  tasks?: readonly ActionTask[];
 }
 
 /** Lower-case text the search box looks in: id, title, equipment, area, line, reason, detail, required action, owner and person names. */
@@ -201,9 +221,13 @@ export function filterActionsExceptStatus(list: readonly Action[], f: ActionFilt
     if (f.sources.length && !f.sources.includes(a.source)) return false;
     if (f.priorities.length && !f.priorities.includes(a.priority)) return false;
     if (f.overdue && !isOverdue(a, env.today)) return false;
-    if (f.mine && !(env.me && (a.assignee === env.me || a.created_by === env.me))) return false;
+    const mine = env.tasks ? env.tasks.filter((x) => x.action_id === a.action_id) : [];
+    if (f.mine && !(env.me && (a.assignee === env.me || a.created_by === env.me || mine.some((x) => x.assignee === env.me)))) return false;
+    if (f.taskOwners.length && !mine.some((x) => isTaskOpen(x) && f.taskOwners.includes(x.owner || '-'))) return false;
+    if (f.taskOverdue && (a.status === 'Draft' || isTerminalStatus(a.status) || !mine.some((x) => isTaskOpen(x) && !!x.due_date && x.due_date < env.today))) return false;
+    if (f.ready && !(a.status !== 'Draft' && !isTerminalStatus(a.status) && mine.length > 0 && !mine.some(isTaskOpen))) return false;
     if (terms.length) {
-      const text = searchText(a, env);
+      const text = `${searchText(a, env)} ${mine.map((x) => x.title).join(' ').toLowerCase()}`;
       if (!terms.every((w) => text.includes(w))) return false;
     }
     return true;
@@ -225,18 +249,34 @@ export function filterActions(list: readonly Action[], f: ActionFilters, env: Fi
 const PRIORITY_RANK: Record<ActionPriority, number> = { High: 0, Medium: 1, Low: 2 };
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/** Sorted copy. Due date: overdue first, then the nearest; no due date last. Ties: priority, then the newest. */
-export function sortActions(list: readonly Action[], key: SortKey): Action[] {
+/**
+ * Sorted copy. Due date: overdue first, then the nearest; no due date last. Ties: priority, then the newest. Next task due
+ * (backend 1.7.0): the earliest due date of the open tasks (an action without tasks uses its own due date).
+ */
+export function sortActions(list: readonly Action[], key: SortKey, tasks: readonly ActionTask[] = []): Action[] {
   const out = [...list];
+  const nextDue = new Map<string, string>();
+  if (key === 'next') {
+    for (const x of tasks) {
+      if (!isTaskOpen(x) || !x.due_date) continue;
+      const cur = nextDue.get(x.action_id);
+      if (!cur || x.due_date < cur) nextDue.set(x.action_id, x.due_date);
+    }
+  }
+  const nd = (a: Action): string => (tasks.some((x) => x.action_id === a.action_id) ? nextDue.get(a.action_id) ?? '' : dueOf(a));
   const newest = (a: Action, b: Action) => byText(b.created_at, a.created_at) || byText(b.action_id, a.action_id);
   const prio = (a: Action, b: Action) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority];
   out.sort((a, b) => {
     switch (key) {
-      case 'due': {
-        if (!a.due_date !== !b.due_date) return a.due_date ? -1 : 1;
-        return byText(a.due_date, b.due_date) || prio(a, b) || newest(a, b);
+      case 'next': {
+        if (!nd(a) !== !nd(b)) return nd(a) ? -1 : 1;
+        return byText(nd(a), nd(b)) || prio(a, b) || newest(a, b);
       }
-      case 'priority': return prio(a, b) || byText(a.due_date || '9999', b.due_date || '9999') || newest(a, b);
+      case 'due': {
+        if (!dueOf(a) !== !dueOf(b)) return dueOf(a) ? -1 : 1;
+        return byText(dueOf(a), dueOf(b)) || prio(a, b) || newest(a, b);
+      }
+      case 'priority': return prio(a, b) || byText(dueOf(a) || '9999', dueOf(b) || '9999') || newest(a, b);
       case 'newest': return newest(a, b);
       case 'oldest': return -newest(a, b);
       case 'updated': return byText(b.updated_at, a.updated_at) || newest(a, b);
@@ -357,12 +397,26 @@ export interface StatusOption {
   next: boolean;
 }
 
+/** How far the tasks of an action are (backend 1.7.0): total and still open (Open .. In progress). */
+export interface TaskTally { total: number; open: number }
+const NO_TASKS: TaskTally = { total: 0, open: 0 };
+/** The tally of one action's tasks. */
+export function taskTally(actionId: string, tasks: readonly ActionTask[] | undefined): TaskTally {
+  const mine = (tasks ?? []).filter((x) => x.action_id === actionId);
+  return { total: mine.length, open: mine.filter(isTaskOpen).length };
+}
+
 /**
  * The status an action normally moves to next: Draft -> Open -> In progress -> Closed (only for people who may close). Null
- * when there is no such step for this person. (Backend 1.7.0: with tasks, Open and In progress follow the tasks.)
+ * when there is no such step for this person. Backend 1.7.0: with tasks, Open and In progress follow the tasks, so the next
+ * step of an accepted action is Closed, and only once every task is Done or Not needed.
  */
-export function nextStatus(a: Pick<Action, 'status' | 'needs_stop'>, canClose: boolean): ActionStatus | null {
+export function nextStatus(a: Pick<Action, 'status'>, canClose: boolean, tk: TaskTally = NO_TASKS): ActionStatus | null {
   if (isTerminalStatus(a.status)) return null;
+  if (tk.total > 0) {
+    if (a.status === 'Draft') return 'Open';
+    return canClose && tk.open === 0 ? 'Closed' : null;
+  }
   const order = BOARD_STATUSES;
   const at = order.indexOf(a.status);
   const next = at >= 0 ? order[at + 1] : 'In progress';
@@ -373,11 +427,13 @@ export function nextStatus(a: Pick<Action, 'status' | 'needs_stop'>, canClose: b
 
 /**
  * Every status with whether this person may move the action there. Any open status may move to any other; Closed and
- * Cancelled (to and from) need a closer; a closed or cancelled action reopens only to Open.
+ * Cancelled (to and from) need a closer; a closed or cancelled action reopens only to Open. Backend 1.7.0, an action with
+ * tasks: Open and In progress follow the tasks (a draft is accepted to Open), and Closed waits until no task is open.
  */
-export function statusOptions(a: Pick<Action, 'status' | 'needs_stop'>, canClose: boolean): StatusOption[] {
-  const next = nextStatus(a, canClose);
+export function statusOptions(a: Pick<Action, 'status'>, canClose: boolean, tk: TaskTally = NO_TASKS): StatusOption[] {
+  const next = nextStatus(a, canClose, tk);
   const terminal = isTerminalStatus(a.status);
+  const withTasks = tk.total > 0;
   return ACTION_STATUSES.map((s) => {
     const current = s === a.status;
     let allowed = !current;
@@ -385,13 +441,43 @@ export function statusOptions(a: Pick<Action, 'status' | 'needs_stop'>, canClose
     if (current) note = t('current');
     else if (terminal) {
       allowed = canClose && s === 'Open';
-      note = s === 'Open' ? (canClose ? t('reopen') : t('only people who can close')) : t('reopen to Open first');
+      note = s === 'Open' ? (canClose ? (withTasks ? t('reopen · then follows the tasks') : t('reopen')) : t('only people who can close')) : t('reopen to Open first');
     } else if (isTerminalStatus(s)) {
       allowed = canClose;
       note = canClose ? (s === 'Closed' ? t('you can close · needs a note') : t('needs a reason')) : t('only people who can close');
+      if (s === 'Closed' && withTasks && tk.open > 0) {
+        allowed = false;
+        note = tk.open === 1 ? t('1 task still open') : t('{n} tasks still open', { n: tk.open });
+      }
+    } else if (withTasks) {
+      // Draft -> Open accepts the action; otherwise the tasks set Open / In progress
+      allowed = a.status === 'Draft' && s === 'Open';
+      note = allowed ? t('accept · then follows the tasks') : s === 'Draft' ? t('not back to Draft') : t('follows the tasks');
     }
     return { status: s, allowed, note, current, next: s === next };
   });
+}
+
+export type DropRule = { kind: 'refuse'; text: string } | { kind: 'dialog'; to: ActionStatus } | { kind: 'update' };
+/**
+ * What dropping a board card on a column does. Backend 1.7.0: with tasks, Open and In progress follow the tasks, so only
+ * accepting a draft (Draft -> Open), closing (no task open) and cancelling stay manual. Closed / Cancelled (to or from) need
+ * a closer and a note (the status dialog); a closed or cancelled card reopens to Open.
+ */
+export function dropRule(a: Pick<Action, 'action_id' | 'status'>, to: ActionStatus, tk: TaskTally, canClose: boolean): DropRule {
+  const id = a.action_id;
+  if (tk.total > 0 && !isTerminalStatus(to) && !isTerminalStatus(a.status) && !(a.status === 'Draft' && to === 'Open')) {
+    return { kind: 'refuse', text: to === 'Draft' ? t('{id} cannot go back to Draft.', { id })
+      : t('{id} follows its tasks: it moves to In progress by itself when a task starts. Open the action to change its tasks.', { id }) };
+  }
+  if (tk.total > 0 && to === 'Closed' && tk.open > 0 && !isTerminalStatus(a.status)) {
+    return { kind: 'refuse', text: tk.open === 1 ? t('{id} cannot be closed: 1 task is still open.', { id }) : t('{id} cannot be closed: {n} tasks are still open.', { id, n: tk.open }) };
+  }
+  if (isTerminalStatus(to) || isTerminalStatus(a.status)) {
+    if (!canClose) return { kind: 'refuse', text: t('Only people on the "Who can close actions" list can close, cancel or reopen an action.') };
+    return { kind: 'dialog', to: isTerminalStatus(a.status) ? 'Open' : to };
+  }
+  return { kind: 'update' };
 }
 
 /** Moving to Closed or Cancelled needs a note of at least 3 characters. */

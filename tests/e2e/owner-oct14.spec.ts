@@ -181,7 +181,8 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('longest-card').getByTestId('chart-info')).toBeVisible({ timeout: 20000 });
     await page.goto('/#/actions');
     await expect(page.getByTestId('actions-summary')).toBeVisible({ timeout: 20000 });
-    expect(await page.getByTestId('actions-summary').getByTestId('chart-info').count()).toBe(6);
+    // backend 1.7.0: + Open tasks
+    expect(await page.getByTestId('actions-summary').getByTestId('chart-info').count()).toBe(7);
     expect(errors, errors.join('\n')).toEqual([]);
   });
 

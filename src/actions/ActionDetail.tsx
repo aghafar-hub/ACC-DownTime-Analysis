@@ -2,10 +2,16 @@
 // desktop, the full screen on a phone. Header with the stepper and the status buttons; the problem, the evidence (records
 // linked to Event records), the root cause and the required action, the comments; on the side the assignment (person,
 // contractor, due date, priority, stoppage), the effectiveness check and the history. People with View only read it all.
+// Backend 1.7.0 (docs/actions-mockups/tasks/02, 03, 11): the Tasks section is the main content; the stepper is Draft -> Open
+// -> In progress -> Closed, the status follows the tasks, Close waits until every task is Done or Not needed (then a green
+// "ready to close" banner takes the closing note), and the due date follows the tasks.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { ACTION_PRIORITIES, ACTION_ROOT_CAUSES, isTerminalStatus, type Action, type ActionChanges, type ActionLog, type ActionPriority, type ActionRootCause, type ActionStatus, type EventRow } from '../api/types';
+import {
+  ACTION_PRIORITIES, ACTION_ROOT_CAUSES, actionProgress, isTerminalStatus,
+  type Action, type ActionChanges, type ActionLog, type ActionPriority, type ActionRootCause, type ActionStatus, type EventRow,
+} from '../api/types';
 import AccessBadge from '../components/AccessBadge';
 import { useStartup } from '../data/useStartup';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -15,10 +21,13 @@ import { tsText, dateText, dayText } from '../util/dates';
 import { useValidationOptional } from '../validate/ValidationContext';
 import { useActions } from './ActionsContext';
 import {
-  BOARD_STATUSES, contractorName, defaultOwnerFor, dueInfo, evidenceIds, newEvidence, nextStatus, personName, ROOT_CAUSE_LABEL, SOURCE_LABEL, statusKey, todayLocal, watchDaysLeft,
+  BOARD_STATUSES, contractorName, defaultOwnerFor, dueInfo, dueOf, evidenceIds, newEvidence, nextStatus, NOTE_MIN, personName, ROOT_CAUSE_LABEL, SOURCE_LABEL, statusKey,
+  taskTally, todayLocal, watchDaysLeft,
 } from './model';
 import { Avatar, cardHead, EffectBadge, PriorityTag, SourceTag, StatusChip, scopeText } from './parts';
 import StatusDialog from './StatusDialog';
+import TasksSection from './TasksSection';
+import { tasksOfAction } from './tasks';
 
 const hoursOf = (r: EventRow): number => (r.duration_s ?? 0) / 3600;
 
@@ -60,8 +69,35 @@ function SavedText({ value, onSave, disabled, rows = 3, label, testid, max = 200
   );
 }
 
+/**
+ * The action's own history (backend 1.7.0): the task status, edit and note rows stay in each task's history; tasks added at
+ * the same moment are one row ("Tasks 1–4 added").
+ */
+function actionHistory(logs: readonly ActionLog[]): ActionLog[] {
+  const out: ActionLog[] = [];
+  for (const l of logs) {
+    if (l.kind === 'task_status' || l.kind === 'task_edit' || l.kind === 'task_note') continue;
+    const prev = out[out.length - 1];
+    if (l.kind === 'task_create' && prev?.kind === 'task_create' && prev.at === l.at && prev.by === l.by) {
+      out[out.length - 1] = { ...prev, text: `${prev.text}\n${l.text}` };
+      continue;
+    }
+    out.push(l);
+  }
+  return out;
+}
+
 function logText(l: ActionLog, people: Parameters<typeof personName>[0]): { head: string; body: string } {
   const who = personName(people, l.by);
+  if (l.kind === 'task_create') {
+    const items = l.text.split('\n');
+    const nums = items.map((x) => /^#(\d+)/.exec(x)?.[1]).filter(Boolean) as string[];
+    if (items.length === 1) {
+      const m = /^#(\d+) (.*?)(?: \((.*)\))?$/.exec(l.text);
+      return { head: m ? t('Task {n} added', { n: m[1]! }) : t('Task added'), body: m ? `${m[2]} · ${who}` : who };
+    }
+    return { head: t('Tasks {a}–{b} added', { a: nums[0] ?? '', b: nums[nums.length - 1] ?? '' }), body: who };
+  }
   if (l.kind === 'status') {
     if (!l.from_status) return { head: t('{s} created', { s: t(l.to_status || 'Action') }), body: l.text ? `${l.text} · ${who}` : who };
     return { head: `${t(l.from_status)} → ${t(l.to_status)}`, body: l.text ? `${who} · ${l.text}` : who };
@@ -71,7 +107,7 @@ function logText(l: ActionLog, people: Parameters<typeof personName>[0]): { head
   return { head: t('Comment'), body: `${l.text} · ${who}` };
 }
 
-export default function ActionDetail({ id, onClose }: { id: string; onClose: () => void }) {
+export default function ActionDetail({ id, onClose, taskId }: { id: string; onClose: () => void; taskId?: string | null }) {
   const acts = useActions();
   const mobile = useIsMobile();
   const { startup } = useStartup();
@@ -83,6 +119,12 @@ export default function ActionDetail({ id, onClose }: { id: string; onClose: () 
   const contractors = payload?.contractors ?? [];
   const canClose = !!payload?.can_close;
   const logs = useMemo(() => (payload?.logs ?? []).filter((l) => l.action_id === id), [payload, id]);
+  const allTasks = useMemo(() => payload?.tasks ?? [], [payload]);
+  const tasks = useMemo(() => tasksOfAction(id, allTasks), [id, allTasks]);
+  const tally = taskTally(id, tasks);
+  const [closing, setClosing] = useState('');
+  const [closeShown, setCloseShown] = useState(false);
+  const [closeBusy, setCloseBusy] = useState(false);
   const effectDays = Number(startup?.settings.find((s) => s.key === 'actions_effect_days')?.value) || 60;
   const terminal = a ? isTerminalStatus(a.status) : false;
   const editable = acts.canEdit && (!terminal || canClose);
@@ -157,7 +199,11 @@ export default function ActionDetail({ id, onClose }: { id: string; onClose: () 
   } else {
     const head = cardHead(a);
     const step = BOARD_STATUSES.indexOf(a.status);
-    const next = nextStatus(a, canClose);
+    const next = nextStatus(a, canClose, tally);
+    const withTasks = tally.total > 0;
+    const prog = actionProgress(a, tasks, today);
+    const ready = withTasks && a.status !== 'Draft' && !terminal && tally.open === 0;
+    const lastDone = ready ? tasks.filter((x) => x.done_at).sort((x, y) => (x.done_at < y.done_at ? 1 : -1))[0] : undefined;
     const statusLogs = logs.filter((l) => l.kind === 'status');
     const reachedAt = (s: ActionStatus) => statusLogs.find((l) => l.to_status === s)?.at;
     const ids = evidenceIds(a);
@@ -168,7 +214,7 @@ export default function ActionDetail({ id, onClose }: { id: string; onClose: () 
     const eqDesc = a.equipment_id ? startup?.equipment.find((e) => e.equipment_id === a.equipment_id)?.description : '';
     const auto = defaultOwnerFor(contractors, a.area_id);
     const comments = logs.filter((l) => l.kind === 'comment').slice().reverse();
-    const history = logs.filter((l) => l.kind !== 'comment').slice().reverse();
+    const history = actionHistory(logs.filter((l) => l.kind !== 'comment')).reverse();
     const drill = ids.length && startup ? { drill: { label: t('Evidence of {id}', { id: a.action_id }), eventIds: ids, rowIds: ids, years: startup.years, source: t('Action') } } : undefined;
     const shownEv = showAllEv ? evRows : evRows.slice(-8);
 
@@ -220,19 +266,45 @@ export default function ActionDetail({ id, onClose }: { id: string; onClose: () 
               {BOARD_STATUSES.map((s, i) => {
                 const state = i < step ? 'done' : i === step ? 'now' : 'todo';
                 const at = reachedAt(s);
+                const extra = !withTasks ? '' : s === 'Open' && state !== 'todo' ? t('accepted') : s === 'In progress' && state === 'now' ? (ready ? t('all tasks done') : t('a task started'))
+                  : s === 'Closed' && state === 'todo' ? (ready ? t('ready — needs a closer') : t('when all tasks are done')) : '';
                 return (
                   <li key={s} className={`ad-step ad-step--${state} ad-step--${statusKey(s)}`} aria-current={state === 'now' ? 'step' : undefined}>
                     <span className="ad-step-mark" aria-hidden="true">{state === 'done' ? <Icon name="check" size={14} /> : i + 1}</span>
-                    <span className="ad-step-text"><b>{t(s)}</b>{at && state !== 'todo' && <small>{state === 'now' ? t('since {d}', { d: dayText(at) }) : dayText(at)}</small>}</span>
+                    <span className="ad-step-text"><b>{t(s)}</b>{((at && state !== 'todo') || extra) && <small>{[at && state !== 'todo' ? (state === 'now' ? t('since {d}', { d: dayText(at) }) : dayText(at)) : '', extra].filter(Boolean).join(' · ')}</small>}</span>
                   </li>
                 );
               })}
+              {!mobile && <li className="ad-step-or" aria-hidden="true">{t('or Cancelled')}</li>}
             </ol>
           )}
           {mobile && a.status !== 'Cancelled' && (
-            <p className="ad-step-line">{t(a.status)}{next ? ` · ${t('next: {s}', { s: t(next) })}` : ''} <span>{t('{n} of {m}', { n: step + 1, m: BOARD_STATUSES.length })}</span></p>
+            <p className="ad-step-line">{t(a.status)}{withTasks && !terminal && a.status !== 'Draft' ? ` · ${t('closes when all tasks are done')}` : next ? ` · ${t('next: {s}', { s: t(next) })}` : ''} <span>{t('{n} of {m}', { n: step + 1, m: BOARD_STATUSES.length })}</span></p>
           )}
-          {acts.canEdit && (
+          {acts.canEdit && withTasks && (
+            <div className="ad-actions" data-testid="action-task-buttons">
+              {a.status === 'Draft' && (
+                <button type="button" className="btn-primary" disabled={!!acts.blockedReason} onClick={() => void save({ status: 'Open' }, t('Accepted: the action is open and follows its tasks.'))} data-testid="action-next">
+                  <Icon name="check" size={16} /> {t('Accept · move to Open')}
+                </button>
+              )}
+              {!terminal && a.status !== 'Draft' && (!mobile || (ready && canClose)) && (
+                <button type="button" className={ready && canClose ? 'btn-primary' : 'btn ad-locked'} disabled={!ready || !canClose || !!acts.blockedReason}
+                  onClick={() => setStatusFor('Closed')} data-testid="action-close-btn" title={!canClose ? t('Only people on the Who can close actions list can close.') : undefined}>
+                  <Icon name={ready && canClose ? 'check' : 'shield'} size={15} /> {t('Close action')}
+                </button>
+              )}
+              {!mobile && !terminal && a.status !== 'Draft' && tally.open > 0 && <span className="ad-open-left" data-testid="action-open-left">{tally.open === 1 ? t('1 task still open') : t('{n} tasks still open', { n: tally.open })}</span>}
+              {!terminal && canClose && !mobile && <button type="button" className="btn" disabled={!!acts.blockedReason} onClick={() => setStatusFor('Cancelled')} data-testid="action-cancel">{t('Cancel action')}</button>}
+              {terminal && canClose && (
+                <button type="button" className="btn" disabled={!!acts.blockedReason} onClick={() => setStatusFor('Open')} data-testid="action-change-status"><Icon name="history" size={15} /> {t('Reopen')}</button>
+              )}
+              {!mobile && <span className="ad-actions-note"><Icon name="info" size={14} />{ready
+                ? (canClose ? t('Close is available only to the people in Settings › Actions & targets › Who can close. You are on the list.') : t('Close is available only to the people in Settings › Actions & targets › Who can close.'))
+                : t('The status follows the tasks: In progress as soon as any task starts. Talking to the contractor happens outside the app — log it on the task.')}</span>}
+            </div>
+          )}
+          {acts.canEdit && !withTasks && (
             <div className="ad-actions">
               {!mobile && !terminal && next && (
                 <button type="button" className="btn-primary" disabled={!!acts.blockedReason} onClick={() => (isTerminalStatus(next) ? setStatusFor(next) : void save({ status: next }, t('Moved to {s}.', { s: t(next) })))} data-testid="action-next">
@@ -247,7 +319,7 @@ export default function ActionDetail({ id, onClose }: { id: string; onClose: () 
               {!mobile && !terminal && canClose && (
                 <button type="button" className="btn" disabled={!!acts.blockedReason} onClick={() => setStatusFor('Cancelled')} data-testid="action-cancel">{t('Cancel action')}</button>
               )}
-              <span className="ad-actions-note"><Icon name="info" size={14} />{t('Talking to the contractor happens outside the app — log what was agreed as a comment.')}</span>
+              <span className="ad-actions-note"><Icon name="info" size={14} />{t('This action has no tasks: its status is set by hand. Add tasks to split the work; then the status follows them.')}</span>
             </div>
           )}
           {acts.blockedReason && acts.canEdit && <p className="ad-offline" role="status" data-testid="action-offline"><Icon name="wifiOff" size={14} /> {acts.blockedReason}</p>}
@@ -256,7 +328,7 @@ export default function ActionDetail({ id, onClose }: { id: string; onClose: () 
           {msg && msg.ok && <p className="ad-saved" data-testid="action-saved"><Icon name="check" size={14} /> {msg.text}</p>}
         </header>
 
-        <div className="ad-body">
+        <div className={withTasks ? 'ad-body ad-body--tasks' : 'ad-body'}>
           <div className="ad-main">
             {fresh > 0 && !terminal && (
               <div className="ad-fresh" data-testid="action-fresh">
@@ -264,6 +336,45 @@ export default function ActionDetail({ id, onClose }: { id: string; onClose: () 
                 <span><b>{fresh === 1 ? t('+1 new failure since opened') : t('+{n} new failures since opened', { n: fresh })}</b>{' · '}{t('added to this action as evidence instead of creating a duplicate.')}</span>
               </div>
             )}
+            {ready && (
+              <div className="ad-ready" data-testid="ready-banner">
+                <p className="ad-ready-head"><Icon name="check" size={18} /> <b>{prog.total === 1 ? t('The task is done — ready to close') : t('All {n} tasks done — ready to close', { n: prog.total })}</b></p>
+                <p className="ad-ready-sub">
+                  {t('{d} done · {n} not needed.', { d: prog.total - prog.notNeeded, n: prog.notNeeded })}
+                  {lastDone ? ` ${t('Last task finished {d} by {w}.', { d: tsText(lastDone.done_at), w: personName(people, lastDone.done_by) })}` : ''}
+                  {' '}{t('A notification went to the people who can close.')}
+                </p>
+                {canClose && acts.canEdit ? (
+                  <div className="ad-ready-form">
+                    <div className={closeShown && closing.trim().length < NOTE_MIN ? 'field field--error' : 'field'}>
+                      <label htmlFor={`ready-note-${a.action_id}`}>{t('Closing note')} <span className="req">*</span></label>
+                      <textarea id={`ready-note-${a.action_id}`} className="textarea" rows={3} value={closing} onChange={(e) => setClosing(e.target.value)} maxLength={2000} data-testid="ready-note"
+                        placeholder={t('What was done and why the problem should not come back.')} />
+                      {closeShown && closing.trim().length < NOTE_MIN && <span className="field-error" role="alert" data-testid="ready-note-error">{t('Write a closing note (at least 3 characters).')}</span>}
+                      <span className="field-hint">{t('Required. Shown in the history and in the monthly report.')}</span>
+                    </div>
+                    <div className="ad-ready-side">
+                      <button type="button" className="btn-primary" disabled={closeBusy || !!acts.blockedReason} data-testid="ready-close"
+                        onClick={async () => {
+                          setCloseShown(true);
+                          if (closing.trim().length < NOTE_MIN) return;
+                          setCloseBusy(true);
+                          const ok = await save({ status: 'Closed', closure_note: closing.trim() }, t('Closed. The effectiveness check has started.'));
+                          setCloseBusy(false);
+                          if (ok) setClosing('');
+                        }}>
+                        <Icon name="check" size={16} /> {closeBusy ? t('Closing…') : t('Close action')}
+                      </button>
+                      {a.scope_kind === 'equipment' && <p className="ad-hint"><Icon name="clock" size={13} /> {t('On close the {n}-day effectiveness check starts: a new failure of {e} marks the action Not effective.', { n: effectDays, e: a.equipment_id })}</p>}
+                      <p className="ad-hint"><Icon name="shield" size={13} /> {t('Close is available only to the people in Settings › Who can close.')}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="ad-ready-who" data-testid="ready-closer-note"><Icon name="shield" size={14} /> {t('Only people in Settings › Who can close can close it. They have been told.')}</p>
+                )}
+              </div>
+            )}
+            {(withTasks || a.status !== 'Cancelled') && <TasksSection action={a} tasks={tasks} logs={logs} today={today} focusTask={taskId} />}
             {terminal && a.closure_note && (
               <div className={a.status === 'Closed' ? 'callout callout--success' : 'callout'} data-testid="action-closure">
                 <Icon name={a.status === 'Closed' ? 'check' : 'ban'} size={16} />
@@ -361,26 +472,34 @@ export default function ActionDetail({ id, onClose }: { id: string; onClose: () 
                     {contractors.filter((c) => c.active || c.contractor_id === a.owner).map((c) => <option key={c.contractor_id} value={c.contractor_id}>{c.name}{c.kind === 'internal' ? ` · ${t('internal')}` : ''}</option>)}
                   </select>
                 </label>
-                {auto.auto && a.area_id && <p className="ad-hint">{t('From the area: {a} → {c}', { a: a.area_id, c: contractorName(contractors, auto.owner) })}</p>}
-                <label className="ad-row">
-                  <span>{t('Due date')}</span>
-                  <input type="date" className="input" value={a.due_date} disabled={disabled} onChange={(e) => void save({ due_date: e.target.value })} data-testid="action-due-input" />
-                </label>
-                <p className={`ad-hint act-due--${due.tone}`} data-testid="action-due-text">{due.tone === 'overdue' ? <><Icon name="alert" size={13} /> {due.text}</> : due.tone === 'none' ? t('No due date') : due.days > 0 && !terminal ? t('{n} days left', { n: due.days }) : due.text}</p>
+                {auto.auto && a.area_id && <p className="ad-hint">{t('From the area: {a} → {c}', { a: a.area_id, c: contractorName(contractors, auto.owner) })}{withTasks ? ` · ${t('default for new tasks')}` : ''}</p>}
+                {withTasks ? (
+                  <div className="ad-row"><span>{t('Due')}</span><b className="ad-val" data-testid="action-due-derived">{tally.open === 0 ? t('All tasks done') : dueOf(a) ? dateText(dueOf(a)) : t('No task has a due date')}</b></div>
+                ) : (
+                  <label className="ad-row">
+                    <span>{t('Due date')}</span>
+                    <input type="date" className="input" value={a.due_date} disabled={disabled} onChange={(e) => void save({ due_date: e.target.value })} data-testid="action-due-input" />
+                  </label>
+                )}
+                <p className={`ad-hint act-due--${due.tone}`} data-testid="action-due-text">{withTasks
+                  ? (tally.open === 0 ? t('last task done {d}', { d: lastDone ? dayText(lastDone.done_at) : '–' }) : <>{due.tone === 'overdue' && <><Icon name="alert" size={13} /> {due.text} · </>}{t('follows the latest task due date')}</>)
+                  : due.tone === 'overdue' ? <><Icon name="alert" size={13} /> {due.text}</> : due.tone === 'none' ? t('No due date') : due.days > 0 && !terminal ? t('{n} days left', { n: due.days }) : due.text}</p>
                 <label className="ad-row">
                   <span>{t('Priority')}</span>
                   <select className="select" value={a.priority} disabled={disabled} onChange={(e) => void save({ priority: e.target.value as ActionPriority })} data-testid="action-priority-select">
                     {ACTION_PRIORITIES.map((p) => <option key={p} value={p}>{t(p)}</option>)}
                   </select>
                 </label>
-                <div className="ad-row">
+                {withTasks ? (
+                  <div className="ad-row"><span>{t('Stoppage')}</span><b className="ad-val" data-testid="action-stop-tasks">{prog.needsStop ? `${prog.needsStop === 1 ? t('1 open task needs a stop') : t('{n} open tasks need a stop', { n: prog.needsStop })}${prog.stopHours ? ` · ${prog.stopHours.toFixed(1)} h` : ''}` : t('No open task needs a stop')}</b></div>
+                ) : <div className="ad-row">
                   <span>{t('Stoppage')}</span>
                   <label className="act-switch">
                     <input type="checkbox" checked={a.needs_stop} disabled={disabled} onChange={(e) => void save({ needs_stop: e.target.checked })} data-testid="action-needs-stop" />
                     <span className="act-switch-ui" aria-hidden="true" />
                     <span>{a.needs_stop ? t('Needed') : t('Not needed')}</span>
                   </label>
-                </div>
+                </div>}
                 <div className="ad-row"><span>{t('Scope')}</span><b className="ad-val">{scopeText(a)}{a.equipment_id ? ` · ${a.equipment_id}` : ''}</b></div>
                 {a.reason_key && <div className="ad-row"><span>{t('Reason')}</span><b className="ad-val">{a.reason_key}</b></div>}
               </div>
@@ -435,7 +554,7 @@ export default function ActionDetail({ id, onClose }: { id: string; onClose: () 
     </div>
   );
   const dialog = a && statusFor !== undefined && (
-    <StatusDialog action={a} canClose={canClose} initial={statusFor} onClose={() => setStatusFor(undefined)}
+    <StatusDialog action={a} canClose={canClose} initial={statusFor} tally={tally} onClose={() => setStatusFor(undefined)}
           since={[...logs].reverse().find((l) => l.kind === 'status' && l.to_status === a.status)?.at}
           onDone={(text) => { setStatusFor(undefined); setMsg({ ok: true, text }); }} />
   );
