@@ -2,17 +2,25 @@
 // repeated-failure row, an event record or a notification. The contractor follows the area (Settings › Actions & targets);
 // when an open action already has the same equipment and reason, the person chooses between adding the records to it
 // (what the server does by default) and creating a second action.
+// Backend 1.7.0 (docs/actions-mockups/tasks/06-create-action-template.png): a task template is picked (the one whose draft rule
+// matches what the action came from is suggested) and its tasks are listed pre-filled and editable: untick to skip, change the
+// title, owner, person, due offset and the stop switch, or add another. "Area contractor" becomes the area's contractor. The
+// action's own due date then follows its tasks.
 import { useId, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ACTION_PRIORITIES, ACTION_ROOT_CAUSES, type ActionPriority, type ActionRootCause, type ActionScope, type NewAction } from '../api/types';
 import ShellModal from '../components/ShellModal';
 import { useStartup } from '../data/useStartup';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { codeKey } from '../calc';
 import { num } from '../util/format';
 import { useActions, type ActionPrefill } from './ActionsContext';
 import { contractorName, defaultDue, defaultOwnerFor, mergeTarget, PRIORITY_SYMBOL, ROOT_CAUSE_LABEL, SOURCE_LABEL, todayLocal } from './model';
+import { defaultPersonOf, draftsFromTemplate, draftsToTasks, suggestedTemplate, templateLine, type TaskDraft } from './tasks';
+import { addDays } from '../calc';
+import { dayText } from '../util/dates';
 
 const SCOPES: { id: ActionScope; label: string }[] = [
   { id: 'plant', label: 'Plant' }, { id: 'line', label: 'Line' }, { id: 'area', label: 'Area' }, { id: 'equipment', label: 'Equipment' },
@@ -20,6 +28,7 @@ const SCOPES: { id: ActionScope; label: string }[] = [
 
 export default function CreateActionDialog({ prefill, onClose }: { prefill?: ActionPrefill; onClose: () => void }) {
   const acts = useActions();
+  const mobile = useIsMobile();
   const { startup } = useStartup();
   const uid = useId().replace(/:/g, '');
   const today = todayLocal();
@@ -61,6 +70,11 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
   const [shown, setShown] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // backend 1.7.0: the task template and the tasks to create
+  const templates = useMemo(() => (acts.payload?.templates ?? []).filter((x) => x.active).sort((a, b) => a.sort_order - b.sort_order), [acts.payload]);
+  const suggested = suggestedTemplate(templates, prefill?.suggest ?? prefill?.source);
+  const [tplId, setTplId] = useState<string | null>(null);
+  const [rows, setRows] = useState<TaskDraft[] | null>(null);
 
   // what the scope resolves to
   const eqRow = scope === 'equipment' ? eqOf(eq) : null;
@@ -73,6 +87,21 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
   const autoTitle = [scope === 'equipment' ? eqRow?.equipment_id ?? eq.trim() : scope === 'area' ? effArea : scope === 'line' ? effLine : t('Plant'), reason.trim()].filter(Boolean).join(' · ');
   const finalTitle = title.trim() || autoTitle;
   const eventIds = prefill?.eventIds ?? [];
+  const tplChosen = tplId ?? suggested?.template_id ?? '';
+  const tpl = templates.find((x) => x.template_id === tplChosen) ?? null;
+  // the rows follow the template and the area until the person edits one
+  const taskRows = useMemo(() => rows ?? draftsFromTemplate(tpl, effArea, contractors), [rows, tpl, effArea, contractors]);
+  const ticked = taskRows.filter((r) => r.on && r.title.trim()).length;
+  const editRow = (key: string, patch: Partial<TaskDraft>) => setRows(taskRows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const pickTemplate = (id: string) => {
+    setTplId(id);
+    setRows(null);
+  };
+  const addRow = () => {
+    const owner = defaultOwnerFor(contractors, effArea).owner;
+    setRows([...taskRows, { key: `new-${Date.now()}`, on: true, title: '', owner, assignee: defaultPersonOf(owner, contractors), offset: 7, needs_stop: false, est_stop_h: null, step: '' }]);
+  };
+  const newTasks = draftsToTasks(taskRows, today);
 
   const input: NewAction = {
     title: finalTitle, scope_kind: scope, detail: detail.trim(), priority, source: prefill?.source ?? 'manual', source_ref: prefill?.source_ref ?? '',
@@ -80,8 +109,9 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
     ...(scope === 'area' ? { area_id: effArea } : {}),
     ...(scope === 'line' ? { line_id: effLine } : {}),
     ...(scope === 'equipment' || scope === 'area' ? { reason_key: reason.trim() } : {}),
-    owner: ownerId, assignee: assigneeId, due_date: due, needs_stop: needsStop, root_cause: root, required_action: required.trim(),
+    owner: ownerId, assignee: assigneeId, due_date: newTasks.length ? '' : due, needs_stop: newTasks.length ? false : needsStop, root_cause: root, required_action: required.trim(),
     evidence: eventIds.slice(0, 200).map((id) => ({ event_id: id })),
+    ...(newTasks.length ? { tasks: newTasks, ...(tpl ? { template_id: tpl.template_id } : {}) } : {}),
   };
   const target = keepNew ? null : mergeTarget(acts.actions, input);
 
@@ -91,6 +121,7 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
   if (scope === 'area' && !effArea) problems.area = t('Choose the area.');
   if (scope === 'line' && !effLine) problems.line = t('Choose the line.');
   if (!finalTitle) problems.title = t('Write the problem in one line.');
+  if (taskRows.some((r) => r.on && !r.title.trim())) problems.tasks = t('Every ticked task needs a title (or untick it).');
 
   async function save(status: 'Draft' | 'Open', merge: boolean) {
     setShown(true);
@@ -112,11 +143,11 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
   const drill = eventIds.length && startup ? { drill: { label: prefill?.trail?.slice(-1)[0] ?? t('Create action'), eventIds, rowIds: eventIds, years: startup.years, source: t('Create action') } } : undefined;
   const footer = (
     <>
-      <span className="sm-foot-note ca-foot-note">{t('The contractor is informed outside the app — set the status after you call them.')}</span>
+      <span className="sm-foot-note ca-foot-note"><Icon name="info" size={14} /> {t('Templates are edited in Settings › Actions & targets › Task templates.')}</span>
       <button type="button" className="btn" onClick={onClose} disabled={busy} data-testid="ca-cancel">{t('Cancel')}</button>
       <button type="button" className="btn" onClick={() => void save('Draft', !keepNew)} disabled={busy || !!blocked} data-testid="ca-draft">{t('Save as draft')}</button>
       <button type="button" className="btn-primary" onClick={() => void save('Open', !keepNew)} disabled={busy || !!blocked} data-testid="ca-open">
-        <Icon name="plus" size={15} /> {busy ? t('Saving…') : t('Create and open')}
+        <Icon name="plus" size={15} /> {busy ? t('Saving…') : ticked ? (mobile ? t('Create · {n} tasks', { n: ticked }) : ticked === 1 ? t('Create action with 1 task') : t('Create action with {n} tasks', { n: ticked })) : t('Create and open')}
       </button>
     </>
   );
@@ -238,6 +269,60 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
           <textarea id={`${uid}-detail`} className="textarea" rows={2} value={detail} onChange={(e) => setDetail(e.target.value)} maxLength={2000} data-testid="ca-detail" />
         </div>
 
+        <div className="field ca-span ca-tasks" data-testid="ca-tasks">
+          <span className="field-label" id={`${uid}-tpl`}>{t('Task template')}</span>
+          <div className="ca-tpls" role="radiogroup" aria-labelledby={`${uid}-tpl`} data-testid="ca-templates">
+            {templates.map((x) => (
+              <button key={x.template_id} type="button" role="radio" aria-checked={tplChosen === x.template_id} className={tplChosen === x.template_id ? 'ca-tpl ca-tpl--on' : 'ca-tpl'}
+                onClick={() => pickTemplate(x.template_id)} data-testid={`ca-tpl-${x.template_id}`}>
+                {suggested?.template_id === x.template_id && <span className="ca-tpl-badge" data-testid="ca-tpl-suggested">{t('suggested')}</span>}
+                <b>{x.name}</b><small>{templateLine(x)}</small>
+              </button>
+            ))}
+            <button type="button" role="radio" aria-checked={tplChosen === ''} className={tplChosen === '' ? 'ca-tpl ca-tpl--on' : 'ca-tpl'} onClick={() => pickTemplate('')} data-testid="ca-tpl-none">
+              <b><Icon name="plus" size={14} /> {t('No template')}</b><small>{t('start with no tasks')}</small>
+            </button>
+          </div>
+          <div className="ca-task-head"><b>{t('Tasks to create')}</b> <span className="act-tag" data-testid="ca-ticked">{t('{n} of {m} ticked', { n: ticked, m: taskRows.length })}</span>
+            <span className="muted ca-task-hint">{tpl ? t('pre-filled from the template · edit anything, untick to skip') : t('add the work as tasks, or leave it empty')}</span></div>
+          {taskRows.length > 0 && (
+            <ul className="ca-task-list" data-testid="ca-task-list">
+              {taskRows.map((r, i) => (
+                <li key={r.key} className={r.on ? 'ca-task' : 'ca-task ca-task--off'} data-testid="ca-task">
+                  <label className="ca-task-tick"><input type="checkbox" checked={r.on} onChange={(e) => editRow(r.key, { on: e.target.checked })} aria-label={t('Create task {n}', { n: i + 1 })} data-testid="ca-task-on" /></label>
+                  <input className="input ca-task-title" value={r.title} onChange={(e) => editRow(r.key, { title: e.target.value })} aria-label={t('Title of task {n}', { n: i + 1 })} maxLength={200} placeholder={t('What has to be done')} data-testid="ca-task-title" />
+                  <span className="ca-task-owner">
+                    <select className="select" value={r.owner} onChange={(e) => editRow(r.key, { owner: e.target.value, assignee: defaultPersonOf(e.target.value, contractors) || r.assignee })} aria-label={t('Owner of task {n}', { n: i + 1 })} data-testid="ca-task-owner">
+                      <option value="">{t('Nobody yet')}</option>
+                      {contractors.filter((c) => c.active || c.contractor_id === r.owner).map((c) => <option key={c.contractor_id} value={c.contractor_id}>{c.name}</option>)}
+                    </select>
+                    <select className="select" value={r.assignee} onChange={(e) => editRow(r.key, { assignee: e.target.value })} aria-label={t('Person of task {n}', { n: i + 1 })} data-testid="ca-task-person">
+                      <option value="">{t('No person')}</option>
+                      {r.assignee && !people.some((p) => p.user_id === r.assignee) && <option value={r.assignee}>{r.assignee}</option>}
+                      {people.map((p) => <option key={p.user_id} value={p.user_id}>{p.display_name}</option>)}
+                    </select>
+                  </span>
+                  <span className="ca-task-due">
+                    <span className="ca-task-plus">+<input className="input" inputMode="numeric" value={String(r.offset)} onChange={(e) => editRow(r.key, { offset: Math.max(0, Math.min(365, Math.round(Number(e.target.value) || 0))) })} aria-label={t('Days until task {n} is due', { n: i + 1 })} data-testid="ca-task-offset" /> d</span>
+                    <small className="muted">{dayText(addDays(today, r.offset))}</small>
+                  </span>
+                  <label className="act-switch ca-task-stop">
+                    <input type="checkbox" checked={r.needs_stop} onChange={(e) => editRow(r.key, { needs_stop: e.target.checked, est_stop_h: e.target.checked ? r.est_stop_h : null })} data-testid="ca-task-stop" />
+                    <span className="act-switch-ui" aria-hidden="true" /><span>{r.needs_stop ? t('Stop') : t('No')}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          {scope === 'equipment' && tpl && (
+            <p className="ca-check" data-testid="ca-check"><Icon name="shield" size={14} /><span><b>{t('Check after 60 days')}</b> — {t('not a task: it is the action\'s effectiveness check, which starts when the action is closed.')}</span></p>
+          )}
+          <button type="button" className="af-link ca-add-task" onClick={addRow} data-testid="ca-task-add"><Icon name="plus" size={14} /> {t('Add another task')}</button>
+          {shown && problems.tasks && <span className="field-error" role="alert" data-testid="ca-error-tasks">{problems.tasks}</span>}
+          {ticked > 0 && <span className="field-hint">{effArea && tpl?.steps.some((x) => x.default_owner === 'area_contractor')
+            ? t('"Area contractor" in the template becomes {c} here ({a}). Due dates count from today, {d}.', { c: contractorName(contractors, defaultOwnerFor(contractors, effArea).owner) || t('nobody'), a: effArea, d: dayText(today) })
+            : t('Due dates count from today, {d}.', { d: dayText(today) })}</span>}
+        </div>
         <div className="field ca-span">
           <span className="field-label" id={`${uid}-root`}>{t('Root-cause category')} <span className="muted">· {t('optional now')}</span></span>
           <div className="act-chips" role="group" aria-labelledby={`${uid}-root`} data-testid="ca-root">
@@ -270,11 +355,12 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
           </select>
           <span className="field-hint">{t('The person who follows it up.')}</span>
         </div>
-        <div className="field ca-w3">
+        {ticked === 0 && <div className="field ca-w3">
           <label htmlFor={`${uid}-due`}>{t('Due date')}</label>
           <input id={`${uid}-due`} type="date" className="input" value={due} onChange={(e) => { setDue(e.target.value); setDueTouched(true); }} data-testid="ca-due" />
           <span className="field-hint">{t('Default for {p}: {n} days', { p: t(priority), n: priority === 'High' ? 14 : priority === 'Medium' ? 30 : 60 })}</span>
-        </div>
+        </div>}
+        {ticked > 0 && <div className="field ca-w3"><span className="field-label">{t('Due date')}</span><span className="ca-locked" data-testid="ca-due-derived"><span>{t('Follows the tasks: {d}', { d: dayText(newTasks.map((x) => x.due_date ?? '').sort().pop() ?? '') })}</span></span></div>}
 
         <div className="field ca-w2">
           <span className="field-label" id={`${uid}-pri`}>{t('Priority')}</span>
@@ -287,14 +373,15 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
             ))}
           </div>
         </div>
-        <div className="field ca-w2">
+        {ticked === 0 && <div className="field ca-w2">
           <span className="field-label">{t('Needs stoppage')}</span>
           <label className="act-switch">
             <input type="checkbox" checked={needsStop} onChange={(e) => setNeedsStop(e.target.checked)} data-testid="ca-needs-stop" />
             <span className="act-switch-ui" aria-hidden="true" />
             <span>{needsStop ? t('Yes — the work needs {x} stopped', { x: effArea || t('the area') }) : t('No')}</span>
           </label>
-        </div>
+        </div>}
+
       </div>
     </ShellModal>
   );

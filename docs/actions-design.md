@@ -74,3 +74,39 @@ The exact formulas, the choices these decisions left open and the calls are in `
 - Left out on purpose: the mockups' per-week failure chart inside the detail, attachments on comments, @mentions, saved Views for
   the Actions page, the History switch on the Notifications page, "Import from Excel" for targets and per-rule Notify switches (the
   backend has no setting for them). The Repeated-failures entry point uses source `pareto` (the API has no own source for it).
+
+## Tasks (built)
+
+Frontend of "tasks inside actions" on backend 1.7.0, built to `docs/actions-mockups/tasks/01–13`.
+
+- **Page tabs** Actions · Tasks · Shutdown list (`/actions`, `/actions/tasks`, `/actions/shutdown`; `src/actions/ActionsTabs.tsx`), with
+  the open-action count, open tasks (+ overdue) and stop tasks. The open action (`?id=…&task=…`) opens over whichever tab it came from.
+- **Board**: columns Draft / Open / In progress / Closed (Cancelled behind *Show cancelled*); cards show the task progress bar
+  (`x / y tasks done`), the next task with owner and due, *Open tasks with* chips, the stop need, *tasks proposed* on drafts and
+  *ready to close*. A card with tasks cannot be dragged between Open and In progress (`dropRule` in `model.ts`); accepting a draft,
+  closing (no open task) and cancelling stay manual. Summary: status donut, **Open tasks** by task status with the stop hours,
+  **Tasks overdue**, **Ready to close**; filters *Task owner*, *Has overdue tasks*, *Ready to close*; sort *Next task due* (default).
+  The rail / bottom-bar badge counts overdue tasks of accepted open actions.
+- **Detail** (`TasksSection.tsx`): Tasks is the first section (table on a desktop, cards on a phone; a row opens to notes, *Add note*,
+  the task history and *Change status* / *Edit task* / *Open in Shutdown list*); *Add task* (`TaskDialog.tsx`, area contractor by
+  default, quick +3/+7/+14/+30 d, needs stoppage + est. hours) and *Apply template*. Status changes in `TaskStatusDialog.tsx` (sheet on
+  a phone): Done needs a note, Not needed a reason, Contractor informed only for external contractors. Stepper Draft → Open → In
+  progress → Closed; *Close action* locked with "N tasks still open"; when all are done a green **ready to close** banner takes the
+  closing note (closers only; others read who can close). Due date and stoppage of an action with tasks are read from the tasks.
+  Actions without tasks keep the 1.4.0 behaviour (status by hand).
+- **Create action**: template picker (suggested by the entry point: Repeats and repeated-group alerts → Repeated failure, Pareto
+  equipment → Chronic equipment's template, long-stop alerts → Long stop, planned-overrun alerts → Planned overrun) and an editable,
+  tickable task list; "Area contractor" resolves from the area. Every entry point (Pareto, Repeats, Events, notifications, Reports,
+  New action) uses the same dialog.
+- **Tasks tab** (`TasksView.tsx`) and **Shutdown list** (`ShutdownView.tsx`) compute from the `listActions` payload (`buildTaskViews`
+  in `tasks.ts`, the same rules as `listTasks`), so they work from the device copy offline and follow every change at once. Excel via
+  `src/export` + `deliverFile`; Print uses the browser dialog with print CSS (one area or all).
+- **Notifications**: `task_overdue` → *Open task* (the action at that task), `action_ready_to_close` → *Open action*; own icons.
+- **Settings › Actions & targets › (c) Task templates** (`src/admin/settings/TaskTemplates.tsx`): list + editor (name, suggested
+  rules, offered, steps with default owner incl. Area contractor, due after, needs stop, est. h; move / remove), `saveTaskTemplates`;
+  read-only without Edit on Settings. Rules and targets are now (d) and (e).
+- Help texts: `as-tasks`, `tasks-list`, `shutdown-list` in `src/help/chartHelp.ts`. Tests: `src/actions/tasks.test.ts`,
+  `tests/e2e/action-tasks.spec.ts`.
+- Left out: drag handles to reorder tasks in the create dialog and the detail (the server keeps creation order), a planned-stop
+  calendar for the Shutdown list (no stop dates exist), attachments on the Done note, and "used N times" counts only actions the
+  person can see.

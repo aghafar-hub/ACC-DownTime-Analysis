@@ -44,7 +44,9 @@ test.describe('desktop', () => {
     await page.goto('/#/actions');
     await page.getByTestId('action-card').filter({ hasText: 'Liner worn' }).getByTestId('action-open').click();
     await expect(page.getByTestId('action-closers-note')).toContainText('You are on the list');
-    await expect(page.getByTestId('action-next')).toContainText('Move to Closed');
+    // every task of Liner worn is done: a closer may close it (backend 1.7.0)
+    await expect(page.getByTestId('action-close-btn')).toBeEnabled();
+    await expect(page.getByTestId('ready-close')).toBeVisible();
   });
 
   test('contractors: areas, default person, one active contractor per area', async ({ page }) => {
@@ -173,6 +175,9 @@ test.describe('desktop', () => {
     await expect(page.getByTestId('contractor-name')).toHaveCount(0);
     await expect(page.getByTestId('run-action-checks')).toHaveCount(0);
     await expect(page.getByTestId('settings-save')).toHaveCount(0);
+    await expect(page.getByTestId('tt-new')).toHaveCount(0);
+    await expect(page.getByTestId('tt-save')).toHaveCount(0);
+    await expect(page.getByTestId('tt-name')).toHaveAttribute('readonly', '');
     await expect(targetRow(page, 'CR').getByTestId('target-allowance')).toHaveAttribute('readonly', '');
     await targetRow(page, 'CR').getByTestId('target-expand').click();
     await expect(page.getByTestId('target-even')).toHaveCount(0);

@@ -16,6 +16,12 @@ export function categoryOf(item: Pick<FeedItem, 'kind' | 'type'>): NotificationC
 export const CATEGORY_ICON: Record<NotificationCategory, string> = {
   Reliability: 'graphs', 'Availability & planned': 'target', 'Data quality': 'shield', Actions: 'flag', System: 'settings',
 };
+/** The icon of one item: its category's, except the task alerts (backend 1.7.0): ready to close a check, a task overdue a warning. */
+export const itemIcon = (item: Pick<FeedItem, 'kind' | 'type'>): string =>
+  item.type === 'action_ready_to_close' ? 'check' : item.type === 'task_overdue' || item.type === 'action_due' ? 'alert' : CATEGORY_ICON[categoryOf(item)];
+/** CSS modifier of the icon of one item ('' = the category's colour). */
+export const itemTone = (item: Pick<FeedItem, 'kind' | 'type'>): string =>
+  item.type === 'action_ready_to_close' ? ' nx-ico--ok' : item.type === 'task_overdue' || item.type === 'action_due' ? ' nx-ico--bad' : '';
 /** CSS key of a category ('availability-planned' ...). */
 export const categoryKey = (c: string): string => c.toLowerCase().replace(/[^a-z]+/g, '-').replace(/-+$/, '');
 

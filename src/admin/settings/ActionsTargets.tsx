@@ -1,6 +1,7 @@
 // Settings > Actions & targets (docs/actions-mockups/desktop-settings-actions.png): who can close actions, the contractors
 // and their areas, the draft-rule thresholds with "Run checks now", and the targets per area for a year (availability
-// target, planned-stop allowance split into months, overhaul months) with the year-to-date use. Changing anything needs
+// target, planned-stop allowance split into months, overhaul months) with the year-to-date use. Backend 1.7.0: (c) Task
+// templates (TaskTemplates.tsx). Changing anything needs
 // Edit on Settings; View shows it read-only.
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api';
@@ -16,6 +17,7 @@ import { num } from '../../util/format';
 import { useValidationOptional } from '../../validate/ValidationContext';
 import { useAction } from '../useAction';
 import SettingsForm from '../SettingsForm';
+import TaskTemplates from './TaskTemplates';
 import { useSettingsData } from './useSettingsData';
 import '../../components/ui.css';
 import '../admin.css';
@@ -47,7 +49,7 @@ function Closers({ edit, stored, onSaved }: { edit: boolean; stored: string[]; o
   return (
     <section className="card at-sec" aria-labelledby="at-closers" data-testid="closers">
       <header className="at-sec-head"><span className="at-letter" aria-hidden="true">a</span><div><h2 id="at-closers">{t('Who can close actions')}</h2>
-        <p className="adm-note">{t('Only these people can move an action to Closed (or Cancelled) and reopen it. Everyone else with Edit on Actions can work an action up to In progress. Administrators can always close.')}</p></div></header>
+        <p className="adm-note">{t('Only these people can close (or cancel) an action and reopen it. They get the "all tasks done — ready to close" notification. Administrators can always close.')}</p></div></header>
       <div className="at-people" data-testid="closer-list">
         {list.length === 0 && <span className="muted" data-testid="closers-none">{t('Nobody yet: only administrators can close actions.')}</span>}
         {list.map((id) => (
@@ -128,7 +130,7 @@ function Contractors({ edit, areaIds, onSaved }: { edit: boolean; areaIds: strin
   return (
     <section className="card at-sec" aria-labelledby="at-contr" data-testid="contractors">
       <header className="at-sec-head"><span className="at-letter" aria-hidden="true">b</span><div><h2 id="at-contr">{t('Contractors and responsible areas')}</h2>
-        <p className="adm-note">{t('New actions get the contractor of their area automatically. Talking to contractors happens outside the app.')}</p></div>
+        <p className="adm-note">{t('New actions and template tasks get the contractor of their area automatically. Talking to contractors happens outside the app.')}</p></div>
         {edit && <button type="button" className="btn btn-sm at-head-btn" onClick={add} data-testid="contractor-add"><Icon name="plus" size={14} /> {t('Add contractor')}</button>}
       </header>
       {!acts?.payload && <p className="muted">{acts?.error ?? t('Loading…')}</p>}
@@ -224,7 +226,7 @@ function Rules({ edit, onSaved }: { edit: boolean; onSaved: (text: string) => vo
     <div className="at-rules" data-testid="action-rules">
       {edit && (
         <section className="card at-sec" aria-label={t('Run checks now')}>
-          <header className="at-sec-head"><span className="at-letter" aria-hidden="true">c</span><div><h2>{t('Rules')}</h2>
+          <header className="at-sec-head"><span className="at-letter" aria-hidden="true">d</span><div><h2>{t('Rules')}</h2>
             <p className="adm-note">{t('When a rule fires it can create a Draft action for review. An open action for the same equipment and reason gets the new records as evidence instead. The checks run after every upload and once a day; run them now after changing a rule.')}</p></div>
             <button type="button" className="btn at-head-btn" onClick={() => void runNow()} disabled={busy} data-testid="run-action-checks"><Icon name="sync" size={14} /> {busy ? t('Running…') : t('Run checks now')}</button>
           </header>
@@ -295,7 +297,7 @@ function AreaTargets({ edit, onSaved }: { edit: boolean; onSaved: (text: string)
   const visible = showAll ? areas : areas.filter((a, i) => i < 8 || stored.has(a.area_id) || drafts[a.area_id]);
   return (
     <section className="card at-sec" aria-labelledby="at-targets" data-testid="area-targets">
-      <header className="at-sec-head"><span className="at-letter" aria-hidden="true">d</span><div><h2 id="at-targets">{t('Area targets')}</h2>
+      <header className="at-sec-head"><span className="at-letter" aria-hidden="true">e</span><div><h2 id="at-targets">{t('Area targets')}</h2>
         <p className="adm-note">{t('Availability target and planned-stop allowance per area per year. The year is split evenly by month unless you change a month; an overhaul is marked in the month it is planned. Used by the rules Availability below target and Planned overrun, and by the Dashboard.')}</p></div>
         <label className="af-pill at-head-btn">
           <span className="af-pill-label">{t('Year')}:</span>
@@ -413,6 +415,7 @@ export default function ActionsTargets() {
       <p className="status-line set-summary"><Icon name="info" size={14} /><span>{t('Plant-wide settings for the Actions page. Changes are saved to the history.')}</span><AccessBadge edit={edit} /></p>
       <Closers edit={edit} stored={closers} onSaved={(text) => { toast(text); st.reload(); }} />
       <Contractors edit={edit} areaIds={areaIds} onSaved={toast} />
+      <TaskTemplates edit={edit} onSaved={toast} />
       <Rules edit={edit} onSaved={toast} />
       <AreaTargets edit={edit} onSaved={toast} />
       {toastNode}

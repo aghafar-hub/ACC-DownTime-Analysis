@@ -10,16 +10,18 @@ import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { dayText } from '../util/dates';
 import { useActions } from './ActionsContext';
-import { needsNote, noteProblem, statusOptions } from './model';
+import { needsNote, noteProblem, statusOptions, type TaskTally } from './model';
 import { StatusDot } from './parts';
 
-export default function StatusDialog({ action, canClose, initial, since, onClose, onDone }: {
+export default function StatusDialog({ action, canClose, initial, since, tally, onClose, onDone }: {
   action: Action; canClose: boolean; initial?: ActionStatus | null; since?: string; onClose: () => void; onDone: (text: string) => void;
+  /** backend 1.7.0: the action's tasks (Open and In progress follow them; Closed waits until none is open) */
+  tally?: TaskTally;
 }) {
   const acts = useActions();
   const mobile = useIsMobile();
   const uid = useId().replace(/:/g, '');
-  const options = statusOptions(action, canClose);
+  const options = statusOptions(action, canClose, tally);
   const next = options.find((o) => o.next)?.status ?? null;
   const [to, setTo] = useState<ActionStatus | null>(initial ?? next ?? options.find((o) => o.allowed)?.status ?? null);
   const [note, setNote] = useState(isTerminalStatus(action.status) ? '' : '');
@@ -42,7 +44,7 @@ export default function StatusDialog({ action, canClose, initial, since, onClose
       setError(res.error);
       return;
     }
-    onDone(t('Moved to {s}.', { s: t(to) }));
+    onDone(t('Moved to {s}.', { s: t(res.value.action.status) }));
   }
 
   const label = !to ? t('Choose a status') : to === 'Cancelled' ? t('Cancel the action') : isTerminalStatus(action.status) && to === 'Open' ? t('Reopen') : t('Move to {s}', { s: t(to) });

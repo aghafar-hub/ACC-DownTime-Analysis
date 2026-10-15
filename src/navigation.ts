@@ -103,7 +103,7 @@ export const SETTINGS_SUBS: SettingsSub[] = [
   { id: 'appearance', label: 'Appearance', tab: null, icon: 'palette', blurb: 'Theme and install. The theme is kept with your account.' },
   { id: 'notifications', label: 'Notifications', tab: null, icon: 'bell', blurb: 'Which alerts you get, the areas you follow and the digest email.' },
   { id: 'calculations', label: 'Calculations', tab: 'settings', icon: 'trend', blurb: 'How availability, repeated failures and durations are worked out.' },
-  { id: 'actions', label: 'Actions & targets', tab: 'settings', icon: 'target', blurb: 'Who can close actions, the contractors and their areas, the draft rules and the targets per area.' },
+  { id: 'actions', label: 'Actions & targets', tab: 'settings', icon: 'target', blurb: 'Who can close actions, the contractors and their areas, task templates, the draft rules and the targets per area.' },
   { id: 'areas', label: 'Areas', tab: null, adminOnly: true, icon: 'database', blurb: 'Switch areas on or off for the whole plant. An inactive area and its records are left out everywhere.' },
   { id: 'security', label: 'Security', tab: 'settings', icon: 'shield', blurb: 'Sign-in limits, sessions and passwords.' },
   { id: 'users', label: 'Users and access', tab: 'users', icon: 'users', blurb: 'Who can sign in and which pages they can open.' },

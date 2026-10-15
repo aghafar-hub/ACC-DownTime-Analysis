@@ -426,6 +426,28 @@ export const CHART_HELP = {
     formulas: ['Age = today − the day the action was opened'],
     how: ['Only open actions are counted.'],
   },
+  // ------------------------------------------------------------ Tasks inside actions (backend 1.7.0)
+  'as-tasks': {
+    title: 'Open tasks',
+    what: 'The tasks still to do in the open actions, by task status, and how much of that work needs the area stopped.',
+    formulas: ['Open tasks = tasks that are not Done or Not needed', 'Estimated stop hours = sum of the estimates of the open tasks that need a stop'],
+    how: ['Only accepted actions that are not closed or cancelled count; the proposed tasks of drafts are left out.', 'A task that needs a stop but has no estimate adds no hours.', 'Overdue = an open task whose due date has passed.'],
+    example: 'Here: {n} open tasks in {a} actions; {s} need a stop, {h} h estimated.',
+  },
+  'tasks-list': {
+    title: 'Tasks',
+    what: 'Every task of every open or closed action in one list, with its action, area, owner, status, due date and stop hours.',
+    formulas: ['Overdue = open (not Done or Not needed) and the due date is before today'],
+    how: ['Tasks of drafts and cancelled actions are left out.', 'Sorted overdue first, then by due date; tasks without a due date last.', 'Done · 90 d = Done or Not needed in the last 90 days.'],
+    example: 'Here: {n} tasks shown, {o} overdue.',
+  },
+  'shutdown-list': {
+    title: 'Shutdown list',
+    what: 'The open tasks that can only be done with the area stopped, grouped by area, to check before a planned stop.',
+    formulas: ['Est. stop work = sum of the estimated stop hours of the open stop tasks', 'Longest waiting = today − the day the task moved to Waiting stoppage (or was created)'],
+    how: ['A task is listed while it is open and marked Needs stoppage; Done or Not needed tasks drop off.', 'Tasks without an estimate add nothing to the hours.', 'The area contractor is the active external contractor of the area (Settings › Actions & targets).'],
+    example: 'Here: {n} tasks in {a} areas, {h} h estimated.',
+  },
 } satisfies Record<string, ChartHelpEntry>;
 
 export type ChartHelpId = keyof typeof CHART_HELP;

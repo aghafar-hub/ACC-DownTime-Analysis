@@ -17,7 +17,7 @@ import { t, tn } from '../i18n/t';
 import { Icon } from '../icons';
 import { relativeAge } from '../notifications/age';
 import {
-  canCreateFrom, CATEGORIES, CATEGORY_ICON, categoryKey, categoryOf, countByCategory, DAY_GROUP_LABEL, groupByDay, typeLabel, type CategoryFilter,
+  canCreateFrom, CATEGORIES, CATEGORY_ICON, categoryKey, categoryOf, countByCategory, DAY_GROUP_LABEL, groupByDay, itemIcon, itemTone, typeLabel, type CategoryFilter,
 } from '../notifications/categories';
 import type { FeedItem } from '../notifications/model';
 import { useNotifications } from '../notifications/NotificationsContext';
@@ -102,7 +102,7 @@ export default function Notifications() {
     const on = !mobile && chosen?.id === i.id;
     return (
       <li key={i.id} className={`nx-row${on ? ' nx-row--on' : ''}${i.unseen ? ' nx-row--unseen' : ''}`} data-testid="nx-row" data-id={i.id} data-kind={i.kind} data-category={c}>
-        <span className={`nx-ico nx-ico--${categoryKey(c)}`} aria-hidden="true"><Icon name={CATEGORY_ICON[c]} size={18} /></span>
+        <span className={`nx-ico nx-ico--${categoryKey(c)}${itemTone(i)}`} aria-hidden="true"><Icon name={itemIcon(i)} size={18} /></span>
         <div className="nx-main">
           <p className="nx-meta">
             <span>{t(c)} · {typeLabel(i.type)}</span>

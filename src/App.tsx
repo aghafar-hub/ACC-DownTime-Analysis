@@ -224,6 +224,8 @@ export default function App() {
                 <Route path="/reliability" element={<RequireTab tab="reliability"><Reliability /></RequireTab>} />
                 <Route path="/reports" element={<RequireTab tab="reports"><Reports /></RequireTab>} />
                 <Route path="/actions" element={<RequireTab tab="actions"><ActionsBoard /></RequireTab>} />
+                <Route path="/actions/tasks" element={<RequireTab tab="actions"><ActionsBoard /></RequireTab>} />
+                <Route path="/actions/shutdown" element={<RequireTab tab="actions"><ActionsBoard /></RequireTab>} />
                 <Route path="/notifications" element={<NotificationsInbox />} />
                 <Route path="/events" element={<RequireTab tab="events"><EventExplorer /></RequireTab>} />
                 <Route path="/validate" element={<RequireTab tab="events"><Validate /></RequireTab>} />

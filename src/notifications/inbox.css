@@ -139,6 +139,15 @@
   background: var(--tk-purple-bg);
   color: var(--tk-purple);
 }
+/* backend 1.7.0: ready to close (a check) and a task overdue (a warning) inside the Actions category */
+.nx-ico.nx-ico--ok {
+  background: var(--tk-success-bg);
+  color: var(--tk-success);
+}
+.nx-ico.nx-ico--bad {
+  background: var(--tk-danger-bg);
+  color: var(--tk-danger);
+}
 .nx-main {
   flex: 1;
   min-width: 0;
