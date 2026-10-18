@@ -180,8 +180,8 @@ test.describe('R0 (phone)', () => {
     const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-testid="show-more"]') !== null, { x: m.x + m.width / 2, y: m.y + m.height / 2 });
     expect(hit).toBe(true);
     expect((await noSidewaysScroll(page)).ok).toBe(true);
-    // 'Not now' gives the room back
-    await banner.getByRole('button', { name: 'Not now' }).click();
+    // × gives the room back
+    await banner.getByTestId('install-dismiss').click();
     await expect(banner).toHaveCount(0);
     expect(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--install-banner-h').trim())).toBe('');
   });

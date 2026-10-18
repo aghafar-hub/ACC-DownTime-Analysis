@@ -71,7 +71,7 @@
 }
 @media (max-width: 860px) {
   .adm-toast {
-    bottom: calc(var(--bottom-nav-h, 60px) + 14px);
+    bottom: calc(var(--bottom-nav-h, 60px) + 14px + var(--install-banner-h, 0px));
   }
 }
 
@@ -105,7 +105,7 @@
 }
 @media (max-width: 860px) {
   .adm-actionbar {
-    bottom: calc(var(--bottom-nav-h, 60px) + 6px);
+    bottom: calc(var(--bottom-nav-h, 60px) + 6px + var(--install-banner-h, 0px));
     padding: 10px 12px;
   }
   .adm-actionbar-buttons {

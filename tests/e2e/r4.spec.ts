@@ -110,8 +110,11 @@ for (const width of [360, 390]) {
       await openReport(page);
       const first = page.locator('[data-testid=rpt-page]').first();
       const scroller = page.getByTestId('rpt-scroll');
+      // a phone opens where the text is readable (phase 2); Fit is one tap away
+      await expect(page.getByTestId('rpt-zoom-fit')).toHaveAttribute('aria-pressed', 'false');
+      await page.getByTestId('rpt-zoom-fit').tap();
       await expect(page.getByTestId('rpt-zoom-fit')).toHaveAttribute('aria-pressed', 'true');
-      expect((await first.boundingBox())!.width).toBeLessThanOrEqual(width);
+      await expect.poll(async () => (await first.boundingBox())!.width).toBeLessThanOrEqual(width);
       await shot(page, `phone-${width}-report-fit`);
 
       await page.getByTestId('rpt-zoom-100').tap();

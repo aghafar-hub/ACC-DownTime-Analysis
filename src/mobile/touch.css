@@ -41,8 +41,10 @@ html .offline-banner {
     padding-right: max(12px, var(--safe-r, 0px));
   }
   html .install-banner {
-    left: max(10px, var(--safe-l, 0px));
-    right: max(10px, var(--safe-r, 0px));
+    left: 0;
+    right: 0;
+    padding-left: max(12px, var(--safe-l, 0px));
+    padding-right: max(6px, var(--safe-r, 0px));
   }
   html .save-blocked-toast {
     width: auto;
@@ -60,12 +62,12 @@ html .module-sheet {
 /* ---------------------------------------------------------------- 2. landscape phones */
 @media (orientation: landscape) and (max-height: 500px) {
   html:root {
-    --topbar-h: calc(48px + env(safe-area-inset-top, 0px));
-    --desk-topbar-h: 48px;
-    --bottom-nav-h: calc(48px + var(--bottom-nav-pad));
+    --topbar-h: calc(44px + env(safe-area-inset-top, 0px));
+    --desk-topbar-h: 44px;
+    --bottom-nav-h: calc(44px + var(--bottom-nav-pad));
   }
   html.has-update-banner:root {
-    --topbar-h: 48px;
+    --topbar-h: 44px;
   }
   html .shell-topbar {
     height: var(--topbar-h);
@@ -81,11 +83,11 @@ html .module-sheet {
     width: 28px;
     height: 28px;
   }
-  /* bottom bar: icon beside its label, one 48 px row */
+  /* bottom bar: icon beside its label, one 44 px row */
   html .bottom-nav-item {
     flex-direction: row;
     gap: 6px;
-    height: 48px;
+    height: 44px;
   }
   html .bottom-nav-badge {
     top: -7px;
@@ -108,16 +110,20 @@ html .module-sheet {
   html .scope-info--phone {
     padding-top: 4px;
   }
+  /* phase 2: only the two slim bars stay fixed (about a quarter of a 390 px high screen); the scope pills scroll away
+     with the page, and the install line waits for the phone to be held upright */
+  html .app-shell-right .scope-slot {
+    position: static;
+  }
+  html .install-banner {
+    display: none !important;
+  }
   /* sheets: not wider than a phone held upright, and not taller than what is visible */
   html .module-sheet {
     max-width: 640px;
     margin-inline: auto;
     box-sizing: border-box;
     max-height: calc(var(--app-vh, 100vh) - 16px);
-  }
-  html .install-banner {
-    left: auto;
-    width: min(460px, calc(100% - 20px - var(--safe-l, 0px) - var(--safe-r, 0px)));
   }
 }
 

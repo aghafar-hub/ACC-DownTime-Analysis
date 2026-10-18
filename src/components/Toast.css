@@ -32,6 +32,6 @@
 }
 @media (max-width: 860px) {
   .save-blocked-toast {
-    bottom: calc(var(--bottom-nav-h) + 14px);
+    bottom: calc(var(--bottom-nav-h) + 14px + var(--install-banner-h, 0px));
   }
 }

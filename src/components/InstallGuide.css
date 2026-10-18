@@ -3,43 +3,59 @@
   display: none;
 }
 @media (max-width: 860px) {
+  /* one thin line docked on the bottom bar (and the test ribbon), never floating over the page */
   .install-banner {
     position: fixed;
-    inset-inline: 10px;
-    bottom: calc(var(--bottom-nav-h) + 14px + var(--env-ribbon-h, 0px));
+    inset-inline: 0;
+    /* the bar's own box is its height plus the bottom padding and its 1 px top border (content-box) */
+    bottom: calc(var(--bottom-nav-h) + var(--bottom-nav-pad, 0px) + 1px + var(--env-ribbon-h, 0px));
     z-index: 450;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 12px;
-    align-items: flex-start;
-    padding: 12px;
-    border-radius: 14px;
+    display: block;
+    padding: 4px 6px 4px 12px;
     background: var(--shell-card-bg, #fff);
     color: var(--shell-text, #0f1b2d);
-    border: 1px solid var(--shell-border, #d9e0e8);
-    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+    border-top: 1px solid var(--shell-border, #d9e0e8);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
   }
 }
+.install-banner-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
 .install-banner img {
-  border-radius: 10px;
+  border-radius: 6px;
   flex-shrink: 0;
 }
 .install-banner-text {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 13.5px;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.install-banner-text span {
+.install-banner .install-btn {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+.install-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  background: none;
   color: var(--shell-text-secondary, #4a5a70);
+  cursor: pointer;
+  flex-shrink: 0;
 }
-.install-banner-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: stretch;
+.install-banner--open .install-steps {
+  margin: 0 0 8px;
 }
 .install-btn {
   display: inline-flex;
@@ -53,14 +69,6 @@
   background: var(--shell-accent, #1e5bb8);
   color: var(--shell-accent-text, #fff);
   font: 600 14px var(--sans);
-  cursor: pointer;
-}
-.install-later {
-  min-height: 36px;
-  border: 0;
-  background: none;
-  color: var(--shell-text-secondary, #4a5a70);
-  font: 500 13px var(--sans);
   cursor: pointer;
 }
 .install-steps {

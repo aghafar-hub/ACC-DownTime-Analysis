@@ -17,9 +17,9 @@ function IosSteps() {
   );
 }
 
-// Phone only, shown once until dismissed: a small card above the bottom bar.
-// While it shows, its height is kept in --install-banner-h so the page reserves that room at the bottom and the
-// banner never covers content (the last row, Show more, a form button).
+// Phone only, until dismissed for good (×): one thin line docked on the bottom bar, the full width of the screen.
+// While it shows, its height is kept in --install-banner-h so the page and every floating button (the "+ New" of
+// Actions, toasts, sticky action bars) sit above it and it never covers anything.
 export function InstallBanner() {
   const { installed, canPrompt, ios, install } = useInstall();
   const [dismissed, setDismissed] = useState(() => store.get(DISMISS_KEY) === '1');
@@ -30,8 +30,7 @@ export function InstallBanner() {
     const el = ref.current;
     const root = document.documentElement;
     if (!shown || !el) return;
-    // the banner sits 14 px above the bottom bar; keep 10 px of air above it
-    const set = () => root.style.setProperty('--install-banner-h', `${el.offsetHeight ? el.offsetHeight + 24 : 0}px`);
+    const set = () => root.style.setProperty('--install-banner-h', `${el.offsetHeight || 0}px`);
     set();
     const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(set);
     ro?.observe(el);
@@ -48,21 +47,20 @@ export function InstallBanner() {
     store.set(DISMISS_KEY, '1');
   };
   return (
-    <div ref={ref} className="install-banner" role="dialog" aria-label={t('Install the app')} data-testid="install-banner">
-      <img src={`${import.meta.env.BASE_URL}icons/pwa-192.png`} alt="" width={40} height={40} />
-      <div className="install-banner-text">
-        <b>{t('Install ACC Downtime')}</b>
-        <span>{t('Opens from your home screen, full screen, and keeps working offline.')}</span>
-        {showSteps && <IosSteps />}
-      </div>
-      <div className="install-banner-actions">
+    <div ref={ref} className={showSteps ? 'install-banner install-banner--open' : 'install-banner'} role="region" aria-label={t('Install the app')} data-testid="install-banner">
+      <div className="install-banner-line">
+        <img src={`${import.meta.env.BASE_URL}icons/pwa-192.png`} alt="" width={24} height={24} />
+        <span className="install-banner-text" title={t('Opens from your home screen, full screen, and keeps working offline.')}>{t('Install the app')}</span>
         {canPrompt ? (
-          <button type="button" className="install-btn" onClick={() => install().then((ok) => ok && dismiss())}>{t('Install')}</button>
+          <button type="button" className="install-btn" onClick={() => install().then((ok) => ok && dismiss())} data-testid="install-go">{t('Install')}</button>
         ) : (
-          !showSteps && <button type="button" className="install-btn" onClick={() => setShowSteps(true)}>{t('How')}</button>
+          !showSteps && <button type="button" className="install-btn" onClick={() => setShowSteps(true)} data-testid="install-go">{t('How')}</button>
         )}
-        <button type="button" className="install-later" onClick={dismiss}>{t('Not now')}</button>
+        <button type="button" className="install-x" onClick={dismiss} aria-label={t('Do not show again')} title={t('Do not show again')} data-testid="install-dismiss">
+          <Icon name="close" size={18} />
+        </button>
       </div>
+      {showSteps && <IosSteps />}
     </div>
   );
 }

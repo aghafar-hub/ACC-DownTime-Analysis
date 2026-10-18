@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { describeError } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { t } from '../i18n/t';
-import { ArrowIcon, AuthShell, EmailField, PasswordField } from './AuthParts';
+import { ArrowIcon, AuthShell, EmailField, focusOnOpen, PasswordField } from './AuthParts';
 import './Auth.css';
 
 export default function Login() {
@@ -43,7 +43,7 @@ export default function Login() {
       <form className="auth-form" onSubmit={handleSubmit} data-testid="login-form">
         {notice && !error && <p className="auth-notice" role="status" data-testid="login-notice">{notice}</p>}
         <EmailField
-          label={t('Email address')} value={email} onChange={setEmail} autoFocus name="email" autoComplete="username"
+          label={t('Email address')} value={email} onChange={setEmail} autoFocus={focusOnOpen()} name="email" autoComplete="username"
           placeholder={t('you@company.com')} testid="login-email" describedBy={errId} invalid={!!error}
         />
         <PasswordField

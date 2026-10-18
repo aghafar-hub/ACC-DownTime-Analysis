@@ -14,7 +14,7 @@ import type { ReportModel } from './model';
 import { paginate, type PageSpec, type Sizes, type TableSize } from './paginate';
 import ReportTableView from './ReportTableView';
 import { usePinchZoom, ZoomBar } from './PreviewZoom';
-import { scaleOf, type Zoom } from './previewZoom';
+import { medianPx, readableZoom, scaleOf, type Zoom } from './previewZoom';
 import { SECTION_BY_ID, SECTION_GROUPS } from './sections';
 
 export const PAGE_W = 794;
@@ -190,6 +190,17 @@ export default function ReportDocument({ model, onLayout }: { model: ReportModel
 
   const fit = wrapW > 0 ? Math.min(1, wrapW / PAGE_W) : 1;
   const scale = scaleOf(zoom, fit);
+  // a narrow screen (phone) opens the preview where the paper's text is readable (>= 12 px), not at Fit (about 6 px);
+  // once only, and never against a zoom the reader already chose
+  const autoZoom = useRef(false);
+  useEffect(() => {
+    if (autoZoom.current || !layout || measuring || wrapW <= 0) return;
+    autoZoom.current = true;
+    if (zoom !== 'fit' || wrapW >= 600) return;
+    const els = [...(sheetsRef.current?.querySelectorAll<HTMLElement>('.rpt-page--section .rpt-pb p, .rpt-page--section .rpt-pb td, .rpt-page--section .rpt-pb li') ?? [])].slice(0, 200);
+    const next = readableZoom(medianPx(els.map((e) => parseFloat(getComputedStyle(e).fontSize))), fit);
+    if (next !== 'fit') setZoom(next);
+  }, [layout, measuring, wrapW, zoom, fit]);
   usePinchZoom(scrollRef, sheetsRef, scale, setZoom);
   const byKey = useMemo(() => {
     const m = new Map<string, Block>();

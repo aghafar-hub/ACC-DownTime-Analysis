@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { describeError } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { t } from '../i18n/t';
-import { ArrowIcon, AuthShell, PasswordField } from './AuthParts';
+import { ArrowIcon, AuthShell, focusOnOpen, PasswordField } from './AuthParts';
 import './Auth.css';
 
 const MIN_LENGTH = 10; // the server checks the configured minimum as well
@@ -43,7 +43,7 @@ export default function ChangePassword() {
       <p className="auth-subtitle">{t('You signed in with a temporary password. Choose a new one to continue.')}</p>
 
       <form className="auth-form" onSubmit={handleSubmit} data-testid="change-password-form">
-        <PasswordField label={t('Temporary password')} value={current} onChange={setCurrent} autoFocus autoComplete="current-password" testid="cp-current" describedBy={errId} />
+        <PasswordField label={t('Temporary password')} value={current} onChange={setCurrent} autoFocus={focusOnOpen()} autoComplete="current-password" testid="cp-current" describedBy={errId} />
         <PasswordField label={t('New password')} value={next} onChange={setNext} autoComplete="new-password" testid="cp-new" describedBy={errId} />
         <PasswordField label={t('Confirm new password')} value={confirm} onChange={setConfirm} autoComplete="new-password" testid="cp-confirm" describedBy={errId} />
         <div aria-live="assertive" role="alert" className="auth-live">
