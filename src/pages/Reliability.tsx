@@ -164,7 +164,7 @@ export default function Reliability() {
   return (
     <div className="page dash-page" data-testid="page-reliability">
       <DashTop
-        title={t('Reliability Trends')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} hideCompare
+        title={t('Reliability')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} hideCompare
         right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>}
       />
       {empty && <EmptyScope dash={dash} />}

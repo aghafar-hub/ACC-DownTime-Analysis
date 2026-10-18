@@ -134,7 +134,7 @@ test.describe('desktop', () => {
     await open(page);
     await panel(page).locator('[data-testid="notif-row"][data-type="long_stop"]').first().getByTestId('notif-go').click();
     await expect(page).toHaveURL(/#\/events/);
-    await expect(page.getByTestId('page-title')).toHaveText('Event Explorer');
+    await expect(page.getByTestId('page-title')).toHaveText('Events');
     await expect(page.getByTestId('drill-chip')).toBeVisible();
     await open(page);
     const rep = panel(page).locator('[data-testid="notif-row"][data-type="repeat_group"]').first();

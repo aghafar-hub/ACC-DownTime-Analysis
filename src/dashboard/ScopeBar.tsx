@@ -309,7 +309,7 @@ function DashViews({ src }: { src: ScopeSource }) {
   return <ViewsMenu page={page} currentQuery={() => serializeFilters(src.filters).toString()} onApply={apply} />;
 }
 
-export const SCOPE_NOTE = 'Shared by Dashboard, Losses, Repeated failures, Reliability, Event records — change it once, every page follows.';
+export const SCOPE_NOTE = 'Shared by Dashboard, Causes, Repeated failures, Reliability, Events — change it once, every page follows.';
 
 function DesktopBar({ src, m, eventCount, hideCompare, views, exportMenu, extra }: BarProps & { m: Model }) {
   const { f, set } = m;

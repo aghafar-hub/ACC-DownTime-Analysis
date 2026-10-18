@@ -140,7 +140,7 @@ export default function UploadFlow({ onDone }: { onDone: () => void }) {
           </div>
         )}
         <div className="chip-row">
-          <Link className="btn-primary" to="/events" data-testid="open-events"><Icon name="list" size={15} /> {t('Open Event Explorer')}</Link>
+          <Link className="btn-primary" to="/events" data-testid="open-events"><Icon name="list" size={15} /> {t('Open Events')}</Link>
           {review && <button type="button" className="btn" onClick={() => downloadText(`warnings-${b.batch_id}.csv`, reviewCsv(review, f.decisions))} data-testid="download-warnings"><Icon name="download" size={15} /> {t('Download warnings (CSV)')}</button>}
           <button type="button" className="btn" onClick={f.reset} data-testid="upload-another">{t('Upload another file')}</button>
         </div>
@@ -188,7 +188,7 @@ export default function UploadFlow({ onDone }: { onDone: () => void }) {
               {plan.skippedLate > 0 && <li>{tn(plan.skippedLate, '{n} late row you chose to skip is not added.', '{n} late rows you chose to skip are not added.')}</li>}
               {plan.flagged.total > 0 && <li>{tn(plan.flagged.total, '{n} of them will need checking on the Validate page.', '{n} of them will need checking on the Validate page.')}</li>}
             </ul>
-            <p style={{ margin: '8px 0 0' }}>{t('Stored rows are never changed by an upload. A wrong row can be corrected or voided later in Event Explorer or on the Validate page.')}</p>
+            <p style={{ margin: '8px 0 0' }}>{t('Stored rows are never changed by an upload. A wrong row can be corrected or voided later on the Events or the Validate page.')}</p>
           </ConfirmDialog>
         )}
       </>

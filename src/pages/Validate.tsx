@@ -242,7 +242,7 @@ export default function Validate() {
   const hintText = `${t('Records marked ◆ are left out of every chart and total until they are fixed. Records marked ▲ are counted as they are; check them when you can.')} ${t('Stops that overlap in the same area (ℹ) are information only: the shared time is counted once.')} ${
     editor
       ? `${t('If a record is correct as entered, use Keep as entered: nothing in it changes and it stops being listed.')} ${t('Use Re-check after you add equipment codes, aliases or reasons in Master Data: it checks every record again.')}`
-      : t('You can read this list. Someone with Edit access to Event Explorer fixes the records.')
+      : t('You can read this list. Someone with Edit access to Events fixes the records.')
   }`;
   const filtersOn = filterCount(f);
   const sheetCount = [f.area, f.month].filter(Boolean).length + f.flags.length;

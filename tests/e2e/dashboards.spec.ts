@@ -76,7 +76,7 @@ test.describe('dashboards (desktop)', () => {
 
     // one sticky scope bar: each chip opens its own small panel
     await expect(page.getByTestId('scope-note')).toContainText('Shared filters');
-    await expect(page.getByTestId('scope-note')).toHaveAttribute('title', /Shared by Dashboard, Losses, Repeated failures, Reliability, Event records/);
+    await expect(page.getByTestId('scope-note')).toHaveAttribute('title', /Shared by Dashboard, Causes, Repeated failures, Reliability, Events/);
     await page.getByTestId('fb-area').click();
     const before = await page.getByTestId('fb-area-opt').count();
     await page.keyboard.press('Escape');

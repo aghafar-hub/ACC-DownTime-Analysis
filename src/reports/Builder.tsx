@@ -158,7 +158,7 @@ export default function Builder(p: BuilderProps) {
         <div className="card rb-use-dash" data-testid="rb-use-dash-card">
           <div>
             <b>{t('Start from the dashboards')}</b>
-            <p className="rb-hint">{t('Copy the period and filters you have on the Dashboard, Losses, Repeated failures, Reliability and Event records.')}</p>
+            <p className="rb-hint">{t('Copy the period and filters you have on the Dashboard, Causes, Repeated failures, Reliability and Events.')}</p>
             {copied && (
               <p className="rb-hint" role="status" data-testid="rb-use-dash-note">
                 {copied.notCopied.length

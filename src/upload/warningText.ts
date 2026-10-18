@@ -44,7 +44,7 @@ const TEXT: Record<WarningType, Text> = {
   },
   changed_row: {
     label: 'Rows that differ from the stored row',
-    help: 'The same stop is already stored, but the file has different values. The stored values are kept. To change a stored event, correct it in Event Explorer.',
+    help: 'The same stop is already stored, but the file has different values. The stored values are kept. To change a stored event, correct it on the Events page.',
     tone: 'warning', symbol: '▲',
   },
   missing_row: {
@@ -79,7 +79,7 @@ const TEXT: Record<WarningType, Text> = {
   },
   end_before_start: {
     label: 'Restart is before the stop',
-    help: 'The restart time is earlier than the stop time, so the duration is negative. The row is added and flagged; fix it in Event Explorer.',
+    help: 'The restart time is earlier than the stop time, so the duration is negative. The row is added and flagged; fix it on the Events page.',
     tone: 'warning', symbol: '▲',
   },
   duration_mismatch: {

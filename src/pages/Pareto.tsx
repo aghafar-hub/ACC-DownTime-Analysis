@@ -100,7 +100,7 @@ export default function Pareto() {
   const dash = useDash();
   const { ctx } = dash;
   const mobile = useIsMobile();
-  const drill = useDrill(dash, 'Pareto');
+  const drill = useDrill(dash, 'Causes');
   const [sub, setSub] = useState<Sub>('equipment');
   const [split, setSplit] = useState(false);
   const [eqCode, setEqCode] = useState('');
@@ -154,7 +154,7 @@ export default function Pareto() {
   return (
     <div className="page dash-page" data-testid="page-pareto">
       <DashTop
-        title={t('Pareto & Contributors')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} hideCompare
+        title={t('Causes')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} hideCompare
         right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>}
       />
       {empty && <EmptyScope dash={dash} />}

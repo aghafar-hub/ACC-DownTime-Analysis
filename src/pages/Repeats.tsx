@@ -54,7 +54,7 @@ export default function Repeats() {
   const dash = useDash();
   const { ctx } = dash;
   const mobile = useIsMobile();
-  const drill = useDrill(dash, 'Repeats');
+  const drill = useDrill(dash, 'Repeated failures');
   const model = useMemo(() => (ctx ? repeatsModel(ctx) : null), [ctx]);
   const rows = useMemo(() => (ctx ? rowsInRange(ctx.scope, ctx.win.range) : null), [ctx]);
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'occurrences', dir: -1 });
@@ -136,7 +136,7 @@ export default function Repeats() {
   return (
     <div className="page dash-page" data-testid="page-repeats">
       <DashTop
-        title={t('Repeated Failures')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null}
+        title={t('Repeated failures')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null}
         right={<button type="button" className="btn btn-sm" onClick={dash.reload} data-testid="refresh"><Icon name="sync" size={14} /> {t('Refresh')}</button>}
       />
       {empty && <EmptyScope dash={dash} />}
