@@ -62,8 +62,8 @@ describe('monthCompareModel', () => {
   const m = monthCompareModel(rows, startup, defaultFilters(), pair);
   const row = (id: CompareId) => m.rows.find((r) => r.id === id)!;
 
-  it('has the ten rows in the documented order', () => {
-    expect(m.rows.map((r) => r.id)).toEqual(['stoppage', 'failureHours', 'planned', 'other', 'failureCount', 'operating', 'availability', 'mttr', 'mtbf', 'repeated']);
+  it('has the twelve rows in the documented order', () => {
+    expect(m.rows.map((r) => r.id)).toEqual(['stoppage', 'failureHours', 'planned', 'other', 'failureCount', 'operating', 'availability', 'reliability', 'utilization', 'mttr', 'mtbf', 'repeated']);
     expect(m.hasA && m.hasB).toBe(true);
   });
 
@@ -78,6 +78,8 @@ describe('monthCompareModel', () => {
       expect(val(row('failureCount')[side])).toBe(d.total.failureCount);
       expect(row('operating')[side]).toEqual(d.total.operatingHours);
       expect(row('availability')[side]).toEqual(d.total.availabilityHeadline);
+      expect(row('reliability')[side]).toEqual(d.total.reliabilityFactor);
+      expect(row('utilization')[side]).toEqual(d.total.utilizationFactor);
       expect(row('mttr')[side]).toEqual(d.total.mttrHours);
       expect(row('mtbf')[side]).toEqual(d.total.mtbfHours);
       expect(val(row('repeated')[side])).toBe(d.repeatedFailureCount);

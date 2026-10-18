@@ -51,8 +51,9 @@ export function sectionTable(s: SectionModel, model: ReportModel): ExportTable |
       const d = s.data;
       const rows: ExportValue[][] = d.kpis.map((k) => {
         const ch = changeText(k.change, k.changeUnit, d.compare);
-        const unit = k.id === 'availability' ? '%' : k.id === 'failures' || k.id === 'repeats' ? t('count') : 'h';
-        const value = k.value === null ? null : k.id === 'availability' ? k.value * 100 : k.value;
+        const pct = k.id === 'availability' || k.id === 'reliability' || k.id === 'utilization';
+        const unit = pct ? '%' : k.id === 'failures' || k.id === 'repeats' ? t('count') : 'h';
+        const value = k.value === null ? null : pct ? k.value * 100 : k.value;
         return [k.label, k.text, num(value), unit, ch ? [ch.arrow, ch.amount, ch.words ? `· ${ch.words}` : ''].filter(Boolean).join(' ') : '', k.status ? statusLine(k.status) : ''];
       });
       const tb: ExportTable = {

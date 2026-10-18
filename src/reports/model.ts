@@ -81,7 +81,7 @@ interface Base<I extends ReportSectionId> {
   notes: string[];
 }
 
-export type KpiId = 'stoppage' | 'failures' | 'availability' | 'mttr' | 'mtbf' | 'repeats';
+export type KpiId = 'stoppage' | 'failures' | 'availability' | 'reliability' | 'utilization' | 'mttr' | 'mtbf' | 'repeats';
 export interface KpiCard {
   id: KpiId;
   label: string;
@@ -318,6 +318,16 @@ function summarySection(env: Env): SummarySection {
       change: ch?.availability ?? null, changeUnit: 'pts', status: ov.status.availability,
     },
     {
+      id: 'reliability', label: t('Reliability factor (RF)'), text: tot.reliabilityFactor.available ? fpct(tot.reliabilityFactor.value) : t('Unavailable'),
+      value: metricNum(tot.reliabilityFactor), unavailable: !tot.reliabilityFactor.available, sub: tot.reliabilityFactor.available ? t('running ÷ (running + incidental hours)') : tot.reliabilityFactor.reason,
+      change: ch?.reliabilityFactor ?? null, changeUnit: 'pts', status: ov.status.reliability ?? null,
+    },
+    {
+      id: 'utilization', label: t('Utilization factor (UF)'), text: tot.utilizationFactor.available ? fpct(tot.utilizationFactor.value) : t('Unavailable'),
+      value: metricNum(tot.utilizationFactor), unavailable: !tot.utilizationFactor.available, sub: tot.utilizationFactor.available ? t('running ÷ calendar hours') : tot.utilizationFactor.reason,
+      change: ch?.utilizationFactor ?? null, changeUnit: 'pts', status: null,
+    },
+    {
       id: 'mttr', label: t('Mean restoration time'), text: tot.mttrHours.available ? `${fh2(tot.mttrHours.value)} h` : tot.mttrHours.code === 'no_failures' ? t('None recorded') : t('Unavailable'),
       value: metricNum(tot.mttrHours), unavailable: !tot.mttrHours.available && tot.mttrHours.code !== 'no_failures', sub: t('mean length of a failure event'),
       change: ch?.mttrHours ?? null, changeUnit: 'h2', status: ov.status.mttr,
@@ -452,16 +462,23 @@ function availabilitySection(env: Env): AvailabilitySection {
   const lowest = values[0] ? { areaId: values[0].id, value: values[0].v / 100 } : null;
   const highest = values.length ? { areaId: values[values.length - 1]!.id, value: values[values.length - 1]!.v / 100 } : null;
   const withTarget = targets.availabilityPct !== null;
+  // the reliability factor (RF) and utilization factor (UF) of each area sit next to its availability
+  const kpiOf = new Map(ov.perArea.map((a) => [a.area_id, a]));
+  const pctOf = (m: Metric | undefined): number | null => (m && m.available ? m.value * 100 : null);
+  const tot = ov.kpi?.total;
   const table: ReportTable = {
-    columns: [col(t('Area')), col(t('Availability'), 'pct'), ...(withTarget ? [col(t('Status'))] : [])],
-    rows: areas.map((a) => [a.area_id, a.availability.available ? a.availability.value * 100 : null, ...(withTarget ? [!a.availability.available ? '–' : belowIds.has(a.area_id) ? t('Below target') : t('On target')] : [])]),
-    total: av ? [t('All areas together'), overall.available ? overall.value * 100 : null, ...(withTarget ? [ov.status.availability ? (ov.status.availability.ok ? t('On target') : t('Below target')) : '–'] : [])] : undefined,
+    columns: [col(t('Area')), col(t('Availability'), 'pct'), ...(withTarget ? [col(t('Status'))] : []), col(t('RF'), 'pct'), col(t('UF'), 'pct')],
+    rows: areas.map((a) => [a.area_id, a.availability.available ? a.availability.value * 100 : null, ...(withTarget ? [!a.availability.available ? '–' : belowIds.has(a.area_id) ? t('Below target') : t('On target')] : []),
+      pctOf(kpiOf.get(a.area_id)?.reliabilityFactor), pctOf(kpiOf.get(a.area_id)?.utilizationFactor)]),
+    total: av ? [t('All areas together'), overall.available ? overall.value * 100 : null, ...(withTarget ? [ov.status.availability ? (ov.status.availability.ok ? t('On target') : t('Below target')) : '–'] : []),
+      pctOf(tot?.reliabilityFactor), pctOf(tot?.utilizationFactor)] : undefined,
   };
   return {
     ...section('availability', availabilityTakeaway({ basis, lowest, highest, overall, belowTarget: ov.belowTarget, target: targets.availabilityPct }),
       env.noData ?? (areas.length === 0 || values.length === 0 ? t('No availability can be calculated for these areas.') : null), [
         t('Availability on basis {b}, worked out from summed area-hours for each area and for all areas together; never an average of percentages.', { b: basis }),
         ...(withTarget ? [t('Target {x}% from Settings: striped bars are below the target.', { x: targetNumber(targets.availabilityPct!) })] : []),
+        t('RF (reliability factor) = running h ÷ (running h + incidental h); UF (utilization factor) = running h ÷ calendar h. Running h = scheduled time minus every stop.'),
       ]),
     data: { basis, areas, overall, floor, targets, below: [...belowIds], belowTarget: ov.belowTarget, status: ov.status.availability, table },
   };
@@ -787,10 +804,12 @@ function methodologySection(env: Env): MethodologySection {
   const s = ctx.master.settings;
   const targets = env.ov.targets;
   const basis = s.availabilityBasis;
-  const info = (id: 'total-hours' | 'failure-count' | 'availability' | 'mttr') => kpiInfo(id, basis, targets);
+  const info = (id: 'total-hours' | 'failure-count' | 'availability' | 'reliability' | 'utilization' | 'mttr') => kpiInfo(id, basis, targets);
   const items: MethodologySection['data']['items'] = [
     { term: t('Area-hours'), paragraphs: info('total-hours').paragraphs },
     { term: t('Availability (basis {b})', { b: basis }), paragraphs: info('availability').paragraphs },
+    { term: t('Reliability factor (RF)'), paragraphs: info('reliability').paragraphs },
+    { term: t('Utilization factor (UF)'), paragraphs: info('utilization').paragraphs },
     { term: t('Failures and failure events'), paragraphs: info('failure-count').paragraphs },
     { term: t('Mean restoration time (MTTR)'), paragraphs: info('mttr').paragraphs },
     {
@@ -820,10 +839,11 @@ function methodologySection(env: Env): MethodologySection {
     {
       term: t('Targets'),
       paragraphs: [
-        targets.availabilityPct === null && targets.mtbfH === null && targets.mttrH === null
+        targets.availabilityPct === null && targets.mtbfH === null && targets.mttrH === null && (targets.reliabilityPct ?? null) === null
           ? t('No targets are set in Settings, so no figure is marked on or off target.')
           : [
             targets.availabilityPct !== null ? t('availability {x}% (at least)', { x: targetNumber(targets.availabilityPct) }) : '',
+            targets.reliabilityPct != null ? t('reliability factor {x}% (at least)', { x: targetNumber(targets.reliabilityPct) }) : '',
             targets.mtbfH !== null ? t('MTBF {x} h (at least)', { x: targetNumber(targets.mtbfH) }) : '',
             targets.mttrH !== null ? t('MTTR {x} h (at most)', { x: targetNumber(targets.mttrH) }) : '',
           ].filter(Boolean).join('; ') + '. ' + t('A figure is judged as it is printed.'),

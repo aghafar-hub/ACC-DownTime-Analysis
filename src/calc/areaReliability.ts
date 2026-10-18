@@ -104,7 +104,7 @@ export function mtbfMttrQuadrants(areas: AreaKpis[]): QuadrantResult {
 export interface AreaMonthAvailability {
   months: { month: string; partial: boolean; window: DateRange | null; notUploaded: boolean }[];
   /** one row per area in the order given; one availability metric per month (unavailable = no data: a gap) */
-  areas: { area_id: string; values: Metric[] }[];
+  areas: { area_id: string; values: Metric[]; reliability: Metric[]; utilization: Metric[] }[];
 }
 
 /**
@@ -131,7 +131,8 @@ export function areaMonthAvailability(input: MonthlyInput & { areaIds: string[];
       notUploaded: input.notUploaded ?? (input.dataRange === undefined ? notUploadedMonths(input.rows) : []),
     });
     if (months.length === 0) months = pts.map((p) => ({ month: p.month, partial: p.partial, window: p.window, notUploaded: p.notUploaded }));
-    return { area_id, values: pts.map((p) => p.availability) };
+    const of = (k: 'reliabilityFactor' | 'utilizationFactor') => pts.map((p) => (p.hasData && p.kpis ? p.kpis[k] : p.availability));
+    return { area_id, values: pts.map((p) => p.availability), reliability: of('reliabilityFactor'), utilization: of('utilizationFactor') };
   });
   return { months, areas };
 }

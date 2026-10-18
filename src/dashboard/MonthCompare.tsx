@@ -31,6 +31,8 @@ function rowLabel(id: CompareId, basis: string): string {
     case 'failureCount': return t('Failure count');
     case 'operating': return t('Operating hours');
     case 'availability': return t('Availability (basis {b})', { b: basis });
+    case 'reliability': return t('Reliability factor (RF)');
+    case 'utilization': return t('Utilization factor (UF)');
     case 'mttr': return t('MTTR');
     case 'mtbf': return t(MTBF_ALL_LABEL);
     case 'repeated': return t('Repeated failures');

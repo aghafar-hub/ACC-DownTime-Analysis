@@ -169,9 +169,9 @@ test.describe('month vs month', () => {
     await expect(b).toHaveValue(opts[2]!);
     await expect(sec.getByTestId('mvm-perday')).toHaveCount(0);
     const rows = sec.getByTestId('mvm-row');
-    await expect(rows).toHaveCount(10);
+    await expect(rows).toHaveCount(12);
     const labels = await rows.locator('th').allTextContents();
-    expect(labels).toEqual(['Stoppage hours', 'Failure hours', 'Planned hours', 'CIR hours', 'Failure count', 'Operating hours', 'Availability (basis B)', 'MTTR', 'MTBF · all areas (area-hours)', 'Repeated failures']);
+    expect(labels).toEqual(['Stoppage hours', 'Failure hours', 'Planned hours', 'CIR hours', 'Failure count', 'Operating hours', 'Availability (basis B)', 'Reliability factor (RF)', 'Utilization factor (UF)', 'MTTR', 'MTBF · all areas (area-hours)', 'Repeated failures']);
     // the change reads as arrow + sign + words
     await expect(rows.first().getByTestId('mvm-change')).toHaveText(/^[▲▼■] .*(better|worse|no change)/);
     await expect(sec.getByTestId('chart-mvm-hours')).toBeVisible();
@@ -301,7 +301,7 @@ for (const width of [360, 390]) {
       await checks('overview');
       await page.getByTestId('overview-mvm-toggle').click();
       await expect(page.getByTestId('chart-mvm-hours')).toBeVisible();
-      await expect(page.getByTestId('overview-mvm-cards').getByTestId('mvm-row')).toHaveCount(10);
+      await expect(page.getByTestId('overview-mvm-cards').getByTestId('mvm-row')).toHaveCount(12);
       await expect(page.getByTestId('overview-mvm-cards').getByTestId('mvm-change').first()).toHaveText(/^[▲▼■] /);
       await checks('overview + month vs month');
       await page.getByTestId('chart-area-availability').scrollIntoViewIfNeeded();

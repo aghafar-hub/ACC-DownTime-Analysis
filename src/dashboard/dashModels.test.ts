@@ -257,6 +257,31 @@ describe('availability heat map', () => {
     expect(heatTone(null, t)).toBeNull();
     expect(heatTone(0.5, { availabilityPct: null })).toBeNull();
   });
+
+  it('RF and UF: the same area-month cells from the monthly KPIs; RF is toned against the RF target (95 % default), UF never', () => {
+    const rf = availabilityHeat(monthCtx, 'reliability')!;
+    const uf = availabilityHeat(monthCtx, 'utilization')!;
+    expect(rf.metric).toBe('reliability');
+    expect(rf.target).toBe(95);
+    expect(uf.target).toBeNull();
+    const k = rf.months.findIndex((m) => m.key === fullMonth);
+    const cur = monthCtx.kpis.current;
+    if (cur.status !== 'ok') throw new Error('no data');
+    // with a one-month range each cell of the sorted month equals that area's KPI
+    for (const a of cur.areas) {
+      const r = rf.rows.find((x) => x.area_id === a.area_id)!.cells[k]!;
+      const u = uf.rows.find((x) => x.area_id === a.area_id)!.cells[k]!;
+      if (a.reliabilityFactor.available) {
+        expect(r.pct! / 100).toBeCloseTo(a.reliabilityFactor.value, 12);
+        expect(r.tone).toBe(heatTone(a.reliabilityFactor.value, { availabilityPct: null, reliabilityPct: 95 }, 'reliability'));
+      } else expect(r.pct).toBeNull();
+      if (a.utilizationFactor.available) expect(u.pct! / 100).toBeCloseTo(a.utilizationFactor.value, 12);
+      expect(u.tone).toBeNull();
+    }
+    expect(heatTone(0.95, { availabilityPct: null, reliabilityPct: 95 }, 'reliability')).toBe('ok');
+    expect(heatTone(0.89, { availabilityPct: null, reliabilityPct: 95 }, 'reliability')).toBe('below');
+    expect(heatTone(0.2, { availabilityPct: 90, reliabilityPct: 95 }, 'utilization')).toBeNull();
+  });
 });
 
 describe('daily helpers, scope text', () => {

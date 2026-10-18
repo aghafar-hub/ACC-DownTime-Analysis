@@ -407,15 +407,24 @@ export function repeatsTop(ctx: DashCtx, n = 5): RepeatsTop | null {
   };
 }
 
-// ---------------------------------------------------------------- (11) availability heat map, area x month
+// ---------------------------------------------------------------- (11) availability / RF / UF heat map, area x month
 
 /** 'ok' at or above the target, 'near' within 5 points below it, 'below' further down; null when no target is set. */
 export type HeatTone = 'ok' | 'near' | 'below';
 export const NEAR_POINTS = 5;
 
-export function heatTone(frac: number | null, targets: Pick<Targets, 'availabilityPct'>): HeatTone | null {
-  if (frac === null || targets.availabilityPct === null) return null;
-  const s = targetStatus('availability', frac, { availabilityPct: targets.availabilityPct, mtbfH: null, mttrH: null })!;
+/** What the heat map shows: availability (settings basis), the reliability factor or the utilization factor. */
+export type HeatMetric = 'availability' | 'reliability' | 'utilization';
+
+/** The target a heat-map metric is coloured against, in percent; the utilization factor has none. */
+export function heatTarget(targets: Pick<Targets, 'availabilityPct'> & Partial<Pick<Targets, 'reliabilityPct'>>, metric: HeatMetric = 'availability'): number | null {
+  return metric === 'availability' ? targets.availabilityPct : metric === 'reliability' ? targets.reliabilityPct ?? null : null;
+}
+
+export function heatTone(frac: number | null, targets: Pick<Targets, 'availabilityPct'> & Partial<Pick<Targets, 'reliabilityPct'>>, metric: HeatMetric = 'availability'): HeatTone | null {
+  const target = heatTarget(targets, metric);
+  if (frac === null || target === null) return null;
+  const s = targetStatus('availability', frac, { availabilityPct: target, mtbfH: null, mttrH: null })!;
   return s.ok ? 'ok' : s.gap >= -NEAR_POINTS ? 'near' : 'below';
 }
 
@@ -428,9 +437,10 @@ export interface HeatModel {
   sortMonth: string | null;
   target: number | null;
   range: DateRange;
+  metric: HeatMetric;
 }
 
-export function availabilityHeat(ctx: DashCtx): HeatModel | null {
+export function availabilityHeat(ctx: DashCtx, metric: HeatMetric = 'availability'): HeatModel | null {
   const range = contextRange(ctx);
   const eff = ctx.win.effective;
   if (!range || !eff) return null;
@@ -443,15 +453,15 @@ export function availabilityHeat(ctx: DashCtx): HeatModel | null {
   const months: Slot[] = am.months.map((m) => monthSlot(ctx, { ...m, hasData: !!m.window }));
   const rows = am.areas.map((a) => ({
     area_id: a.area_id, name: areaName(ctx, a.area_id),
-    cells: a.values.map((v, i) => {
+    cells: (metric === 'reliability' ? a.reliability : metric === 'utilization' ? a.utilization : a.values).map((v, i) => {
       const x = num(v);
-      return { pct: x === null ? null : x * 100, status: months[i]!.status, tone: heatTone(x, targets) };
+      return { pct: x === null ? null : x * 100, status: months[i]!.status, tone: heatTone(x, targets, metric) };
     }),
   }));
   // sort by the last month of the period that has values (worst first)
   const sortIdx = [...months.keys()].filter((i) => months[i]!.inPeriod && hasValues(months[i]!.status) && months[i]!.key <= eff.to.slice(0, 7)).pop() ?? -1;
   if (sortIdx >= 0) rows.sort((a, b) => (a.cells[sortIdx]!.pct ?? Infinity) - (b.cells[sortIdx]!.pct ?? Infinity) || a.area_id.localeCompare(b.area_id));
-  return { months, rows, sortMonth: sortIdx >= 0 ? months[sortIdx]!.key : null, target: targets.availabilityPct, range };
+  return { months, rows, sortMonth: sortIdx >= 0 ? months[sortIdx]!.key : null, target: heatTarget(targets, metric), range, metric };
 }
 
 // ---------------------------------------------------------------- (12) which days were worst

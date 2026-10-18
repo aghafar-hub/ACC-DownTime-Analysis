@@ -47,6 +47,15 @@ describe('report equals the dashboards for the same filters', () => {
     expect(scopeCounts(ctx)).toEqual(m.scope);
     const av = get(m, 'availability').data;
     expect(av.areas).toEqual(ov.availability!.areas);
+    // RF and UF: KPI cards and the last two columns of the area table equal the dashboard's KPIs
+    expect(card('reliability').value).toBe(k.total.reliabilityFactor.available ? k.total.reliabilityFactor.value : null);
+    expect(card('utilization').value).toBe(k.total.utilizationFactor.available ? k.total.utilizationFactor.value : null);
+    expect(card('reliability').change).toEqual(ov.changes?.reliabilityFactor ?? null);
+    av.table.rows.forEach((r) => {
+      const a = k.areas.find((x) => x.area_id === r[0])!;
+      const pct = (x: typeof a.reliabilityFactor) => (x.available ? x.value * 100 : null);
+      expect(r.slice(-2)).toEqual([pct(a.reliabilityFactor), pct(a.utilizationFactor)]);
+    });
     const rel = areaReliabilityModel(dash)!;
     expect(get(m, 'mtbf_mttr').data.mtbf).toEqual(rel.mtbf);
     expect(get(m, 'failure_rate').data.rows).toEqual(rel.rate.rows);

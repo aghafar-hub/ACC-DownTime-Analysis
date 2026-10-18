@@ -16,12 +16,13 @@ import { num } from '../../util/format';
 import { fh, fh2, fint, monthAxisLabels } from '../format';
 import {
   availabilityHeat, failureIdsStarted, failuresByMonth, idsWithHours, lastDays, periodText, plannedRuns, repeatsTop, scopeText,
-  type FailMonth, type HeatTone,
+  type FailMonth, type HeatMetric, type HeatTone,
 } from '../dashModels';
+import { store } from '../../storagePrefix';
 import type { DashFilters } from '../filters';
 import { areaReliabilityModel, ROLLING_DAYS, type OverviewModel } from '../models';
 import type { DashCtx } from '../scope';
-import DashCard, { OpenLink, type OpenFn } from './DashCard';
+import DashCard, { OpenLink, Seg, type OpenFn } from './DashCard';
 
 const HALO = { stroke: 'var(--tk-card-bg)', strokeWidth: 3, paintOrder: 'stroke' } as const;
 
@@ -238,10 +239,19 @@ export function RepeatsCard({ ctx, filters, onOpen, onAll }: { ctx: DashCtx; fil
 
 const TONE_CLASS: Record<HeatTone, string> = { ok: 'hm-ok', near: 'hm-near', below: 'hm-below' };
 
+const HEAT_KEY = 'heat_metric';
+const HEAT_METRICS: HeatMetric[] = ['availability', 'reliability', 'utilization'];
+const readHeatMetric = (): HeatMetric => {
+  const v = store.get(HEAT_KEY);
+  return HEAT_METRICS.includes(v as HeatMetric) ? (v as HeatMetric) : 'availability';
+};
+
 export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: DashFilters; onOpen: OpenFn }) {
   const mobile = useIsMobile();
   const [all, setAll] = useState(false);
-  const m = useMemo(() => availabilityHeat(ctx), [ctx]);
+  const [metric, setMetricState] = useState<HeatMetric>(readHeatMetric);
+  const setMetric = (v: HeatMetric) => { setMetricState(v); store.set(HEAT_KEY, v); };
+  const m = useMemo(() => availabilityHeat(ctx, metric), [ctx, metric]);
   const ids = useMemo(() => (m ? idsWithHours(ctx, m.range) : []), [ctx, m]);
   if (!m) return null;
   const tg = m.target;
@@ -256,7 +266,10 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
   };
   const label = (k: string) => (mobile ? monthShort(k).slice(0, 1) : monthShort(k));
   const sortName = m.sortMonth ? monthShort(m.sortMonth) : '';
-  const summary = `${t('{n} areas by month', { n: m.rows.length })}${sortName ? `, ${t('worst {m} first', { m: sortName })}` : ''}. ${tg !== null ? t('Green: at or above {x}%; amber: up to 5 points below; red: further below.', { x: tg }) : t('No target set: darker = lower availability.')}`;
+  const basis = ctx.master.settings.availabilityBasis;
+  const what = metric === 'reliability' ? t('Reliability factor (RF)') : metric === 'utilization' ? t('Utilization factor (UF)') : t('Availability');
+  const short = metric === 'reliability' ? 'RF' : metric === 'utilization' ? 'UF' : t('Availability');
+  const summary = `${what}: ${t('{n} areas by month', { n: m.rows.length })}${sortName ? `, ${t('worst {m} first', { m: sortName })}` : ''}. ${tg !== null ? t('Green: at or above {x}%; amber: up to 5 points below; red: further below.', { x: tg }) : metric === 'utilization' ? t('No target for UF: darker = lower.') : t('No target set: darker = lower.')}`;
   const sortAt = m.months.findIndex((x) => x.key === m.sortMonth);
   // a phone shows at most 8 months: those up to the month after the sorted one
   const end = mobile ? Math.min(m.months.length, (sortAt >= 0 ? sortAt : m.months.length - 1) + 2) : m.months.length;
@@ -267,8 +280,9 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
   return (
     <DashCard
       id="heat" testid="chart-avail-heat" title={t('Is any area slipping over time?')}
-      help={{ id: 'heat', vars: { b: ctx.master.settings.availabilityBasis } }}
-      subtitle={t('Availability heatmap, area × month (basis {b}, %){s}', { b: ctx.master.settings.availabilityBasis, s: sortName ? ` · ${t('worst {m} first', { m: sortName })}` : '' })}
+      help={{ id: 'heat', vars: { b: basis } }}
+      subtitle={`${metric === 'availability' ? t('Availability heatmap, area × month (basis {b}, %)', { b: basis }) : t('{w} heatmap, area × month (%)', { w: what })}${sortName ? ` · ${t('worst {m} first', { m: sortName })}` : ''}`}
+      controls={<Seg value={metric} options={[{ value: 'availability', label: mobile ? t('Avail.') : t('Availability') }, { value: 'reliability', label: 'RF' }, { value: 'utilization', label: 'UF' }]} onChange={setMetric} label={t('Show')} testid="heat-metric" />}
       headLink={mobile && m.rows.length > 6 ? <button type="button" className="dcard-link" onClick={() => setAll((v) => !v)} aria-expanded={all} data-testid="heat-all">{all ? t('Worst 6') : t('All {n}', { n: m.rows.length })} <span aria-hidden="true">›</span></button> : undefined}
       legend={tg !== null ? [
         { kind: 'box', className: 'hm-ok', label: mobile ? `≥ ${tg}` : t('At or above {x}%', { x: tg }) },
@@ -276,12 +290,12 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
         { kind: 'box', className: 'hm-below', label: mobile ? `< ${tg - 5}` : t('Below {a}% (hatch)', { a: tg - 5 }) },
         { kind: 'box', className: 'hm-nodata', label: t('No data') },
       ] : [{ kind: 'box', className: 'hm-scale', label: t('Darker = lower') }, { kind: 'box', className: 'hm-nodata', label: t('No data') }]}
-      summary={summary} scope={scopeText(m.range, filters, 'all')} open={{ ids, label: t('Availability by area and month') }} onOpen={onOpen}
+      summary={summary} scope={scopeText(m.range, filters, 'all')} open={{ ids, label: t('{w} by area and month', { w: what }) }} onOpen={onOpen}
     >
-      {tg === null && <p className="at-note" data-testid="heat-no-target">{t('No availability target is set: the colours show lower and higher only (darker = lower), not on or below target.')}</p>}
+      {tg === null && metric !== 'utilization' && <p className="at-note" data-testid="heat-no-target">{metric === 'reliability' ? t('No RF target is set: the colours show lower and higher only (darker = lower), not on or below target.') : t('No availability target is set: the colours show lower and higher only (darker = lower), not on or below target.')}</p>}
       <div className="hm-wrap">
         <table className="hm" data-testid="heat-table">
-          <caption className="sr-only">{t('Availability by area and month')}</caption>
+          <caption className="sr-only">{t('{w} by area and month', { w: what })}</caption>
           <thead>
             <tr>
               <th scope="col" className="hm-corner"><span className="sr-only">{t('Area')}</span></th>
@@ -303,7 +317,7 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
                   }
                   return (
                     <td key={i} className={`${cls} ${c.tone ? TONE_CLASS[c.tone] : 'hm-scale-cell'}`} style={c.tone ? undefined : neutral(c.pct)} data-tone={c.tone ?? 'scale'}
-                      title={`${r.area_id}, ${monthText(months[i]!.key)}: ${c.pct.toFixed(1)}%${c.status === 'partial' ? ` (${t('partial month')})` : ''}`}>
+                      title={`${r.area_id}, ${monthText(months[i]!.key)}: ${short} ${c.pct.toFixed(1)}%${c.status === 'partial' ? ` (${t('partial month')})` : ''}`}>
                       {c.pct.toFixed(1)}
                     </td>
                   );
