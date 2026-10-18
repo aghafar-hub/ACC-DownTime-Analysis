@@ -10,6 +10,15 @@ export interface RunningExample { perDay: string; scheduled: string; stopped: st
 /** A part of the explanation: what it shows, the formulas, how it is calculated, a live example. */
 export interface InfoSection { kind: 'what' | 'formula' | 'how' | 'example'; heading: string; items: string[] }
 
+/** The numbers on the KPI row, already formatted as the cards show them, for the worked example in each (i). */
+export interface KpiLive {
+  T: string; pl: string; inc: string; cir: string; down: string; run: string; failures: string;
+  /** summed length of the failure events (the MTTR numerator) */
+  eventHours: string;
+  mtbf: string; mttr: string; rf: string; uf: string;
+  perDay: string; days: number; areas: number;
+}
+
 export interface KpiInfo {
   title: string;
   paragraphs: string[];
@@ -24,8 +33,49 @@ const BASIS_TEXT = {
   C: 'Basis C: scheduled time minus planned and other (circumstantial) stops is the time the area was expected to run. Availability is that time minus failure stops, divided by it.',
 } as const;
 
-export function kpiInfo(id: HeroId, basis: 'A' | 'B' | 'C', targets?: Targets, running?: RunningExample): KpiInfo {
+/** The equations of each card, in words a reader can check with a calculator. */
+function formulas(id: HeroId): string[] {
+  switch (id) {
+    case 'total-hours': return [t('Total stoppage = INC + PL + CIR (hours)')];
+    case 'failure-count': return [t('Failures = number of failure events that started in the period')];
+    case 'reliability': return [
+      t('RF = Running ÷ (Running + INC) × 100'),
+      t('Running = T − PL − INC − CIR'),
+      t('T = scheduled hours per day × days × areas'),
+      t('Same as: RF = MTBF ÷ (MTBF + INC hours per failure)'),
+    ];
+    case 'mtbf': return [t('MTBF = Running hours ÷ Failures'), t('Running = T − PL − INC − CIR')];
+    case 'mttr': return [t('MTTR = total length of the failure events ÷ Failures')];
+    case 'utilization': return [t('UF = Running ÷ T × 100'), t('Running = T − PL − INC − CIR'), t('T = scheduled hours per day × days × areas')];
+    case 'availability': return [t('Availability = (T − PL − INC − CIR) ÷ (T − PL) × 100 (basis B)')];
+    case 'running-hours': return [t('Running = T − (PL + INC + CIR)'), t('T = scheduled hours per day × days × areas')];
+  }
+}
+
+/** The equation again with the numbers on the card. */
+function worked(id: HeroId, n: KpiLive): string[] {
+  const T = t('{h} h × {d} days × {a} areas = {T} h', { h: n.perDay, d: n.days, a: n.areas, T: n.T });
+  const run = t('Running = {T} − {pl} − {inc} − {cir} = {r} h', { T: n.T, pl: n.pl, inc: n.inc, cir: n.cir, r: n.run });
+  switch (id) {
+    case 'total-hours': return [t('{inc} + {pl} + {cir} = {d} h', { inc: n.inc, pl: n.pl, cir: n.cir, d: n.down })];
+    case 'failure-count': return [t('{n} failure events; together they stopped the areas {h} h (INC hours {inc} h).', { n: n.failures, h: n.eventHours, inc: n.inc })];
+    case 'reliability': return [T, run, t('RF = {r} ÷ ({r} + {inc}) = {rf}%', { r: n.run, inc: n.inc, rf: n.rf })];
+    case 'mtbf': return n.failures === '0' ? [] : [run, t('MTBF = {r} ÷ {n} = {m} h', { r: n.run, n: n.failures, m: n.mtbf })];
+    case 'mttr': return n.failures === '0' ? [] : [t('MTTR = {h} h ÷ {n} = {m} h', { h: n.eventHours, n: n.failures, m: n.mttr })];
+    // T and the running hours are in the 'Here:' line of the running-hours text above
+    case 'utilization': return [run, t('UF = {r} ÷ {T} = {uf}%', { r: n.run, T: n.T, uf: n.uf })];
+    case 'running-hours': return [T, run];
+    case 'availability': return [];
+  }
+}
+
+export function kpiInfo(id: HeroId, basis: 'A' | 'B' | 'C', targets?: Targets, running?: RunningExample, live?: KpiLive): KpiInfo {
   const info = baseInfo(id, basis);
+  if (id !== 'availability') {
+    info.sections = [{ kind: 'formula', heading: t('Formula'), items: formulas(id) }];
+    const ex = live ? worked(id, live) : [];
+    if (ex.length) info.sections.push({ kind: 'formula', heading: t('With the numbers on this card'), items: ex });
+  }
   if ((id === 'running-hours' || id === 'utilization') && running) {
     if (id === 'utilization') info.paragraphs.push(...baseInfo('running-hours', basis).paragraphs.slice(0, 3));
     info.paragraphs.push(t('Here: {h} h × {d} days × {a} areas = {T} h scheduled − {S} h stopped = {R} h running.', { h: running.perDay, d: running.days, a: running.areas, T: running.scheduled, S: running.stopped, R: running.running })

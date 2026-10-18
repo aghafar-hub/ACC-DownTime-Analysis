@@ -8,7 +8,7 @@ import { t } from '../../i18n/t';
 import { monthShort, monthText } from '../../util/dates';
 import { ChangeLine, fh, fh2, fint, fpct, metricText, MTBF_ALL_LABEL } from '../format';
 import { InfoButton } from '../HeroKpi';
-import { kpiInfo } from '../kpiInfo';
+import { kpiInfo, type KpiLive } from '../kpiInfo';
 import type { OverviewModel } from '../models';
 import { statusSymbol } from '../TargetStatus';
 import type { TargetStatus } from '../targets';
@@ -145,12 +145,19 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
     running: fh(run.value.value), days: run.days, areas: run.areas, notUploaded: run.notUploaded.map(monthText),
     change: run.change && run.change.available && !run.change.perDay ? `${run.change.abs >= 0 ? '+' : '−'}${fh(Math.abs(run.change.abs))} h ${cmpLabel}` : undefined,
   } : undefined;
+  const live: KpiLive | undefined = run && run.value.available ? {
+    T: fh(run.scheduledHours), pl: fh(tot.plannedHours), inc: fh(tot.failureHours), cir: fh(tot.otherHours), down: fh(tot.downtimeHours),
+    run: fh(run.value.value), failures: fint(tot.failureCount),
+    eventHours: fh(tot.mttrHours.available ? tot.mttrHours.value * tot.failureCount : 0),
+    mtbf: mtbf.text, mttr: mttr.text, rf: rf.text, uf: uf.text,
+    perDay: fh(run.days > 0 && run.areas > 0 ? run.scheduledHours / (run.days * run.areas) : 0), days: run.days, areas: run.areas,
+  } : undefined;
   const mtbfSub = run && run.value.available && tot.failureCount > 0 ? t('{h} h running ÷ {n} failures', { h: fh(run.value.value), n: fint(tot.failureCount) }) : t('Run area-hours ÷ failures');
 
   return (
     <div className="krow" data-testid="hero-kpis">
       <Tile
-        id="total-hours" label={t('Total stoppage')} info={<InfoButton info={kpiInfo('total-hours', basis)} testid="kpi-total-hours-info" />}
+        id="total-hours" label={t('Total stoppage')} info={<InfoButton info={kpiInfo('total-hours', basis, model.targets, undefined, live)} testid="kpi-total-hours-info" />}
         value={fh(tot.downtimeHours)} unit="h" wide
         change={<ChangeLine change={model.downtimeChange} fmt={fh} unit=" h" label={cmpLabel} compare={cmp} />}
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.downtimeHours} label={t('Total stoppage')} format={(n) => `${fh(n)} h`} />)}
@@ -163,14 +170,14 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
         </ul>
       </Tile>
       <Tile
-        id="failure-count" label={t('Failures')} info={<InfoButton info={kpiInfo('failure-count', basis)} testid="kpi-failure-count-info" />}
+        id="failure-count" label={t('Failures')} info={<InfoButton info={kpiInfo('failure-count', basis, model.targets, undefined, live)} testid="kpi-failure-count-info" />}
         value={tot.failureCount === 0 ? t('None recorded') : fint(tot.failureCount)} after={tot.failureCount === 0 ? undefined : t('events')}
         change={<ChangeLine change={ch?.failureCount ?? null} fmt={fint} label={cmpLabel} compare={cmp} />}
         sub={`${prev ? `${pre}${fint(prev.failureCount)} · ` : ''}${t('{h} h lost', { h: fh(tot.failureHours) })}`}
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.failureCount} label={t('Failures')} format={fint} />)}
       />
       <Tile
-        id="reliability" label={t('Reliability (RF)')} info={<InfoButton info={kpiInfo('reliability', basis, model.targets)} testid="kpi-reliability-info" />}
+        id="reliability" label={t('Reliability (RF)')} info={<InfoButton info={kpiInfo('reliability', basis, model.targets, undefined, live)} testid="kpi-reliability-info" />}
         value={rf.text} unit={rf.unavailable ? undefined : '%'}
         extra={<TargetChip status={model.status.reliability ?? null} testid="kpi-reliability-target" />}
         sub={<>{rfTarget !== null ? <>{t('Target')} <b>{rfTarget}%</b>{prevRf ? ' · ' : ''}</> : null}{prevRf ? `${pre}${prevRf}` : null}{rfTarget === null && !prevRf ? (rf.reason ?? t('Running ÷ (running + INC)')) : null}</>}
@@ -185,7 +192,7 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
         )}
       </Tile>
       <Tile
-        id="mtbf" label={t(MTBF_ALL_LABEL)} info={<InfoButton info={kpiInfo('mtbf', basis, model.targets)} testid="kpi-mtbf-info" />}
+        id="mtbf" label={t(MTBF_ALL_LABEL)} info={<InfoButton info={kpiInfo('mtbf', basis, model.targets, undefined, live)} testid="kpi-mtbf-info" />}
         value={mtbf.text} unit={mtbf.unavailable || !tot.mtbfHours.available ? undefined : 'h'}
         extra={<TargetChip status={model.status.mtbf} testid="kpi-mtbf-target" />}
         change={<ChangeLine change={ch?.mtbfHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmp} />}
@@ -193,7 +200,7 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.mtbfHours} label={t(MTBF_ALL_LABEL)} format={(n) => `${fh(n)} h`} />)}
       />
       <Tile
-        id="mttr" label={t('MTTR')} info={<InfoButton info={kpiInfo('mttr', basis, model.targets)} testid="kpi-mttr-info" />}
+        id="mttr" label={t('MTTR')} info={<InfoButton info={kpiInfo('mttr', basis, model.targets, undefined, live)} testid="kpi-mttr-info" />}
         value={mttr.text} unit={mttr.unavailable || !tot.mttrHours.available ? undefined : 'h'}
         extra={<TargetChip status={model.status.mttr} testid="kpi-mttr-target" />}
         change={<ChangeLine change={ch?.mttrHours ?? null} fmt={fh2} unit=" h" label={cmpLabel} compare={cmp} />}
@@ -201,7 +208,7 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.mttrHours} label={t('MTTR')} format={(n) => `${fh2(n)} h`} />)}
       />
       <Tile
-        id="utilization" label={t('Utilization (UF)')} info={<InfoButton info={kpiInfo('utilization', basis, model.targets, runExample)} testid="kpi-utilization-info" />}
+        id="utilization" label={t('Utilization (UF)')} info={<InfoButton info={kpiInfo('utilization', basis, model.targets, runExample, live)} testid="kpi-utilization-info" />}
         value={uf.text} unit={uf.unavailable ? undefined : '%'}
         change={<ChangeLine change={ch?.utilizationFactor ?? null} fmt={(n) => (n * 100).toFixed(1)} unit=" pts" label={cmpLabel} compare={cmp} />}
         sub={run && run.value.available

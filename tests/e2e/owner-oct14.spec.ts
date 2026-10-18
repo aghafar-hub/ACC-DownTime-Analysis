@@ -130,6 +130,18 @@ test.describe('desktop', () => {
     // the stopped hours are the Total stoppage tile
     expect(num(S!)).toBeCloseTo(num(await page.getByTestId('kpi-total-hours-value').textContent()), 1);
     await page.getByTestId('kpi-info-close').click();
+    // every card's (i): the formula and the same formula with the numbers on the card
+    for (const id of ['total-hours', 'failure-count', 'reliability', 'mtbf', 'mttr', 'utilization']) {
+      await page.getByTestId(`kpi-${id}-info`).click();
+      const d = page.getByTestId('kpi-info');
+      await expect(d.getByRole('heading', { name: 'Formula' })).toBeVisible();
+      await expect(d.getByRole('heading', { name: 'With the numbers on this card' })).toBeVisible();
+      await page.getByTestId('kpi-info-close').click();
+    }
+    await page.getByTestId('kpi-reliability-info').click();
+    const rfLine = (await page.getByTestId('kpi-info').getByTestId('info-formula').allTextContents()).find((x) => /^RF = [\d,]/.test(x))!;
+    expect(rfLine).toMatch(new RegExp(`= ${(await page.getByTestId('kpi-reliability-value').textContent())!.replace('%', '').replace('.', '\\.')}%$`));
+    await page.getByTestId('kpi-info-close').click();
     // one row of six on a wide desktop
     const tops = await row.locator('.ktile').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     expect(new Set(tops).size).toBe(1);

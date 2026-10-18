@@ -143,3 +143,23 @@ describe('chart help texts', () => {
     expect(chartHelp('heat', { b: 'C' }).sections![1]!.items[0]).toBe('Availability C = (T − PL − CIR − INC) ÷ (T − PL − CIR)');
   });
 });
+
+describe('KPI (i): a formula on every card and the worked example with the card numbers', () => {
+  const live = { T: '1,000.0', pl: '50.0', inc: '30.0', cir: '20.0', down: '100.0', run: '900.0', failures: '10', eventHours: '28.0', mtbf: '90.0', mttr: '2.80', rf: '96.8', uf: '90.0', perDay: '24.0', days: 5, areas: 2 };
+  it('has both sections for each card', () => {
+    for (const id of ['total-hours', 'failure-count', 'reliability', 'mtbf', 'mttr', 'utilization'] as const) {
+      const info = kpiInfo(id, 'B', undefined, undefined, live);
+      expect(info.sections?.map((s) => s.heading), id).toEqual(['Formula', 'With the numbers on this card']);
+    }
+    const all = (id: Parameters<typeof kpiInfo>[0]) => kpiInfo(id, 'B', undefined, undefined, live).sections!.flatMap((s) => s.items).join(' | ');
+    expect(all('total-hours')).toContain('30.0 + 50.0 + 20.0 = 100.0 h');
+    expect(all('reliability')).toContain('RF = 900.0 ÷ (900.0 + 30.0) = 96.8%');
+    expect(all('mtbf')).toContain('MTBF = 900.0 ÷ 10 = 90.0 h');
+    expect(all('mttr')).toContain('MTTR = 28.0 h ÷ 10 = 2.80 h');
+    expect(all('utilization')).toContain('UF = 900.0 ÷ 1,000.0 = 90.0%');
+  });
+  it('shows only the formula without numbers, and no example for MTBF and MTTR without failures', () => {
+    expect(kpiInfo('mtbf', 'B').sections?.map((s) => s.heading)).toEqual(['Formula']);
+    expect(kpiInfo('mttr', 'B', undefined, undefined, { ...live, failures: '0' }).sections?.map((s) => s.heading)).toEqual(['Formula']);
+  });
+});
