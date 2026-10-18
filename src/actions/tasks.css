@@ -18,22 +18,24 @@
 .act-dot--task-note { background: var(--tk-warning); }
 
 /* ---- task status chip */
+/* the status colour is mixed with the text colour so the words read at 4.5:1 or more; a stronger tint and border */
 .tk-status {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   padding: 2px 9px;
   border-radius: 999px;
-  font: 600 12.5px var(--sans);
+  font: 650 12.5px var(--sans);
   white-space: nowrap;
-  color: var(--act-open);
-  background: color-mix(in srgb, var(--act-open) 12%, var(--tk-card-bg));
-  border: 1px solid color-mix(in srgb, var(--act-open) 28%, transparent);
+  --tk-st: var(--act-open);
+  color: color-mix(in srgb, var(--tk-st) 70%, var(--tk-text-primary));
+  background: color-mix(in srgb, var(--tk-st) 18%, var(--tk-card-bg));
+  border: 1px solid color-mix(in srgb, var(--tk-st) 50%, transparent);
 }
-.tk-status--contractor-informed { color: var(--act-contractor-informed); background: color-mix(in srgb, var(--act-contractor-informed) 12%, var(--tk-card-bg)); border-color: color-mix(in srgb, var(--act-contractor-informed) 28%, transparent); }
-.tk-status--waiting-stoppage { color: color-mix(in srgb, var(--act-waiting-stoppage) 80%, var(--tk-text-primary)); background: color-mix(in srgb, var(--act-waiting-stoppage) 16%, var(--tk-card-bg)); border-color: color-mix(in srgb, var(--act-waiting-stoppage) 35%, transparent); }
-.tk-status--in-progress { color: var(--act-in-progress); background: color-mix(in srgb, var(--act-in-progress) 12%, var(--tk-card-bg)); border-color: color-mix(in srgb, var(--act-in-progress) 28%, transparent); }
-.tk-status--done { color: var(--act-closed); background: color-mix(in srgb, var(--act-closed) 12%, var(--tk-card-bg)); border-color: color-mix(in srgb, var(--act-closed) 28%, transparent); }
+.tk-status--contractor-informed { --tk-st: var(--act-contractor-informed); }
+.tk-status--waiting-stoppage { --tk-st: var(--act-waiting-stoppage); color: color-mix(in srgb, var(--tk-st) 55%, var(--tk-text-primary)); }
+.tk-status--in-progress { --tk-st: var(--act-in-progress); }
+.tk-status--done { --tk-st: var(--act-closed); }
 .tk-status--not-needed { color: var(--tk-text-secondary); background: var(--tk-card-sub-bg); border-color: var(--tk-border2); }
 .tk-status-btn {
   display: inline-flex;

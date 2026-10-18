@@ -262,7 +262,8 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
   // no target: a neutral sequential scale (darker = lower), never red / green
   const neutral = (v: number) => {
     const k = hi > lo ? (hi - v) / (hi - lo) : 0;
-    return { background: `color-mix(in srgb, var(--tk-accent) ${Math.round(8 + k * 52)}%, var(--tk-card-bg))`, color: k > 0.6 ? 'var(--tk-accent-text)' : 'var(--tk-text-primary)' };
+    // the text stays the page's text colour: the tint stops at 48 %, which keeps it at 4.5:1 or more in every theme
+    return { background: `color-mix(in srgb, var(--tk-accent) ${Math.round(8 + k * 40)}%, var(--tk-card-bg))`, color: 'var(--tk-text-primary)' };
   };
   const label = (k: string) => (mobile ? monthShort(k).slice(0, 1) : monthShort(k));
   const sortName = m.sortMonth ? monthShort(m.sortMonth) : '';
