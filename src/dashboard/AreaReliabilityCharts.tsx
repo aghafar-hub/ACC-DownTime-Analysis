@@ -166,8 +166,7 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
           ) : <p className="muted">{t('No failure rate can be calculated for these areas.')}</p>
         )}
       </ChartCard>
-      <AlsoOnDashboard title={t('MTBF against MTTR by area')} testid="dup-area-quadrant">
-        <ChartCard
+      <ChartCard
           title={t('MTBF against MTTR by area')} subtitle={t('One point per area. The dashed lines are the medians of the areas shown and split the plot into four quadrants.')} testid="chart-area-quadrant" help={{ id: 'area-quadrant' }}
           summary={quadSummary}
           legend={[{ label: t('Area'), color: BAR, symbol: 'circle' }, { label: t('Worst quadrant (low MTBF, high MTTR)'), color: 'var(--tk-danger)', symbol: 'diamond' }, { label: t('Median'), color: 'var(--tk-text-primary)', symbol: 'dash' }]}
@@ -188,7 +187,7 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
             />
           )}
         </ChartCard>
-      </AlsoOnDashboard>
+      <AlsoOnDashboard title={t('Reliability factor against MTBF by area')} testid="dup-rf-mtbf">
       <ChartCard
         title={t('Reliability factor against MTBF by area')} subtitle={rfSub} testid="chart-rf-mtbf"
         help={{ id: 'rf-mtbf', vars: rfEx ? { a: rfEx.area_id, r: fpct(rfEx.rf), m: fh(rfEx.mtbf), n: rfEx.mttr !== null ? fh2(rfEx.mttr) : '–' } : {} }}
@@ -224,6 +223,7 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
           />
         )}
       </ChartCard>
+      </AlsoOnDashboard>
       <AlsoOnDashboard title={t('Availability by area and month (basis {b})', { b: basis })} testid="dup-area-month-heat">
         <ChartCard
           title={t('Availability by area and month (basis {b})', { b: basis })} subtitle={t('Each cell is the availability of one area in one month. Fixed scale {a} to {b} %; the last column is the whole range.', { a: AVAIL_MIN, b: AVAIL_MAX })} testid="chart-area-month-heat" help={{ id: 'area-month-heat', vars: { b: basis } }}

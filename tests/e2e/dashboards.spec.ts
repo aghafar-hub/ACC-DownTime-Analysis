@@ -179,7 +179,7 @@ test.describe('dashboards (desktop)', () => {
     await expect(page.getByTestId('page-overview')).toBeVisible();
 
     // the quadrant opens the failure events of the period (all areas): the same count
-    await expect(page.getByTestId('chart-quadrant').getByTestId('card-open')).toHaveAttribute('data-count', String(failures));
+    await expect(page.getByTestId('chart-dash-rf-mtbf').getByTestId('card-open')).toHaveAttribute('data-count', String(failures));
 
     // each card's footer link: Event records shows exactly as many events as the link carries
     for (const id of ['chart-daily', 'chart-losses', 'chart-repeats', 'chart-planned-line']) {
@@ -596,8 +596,9 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     await expect(page.getByTestId('chart-area-availability').locator('[data-testid=at-row][data-area="K.1"]')).toHaveAttribute('data-target', '90');
     await expect(page.getByTestId('chart-area-availability').locator('[data-testid=at-row][data-area="CM.4"]')).toHaveAttribute('data-state', 'none');
     await expect(page.getByTestId('chart-avail-heat').getByTestId('heat-no-target')).toBeVisible();
-    // the quadrant names the worst corner
-    await expect(page.getByTestId('chart-quadrant').getByTestId('quadrant-worst-label')).toHaveText('Fails often, slow to fix');
+    // 'Which areas need attention?' is the RF against MTBF chart with the RF target line (95 % by default)
+    await expect(page.getByTestId('chart-dash-rf-mtbf').getByTestId('rf-target')).toContainText('RF target 95%');
+    await expect(page.getByTestId('chart-dash-rf-mtbf').getByTestId('rf-median')).toBeVisible();
     // daily: the 7-day average line
     await expect(page.getByTestId('chart-daily').getByTestId('chart-legend')).toContainText('7-day average');
     await expect(page.getByTestId('chart-daily').getByTestId('col-line')).toBeVisible();
@@ -741,12 +742,12 @@ test.describe('Phase 4: more charts (desktop)', () => {
     await signInAndWait(page, 'engineer');
     await open(page, '/reliability', 'page-reliability');
     // the By area table first; the charts that repeat a Dashboard card are folded at the end, closed on every visit
-    const ids = ['area-table-card', 'chart-area-mtbf', 'chart-area-mttr', 'chart-area-rate', 'dup-area-quadrant', 'chart-rf-mtbf', 'dup-area-month-heat', 'dup-area-trend'];
+    const ids = ['area-table-card', 'chart-area-mtbf', 'chart-area-mttr', 'chart-area-rate', 'chart-area-quadrant', 'dup-rf-mtbf', 'dup-area-month-heat', 'dup-area-trend'];
     const order = await page.locator(ids.map((i) => `[data-testid="${i}"]`).join(',')).evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
     expect(order).toEqual(ids);
-    for (const id of ['dup-area-quadrant', 'dup-area-month-heat', 'dup-area-trend']) await expect(page.getByTestId(id)).toHaveAttribute('data-open', 'no');
-    for (const id of ['chart-area-quadrant', 'chart-area-month-heat', 'chart-availability']) await expect(page.getByTestId(id)).toHaveCount(0);
-    await expandDup(page, 'dup-area-quadrant');
+    for (const id of ['dup-rf-mtbf', 'dup-area-month-heat', 'dup-area-trend']) await expect(page.getByTestId(id)).toHaveAttribute('data-open', 'no');
+    for (const id of ['chart-rf-mtbf', 'chart-area-month-heat', 'chart-availability']) await expect(page.getByTestId(id)).toHaveCount(0);
+    await expandDup(page, 'dup-rf-mtbf');
     await expandDup(page, 'dup-area-month-heat');
     // the charts sit inside the Areas block
     for (const id of ['chart-area-mtbf', 'chart-area-mttr', 'chart-area-quadrant', 'chart-area-month-heat', 'chart-area-rate']) {
@@ -757,8 +758,8 @@ test.describe('Phase 4: more charts (desktop)', () => {
     await page.getByTestId('rel-tab-areas').click();
     await expect(page.getByTestId('area-table')).toBeVisible();
     // back on the tab: folded again (not remembered)
-    await expect(page.getByTestId('dup-area-quadrant')).toHaveAttribute('data-open', 'no');
-    await expandDup(page, 'dup-area-quadrant');
+    await expect(page.getByTestId('dup-rf-mtbf')).toHaveAttribute('data-open', 'no');
+    await expandDup(page, 'dup-rf-mtbf');
     await expandDup(page, 'dup-area-month-heat');
 
     // ranked bars: MTBF lowest first, MTTR highest first, no figure shown as zero
@@ -1034,7 +1035,7 @@ for (const width of [360, 390]) {
 
       await open(page, '/reliability', 'page-reliability');
       await checks('reliability, folded');
-      await expandDup(page, 'dup-area-quadrant');
+      await expandDup(page, 'dup-rf-mtbf');
       await expandDup(page, 'dup-area-month-heat');
       for (const id of ['chart-area-mtbf', 'chart-area-mttr', 'chart-area-quadrant', 'chart-area-month-heat', 'chart-area-rate']) {
         await page.getByTestId(id).scrollIntoViewIfNeeded();
@@ -1048,7 +1049,7 @@ for (const width of [360, 390]) {
         await checks(`reliability ${tab}`);
       }
       await page.getByTestId('rel-tab-areas').click();
-      await expandDup(page, 'dup-area-quadrant');
+      await expandDup(page, 'dup-rf-mtbf');
       // touch alternative to click-to-drill: tap a quadrant point, the pinned tooltip has the button
       const pt = page.getByTestId('chart-area-quadrant').getByTestId('quadrant-point').first();
       await pt.scrollIntoViewIfNeeded();

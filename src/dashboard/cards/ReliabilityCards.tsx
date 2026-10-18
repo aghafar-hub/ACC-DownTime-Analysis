@@ -4,7 +4,7 @@ import { useMemo, useState, type KeyboardEvent } from 'react';
 import ColumnChart, { type ColSlot } from '../../charts/ColumnChart';
 import { useMeasure } from '../../charts/ChartKit';
 import OccurrenceStrip from '../../charts/OccurrenceStrip';
-import QuadrantChart from '../../charts/QuadrantChart';
+import RfMtbfChart from '../../charts/RfMtbfChart';
 import { typePaints } from '../../charts/palette';
 import { AXIS, GRID } from '../../charts/palette';
 import { linear, niceTicks } from '../../charts/scale';
@@ -13,7 +13,8 @@ import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
 import { dayText, monthShort, monthText, rangeText } from '../../util/dates';
 import { num } from '../../util/format';
-import { fh, fh2, fint, monthAxisLabels } from '../format';
+import { fh, fh2, fint, fpct, monthAxisLabels } from '../format';
+import { getTargets, targetNumber } from '../targets';
 import {
   availabilityHeat, failureIdsStarted, failuresByMonth, idsWithHours, lastDays, periodText, plannedRuns, repeatsTop, scopeText,
   type FailMonth, type HeatMetric, type HeatTone,
@@ -158,35 +159,51 @@ export function AttentionCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters:
   const ids = useMemo(() => failureIdsStarted(ctx, eff), [ctx, eff]);
   const [boxRef, width] = useMeasure<HTMLDivElement>();
   if (!m) return null;
-  const q = m.quadrant;
-  const summary = q.points.length === 0
-    ? t('No area has both an MTBF and an MTTR in this range.')
-    : `${t('{n} areas plotted.', { n: q.points.length })} ${q.medianMtbf !== null && q.medianMttr !== null ? t('Median MTBF {a} h, median MTTR {b} h.', { a: fh(q.medianMtbf), b: fh2(q.medianMttr) }) : ''} ${q.worst.length ? t('Fails often, slow to fix: {a}.', { a: q.worst.join(', ') }) : t('No area fails often and is slow to fix.')}`;
+  // owner: the reliability factor against MTBF replaces MTBF against MTTR here (MTBF vs MTTR stays on the Reliability page)
+  const rf = m.rfMtbf;
+  const rfTarget = getTargets(ctx.master.settings).reliabilityPct ?? null;
+  const ex = rf.points[0] ?? null;
+  // areas with their own RF target for the year (Settings › Actions & targets): their colour follows it, not the plant line
+  const ownRf = rf.points.flatMap((p) => { const o = ownTargets?.get(p.area_id)?.reliability; return o !== undefined ? [`${p.area_id} ${targetNumber(o)}%`] : []; });
+  const summary = rf.points.length === 0
+    ? t('No area has both a reliability factor and an MTBF in this range.')
+    : `${t('{n} areas plotted.', { n: rf.points.length })}${rfTarget !== null ? ` ${rf.below.length ? t('Below the RF target: {a}.', { a: rf.below.join(', ') }) : t('Every area plotted meets its RF target.')}` : ''}`;
   return (
     <DashCard
-      id="attention" testid="chart-quadrant" title={t('Which areas need attention?')}
-      help={{ id: 'attention', vars: q.medianMtbf !== null && q.medianMttr !== null ? { mb: fh(q.medianMtbf), mr: fh2(q.medianMttr) } : {} }}
-      subtitle={t('MTBF vs MTTR by area · dashed lines = median of {n} areas', { n: q.points.length })}
-      legend={[{ kind: 'dot', color: 'var(--tk-danger)', label: t('Needs attention') }, { kind: 'dot', color: 'var(--tk-accent)', hollow: true, label: t('Other areas') }]}
+      id="attention" testid="chart-dash-rf-mtbf" title={t('Which areas need attention?')}
+      help={{ id: 'rf-mtbf', vars: ex ? { a: ex.area_id, r: fpct(ex.rf), m: fh(ex.mtbf), n: ex.mttr !== null ? fh2(ex.mttr) : '–' } : {} }}
+      subtitle={rfTarget !== null
+        ? t('Reliability factor vs MTBF by area · below the dashed line = under the RF target ({x}%)', { x: targetNumber(rfTarget) })
+        : t('Reliability factor vs MTBF by area')}
+      legend={[
+        ...(rfTarget !== null ? [{ kind: 'dot' as const, color: 'var(--tk-success)', label: t('At or above target') }, { kind: 'dot' as const, color: 'var(--tk-danger)', label: t('Below target (triangle)') }] : [{ kind: 'dot' as const, color: 'var(--tk-accent)', label: t('Area') }]),
+        { kind: 'dash' as const, label: t('RF target · median MTBF') },
+        { kind: 'dot' as const, color: 'var(--tk-text-secondary)', hollow: true, label: t('Bigger = longer MTTR') },
+      ]}
       summary={summary} scope={scopeText(eff, filters, 'failures')} open={{ ids, label: t('Failures of all areas') }} onOpen={onOpen}
     >
       <div ref={boxRef} className="dcard-chart">
         {width > 0 && (
-          <QuadrantChart
-            width={width} height={mobile ? 330 : 360} xTitle={mobile ? t('MTBF (h, log) · fails less often →') : t('← fails more often · MTBF (h, log scale) · fails less often →')} yTitle={t('MTTR (h) · slower ↑')}
-            medianX={q.medianMtbf} medianY={q.medianMttr}
-            medianXLabel={q.medianMtbf !== null ? t('median {v} h', { v: fh(q.medianMtbf) }) : undefined} medianYLabel={q.medianMttr !== null ? t('median {v} h', { v: fh2(q.medianMttr) }) : undefined}
-            worstLabel={t('Fails often, slow to fix')} ariaLabel={summary} xLog variant="dashboard"
-            cornerLabels={mobile ? [t('Rare, slow'), t('Often, quick'), t('Rare, quick')] : [t('Rare, slow to fix'), t('Fails often, quick to fix'), t('Rare, quick to fix')]}
-            points={q.points.map((p) => ({
-              key: p.area_id, label: p.area_id, x: p.mtbf, y: p.mttr, worst: p.quadrant === 'worst',
-              details: [{ label: t('MTBF'), value: `${fh(p.mtbf)} h` }, { label: t('MTTR'), value: `${fh2(p.mttr)} h` }, { label: t('Failure events'), value: fint(p.failureEvents) }],
+          <RfMtbfChart
+            width={width} height={mobile ? 330 : 360} target={rfTarget} medianX={rf.medianMtbf}
+            targetLabel={rfTarget !== null ? t('RF target {x}%', { x: targetNumber(rfTarget) }) : undefined}
+            medianLabel={rf.medianMtbf !== null ? t('median MTBF {v} h', { v: fh(rf.medianMtbf) }) : undefined}
+            xTitle={mobile ? t('MTBF (h, log) · fails less often →') : t('← fails more often · MTBF (h, log scale) · fails less often →')} yTitle={t('Reliability factor RF (%) ↑ better')}
+            ariaLabel={`${t('Scatter chart of the reliability factor against MTBF per area.')} ${summary}`}
+            points={rf.points.map((p) => ({
+              key: p.area_id, label: p.area_id, x: p.mtbf, y: p.rf * 100, mttr: p.mttr, ok: p.onTarget,
+              details: [
+                { label: t('RF'), value: fpct(p.rf) }, { label: t('MTBF'), value: `${fh(p.mtbf)} h` }, { label: t('MTTR'), value: p.mttr !== null ? `${fh2(p.mttr)} h` : '–' },
+                { label: t('INC hours'), value: `${fh(p.incHours)} h` }, { label: t('Failure events'), value: fint(p.failures) },
+                ...(p.onTarget !== null ? [{ label: t('Status'), value: p.onTarget ? t('On target') : t('Below target') }] : []),
+              ],
             }))}
             openLabel={t('Open records')} onPoint={(p) => onOpen({ ids: m.failureIds.get(p.key) ?? [], label: t('Failures of {a}', { a: p.label }) })}
           />
         )}
       </div>
-      {q.excluded.length > 0 && <p className="dcard-note">{t('Not plotted (no failures): {a}.', { a: q.excluded.map((x) => x.area_id).join(', ') })}</p>}
+      {ownRf.length > 0 && <p className="dcard-note" data-testid="rf-own-targets">{t('Judged against their own RF target, not the line: {a}.', { a: ownRf.join(', ') })}</p>}
+      {rf.excluded.length > 0 && <p className="dcard-note">{t('Not plotted (no RF or no MTBF): {a}.', { a: rf.excluded.map((x) => x.area_id).join(', ') })}</p>}
     </DashCard>
   );
 }

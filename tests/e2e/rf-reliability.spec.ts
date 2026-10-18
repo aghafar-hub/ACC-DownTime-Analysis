@@ -24,6 +24,8 @@ test('By area has RF (with its status) and UF; the RF chart plots the same RF; T
   for (const c of await page.getByTestId('status-reliability').all()) await expect(c).toHaveText(/^(–|[✔▼] (On|Below) target)/);
   for (const c of await page.getByTestId('area-uf').all()) await expect(c).toHaveText(/^(\d+\.\d%|–)$/);
 
+  // the RF chart is also on the Dashboard: folded here until opened
+  await page.getByTestId('dup-rf-mtbf-toggle').click();
   const card = page.getByTestId('chart-rf-mtbf');
   await card.scrollIntoViewIfNeeded();
   await expect(card.getByTestId('rf-target')).toContainText('RF target 95%');
@@ -57,6 +59,7 @@ test.describe('phone', () => {
     await open(page, '/reliability?r=last90');
     await expect(page.getByTestId('area-uf').first()).toBeHidden();
     await expect(page.getByTestId('status-reliability').first()).toBeVisible();
+    await page.getByTestId('dup-rf-mtbf-toggle').click();
     await page.getByTestId('chart-rf-mtbf').scrollIntoViewIfNeeded();
     await expect(page.getByTestId('rf-mtbf')).toBeVisible();
     expect((await noSidewaysScroll(page)).ok).toBe(true);

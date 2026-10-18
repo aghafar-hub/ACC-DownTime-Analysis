@@ -50,7 +50,7 @@ test.describe('desktop', () => {
     // Reliability › Areas: the table open, the quadrant, the area x month heat map and the trend folded
     await open(page, '/reliability', 'page-reliability');
     await expect(page.getByTestId('area-table')).toBeVisible();
-    for (const id of ['dup-area-quadrant', 'dup-area-month-heat', 'dup-area-trend']) await expect(page.getByTestId(id)).toHaveAttribute('data-open', 'no');
+    for (const id of ['dup-rf-mtbf', 'dup-area-month-heat', 'dup-area-trend']) await expect(page.getByTestId(id)).toHaveAttribute('data-open', 'no');
     await page.getByTestId('dup-area-trend-toggle').click();
     await expect(page.getByTestId('chart-availability')).toBeVisible();
     // Month vs month: folded, says it is also on the Dashboard
@@ -341,7 +341,7 @@ for (const width of [360, 390]) {
       await expect.poll(() => page.evaluate(() => (history.state as { accSheet?: string } | null)?.accSheet ?? null)).toBeNull();
 
       await open(page, '/reliability', 'page-reliability');
-      await expect(page.getByTestId('dup-area-quadrant')).toHaveAttribute('data-open', 'no');
+      await expect(page.getByTestId('dup-rf-mtbf')).toHaveAttribute('data-open', 'no');
       await checks('reliability folded');
       const cell = page.getByTestId('area-row').first().getByTestId('area-stopped');
       await cell.scrollIntoViewIfNeeded();
@@ -354,9 +354,9 @@ for (const width of [360, 390]) {
       expect((await noSidewaysScroll(page)).ok).toBe(true);
       await page.getByTestId('areas-block').getByRole('heading', { name: 'Areas', exact: true }).tap();
       await expect(pop).toHaveCount(0);
-      await page.getByTestId('dup-area-quadrant-toggle').tap();
-      await expect(page.getByTestId('chart-area-quadrant')).toBeVisible();
-      await checks('reliability quadrant open');
+      await page.getByTestId('dup-rf-mtbf-toggle').tap();
+      await expect(page.getByTestId('chart-rf-mtbf')).toBeVisible();
+      await checks('reliability RF chart open');
       expect(errors, errors.join('\n')).toEqual([]);
     });
   });
