@@ -533,6 +533,15 @@
 .area-table .num-status .target-cell {
   font-size: 12px;
 }
+/* on a wide page the status sits beside the value, so a row stays one line high */
+@media (min-width: 1100px) {
+  .area-table .num-status {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+}
 .bd-btn {
   min-height: 32px;
   min-width: 44px;
