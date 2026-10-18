@@ -24,6 +24,8 @@ var SETTING_RULES = {
   // Targets shown on the dashboards (blank = no target). Hours must be above 0.
   target_mtbf_h: { type: 'number_or_blank', min: 0, max: 100000, minExclusive: true },
   target_mttr_h: { type: 'number_or_blank', min: 0, max: 100000, minExclusive: true },
+  // 1.8.0: reliability factor target, percent (blank = no target)
+  reliability_target_pct: { type: 'number_or_blank', min: 0, max: 100 },
   // Actions (1.4.0): who may close or cancel (csv of existing user ids; Admins always can), and the draft rules.
   actions_closers: { type: 'user_csv' },
   actions_repeat_n: { type: 'int', min: 2, max: 100 },

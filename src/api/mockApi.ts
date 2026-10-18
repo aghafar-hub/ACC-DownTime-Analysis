@@ -1120,6 +1120,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         if (k === 'notif_repeat_alert' && !['true', 'false'].includes(val)) throw new ApiError('Repeat alerts must be true or false.', 'bad_request');
         if (k === 'app_url' && val !== '' && (val.length > 300 || !/^https?:\/\/[^\s<>"']+$/i.test(val))) throw new ApiError('The app address must start with http:// or https://, or be blank.', 'bad_request');
         if ((k === 'target_mtbf_h' || k === 'target_mttr_h') && val !== '' && !(Number.isFinite(Number(val)) && Number(val) > 0 && Number(val) <= 100000)) throw new ApiError('The target must be above 0 and at most 100000 hours, or blank.', 'bad_request');
+        if (k === 'reliability_target_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The reliability factor target must be between 0 and 100, or blank.', 'bad_request');
         if (k === 'availability_target_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The availability target must be between 0 and 100, or blank.', 'bad_request');
         if (k === 'actions_auto_draft' && !['true', 'false'].includes(val)) throw new ApiError('Auto drafts must be true or false.', 'bad_request');
         if (k === 'actions_closers') actionStore.cleanClosers(val);

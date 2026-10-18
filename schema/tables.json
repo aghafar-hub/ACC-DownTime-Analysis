@@ -466,6 +466,7 @@
     {"key": "app_url", "value": "", "description": "Web address of the app, used for the link in digest emails; blank = no link"},
     {"key": "target_mtbf_h", "value": "", "description": "MTBF target, hours (above 0, up to 100000); blank = no target"},
     {"key": "target_mttr_h", "value": "", "description": "MTTR target, hours (above 0, up to 100000); blank = no target"},
+    {"key": "reliability_target_pct", "value": "95", "description": "Reliability factor (RF) target, percent; blank = none"},
     {"key": "actions_closers", "value": "", "description": "Comma-separated user ids who may close or cancel actions (Admins always can)"},
     {"key": "actions_repeat_n", "value": "3", "description": "Repeated-failure draft: this many failure events of the same equipment and reason ..."},
     {"key": "actions_repeat_days", "value": "30", "description": "... within this many days"},

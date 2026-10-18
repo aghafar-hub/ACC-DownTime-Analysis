@@ -63,14 +63,20 @@ export default function BreakdownCell({ split, text, decimals, unit, title, test
       if (e.target instanceof Node && (btn.current?.contains(e.target) || pop.current?.contains(e.target))) return;
       close();
     };
+    // a scroll (also a late layout shift of the page) moves the pop with its cell; it closes once the cell is out of view
+    const onScroll = () => {
+      const r = btn.current?.getBoundingClientRect();
+      if (!r || r.bottom < 0 || r.top > window.innerHeight) { close(); return; }
+      setPos((p) => (p && p.left === r.left && p.top === r.bottom + 4 ? p : { left: r.left, top: r.bottom + 4 }));
+    };
     window.addEventListener('keydown', onKey);
     document.addEventListener('pointerdown', onDoc);
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', close);
     return () => {
       window.removeEventListener('keydown', onKey);
       document.removeEventListener('pointerdown', onDoc);
-      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', close);
     };
   }, [open, close]);

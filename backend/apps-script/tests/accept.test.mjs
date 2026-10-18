@@ -34,7 +34,7 @@ test('the schema gains the three event columns and the new settings', () => {
   const keys = env.rows('settings').map((s) => s.key);
   for (const k of ['availability_target_pct', 'target_mtbf_h', 'target_mttr_h']) assert.ok(keys.includes(k), k);
   assert.ok(!keys.includes('target_availability_pct') && !keys.includes('notif_availability_target_pct'));
-  assert.ok(['1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0'].includes(env.run('APP_VERSION'))); // 1.3.0 features, still present in later versions
+  assert.ok(['1.3.0', '1.4.0', '1.5.0', '1.6.0', '1.7.0', '1.8.0'].includes(env.run('APP_VERSION'))); // 1.3.0 features, still present in later versions
 });
 
 test('ensureSchema + seedDefaults upgrade a 1.2.0 database without touching data', () => {
@@ -345,4 +345,16 @@ test('notification_prefs: saved_reports is client-writable and strictly validate
   assert.equal(env.call('saveNotificationPrefs', other.token, { prefs: { saved_reports: JSON.stringify([tpl()]) } }).status, 'ok');
   // saved_views stays separate
   assert.equal(env.call('saveNotificationPrefs', admin.token, { prefs: { saved_reports: JSON.stringify([tpl()]), saved_views: '' } }).status, 'ok');
+});
+
+test('settings 1.8.0: the reliability factor target is seeded at 95 and saved like the availability target', () => {
+  const { env, admin } = world();
+  const save = (changes) => env.call('saveSettings', admin.token, { changes });
+  const get = (k) => env.rows('settings').find((s) => s.key === k)?.value;
+  assert.equal(get('reliability_target_pct'), '95');
+  assert.equal(save({ reliability_target_pct: '97.5' }).status, 'ok');
+  assert.equal(get('reliability_target_pct'), '97.5');
+  assert.equal(save({ reliability_target_pct: '' }).status, 'ok');
+  assert.equal(get('reliability_target_pct'), '');
+  for (const v of ['100.1', '-1', 'abc']) assert.equal(save({ reliability_target_pct: v }).error?.code, 'bad_request', v);
 });

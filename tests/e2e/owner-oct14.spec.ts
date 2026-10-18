@@ -100,7 +100,14 @@ test.describe('desktop', () => {
     await signInAndWait(page, 'engineer');
     await open(page, '/dashboard', 'page-overview');
     const row = page.getByTestId('hero-kpis');
-    await expect(row.locator('.ktile')).toHaveCount(6);
+    await expect(row.locator('.ktile')).toHaveCount(7);
+    // RF replaced availability; MTBF before MTTR; UF and running hours at the end
+    expect(await row.locator('.ktile').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')))).toEqual(
+      ['kpi-total-hours', 'kpi-failure-count', 'kpi-reliability', 'kpi-mtbf', 'kpi-mttr', 'kpi-utilization', 'kpi-running-hours']);
+    await expect(page.getByTestId('kpi-reliability-value')).toHaveText(/^\d+\.\d%$/);
+    await expect(page.getByTestId('kpi-reliability')).toContainText('Target 95%');
+    await expect(page.getByTestId('kpi-reliability-target')).toHaveAttribute('data-state', /^(on|below)$/);
+    await expect(page.getByTestId('kpi-utilization-value')).toHaveText(/^\d+\.\d%$/);
     const tile = page.getByTestId('kpi-running-hours');
     await expect(tile).toContainText('Running hours');
     await expect(tile.getByTestId('spark')).toBeVisible();
@@ -119,7 +126,7 @@ test.describe('desktop', () => {
     // the stopped hours are the Total stoppage tile
     expect(num(S!)).toBeCloseTo(num(await page.getByTestId('kpi-total-hours-value').textContent()), 1);
     await page.getByTestId('kpi-info-close').click();
-    // one row of six on a wide desktop
+    // one row of seven on a wide desktop
     const tops = await row.locator('.ktile').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     expect(new Set(tops).size).toBe(1);
     expect((await noSidewaysScroll(page)).ok).toBe(true);
@@ -297,10 +304,10 @@ for (const width of [360, 390]) {
       };
       await open(page, '/dashboard', 'page-overview');
       const tiles = page.getByTestId('hero-kpis').locator('.ktile');
-      await expect(tiles).toHaveCount(6);
-      // three rows of two
+      await expect(tiles).toHaveCount(7);
+      // four rows of two (the last one full width)
       const tops = await tiles.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-      expect(new Set(tops).size).toBe(3);
+      expect(new Set(tops).size).toBe(4);
       await checks('dashboard');
       // the (i) of a chart is a sheet from the bottom
       const info = page.getByTestId('chart-class').getByTestId('chart-info');
@@ -341,13 +348,13 @@ for (const width of [360, 390]) {
 
 test.describe('tablet', () => {
   test.use({ viewport: { width: 1024, height: 768 } });
-  test('KPI row: two rows of three', async ({ page }) => {
+  test('KPI row: two rows (four and three)', async ({ page }) => {
     await stubFonts(page);
     await page.goto('/');
     await signInAndWait(page, 'engineer');
     await open(page, '/dashboard', 'page-overview');
     const tops = await page.getByTestId('hero-kpis').locator('.ktile').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    expect(tops).toHaveLength(6);
+    expect(tops).toHaveLength(7);
     expect(new Set(tops).size).toBe(2);
     expect((await noSidewaysScroll(page)).ok).toBe(true);
   });

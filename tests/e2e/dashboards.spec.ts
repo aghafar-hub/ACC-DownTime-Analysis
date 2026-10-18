@@ -531,12 +531,12 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     expect(num(await page.getByTestId('takeaway').textContent())).toBe(hours);
   });
 
-  test('Dashboard: the KPI row (five figures, monthly sparklines, info), then the twelve cards in order, then the compact sections', async ({ page }) => {
+  test('Dashboard: the KPI row (seven figures, monthly sparklines, info), then the twelve cards in order, then the compact sections', async ({ page }) => {
     const errors = watchConsole(page);
     await page.goto('/');
     await signInAndWait(page, 'engineer');
     await open(page, '/overview?r=month&m=2026-08', 'page-overview');
-    for (const id of ['total-hours', 'failure-count', 'availability', 'mttr', 'mtbf']) {
+    for (const id of ['total-hours', 'failure-count', 'reliability', 'mtbf', 'mttr', 'utilization']) {
       const card = page.getByTestId(`kpi-${id}`);
       await expect(card).toBeVisible();
       // January to the period, by month
@@ -553,8 +553,8 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     const parts = (await page.getByTestId('kpi-total-hours').locator('.ksplit-legend b').allTextContents()).map(num);
     expect(parts).toHaveLength(3);
     expect(parts.reduce((x, y) => x + y, 0)).toBeCloseTo(total, 0);
-    await page.getByTestId('kpi-availability-info').click();
-    await expect(page.getByTestId('kpi-info')).toContainText('Basis B');
+    await page.getByTestId('kpi-reliability-info').click();
+    await expect(page.getByTestId('kpi-info')).toContainText('RF = running hours ÷ (running hours + incidental hours)');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('kpi-info')).toHaveCount(0);
     await page.getByTestId('kpi-mttr-info').click();
@@ -954,14 +954,14 @@ for (const width of [360, 390]) {
       await page.goto('/');
       await signInAndWait(page, 'engineer');
       await open(page, '/overview?r=month&m=2026-08', 'page-overview');
-      const boxes = await Promise.all(['total-hours', 'failure-count', 'availability', 'mttr', 'mtbf', 'running-hours'].map((id) => page.getByTestId(`kpi-${id}`).boundingBox()));
-      expect(Math.abs(boxes[0]!.y - boxes[1]!.y)).toBeLessThan(2);
-      expect(Math.abs(boxes[2]!.y - boxes[3]!.y)).toBeLessThan(2);
-      expect(boxes[2]!.y).toBeGreaterThan(boxes[0]!.y + 40);
-      // MTBF and Running hours share the last row
-      expect(boxes[4]!.y).toBeGreaterThan(boxes[2]!.y + 40);
-      expect(Math.abs(boxes[4]!.y - boxes[5]!.y)).toBeLessThan(2);
-      expect(Math.abs(boxes[4]!.width - boxes[0]!.width)).toBeLessThan(2);
+      const boxes = await Promise.all(['total-hours', 'failure-count', 'reliability', 'mtbf', 'mttr', 'utilization', 'running-hours'].map((id) => page.getByTestId(`kpi-${id}`).boundingBox()));
+      // two per row: total + failures, RF + MTBF, MTTR + UF; running hours alone on the last row, full width
+      for (const i of [0, 2, 4]) {
+        expect(Math.abs(boxes[i]!.y - boxes[i + 1]!.y)).toBeLessThan(2);
+        expect(Math.abs(boxes[i]!.width - boxes[0]!.width)).toBeLessThan(2);
+        expect(boxes[i + 2]!.y).toBeGreaterThan(boxes[i]!.y + 40);
+      }
+      expect(boxes[6]!.width).toBeGreaterThan(boxes[0]!.width * 1.8);
       // the cards one under the other, in the same order as on a desktop
       const cards = await page.locator('[data-dash-card]').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { id: e.getAttribute('data-dash-card'), x: r.x, y: r.y }; }));
       expect(cards.map((c) => c.id)).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'planned-allowance', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);

@@ -63,9 +63,10 @@ export function groups(): Group[] {
     },
     {
       id: 'targets', title: t('Targets'), icon: 'limits', when: 'now',
-      intro: t('Goals for availability, MTBF and MTTR. Leave a box blank for no target. The dashboards show each target that is set, with whether the figure is on target.'),
+      intro: t('Goals for availability, the reliability factor, MTBF and MTTR. Leave a box blank for no target. The dashboards show each target that is set, with whether the figure is on target.'),
       fields: [
         { key: 'availability_target_pct', kind: 'number_or_blank', min: 0, max: 100, label: t('Availability target'), unit: '%', help: t('The line drawn on availability charts and the goal each figure is checked against. From 0 to 100, or blank.') },
+        { key: 'reliability_target_pct', kind: 'number_or_blank', min: 0, max: 100, label: t('Reliability factor (RF) target'), unit: '%', fallback: '95', help: t('The line drawn on reliability factor charts and the goal the RF card is checked against. From 0 to 100, or blank. Until it is saved the app uses 95 %.') },
         { key: 'target_mtbf_h', kind: 'number_or_blank', min: 0.01, max: 100000, label: t('Target MTBF'), unit: t('hours'), fallback: '', help: t('Mean time between failures you aim for: more than 0, up to 100,000 hours, or blank.') },
         { key: 'target_mttr_h', kind: 'number_or_blank', min: 0.01, max: 100000, label: t('Target MTTR'), unit: t('hours'), fallback: '', help: t('Mean time to repair you aim for: more than 0, up to 100,000 hours, or blank.') },
       ],

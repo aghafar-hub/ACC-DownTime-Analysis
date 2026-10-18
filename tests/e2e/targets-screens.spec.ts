@@ -35,7 +35,7 @@ for (const theme of ONLY) {
       const shot = async (name: string) => page.screenshot({ path: `${DIR}/${slug(theme)}-${vp.name}-${name}.png`, fullPage: false });
 
       await page.goto('/#/overview');
-      await expect(page.getByTestId('kpi-availability-target')).toBeVisible();
+      await expect(page.getByTestId('kpi-reliability-target')).toBeVisible();
       await expect(page.getByTestId('chart-summary').first()).toBeVisible();
       await page.getByTestId('hero-kpis').evaluate((el) => el.scrollIntoView({ block: 'start' }));
       await shot('overview-hero');

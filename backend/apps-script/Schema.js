@@ -1759,6 +1759,11 @@ var SCHEMA = {
     "description": "MTTR target, hours (above 0, up to 100000); blank = no target"
    },
    {
+    "key": "reliability_target_pct",
+    "value": "95",
+    "description": "Reliability factor (RF) target, percent; blank = none"
+   },
+   {
     "key": "actions_closers",
     "value": "",
     "description": "Comma-separated user ids who may close or cancel actions (Admins always can)"
