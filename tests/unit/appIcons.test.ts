@@ -24,15 +24,17 @@ describe('app icons', () => {
     expect(w).toBeGreaterThanOrEqual(512);
   });
 
-  it('the manifest lists 192, 512 and a maskable 512, and the files have those sizes', () => {
+  it('the manifest lists 192, 512 and a maskable 512 (the same file), and the files have those sizes', () => {
     const entries = [...cfg.matchAll(/\{\s*src:\s*'([^']+)',\s*sizes:\s*'(\d+)x(\d+)',\s*type:\s*'image\/png'(?:,\s*purpose:\s*'(\w+)')?\s*\}/g)].map((m) => ({
       src: m[1], w: Number(m[2]), h: Number(m[3]), purpose: m[4] ?? 'any',
     }));
     expect(entries.map((e) => `${e.src}:${e.w}:${e.purpose}`)).toEqual([
       'icons/pwa-192.png:192:any',
       'icons/pwa-512.png:512:any',
-      'icons/pwa-maskable-512.png:512:maskable',
+      'icons/pwa-512.png:512:maskable',
     ]);
+    // no second copy of the same picture (phase 5: the maskable entry reuses the 512 file)
+    expect(existsSync(resolve(ROOT, 'public/icons/pwa-maskable-512.png'))).toBe(false);
     for (const e of entries) {
       expect(existsSync(resolve(ROOT, 'public', e.src)), e.src).toBe(true);
       expect(pngSize(`public/${e.src}`), e.src).toEqual({ w: e.w, h: e.h });

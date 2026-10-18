@@ -12,31 +12,43 @@ export function pixelRatioFor(cssWidth: number, dpi = 150): number {
 }
 
 /**
- * The page's web fonts as CSS with the font files inside (data: URLs), so the pictures use the same fonts as the screen.
- * The library cannot read a style sheet from another site itself; the font service allows a plain fetch. Only the latin
- * subsets are kept. '' when anything fails (then the pictures use the system fonts). Made once per page load.
+ * The page's fonts as CSS with the font files inside (data: URLs), so the pictures use the same fonts as the screen. The
+ * fonts are bundled with the app (src/fonts.ts), so their @font-face rules are readable style sheets of this site. Only
+ * the latin faces in use are kept (the latin-ext faces are skipped: report text is latin), woff2 only. '' when anything
+ * fails (then the pictures use the system fonts). Made once per page load.
  */
 let fontCss: Promise<string> | null = null;
-export function pickLatinFaces(css: string): string[] {
-  return [...css.matchAll(/\/\*\s*(latin(?:-ext)?)\s*\*\/\s*(@font-face\s*\{[^}]*\})/g)].map((m) => m[2]!);
+
+/** One @font-face rule reduced to its woff2 source, with the file's address made absolute against the style sheet. */
+export function woff2Face(cssText: string, base: string): { css: string; url: string } | null {
+  if (!/@font-face/i.test(cssText) || /latin-ext/i.test(cssText) || /unicode-range:\s*U\+0100/i.test(cssText)) return null;
+  const m = /url\((['"]?)([^)'"]+\.woff2)\1\)\s*format\((['"]?)woff2\3\)/i.exec(cssText);
+  if (!m) return null;
+  const url = new URL(m[2]!, base).href;
+  return { url, css: cssText.replace(/src:[^;]+;/i, `src: url(${url}) format('woff2');`) };
 }
+
 async function loadFontCss(): Promise<string> {
   try {
-    const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"][href*="fonts.googleapis.com"]')];
-    const faces: string[] = [];
-    for (const l of links) faces.push(...pickLatinFaces(await (await fetch(l.href)).text()));
+    const faces: { css: string; url: string }[] = [];
+    for (const sheet of [...document.styleSheets]) {
+      let rules: CSSRuleList;
+      try { rules = sheet.cssRules; } catch { continue; } // another site's sheet
+      for (const r of [...rules]) {
+        const f = r instanceof CSSFontFaceRule ? woff2Face(r.cssText, sheet.href ?? location.href) : null;
+        if (f) faces.push(f);
+      }
+    }
     const out: string[] = [];
     for (const face of faces) {
-      const url = /url\((['"]?)(https:[^)'"]+)\1\)/.exec(face)?.[2];
-      if (!url) continue;
-      const blob = await (await fetch(url)).blob();
+      const blob = await (await fetch(face.url)).blob();
       const data = await new Promise<string>((ok, bad) => {
         const r = new FileReader();
         r.onload = () => ok(String(r.result));
         r.onerror = () => bad(r.error);
         r.readAsDataURL(blob);
       });
-      out.push(face.replace(url, data));
+      out.push(face.css.replace(face.url, data));
     }
     return out.join('\n');
   } catch {

@@ -7,7 +7,7 @@ import { buildSyntheticDb, DEMO_PASSWORD } from '../mock/synthetic';
 import { createMockApi } from '../api/mockApi';
 import { validateSettings } from '../admin/settingsSchema';
 import { actionsEmailHtml, dataTable, esc, messageHtml, parseAddresses, reportEmailHtml, reportSubject } from './emailHtml';
-import { bytesToBase64, pageStarts, pickLatinFaces, pixelRatioFor, textToBase64 } from './pdf';
+import { bytesToBase64, pageStarts, pixelRatioFor, textToBase64, woff2Face } from './pdf';
 
 describe('the mock server sends like the real one (backend 1.9.0)', () => {
   it('Reports Edit or Admin may send; recipients and files are checked; picked people are looked up; the log has a line', async () => {
@@ -65,9 +65,14 @@ describe('PDF helpers', () => {
     const big = new Uint8Array(200_000).fill(65);
     expect(atob(bytesToBase64(big)).length).toBe(200_000);
   });
-  it('keeps only the latin font faces of the font service style sheet', () => {
-    const css = '/* cyrillic */\n@font-face { src: url(https://f/c.woff2); }\n/* latin-ext */\n@font-face { src: url(https://f/le.woff2); }\n/* latin */\n@font-face { src: url(https://f/l.woff2); }';
-    expect(pickLatinFaces(css).map((f) => /url\(([^)]+)\)/.exec(f)![1])).toEqual(['https://f/le.woff2', 'https://f/l.woff2']);
+  it('keeps the woff2 source of a bundled latin font face, absolute against its style sheet; skips latin-ext', () => {
+    const latin = '@font-face { font-family: "IBM Plex Sans"; font-weight: 400; src: url("ibm-plex-sans-latin-400-normal.woff2") format("woff2"), url("x.woff") format("woff"); }';
+    const f = woff2Face(latin, 'https://acc.test/app/assets/index.css')!;
+    expect(f.url).toBe('https://acc.test/app/assets/ibm-plex-sans-latin-400-normal.woff2');
+    expect(f.css).toContain(`src: url(${f.url}) format('woff2');`);
+    expect(f.css).not.toContain('.woff"');
+    expect(woff2Face('@font-face { src: url("a-latin-ext-400.woff2") format("woff2"); unicode-range: U+0100-02BA; }', 'https://x/')).toBeNull();
+    expect(woff2Face('.x { color: red }', 'https://x/')).toBeNull();
   });
   it('page breaks fall at the end of the last block that fits; a block taller than a page is cut', () => {
     expect(pageStarts([300, 700, 1000], 1000, 800)).toEqual([0, 700]);

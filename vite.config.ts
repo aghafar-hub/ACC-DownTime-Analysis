@@ -54,27 +54,17 @@ export default defineConfig({
         icons: [
           { src: 'icons/pwa-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/pwa-512.png', sizes: '512x512', type: 'image/png' },
-          { src: 'icons/pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          // the icon art keeps its marks inside the maskable safe zone on a full navy square, so one file serves both
+          { src: 'icons/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
       workbox: {
         clientsClaim: true,
         // Every built file is precached, including each lazily loaded page chunk (R5 route splitting): the app
         // works offline on any page, not only the ones opened before. The sign-in art and the brand logos too.
-        globPatterns: ['**/*.{js,css,html}', 'assets/*.{webp,png,svg}', 'brand/*.png'],
-        runtimeCaching: [
-          {
-            // Web fonts: serve from the device once fetched, so the app
-            // keeps its look offline.
-            urlPattern: ({ url }) => url.origin === 'https://fonts.googleapis.com' || url.origin === 'https://fonts.gstatic.com',
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'acc-dt-fonts',
-              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
+        // The bundled fonts (src/fonts.ts) too, as woff2 only: every browser that installs the app reads woff2, so the
+        // woff copies the font packages also ship are never fetched and stay out of the precache.
+        globPatterns: ['**/*.{js,css,html}', 'assets/*.{webp,png,svg,woff2}', 'brand/*.png'],
       },
     }),
   ],
