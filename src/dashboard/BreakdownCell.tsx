@@ -1,5 +1,5 @@
 // A number in the By area table that opens its split by classification: hover with a mouse, tap, click or Enter /
-// Space with the keyboard. Escape, a tap elsewhere or scrolling closes it. Drawn on <body> (fixed, kept on screen) so the
+// Space with the keyboard. Escape, a tap elsewhere or scrolling the cell away closes it. Drawn on <body> (fixed, kept on screen) so the
 // scrolling table does not cut it off. The parts are rounded so they add up to the number in the cell.
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { createPortal } from 'react-dom';

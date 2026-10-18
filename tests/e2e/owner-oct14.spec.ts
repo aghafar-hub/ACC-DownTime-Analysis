@@ -229,7 +229,7 @@ test.describe('desktop', () => {
     await signInAndWait(page, 'engineer');
     await open(page, '/reliability', 'page-reliability');
     const table = page.getByTestId('area-table');
-    await expect(table.locator('thead th')).toHaveText(['Area', 'Operating h', 'Stopped h', 'Failure h', 'Failures', 'Availability (B)', 'MTBF h', 'MTTR h']);
+    await expect(table.locator('thead th')).toHaveText(['Area', 'Operating h', 'Stopped h', 'Failure h', 'Failures', 'Availability (B)', 'RF', 'UF', 'MTBF h', 'MTTR h']);
     const rows = page.getByTestId('area-row');
     // the row with most failures
     const counts = await rows.getByTestId('area-failures').allTextContents();

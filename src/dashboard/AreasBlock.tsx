@@ -1,4 +1,4 @@
-// "Areas": the By area table (running, stopped and failure hours, failures, availability, MTBF and MTTR with the
+// "Areas": the By area table (running, stopped and failure hours, failures, availability, RF, UF, MTBF and MTTR with the
 // target status; Stopped h, Failure h and Failures open their split by classification), the area charts and, folded
 // because the Dashboard has them, the availability trend per area. Shown at the top of the Reliability page.
 import { useMemo, useState } from 'react';
@@ -28,7 +28,8 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
   const basis = settings.availabilityBasis;
   const targets = getTargets(settings);
   const ownTargets = useAreaTargetMap(ctx);
-  const statuses = useMemo(() => areaTargetStatuses(perArea, targets, ownTargets), [perArea, ownTargets, targets.availabilityPct, targets.mtbfH, targets.mttrH]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rfTarget = targets.reliabilityPct ?? null;
+  const statuses = useMemo(() => areaTargetStatuses(perArea, targets, ownTargets), [perArea, ownTargets, targets.availabilityPct, targets.mtbfH, targets.mttrH, rfTarget]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const breakdown = useMemo(() => (kpi ? areaBreakdowns({
     rows: ctx.scope.kpiRows, failureChains: ctx.scope.failureChains, window: kpi.window, attribution: ctx.scope.attribution, areaIds: kpi.areas.map((a) => a.area_id),
@@ -53,7 +54,7 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
       {kpi && (
         <section className="card" data-testid="area-table-card">
           <div className="card-title-row"><h2>{t('By area')}</h2><ChartInfo help={tableHelp} title={t('By area')} /></div>
-          <p className="chart-sub" style={{ marginBottom: 8 }}>{t('MTBF is an area-level figure; the aggregate is shown in area-hours and never averaged.')} {t('Point at, tap or press Enter on Stopped h, Failure h or Failures for the split by classification.')}{anyTarget(targets) ? ` ${t('Availability, MTBF and MTTR show their status against the targets set in Settings; an area without a figure has no status.')}` : ''}</p>
+          <p className="chart-sub" style={{ marginBottom: 8 }}>{t('MTBF is an area-level figure; the aggregate is shown in area-hours and never averaged.')} {t('Point at, tap or press Enter on Stopped h, Failure h or Failures for the split by classification.')}{anyTarget(targets) ? ` ${t('Availability, RF, MTBF and MTTR show their status against the targets set in Settings; an area without a figure has no status.')}` : ''} {t('RF = running ÷ (running + INC); UF = running ÷ calendar hours.')}</p>
           <div className="table-wrap">
             <table className="data-table area-table" data-testid="area-table">
               <thead>
@@ -64,6 +65,8 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
                   <th scope="col" className="num">{t('Failure h')}</th>
                   <th scope="col" className="num">{t('Failures')}</th>
                   <th scope="col" className="num">{t('Availability ({b})', { b: basis })}</th>
+                  <th scope="col" className="num" title={t('Reliability factor: running ÷ (running + INC)')}>{t('RF')}</th>
+                  <th scope="col" className="num col-uf" title={t('Utilization factor: running ÷ calendar hours')}>{t('UF')}</th>
                   <th scope="col" className="num">{t('MTBF h')}</th>
                   <th scope="col" className="num">{t('MTTR h')}</th>
                 </tr>
@@ -80,6 +83,8 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
                       <td className="num">{bd ? <BreakdownCell split={bd.failureHours} text={fh(bd.failureHours.total)} decimals={1} unit="h" title={t('Failure h of {a}', { a: a.area_id })} testid="area-failure-hours" /> : '–'}</td>
                       <td className="num">{bd ? <BreakdownCell split={bd.failures} text={fint(bd.failures.total)} decimals={0} unit="" title={t('Failures of {a}', { a: a.area_id })} testid="area-failures" /> : fint(a.failureCount)}</td>
                       {withStatus(metricText(a.availabilityHeadline, fpct).text, targets.availabilityPct !== null, st?.availability, 'status-availability')}
+                      {withStatus(metricText(a.reliabilityFactor, fpct).text, rfTarget !== null, st?.reliability, 'status-reliability', metricText(a.reliabilityFactor, fpct).reason)}
+                      <td className="num col-uf" data-testid="area-uf" title={metricText(a.utilizationFactor, fpct).reason}>{metricText(a.utilizationFactor, fpct).text}</td>
                       {withStatus(metricText(a.mtbfHours, fh).text, targets.mtbfH !== null, st?.mtbf, 'status-mtbf', metricText(a.mtbfHours, fh).reason)}
                       {withStatus(metricText(a.mttrHours, fh2).text, targets.mttrH !== null, st?.mttr, 'status-mttr', metricText(a.mttrHours, fh2).reason)}
                     </tr>

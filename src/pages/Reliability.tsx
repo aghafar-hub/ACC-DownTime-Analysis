@@ -66,6 +66,18 @@ export default function Reliability() {
   const mtbf = line('mtbf', t('MTBF (h)'), (m) => m.mtbfHours, fh, 0);
   const mttr = line('mttr', t('Mean restoration time (h)'), (m) => m.mttrHours, fh2, 1);
   const rate = line('rate', t('Failures per 1,000 operating hours'), (m) => m.failureRatePer1000h, fh2, 2);
+  // reliability and utilization factor in percent, on one 0–100 % axis
+  const NA: Metric = { available: false, code: 'no_data', reason: t('No data for this month') };
+  const pctLine = (key: string, label: string, pick: (m: (typeof months)[number]) => Metric, slot: number, marker: 'circle' | 'square'): CartSeries => {
+    const s = line(key, label, pick, (n) => `${n.toFixed(1)}%`, slot);
+    return { ...s, marker, values: s.values.map((v) => (v === null ? null : v * 100)) };
+  };
+  const rfLine = pctLine('rf', t('Reliability factor RF'), (m) => m.kpis?.reliabilityFactor ?? NA, 0, 'circle');
+  const ufLine = pctLine('uf', t('Utilization factor UF'), (m) => m.kpis?.utilizationFactor ?? NA, 3, 'square');
+  const rfTarget = ctx ? ctx.master.settings.reliabilityTargetPct ?? null : null;
+  const lastRf = [...months].reverse().find((m) => m.kpis?.reliabilityFactor.available) ?? null;
+  const pctOf = (x: Metric | undefined) => (x && x.available ? `${(x.value * 100).toFixed(1)}%` : '–');
+  const rfBelow = rfTarget === null ? 0 : rfLine.values.filter((v) => v !== null && Math.round(v * 10) / 10 < rfTarget).length;
   const gapCount = (s: CartSeries) => s.values.filter((v) => v === null).length;
   const gapNote = (s: CartSeries) => (gapCount(s) ? t('{n} months have no value (gaps): no failures, no data or not uploaded. Hover or tap a month for the reason.', { n: gapCount(s) }) : undefined);
   const areaLabel = areaId || t('all areas (area-hours)');
@@ -226,6 +238,18 @@ export default function Reliability() {
                 {(w) => <CartesianChart categories={cats} series={[rate]} width={w} ariaLabel={t('Line chart of failures per 1,000 operating hours')} yFormat={(n) => `${n}`} />}
               </ChartCard>
             </div>
+            <ChartCard title={t('Reliability and utilization factor')} subtitle={t('RF = running ÷ (running + INC); UF = running ÷ calendar hours, {a}', { a: areaLabel })} testid="chart-rf-uf"
+              help={{ id: 'rf-uf-month', vars: lastRf ? { m: monthLabel(lastRf.month), r: pctOf(lastRf.kpis?.reliabilityFactor), u: pctOf(lastRf.kpis?.utilizationFactor) } : {} }}
+              summary={`${t('{n} of {m} months have an RF.', { n: months.length - gapCount(rfLine), m: months.length })}${rfTarget !== null ? ` ${t('{n} months below the RF target of {x}%.', { n: rfBelow, x: rfTarget })}` : ''}`}
+              footnote={gapNote(rfLine)}
+              legend={[{ label: rfLine.label, color: rfLine.color, symbol: 'circle' }, { label: ufLine.label, color: ufLine.color, symbol: 'square' }, ...(rfTarget !== null ? [{ label: t('RF target {x}%', { x: rfTarget }), color: 'var(--tk-text-primary)', symbol: 'dash' as const }] : [])]}
+              table={seriesTable(cats, [rfLine, ufLine], t('Month'), (_s, n) => `${n.toFixed(1)}%`)}>
+              {(w) => (
+                <CartesianChart categories={cats} series={[rfLine, ufLine]} width={w} zeroBased={false} yMax={100} yFormat={(n) => `${n}%`}
+                  refLines={rfTarget !== null ? [{ value: rfTarget, label: t('RF target {x}%', { x: rfTarget }) }] : []}
+                  ariaLabel={t('Line chart of the monthly reliability factor and utilization factor')} />
+              )}
+            </ChartCard>
             <AlsoOnDashboard title={t('Mean restoration time')} testid="dup-rel-mttr">
             <ChartCard title={t('Mean restoration time')} subtitle={t('Mean duration of failure events that started in the month')} testid="chart-mttr" help={{ id: 'mttr-month', vars: lastMttr ? { m: monthLabel(lastMttr.month), h: fh(lastMttr.mttrHours.available ? lastMttr.mttrHours.value * lastMttr.failureCount : 0), n: fint(lastMttr.failureCount), v: fh2(lastMttr.mttrHours.available ? lastMttr.mttrHours.value : 0) } : {} }}
               summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(mttr), m: months.length })} footnote={gapNote(mttr)}

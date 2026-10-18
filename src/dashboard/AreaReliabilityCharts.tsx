@@ -6,6 +6,7 @@ import type { AreaRank, Metric, Quadrant } from '../calc';
 import { ChartCard } from '../charts/ChartKit';
 import HBars, { type HRow } from '../charts/HBars';
 import QuadrantChart from '../charts/QuadrantChart';
+import RfMtbfChart from '../charts/RfMtbfChart';
 import ScaleHeatmap, { type ScaleRow } from '../charts/ScaleHeatmap';
 import { t } from '../i18n/t';
 import AlsoOnDashboard from './AlsoOnDashboard';
@@ -74,6 +75,17 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
     : `${t('{n} areas plotted.', { n: q.points.length })} ${q.medianMtbf !== null && q.medianMttr !== null
       ? t('Median MTBF {a} h, median MTTR {b} h.', { a: fh(q.medianMtbf), b: fh2(q.medianMttr) })
       : t('At least two areas are needed for the median lines.')} ${q.medianMtbf !== null ? (q.worst.length ? t('Worst quadrant (low MTBF, high MTTR): {a}.', { a: q.worst.join(', ') }) : t('No area is in the worst quadrant (low MTBF, high MTTR).')) : ''}`;
+
+  // (e2) reliability factor against MTBF
+  const rf = m.rfMtbf;
+  const rfTarget = tg.reliabilityPct ?? null;
+  const rfEx = rf.points[0] ?? null;
+  const rfSub = rfTarget !== null
+    ? t('One point per area. Below the dashed target line = not reliable enough; left of the median = fails more often than most areas.')
+    : t('One point per area. Left of the median = fails more often than most areas.');
+  const rfSummary = rf.points.length === 0
+    ? t('No area has both a reliability factor and an MTBF in this range.')
+    : `${t('{n} areas plotted.', { n: rf.points.length })}${rfTarget !== null ? ` ${rf.below.length ? t('Below the RF target of {x}%: {a}.', { x: targetNumber(rfTarget), a: rf.below.join(', ') }) : t('Every area plotted meets the RF target of {x}%.', { x: targetNumber(rfTarget) })}` : ''}`;
 
   // (f) availability by area and month
   const av = m.monthAvailability;
@@ -175,6 +187,41 @@ export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; o
           )}
         </ChartCard>
       </AlsoOnDashboard>
+      <ChartCard
+        title={t('Reliability factor against MTBF by area')} subtitle={rfSub} testid="chart-rf-mtbf"
+        help={{ id: 'rf-mtbf', vars: rfEx ? { a: rfEx.area_id, r: fpct(rfEx.rf), m: fh(rfEx.mtbf), n: rfEx.mttr !== null ? fh2(rfEx.mttr) : '–' } : {} }}
+        summary={rfSummary}
+        legend={[
+          ...(rfTarget !== null ? [{ label: t('RF at or above target'), color: 'var(--tk-success)', symbol: 'circle' as const }, { label: t('RF below target'), color: 'var(--tk-danger)', symbol: 'triangle' as const }] : [{ label: t('Area'), color: BAR, symbol: 'circle' as const }]),
+          ...(rfTarget !== null ? [{ label: t('RF target {x}%', { x: targetNumber(rfTarget) }), color: 'var(--tk-text-primary)', symbol: 'dash' as const }] : []),
+          ...(rf.medianMtbf !== null ? [{ label: t('Median MTBF'), color: 'var(--tk-text-secondary)', symbol: 'dash' as const }] : []),
+          { label: t('Bigger mark = longer MTTR'), color: 'var(--tk-text-secondary)', symbol: 'circle' as const },
+        ]}
+        table={{
+          head: [t('Area'), t('RF'), t('MTBF h'), t('MTTR h'), t('INC h'), t('Failures'), ...(rfTarget !== null ? [t('Status')] : [])],
+          rows: rf.points.map((p) => [p.area_id, fpct(p.rf), fh(p.mtbf), p.mttr !== null ? fh2(p.mttr) : '–', fh(p.incHours), fint(p.failures), ...(rfTarget !== null ? [p.onTarget ? t('On target') : t('Below target')] : [])]),
+        }}
+        footnote={`${t('MTBF on a log scale: each step is ×2 or ×2.5.')}${rf.excluded.length ? ` ${t('Not shown (no RF or no MTBF): {a}.', { a: rf.excluded.map((x) => x.area_id).join(', ') })}` : ''}`}
+      >
+        {(w) => (
+          <RfMtbfChart
+            width={w} height={w < 480 ? 340 : 380} target={rfTarget} medianX={rf.medianMtbf}
+            targetLabel={rfTarget !== null ? t('RF target {x}%', { x: targetNumber(rfTarget) }) : undefined}
+            medianLabel={rf.medianMtbf !== null ? t('median MTBF {v} h', { v: fh(rf.medianMtbf) }) : undefined}
+            xTitle={t('MTBF (hours, log scale) → fails less often')} yTitle={t('Reliability factor RF (%)')}
+            ariaLabel={`${t('Scatter chart of the reliability factor against MTBF per area.')} ${rfSummary}`}
+            points={rf.points.map((p) => ({
+              key: p.area_id, label: p.area_id, x: p.mtbf, y: p.rf * 100, mttr: p.mttr, ok: p.onTarget,
+              details: [
+                { label: t('RF'), value: fpct(p.rf) }, { label: t('MTBF'), value: `${fh(p.mtbf)} h` }, { label: t('MTTR'), value: p.mttr !== null ? `${fh2(p.mttr)} h` : '–' },
+                { label: t('INC hours'), value: `${fh(p.incHours)} h` }, { label: t('Failure events'), value: fint(p.failures) },
+                ...(p.onTarget !== null ? [{ label: t('Status'), value: p.onTarget ? t('On target') : t('Below target') }] : []),
+              ],
+            }))}
+            openLabel={t('Open events')} onPoint={onOpen ? (p) => onOpen(`${t('the point of area')} ${p.label}`, m.failureIds.get(p.key) ?? []) : undefined}
+          />
+        )}
+      </ChartCard>
       <AlsoOnDashboard title={t('Availability by area and month (basis {b})', { b: basis })} testid="dup-area-month-heat">
         <ChartCard
           title={t('Availability by area and month (basis {b})', { b: basis })} subtitle={t('Each cell is the availability of one area in one month. Fixed scale {a} to {b} %; the last column is the whole range.', { a: AVAIL_MIN, b: AVAIL_MAX })} testid="chart-area-month-heat" help={{ id: 'area-month-heat', vars: { b: basis } }}

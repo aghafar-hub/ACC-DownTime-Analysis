@@ -2,9 +2,9 @@
 // their own beyond joining calc outputs (tests compare every headline number with a direct calc call).
 import {
   areaMonthAvailability, areaPareto, availabilityByArea, failureStartHeatmap, linePareto, mtbfMttrQuadrants, rankAreas, reasonMonthHeatmap, buildPareto, classificationPareto, dailySeries, daysInRange, monthlyHoursByClassification, compareTotal, avail, durationHistogram, equipmentMonthHeatmap,
-  areaLevelStops, equipmentPareto, equipmentReasonHeatmap, topHeatmapRows, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
+  areaLevelStops, rfAgainstMtbf, equipmentPareto, equipmentReasonHeatmap, topHeatmapRows, findRepeatedFailures, longestEvents, monthlySeries, reasonPareto,
   reasonParetoForEquipment, resolvedKey, rowCode, yearOverYear,
-  type AreaAvailability, type AreaKpis, type AreaLevelStops, type AreaMonthAvailability, type AreaRank, type QuadrantResult, type ClassMonthPoint, type DayPoint, type Metric, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
+  type AreaAvailability, type AreaKpis, type AreaLevelStops, type RfMtbfResult, type AreaMonthAvailability, type AreaRank, type QuadrantResult, type ClassMonthPoint, type DayPoint, type Metric, type Change, type ChainedEvent, type DateRange, type DurationHistogram, type EquipmentParetoResult, type Heatmap,
   type KpiChanges, type KpiOk, type LongEvent, type MonthPoint, type ParetoBar, type ParetoMeasure, type ParetoResult, type RepeatResult,
   type TopN, type YoyMonth,
 } from '../calc';
@@ -405,6 +405,8 @@ export interface AreaReliabilityModel {
   /** MTTR, highest (worst) first; areas without failures last */
   mttr: AreaRank[];
   quadrant: QuadrantResult;
+  /** reliability factor against MTBF per area, judged against the RF target */
+  rfMtbf: RfMtbfResult;
   /** failures per 1,000 operating hours, highest first, and the all-area figure (area-hours aggregate) */
   rate: { rows: AreaRank[]; overall: Metric };
   monthAvailability: AreaMonthAvailability;
@@ -433,6 +435,7 @@ export function areaReliabilityModel(ctx: DashCtx): AreaReliabilityModel | null 
     mtbf: rankAreas(k.areas, (a) => a.mtbfHours, 'asc'),
     mttr: rankAreas(k.areas, (a) => a.mttrHours, 'desc'),
     quadrant: mtbfMttrQuadrants(k.areas),
+    rfMtbf: rfAgainstMtbf(k.areas, targets.reliabilityPct ?? null),
     rate: { rows: rankAreas(k.areas, (a) => a.failureRatePer1000h, 'desc'), overall: k.total.failureRatePer1000h },
     monthAvailability: areaMonthAvailability({
       rows: ctx.scope.kpiRows, chains: ctx.scope.chains, range: ctx.win.range, dataRange: ctx.coverage, areaIds: ctx.base.areaIds, settings: ctx.master.settings,

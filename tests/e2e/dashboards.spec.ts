@@ -741,7 +741,7 @@ test.describe('Phase 4: more charts (desktop)', () => {
     await signInAndWait(page, 'engineer');
     await open(page, '/reliability', 'page-reliability');
     // the By area table first; the charts that repeat a Dashboard card are folded at the end, closed on every visit
-    const ids = ['area-table-card', 'chart-area-mtbf', 'chart-area-mttr', 'chart-area-rate', 'dup-area-quadrant', 'dup-area-month-heat', 'dup-area-trend'];
+    const ids = ['area-table-card', 'chart-area-mtbf', 'chart-area-mttr', 'chart-area-rate', 'dup-area-quadrant', 'chart-rf-mtbf', 'dup-area-month-heat', 'dup-area-trend'];
     const order = await page.locator(ids.map((i) => `[data-testid="${i}"]`).join(',')).evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')));
     expect(order).toEqual(ids);
     for (const id of ['dup-area-quadrant', 'dup-area-month-heat', 'dup-area-trend']) await expect(page.getByTestId(id)).toHaveAttribute('data-open', 'no');
@@ -783,7 +783,7 @@ test.describe('Phase 4: more charts (desktop)', () => {
     // the bars equal the By area table
     const mtbfRows = await tableValues('chart-area-mtbf');
     for (const [area, v] of mtbfRows) {
-      const cell = await page.locator(`[data-testid="area-row"][data-area="${area}"] td`).nth(5).textContent();
+      const cell = await page.locator(`[data-testid="area-row"][data-area="${area}"] td`).nth(7).textContent();
       expect(cell === 'None recorded' ? 'no failures' : cell).toBe(v);
     }
     for (const id of ['chart-area-mtbf', 'chart-area-mttr']) await expect(page.getByTestId(id).locator('rect.chart-hit').first()).toBeVisible();

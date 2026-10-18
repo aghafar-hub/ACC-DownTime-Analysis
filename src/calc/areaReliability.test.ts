@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildFailureEvents } from './events';
 import { createRowFactory, type RowSpec } from './fixtures';
 import { composeKpis, emptySums, type AreaKpis } from './kpis';
-import { areaMonthAvailability, median, mtbfMttrQuadrants, rankAreas } from './areaReliability';
+import { areaMonthAvailability, median, mtbfMttrQuadrants, rankAreas, rfAgainstMtbf } from './areaReliability';
 import { failureStartHeatmap, reasonMonthHeatmap, WEEKDAYS } from './trends';
 import { linePareto, areaPareto } from './pareto';
 import { parseSettings } from './settings';
@@ -137,5 +137,31 @@ describe('heat maps and Pareto by line', () => {
       expect(l.bars.map((b) => b.label)).toContain('Line L.2');
     }
     expect(linePareto(failures, { measure: 'count', window, lineOf }).bars.map((b) => [b.key, b.value])).toEqual([['L.1', 2], ['L.2', 2]]);
+  });
+});
+
+describe('rfAgainstMtbf', () => {
+  const k = (id: string, inc: number, events: number) => composeKpis(id, 744, { pl: 0, inc, cir: 0, events, eventSeconds: inc * 3600 }, { availabilityBasis: 'B' });
+  it('plots the areas with RF and MTBF from the same KPIs, judges RF against the target as shown, lists the others', () => {
+    const areas = [k('A', 10, 5), k('B', 60, 4), k('C', 0, 0), k('D', 37.2, 3)];
+    const r = rfAgainstMtbf(areas, 95);
+    expect(r.points.map((p) => p.area_id)).toEqual(['A', 'B', 'D']);
+    const a = r.points[0]!;
+    expect(a.rf).toBe((areas[0]!.reliabilityFactor as { value: number }).value);
+    expect(a.mtbf).toBe((areas[0]!.mtbfHours as { value: number }).value);
+    expect(a.mttr).toBe(2);
+    expect(a.incHours).toBe(10);
+    expect(a.onTarget).toBe(true);
+    // D: 706.8 ÷ 744 = 95.0 % as shown: on target
+    expect(r.points[2]!.onTarget).toBe(true);
+    expect(r.below).toEqual(['B']);
+    expect(r.excluded.map((x) => x.area_id)).toEqual(['C']);
+    expect(r.medianMtbf).toBe(median(r.points.map((p) => p.mtbf)));
+  });
+  it('has no status with the target off and no median with one point', () => {
+    const r = rfAgainstMtbf([k('A', 10, 5)], null);
+    expect(r.points[0]!.onTarget).toBeNull();
+    expect(r.below).toEqual([]);
+    expect(r.medianMtbf).toBeNull();
   });
 });
