@@ -2,13 +2,16 @@
 // allowed range (the same ranges the server enforces) and when it takes effect.
 import { t } from '../i18n/t';
 
-export type When = 'now' | 'signin' | 'password' | 'checks';
+export type When = 'now' | 'signin' | 'password' | 'checks' | 'mail';
 
 /** `fallback`: the value the server uses while the database has no row for the key (databases made before the key existed). */
 export interface NumberField { key: string; kind: 'int' | 'number_or_blank'; min: number; max: number; label: string; help: string; unit?: string; fallback?: string }
 export interface ChoiceField { key: string; kind: 'choice'; label: string; help: string; options: { value: string; label: string; detail?: string }[]; fallback?: string }
-/** Free text; blank is allowed. `format` url (default): the app's web address; ids: comma-separated user ids (who can close actions). */
-export interface TextField { key: string; kind: 'text'; maxLength: number; label: string; help: string; placeholder?: string; fallback?: string; format?: 'url' | 'ids' }
+/**
+ * Free text; blank is allowed. `format` url (default): the app's web address; ids: comma-separated user ids (who can close
+ * actions); email: one email address (backend 1.9.0); plain: any one-line text.
+ */
+export interface TextField { key: string; kind: 'text'; maxLength: number; label: string; help: string; placeholder?: string; fallback?: string; format?: 'url' | 'ids' | 'email' | 'plain' }
 export type Field = NumberField | ChoiceField | TextField;
 
 export interface Group { id: string; title: string; icon: string; when: When; intro: string; fields: Field[] }
@@ -17,6 +20,7 @@ export const WHEN_TEXT: Record<When, { badge: string; detail: string }> = {
   now: { badge: 'Applies right away', detail: 'The dashboards recalculate as soon as this is saved.' },
   signin: { badge: 'Applies to new sign-ins', detail: 'People who are already signed in keep their current session.' },
   password: { badge: 'Applies from the next password change', detail: 'Existing passwords stay valid.' },
+  mail: { badge: 'Applies to the next email', detail: 'Emails already sent stay as they are.' },
   checks: { badge: 'Applies at the next check', detail: 'Alerts already raised stay until they resolve or expire. Use "Run checks now" to apply it straight away.' },
 };
 
@@ -91,6 +95,15 @@ export function groups(): Group[] {
       ],
     },
     {
+      // Shown in Settings > Notifications for administrators (backend 1.9.0, backend/apps-script/Mail.js)
+      id: 'email', title: t('Email sender'), icon: 'mail', when: 'mail',
+      intro: t('The address the app sends its emails from: digests, reports and actions reports. Blank: the Google account that runs the app sends them.'),
+      fields: [
+        { key: 'system_email', kind: 'text', format: 'email', maxLength: 254, label: t('System email'), placeholder: 'downtime@arabiancement.com', fallback: '', help: t('Must be a "Send mail as" address of the Google account that runs the app (see the steps below). Leave blank to send from that account.') },
+        { key: 'system_email_name', kind: 'text', format: 'plain', maxLength: 80, label: t('Sender name'), placeholder: 'ACC Downtime Analysis', fallback: 'ACC Downtime Analysis', help: t('The name people see as the sender.') },
+      ],
+    },
+    {
       // Shown by the Settings > Actions & targets page (backend 1.4.0); the closers list is edited there with a people picker.
       id: 'action-rules', title: t('Action rules'), icon: 'compliance', when: 'checks',
       intro: t('When the system drafts an action for review, and how long a closed action is watched.'),
@@ -140,6 +153,8 @@ export function validateSettings(values: Record<string, string>): Record<string,
       if (f.kind === 'text') {
         if (raw.length > f.maxLength) out[f.key] = t('Use at most {n} characters.', { n: f.maxLength });
         else if (f.format === 'ids') { if (raw !== '' && !/^[^,\s][^,]*(,[^,]*)*$/.test(raw)) out[f.key] = t('Write user ids separated by commas.'); }
+        else if (f.format === 'email') { if (raw !== '' && !/^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/.test(raw)) out[f.key] = t('Write one email address, like name@company.com.'); }
+        else if (f.format === 'plain') { if (/[<>"]/.test(raw)) out[f.key] = t('Do not use < > or quotes.'); }
         else if (raw !== '' && !/^https?:\/\/[^\s"'<>]+$/i.test(raw)) out[f.key] = t('Write a web address that starts with http:// or https://, with no spaces or quotes.');
         continue;
       }

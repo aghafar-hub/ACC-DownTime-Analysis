@@ -1060,14 +1060,16 @@ function sendDigest_() {
     var d = buildDigest_(user, dctx);
     if (!d) { out.skipped++; return; }
     try {
-      if (typeof MailApp === 'undefined') throw new Error('Mail is not available (MailApp).');
-      if (typeof MailApp.getRemainingDailyQuota === 'function' && MailApp.getRemainingDailyQuota() < 1) {
+      if (typeof MailApp === 'undefined' && !mailSender_().email) throw new Error('Mail is not available (MailApp).');
+      var left = remainingQuota_();
+      if (left !== null && left < 1) {
         digestAudit_('digest_failed', user.user_id, 'Daily mail quota used up; no more digests today');
         out.failed++;
         stop = true;
         return;
       }
-      MailApp.sendEmail({ to: user.email, subject: d.subject, body: d.text, htmlBody: d.html, name: 'ACC Downtime Analysis' });
+      // 1.9.0: through the one mail helper (Mail.js): the system email when it is set, else MailApp
+      sendMail_({ to: [user.email], cc: [], subject: d.subject, text: d.text, html: d.html, attachments: [] });
     } catch (err) {
       out.failed++;
       digestAudit_('digest_failed', user.user_id, oneLine_(err && err.message ? err.message : err, 300));

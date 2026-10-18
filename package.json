@@ -14,7 +14,9 @@
   },
   "dependencies": {
     "fflate": "^0.8.3",
+    "html-to-image": "^1.11.13",
     "idb": "^8.0.3",
+    "jspdf": "^4.2.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3"

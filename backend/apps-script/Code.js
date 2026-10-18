@@ -70,7 +70,10 @@ var HANDLERS = {
   // 1.6.0: sign-out (audited), and the two Admin-only pages Settings > Active users and Settings > Activity log
   logout: function (s) { return logout_(s); },
   listActiveUsers: function () { return listActiveUsers_(); },
-  listAuditLog: function (s, p) { return listAuditLog_(p.filter, p.cursor); }
+  listAuditLog: function (s, p) { return listAuditLog_(p.filter, p.cursor); },
+  // 1.9.0: email (Mail.js)
+  sendReport: function (s, p) { return sendReport_(s, p.email); },
+  sendTestEmail: function (s) { return sendTestEmail_(s); }
 };
 
 /** Runs one request and returns the response envelope (an object, never throws). */

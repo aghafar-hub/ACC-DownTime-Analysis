@@ -681,10 +681,13 @@ test('ensureSchema adds the notification sheets and settings to an older databas
 
 test('appsscript.json keeps the web app settings and lists the scopes the code needs', () => {
   const m = JSON.parse(readFileSync(resolve(BACKEND_DIR, 'appsscript.json'), 'utf8'));
-  for (const s of ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/script.send_mail', 'https://www.googleapis.com/auth/script.scriptapp']) {
+  for (const s of ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/script.send_mail', 'https://www.googleapis.com/auth/script.scriptapp',
+    // 1.9.0: sending as the system email (a Gmail 'Send mail as' alias) and checking the alias list
+    'https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/gmail.settings.basic']) {
     assert.ok(m.oauthScopes.includes(s), s);
   }
-  assert.equal(m.oauthScopes.length, 3);
+  assert.equal(m.oauthScopes.length, 5);
+  assert.deepEqual(m.dependencies.enabledAdvancedServices, [{ userSymbol: 'Gmail', serviceId: 'gmail', version: 'v1' }]);
 });
 
 test('the one-file bundle includes Notifications.js', () => {

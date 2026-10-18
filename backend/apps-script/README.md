@@ -440,6 +440,29 @@ Good to know:
   build against a 1.6.0 server shows no tasks and "Unknown action" on the task buttons; deploy the backend first.
 - The exact rules are in `docs/wire-protocol.md` section 13.
 
+## 17. Email: the system email, reports and actions reports by email (1.9.0)
+
+Version 1.9.0 sends reports and actions reports by email (a PDF of the report, Excel if ticked, and a summary in the email
+body), and every email of the app (also the digest) can come from a **system email** set in Settings › Notifications. All
+mail goes through `Mail.js`. Who may send: Edit on the Reports tab, or an Admin. Any address may receive; at most 25 in To,
+25 in Cc and 30 emails per person a day.
+
+1. **Copy the files.** New: `Mail.js`. Changed: `Config.js`, `Access.js`, `Audit.js`, `Code.js`, `Notifications.js`,
+   `Settings.js`, `Schema.js` and **`appsscript.json`** (it now turns on the Gmail service and adds the scopes `gmail.send` and
+   `gmail.settings.basic`). Show the manifest (Project Settings › Show "appsscript.json") and replace its content.
+2. **Gmail service.** In the editor, the left bar **Services** should now list **Gmail API** (from the manifest). If it does
+   not, press **+** next to Services, pick Gmail API (v1), identifier `Gmail`, and Add.
+3. **Deploy** a new version (Deploy › Manage deployments › edit › New version). Google asks once to allow the new permissions
+   (send email as you, see your Gmail "Send mail as" settings): allow them with the account that runs the app.
+4. **Send mail as.** Sign in to Gmail with the account that runs the app › Settings › See all settings › Accounts ›
+   **Send mail as › Add another email address**: enter the system email, keep "Treat as an alias" ticked, and confirm with
+   the code Google sends to that address. (A Google Workspace admin can also add it as an alias of that account.)
+5. **In the app:** Settings › Notifications › Email sender: write the system email and the sender name, Save, then press
+   **Send a test email**: it says which address the email came from. With the system email blank the app sends from the
+   account that runs it, as before.
+6. **Check.** `?action=ping` answers version `1.9.0`. Run **seedDefaults** once if you want the two new settings rows to show
+   in the sheet (the app works without them).
+
 ## Good to know
 
 - **Access levels** are per tab: Hidden, View, Edit, from the role with optional
@@ -452,7 +475,7 @@ Good to know:
 - **Limits**: one chunk of a workbook upload is about 300 rows; a single call can
   run for up to 6 minutes. The system is meant for the test phase; the plan is to
   move to a real database later (see `docs/architecture-and-build-plan.md`).
-- **Permissions** (`appsscript.json`, `oauthScopes`): the spreadsheet, sending e-mail (digest) and managing the script's own
+- **Permissions** (`appsscript.json`, `oauthScopes`): the spreadsheet, sending e-mail (digest, reports; 1.9.0: also through Gmail as the system email, and reading the "Send mail as" list) and managing the script's own
   triggers (`installNotificationTriggers`). Nothing else is requested.
 - **Tests** (for developers): `npm run test:backend` in the repository runs the
   backend against an in-memory fake of Google Sheets.

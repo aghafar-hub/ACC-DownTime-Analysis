@@ -1113,3 +1113,8 @@
 .rb-use-dash .btn {
   min-height: 44px;
 }
+
+/* Reports: Downtime report | Actions report (backend 1.9.0) */
+.rpt-type {
+  margin: 0 0 12px;
+}

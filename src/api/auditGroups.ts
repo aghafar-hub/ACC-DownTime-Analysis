@@ -11,7 +11,7 @@ export const AUDIT_GROUP_ACTIONS: Record<AuditGroup, readonly string[]> = {
   upload: ['upload_start', 'upload_chunk', 'upload_finish'],
   actions: ['create_action', 'merge_action', 'update_action', 'comment_action', 'action_check', 'create_task', 'update_task', 'apply_template'],
   areas: ['activate_area', 'deactivate_area'],
-  notifications: ['notification_check', 'notification_failed', 'digest_sent', 'digest_failed'],
+  notifications: ['notification_check', 'notification_failed', 'digest_sent', 'digest_failed', 'send_report', 'send_test_email'],
   system: ['seed_defaults', 'migrate_actions'],
 };
 
