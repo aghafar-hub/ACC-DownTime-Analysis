@@ -15,6 +15,7 @@ import DashTop from '../dashboard/DashTop';
 import { fh, fh2, fint } from '../dashboard/format';
 import { repeatsTakeaway } from '../dashboard/takeaways';
 import { eventsOfEquipment, repeatsModel } from '../dashboard/models';
+import { repeatsTop } from '../dashboard/dashModels';
 import ChartInfo from '../help/ChartInfo';
 import { EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, Toggle, useDrill } from '../dashboard/parts';
 import { useDash } from '../dashboard/useDash';
@@ -77,20 +78,21 @@ export default function Repeats() {
     return gs.filter((g) => g.occurrences >= 2);
   }, [model, sort]);
   const singles = (model?.result.groups.length ?? 0) - groups.length;
+  // the same counts as the Dashboard card, the KPIs and the reports (listedRepeats)
+  const top = useMemo(() => (ctx ? repeatsTop(ctx, 0) : null), [ctx]);
   const repeatCodes = useMemo(() => new Set(groups.map((g) => g.equipmentId)), [groups]);
   const selCode = sel ?? groups[0]?.equipmentId ?? model?.scatter[0]?.code ?? '';
   const events = useMemo(() => (ctx && selCode ? eventsOfEquipment(ctx, selCode) : []), [ctx, selCode]);
 
   const res = model?.result;
-  const equipCount = new Set(res?.groups.map((g) => g.equipmentId)).size;
-  const groupHours = res?.groups.reduce((s, g) => s + g.totalHours, 0) ?? 0;
+  const equipCount = new Set(groups.map((g) => g.equipmentId)).size;
   const win = model?.window;
   const settings = ctx?.master.settings;
-  const topGroup = res?.groups.reduce<RepeatGroup | null>((b, g) => (!b || g.occurrences > b.occurrences || (g.occurrences === b.occurrences && g.totalHours > b.totalHours) ? g : b), null) ?? null;
+  const topGroup = groups.reduce<RepeatGroup | null>((b, g) => (!b || g.occurrences > b.occurrences || (g.occurrences === b.occurrences && g.totalHours > b.totalHours) ? g : b), null);
   const empty = !!model && rows !== null && rows.length === 0;
   const takeaway = !ctx ? t('Loading…') : empty ? t(EMPTY_SCOPE_TAKEAWAY) : res && settings
     ? repeatsTakeaway({
-      groups: res.groups.length, recurrences: res.recurrences.length, equipmentCount: equipCount,
+      groups: groups.length, events: top?.events ?? 0, equipmentCount: equipCount,
       top: topGroup && { equipmentId: topGroup.equipmentId, occurrences: topGroup.occurrences, totalHours: topGroup.totalHours, reason: topGroup.reasonLabel },
       minEvents: settings.repeatMinEvents, windowDays: settings.repeatWindowDays,
     })
@@ -142,9 +144,9 @@ export default function Repeats() {
       {empty && <EmptyScope dash={dash} />}
       {res && settings && !empty && (
         <div className="kpi-grid" data-testid="repeat-tiles">
-          <Tile compact={mobile} icon="repeat" label={t('Qualifying groups')} value={<span data-testid="rt-groups">{fint(res.groups.length)}</span>} sub={t('same code and reason, at least {n} events within {d} days', { n: settings.repeatMinEvents, d: settings.repeatWindowDays })} />
-          <Tile compact={mobile} icon="alert" label={t('Recurrence events')} value={<span data-testid="rt-recurrences">{fint(res.recurrences.length)}</span>} sub={t('occurrences after the first of each cluster')} />
-          <Tile compact={mobile} icon="clock" label={t('Hours in these groups')} value={`${fh(groupHours)} h`} sub={t('all occurrences, area-hours')} />
+          <Tile compact={mobile} icon="repeat" label={t('Repeated failures')} value={<span data-testid="rt-groups">{fint(groups.length)}</span>} sub={t('same code and reason, at least {n} events within {d} days', { n: settings.repeatMinEvents, d: settings.repeatWindowDays })} />
+          <Tile compact={mobile} icon="alert" label={t('Repeat events')} value={<span data-testid="rt-events">{fint(top?.events ?? 0)}</span>} sub={t('failure events of these repeated failures')} />
+          <Tile compact={mobile} icon="clock" label={t('Repeat hours')} value={<span data-testid="rt-hours">{`${fh(top?.hours ?? 0)} h`}</span>} sub={t('stopped by these events in the range, area-hours')} />
           <Tile compact={mobile} icon="equipment" label={t('Equipment affected')} value={fint(equipCount)} sub={t('different equipment codes')} />
         </div>
       )}
@@ -213,7 +215,7 @@ export default function Repeats() {
             )}
             <ShowMore shown={visible.length} total={groups.length} onMore={() => setShown((n) => n + PAGE_SIZE)} />
             <p className="chart-foot" data-testid="repeat-burst-note">{t('One occurrence = the same code and reason; when it stops several areas within 10 minutes it counts once. A burst is an occurrence less than 1 h after the previous one restarted in the same area: it still counts as an occurrence, and the Bursts column shows how many of them were quick re-trips.')}</p>
-            {singles > 0 && <p className="chart-foot" data-testid="repeat-singles">{t('{n} more groups have only one occurrence in this range (the earlier ones are before it); they count in the tiles above but are not listed.', { n: fint(singles) })}</p>}
+            {singles > 0 && <p className="chart-foot" data-testid="repeat-singles">{t('{n} more groups have only one occurrence in this range (the earlier ones are before it); they are not counted as repeated failures here or on the Dashboard.', { n: fint(singles) })}</p>}
           </section>
 
           <div ref={timelineRef}>{!mobile && timeline}</div>

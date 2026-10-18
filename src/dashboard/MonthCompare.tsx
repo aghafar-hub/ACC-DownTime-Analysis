@@ -35,7 +35,7 @@ function rowLabel(id: CompareId, basis: string): string {
     case 'utilization': return t('Utilization factor (UF)');
     case 'mttr': return t('MTTR');
     case 'mtbf': return t(MTBF_ALL_LABEL);
-    case 'repeated': return t('Repeated failures');
+    case 'repeated': return t('Repeat events');
   }
 }
 

@@ -64,8 +64,10 @@ export function paretoTakeaway(f: ParetoFacts | null): string {
 }
 
 export interface RepeatsFacts {
+  /** repeated failures: groups with at least two occurrences in the range (listedRepeats) */
   groups: number;
-  recurrences: number;
+  /** repeat events: the distinct failure events of those groups */
+  events: number;
   equipmentCount: number;
   /** the group with the most occurrences */
   top: { equipmentId: string; occurrences: number; totalHours: number; reason: string } | null;
@@ -79,8 +81,8 @@ export function repeatsTakeaway(f: RepeatsFacts | null): string {
     return t('No repeated failures in this range (a group needs at least {n} events with the same code and reason within {d} days).', { n: f.minEvents, d: f.windowDays });
   }
   const reason = f.top.reason.trim();
-  return t('{g} repeated-failure groups ({r} recurrence events) across {e} equipment codes; {c} repeats most, {n} times and {h} h{reason}.', {
-    g: fint(f.groups), r: fint(f.recurrences), e: fint(f.equipmentCount), c: f.top.equipmentId, n: fint(f.top.occurrences), h: fh(f.top.totalHours),
+  return t('{g} repeated failures ({r} repeat events) across {e} equipment codes; {c} repeats most, {n} times and {h} h{reason}.', {
+    g: fint(f.groups), r: fint(f.events), e: fint(f.equipmentCount), c: f.top.equipmentId, n: fint(f.top.occurrences), h: fh(f.top.totalHours),
     reason: reason ? ` (${reason})` : '',
   });
 }
@@ -185,7 +187,7 @@ export function summaryBullets(f: SummaryFacts): string[] {
       ? (f.belowTarget.total === 1 ? t('The area is on the availability target.') : t('All {m} areas are on the availability target.', { m: f.belowTarget.total }))
       : t('{n} of {m} areas are below the availability target: {list}.', { n: f.belowTarget.below.length, m: f.belowTarget.total, list: f.belowTarget.below.join(', ') }));
   } else if (f.repeatGroups > 0) {
-    out.push(t('{g} repeated-failure groups with {r} recurrence events.', { g: fint(f.repeatGroups), r: fint(f.repeatedFailureCount) }));
+    out.push(t('{g} repeated failures with {r} repeat events.', { g: fint(f.repeatGroups), r: fint(f.repeatedFailureCount) }));
   }
   return out;
 }

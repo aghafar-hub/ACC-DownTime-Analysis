@@ -29,7 +29,8 @@ import { targetNumber, type TargetStatus, type Targets } from '../dashboard/targ
 import { t } from '../i18n/t';
 import { buildScorecard, type MonthQuality } from '../validate/scorecard';
 import { buildValidation, type ValidationList } from '../validate/model';
-import { flagLabel, isBlocked } from '../calc';
+import { flagLabel, isBlocked, listedRepeats } from '../calc';
+import { repeatsTop } from '../dashboard/dashModels';
 import { comparisonKindFor, resolvePeriod } from './period';
 import { SECTION_BY_ID, TEMPLATE_BY_ID, effectiveOptions } from './sections';
 import { resolvedOptions, toDashFilters, type ReportSetup } from './setup';
@@ -124,7 +125,7 @@ export interface ParetoPart { key: 'area' | 'line' | 'class'; title: string; res
 export interface ParetoSection extends Base<'pareto'> { data: { measure: 'hours' | 'count'; top: number; parts: ParetoPart[] } }
 export interface RepeatsSection extends Base<'repeats'> {
   data: {
-    groups: RepeatGroup[]; totalGroups: number; recurrences: number; equipmentCount: number; groupHours: number; window: DateRange | null; minEvents: number; windowDays: number;
+    groups: RepeatGroup[]; totalGroups: number; /** repeat events: the distinct failure events of the repeated failures */ events: number; equipmentCount: number; /** hours of those events in the range, area-hours */ groupHours: number; window: DateRange | null; minEvents: number; windowDays: number;
     table: ReportTable;
   };
 }
@@ -341,8 +342,8 @@ function summarySection(env: Env): SummarySection {
     change: ch?.mtbfHours ?? null, changeUnit: 'h', status: ov.status.mtbf,
   });
   kpis.push({
-    id: 'repeats', label: t('Repeated failures'), text: k.repeatedFailureCount === 0 ? t('None recorded') : fint(k.repeatedFailureCount), value: k.repeatedFailureCount, unavailable: false,
-    sub: t('{g} groups; occurrences after the first', { g: fint(k.repeatGroups) }), change: ov.repeatedChange, changeUnit: 'count', status: null,
+    id: 'repeats', label: t('Repeat events'), text: k.repeatedFailureCount === 0 ? t('None recorded') : fint(k.repeatedFailureCount), value: k.repeatedFailureCount, unavailable: false,
+    sub: t('failure events of {g} repeated failures', { g: fint(k.repeatGroups) }), change: ov.repeatedChange, changeUnit: 'count', status: null,
   });
   const top = ov.topEquipment.bars[0];
   const bullets = summaryBullets({
@@ -629,17 +630,19 @@ function repeatsSection(env: Env): RepeatsSection {
   const top = typeof o.top === 'number' ? o.top : 10;
   const model: RepeatsModel | null = repeatsModel(ctx);
   const settings = ctx.master.settings;
-  const groupsAll = model ? [...model.result.groups].sort((a, b) => b.occurrences - a.occurrences || b.totalHours - a.totalHours || (a.key < b.key ? -1 : 1)) : [];
+  // the same repeated failures as the Dashboard card and the Repeated failures page (listedRepeats)
+  const rt = repeatsTop(ctx, 0);
+  const groupsAll = model ? [...listedRepeats(model.result).groups].sort((a, b) => b.occurrences - a.occurrences || b.totalHours - a.totalHours || (a.key < b.key ? -1 : 1)) : [];
   const groups = groupsAll.slice(0, top);
   const equipmentCount = new Set(groupsAll.map((g) => g.equipmentId)).size;
-  const groupHours = groupsAll.reduce((s, g) => s + g.totalHours, 0);
+  const groupHours = rt?.hours ?? 0;
   const topGroup = groupsAll[0] ?? null;
   const table: ReportTable = {
     columns: [col('#', 'count'), col(t('Equipment')), col(t('Area(s)')), col(t('Reason')), col(t('Timeline')), col(t('Times'), 'count'), col(t('Total h'), 'hours'), col(t('Avg h'), 'hours2'), col(t('Last failure')), col(t('Previous period'), 'count')],
     rows: groups.map((g, i) => [i + 1, g.equipmentId, g.areaIds.join(', '), g.reasonLabel, g.occurrenceDates.join(', '), g.occurrences, g.totalHours, g.avgHours, g.lastFailureDate, g.previousPeriodOccurrences]),
   };
   const facts = model ? {
-    groups: groupsAll.length, recurrences: model.result.recurrences.length, equipmentCount,
+    groups: groupsAll.length, events: rt?.events ?? 0, equipmentCount,
     top: topGroup && { equipmentId: topGroup.equipmentId, occurrences: topGroup.occurrences, totalHours: topGroup.totalHours, reason: topGroup.reasonLabel },
     minEvents: settings.repeatMinEvents, windowDays: settings.repeatWindowDays,
   } : null;
@@ -649,7 +652,7 @@ function repeatsSection(env: Env): RepeatsSection {
       ...(groupsAll.length > groups.length ? [t('The {k} groups with the most occurrences are shown, of {n} in total.', { k: groups.length, n: groupsAll.length })] : []),
     ]),
     data: {
-      groups, totalGroups: groupsAll.length, recurrences: model?.result.recurrences.length ?? 0, equipmentCount, groupHours, window: model?.window ?? null,
+      groups, totalGroups: groupsAll.length, events: rt?.events ?? 0, equipmentCount, groupHours, window: model?.window ?? null,
       minEvents: settings.repeatMinEvents, windowDays: settings.repeatWindowDays, table,
     },
   };

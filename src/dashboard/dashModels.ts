@@ -3,7 +3,7 @@
 // as the KPIs, and every card also names the exact records behind it (the ids the 'Open records' link opens), so a
 // drill-through always shows the events the card counts.
 import {
-  addMonthsToKey, areaMonthAvailability, chainHours, dailyHoursByClassification, daysInRange, findRepeatedFailures, intersectRanges, lastDayOfMonth, monthRange,
+  addMonthsToKey, areaMonthAvailability, chainHours, dailyHoursByClassification, daysInRange, findRepeatedFailures, intersectRanges, listedRepeats, lastDayOfMonth, monthRange,
   monthlyHoursByClassification, monthlySeries, monthsOfRange, rangeToInterval, startedIn,
   type DateRange, type DayPoint, type Metric, type MonthPoint, type ParetoBar, type ParetoMeasure, type ParetoResult, type RepeatGroup,
 } from '../calc';
@@ -394,9 +394,9 @@ export function repeatsTop(ctx: DashCtx, n = 5): RepeatsTop | null {
   const res = findRepeatedFailures(ctx.scope.failureChains, {
     settings: ctx.master.settings, window, previousWindow: ctx.win.compareRange ?? undefined, lookup: ctx.master.index,
   });
-  const listed = res.groups.filter((g) => g.occurrences >= 2)
-    .sort((a, b) => b.occurrences - a.occurrences || b.totalHours - a.totalHours || a.key.localeCompare(b.key));
-  const ids = [...new Set(listed.flatMap((g) => g.eventIds))];
+  const shared = listedRepeats(res);
+  const listed = [...shared.groups].sort((a, b) => b.occurrences - a.occurrences || b.totalHours - a.totalHours || a.key.localeCompare(b.key));
+  const ids = shared.eventIds;
   const want = new Set(ids);
   const w = rangeToInterval(window);
   let hours = 0;

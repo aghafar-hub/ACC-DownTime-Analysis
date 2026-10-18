@@ -282,9 +282,15 @@ test.describe('dashboards (desktop)', () => {
     const errors = watchConsole(page);
     await page.goto('/');
     await signInAndWait(page, 'engineer');
+    // the Dashboard card and the page count the same repeated failures, repeat events and hours
+    await open(page, '/dashboard', 'page-overview');
+    const card = page.getByTestId('chart-repeats');
+    const listed = num((await card.getByTestId('repeats-all').textContent())!.replace(/\D+/g, ' '));
+    const [ev, hrs] = (await card.locator('b', { hasText: 'repeat events' }).textContent())!.match(/[\d,.]+/g)!.map(num);
     await open(page, '/repeats', 'page-repeats');
-    await expect(page.getByTestId('rt-groups')).toBeVisible();
-    await expect(page.getByTestId('rt-recurrences')).toBeVisible();
+    await expect(page.getByTestId('rt-groups')).toHaveText(String(listed));
+    expect(num(await page.getByTestId('rt-events').textContent())).toBe(ev);
+    expect(num(await page.getByTestId('rt-hours').textContent())).toBeCloseTo(hrs!, 1);
     const rows = page.getByTestId('repeat-row');
     expect(await rows.count()).toBeGreaterThan(0);
     await page.getByTestId('sort-totalHours').click();

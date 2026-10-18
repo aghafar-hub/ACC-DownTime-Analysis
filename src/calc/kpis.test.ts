@@ -182,7 +182,7 @@ describe('multiple areas (area-hours) and contributors', () => {
 });
 
 describe('repeats and orphans in the KPI result', () => {
-  it('counts repeated-failure recurrences and orphans', () => {
+  it('counts repeated failures (groups), their repeat events (every failure event of the group) and orphans', () => {
     const row = createRowFactory();
     const rows = [
       row({ code: '100.A1', reason: 'Belt slip', stop: '2026-03-02 08:00', start: '2026-03-02 09:00' }),
@@ -192,7 +192,7 @@ describe('repeats and orphans in the KPI result', () => {
     ];
     const k = ok(computeKpis({ rows, window: MARCH, dataRange: MARCH, settings }));
     expect(k.repeatGroups).toBe(1);
-    expect(k.repeatedFailureCount).toBe(2);
+    expect(k.repeatedFailureCount).toBe(3);
     expect(k.orphanCount).toBe(1);
   });
 });

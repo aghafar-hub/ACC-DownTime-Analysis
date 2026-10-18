@@ -167,6 +167,15 @@ function groupChains(chains: ChainedEvent[], o: RepeatOptions): Map<string, Keye
   return groups;
 }
 
+/**
+ * The one count of repeated failures every page shows: the groups with at least two occurrences in the window (a group
+ * whose earlier occurrences fall before the window is not listed) and the distinct failure events of those groups.
+ */
+export function listedRepeats(result: RepeatResult): { groups: RepeatGroup[]; eventIds: string[] } {
+  const groups = result.groups.filter((g) => g.occurrences >= 2);
+  return { groups, eventIds: [...new Set(groups.flatMap((g) => g.eventIds))] };
+}
+
 export function findRepeatedFailures(chains: ChainedEvent[], o: RepeatOptions): RepeatResult {
   const win = o.window ? rangeToInterval(o.window) : null;
   const prev = o.previousWindow ? rangeToInterval(o.previousWindow) : null;

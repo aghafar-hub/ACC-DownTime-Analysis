@@ -5,7 +5,7 @@ import { analysableChains, buildFailureEvents, isAnalysable, type ChainedEvent }
 import type { MasterIndex } from './masters';
 import { avail, ratio, unavail, type Metric } from './metric';
 import { equipmentPareto } from './pareto';
-import { findRepeatedFailures } from './repeats';
+import { findRepeatedFailures, listedRepeats } from './repeats';
 import type { CalcSettings, ComparisonKind } from './settings';
 import {
   comparisonRange, daysInRange, dateOf, formatDate, intersectRanges, lastDayOfMonth, monthRange, monthsBetween, parseTs, rangeToInterval, sameRange,
@@ -60,8 +60,9 @@ export interface KpiOk {
   topArea: TopArea;
   topEquipmentByHours: TopEquipment;
   mostFrequentEquipment: TopEquipment;
+  /** repeated failures: groups with at least two occurrences in the window (listedRepeats) */
   repeatGroups: number;
-  /** recurrence events (occurrences after the first) in the window */
+  /** repeat events: the distinct failure events of those groups */
   repeatedFailureCount: number;
   orphanCount: number;
   /** months inside the window with no record at all in the loaded data (plant-wide): left out of T, shown as 'Not uploaded' */
@@ -281,11 +282,11 @@ export function computeKpis(input: KpiInput): KpiResult {
     sum.pl += a.pl; sum.inc += a.inc; sum.cir += a.cir; sum.events += a.events; sum.eventSeconds += a.eventSeconds;
   }
   const total = composeKpis('ALL', t * areaIds.length, sum, input.settings);
-  const repeats = findRepeatedFailures(failureChains, { settings: input.settings, window: eff, lookup: input.index });
+  const repeats = listedRepeats(findRepeatedFailures(failureChains, { settings: input.settings, window: eff, lookup: input.index }));
   return {
     status: 'ok', requestedWindow: input.window, window: eff, partial: !sameRange(eff, input.window) || isMonthInProgress(eff, range),
     areas, total, ...contributors(areas, total, failureChains, eff, input.index, attr),
-    repeatGroups: repeats.groups.length, repeatedFailureCount: repeats.recurrences.length,
+    repeatGroups: repeats.groups.length, repeatedFailureCount: repeats.eventIds.length,
     orphanCount: chains.filter((c) => c.orphan && c.startMs >= w.fromMs && c.startMs < w.toMs).length,
     notUploaded: gap.months, coveredDays: daysInRange(eff) - gap.days,
   };
