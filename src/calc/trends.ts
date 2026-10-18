@@ -378,8 +378,8 @@ export function yearOverYear(input: YoyInput): YoyMonth[] {
     const p = prev[i]!;
     const both = c.hasData && p.hasData;
     const none = (): Change => ({ available: false, reason: c.notUploaded || p.notUploaded ? 'Not uploaded for one of the months' : 'No data for one of the months' });
-    // P7: last year's month covered for less than 90 %: totals as per-day rates, no verdict
-    const scaling = both && c.window ? totalsScaling(daysInRange(c.window), periodCoverage(p.requested, p.window), 'same month last year') : null;
+    // P7: last year's month, or this month (still in progress), covered for less than 90 %: totals as per-day rates, no verdict
+    const scaling = both && c.window ? totalsScaling(daysInRange(c.window), periodCoverage(p.requested, p.window), 'same month last year', periodCoverage(c.requested, c.window)) : null;
     return {
       monthNumber: i + 1, current: c, previous: p,
       failureHours: both ? compareTotal(avail(c.failureHours), avail(p.failureHours), 'lower', scaling) : none(),

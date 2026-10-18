@@ -83,3 +83,49 @@ describe('Resource (cache first, then the server)', () => {
     expect(r.getSnapshot().data).toBeNull();
   });
 });
+
+describe('Resource: sign-out and saved edits (inspection: shared devices, edit-vs-refresh)', () => {
+  it('an answer that arrives after reset() (sign-out) is never shown or cached', async () => {
+    let release!: (v: number[]) => void;
+    const r = new Resource<number[]>('k', () => new Promise((res) => (release = res)));
+    const p = r.load('tok-A');
+    await tick();
+    r.reset();
+    release([1, 2, 3]);
+    await p;
+    expect(r.getSnapshot().data).toBeNull();
+    expect(memory.has('k')).toBe(false);
+  });
+
+  it('after reset() a new load starts at once instead of joining the old request', async () => {
+    const calls: string[] = [];
+    const r = new Resource<string>('k', (tok) => { calls.push(tok); return tok === 'tok-A' ? new Promise(() => {}) : Promise.resolve('B'); });
+    void r.load('tok-A');
+    await tick();
+    r.reset();
+    await r.load('tok-B');
+    expect(calls).toEqual(['tok-A', 'tok-B']);
+    expect(r.getSnapshot().data).toBe('B');
+  });
+
+  it('a refresh started before a saved edit does not revert it; it fetches again', async () => {
+    const answers: ((v: number[]) => void)[] = [];
+    const r = new Resource<number[]>('k', () => new Promise((res) => answers.push(res)));
+    const first = r.load('tok');
+    await tick();
+    answers[0]!([1]);
+    await first;
+    const refresh = r.load('tok', true);
+    await tick();
+    r.patch(() => [1, 99]); // the edit is saved while the refresh is on its way
+    answers[1]!([1]); // the server copy from before the edit
+    await refresh;
+    expect(r.getSnapshot().data).toEqual([1, 99]);
+    await tick();
+    expect(answers).toHaveLength(3); // fetched once more
+    answers[2]!([1, 99]);
+    await tick();
+    await tick();
+    expect(r.getSnapshot()).toMatchObject({ data: [1, 99], refreshing: false });
+  });
+});

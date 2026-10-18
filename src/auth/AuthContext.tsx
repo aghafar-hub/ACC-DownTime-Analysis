@@ -65,6 +65,17 @@ function writeStored(s: Stored | null, remember: boolean) {
   if (s) store.set(SESSION_KEY, JSON.stringify(s), remember ? 'local' : 'session');
 }
 
+const CACHE_OWNER_KEY = 'cache_owner';
+
+/** Clears the in-memory data and the device cache when they may hold another person's data. */
+export async function claimDeviceCache(userId: string): Promise<void> {
+  if (store.get(CACHE_OWNER_KEY) === userId) return;
+  resetDataStores();
+  forgetDashFilters();
+  await clearDataCaches();
+  store.set(CACHE_OWNER_KEY, userId);
+}
+
 export interface AuthState {
   token: string | null;
   user: SessionUser | null;
@@ -116,6 +127,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string, keep: boolean) => {
     const s = await api.login(email.trim(), password, keep);
+    // the device copy belongs to one person: when someone else signs in (the last session ended without a sign-out,
+    // for example a closed browser), it is cleared before anything is shown
+    await claimDeviceCache(s.user.user_id);
     remember.current = keep;
     setNotice(null);
     applySession(s);

@@ -28,6 +28,12 @@ export class Resource<T> {
   private listeners = new Set<() => void>();
   private inflight: Promise<void> | null = null;
   private fetchedAt = 0;
+  /** bumped by reset() (sign-out): an answer to a request started before it is thrown away, never shown or cached */
+  private generation = 0;
+  /** bumped by patch() (a saved edit): an answer to a request started before the edit may not hold it yet */
+  private version = 0;
+  /** a refresh came back older than a saved edit: fetch once more when it ends */
+  private again: string | null = null;
   constructor(private cacheKey: string, private fetcher: (token: string) => Promise<T>) {}
 
   subscribe = (l: () => void) => {
@@ -44,27 +50,44 @@ export class Resource<T> {
   load(token: string, force = false): Promise<void> {
     if (this.inflight) return this.inflight;
     if (!force && this.state.data && !this.state.fromCache && Date.now() - this.fetchedAt < FRESH_MS) return Promise.resolve();
+    const gen = this.generation;
     this.inflight = this.run(token).finally(() => {
+      if (gen !== this.generation) return; // reset() already cleared it
       this.inflight = null;
+      const tok = this.again;
+      this.again = null;
+      if (tok) void this.load(tok, true);
     });
     return this.inflight;
   }
 
   private async run(token: string) {
+    const gen = this.generation;
+    const version = this.version;
+    const current = () => gen === this.generation;
     if (!this.state.data) {
       this.set({ loading: true, error: null, accessDenied: false });
       const cached = await getCached<T>(this.cacheKey);
+      if (!current()) return;
       if (cached) this.set({ data: cached.value, fromCache: true, savedAt: cached.savedAt, loading: false, refreshing: true });
     } else {
       this.set({ refreshing: true, error: null, accessDenied: false });
     }
     try {
       const data = await this.fetcher(token);
+      if (!current()) return; // signed out meanwhile: never show or cache the previous person's data
+      if (version !== this.version) {
+        // an edit was saved while this copy was on its way: keep the edit on screen and fetch again
+        this.set({ refreshing: false });
+        this.again = token;
+        return;
+      }
       this.fetchedAt = Date.now();
       const savedAt = new Date().toISOString();
       this.set({ data, fromCache: false, savedAt, loading: false, refreshing: false, error: null, accessDenied: false });
       void setCached(this.cacheKey, data);
     } catch (err) {
+      if (!current()) return;
       const denied = err instanceof ApiError && err.accessDenied;
       const offline = err instanceof ApiError && err.code === 'network';
       this.set({
@@ -78,6 +101,8 @@ export class Resource<T> {
   }
 
   reset() {
+    this.generation++;
+    this.again = null;
     this.state = EMPTY;
     this.fetchedAt = 0;
     this.inflight = null;
@@ -88,6 +113,7 @@ export class Resource<T> {
   patch(fn: (data: T) => T) {
     if (!this.state.data) return;
     const data = fn(this.state.data);
+    this.version++;
     this.set({ data });
     void setCached(this.cacheKey, data);
   }
