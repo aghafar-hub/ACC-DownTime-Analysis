@@ -25,7 +25,7 @@
 /* seven tiles: one row on a wide page, two rows (4 + 3) on a narrow desktop or tablet, rows of two on a phone */
 @container dash (min-width: 1280px) {
   .krow {
-    grid-template-columns: 1.35fr 0.9fr 1.15fr 1fr 1fr 1fr 1fr;
+    grid-template-columns: 1.3fr 0.85fr 1.05fr 1.25fr 0.85fr 0.95fr 1.1fr;
     gap: 10px;
   }
   .krow .ktile {
