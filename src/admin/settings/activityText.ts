@@ -69,6 +69,10 @@ export function auditSentence(e: AuditEntry, name: (id: string) => string): stri
     case 'login': return t('Signed in');
     case 'login_failed': return t('Failed sign-in ({detail})', { detail: d.replace(/^Wrong password/, t('wrong password')) });
     case 'login_locked': return t('Account locked: {detail}', { detail: d });
+    // backend 1.10.0: no lock any more, a growing wait between attempts
+    case 'login_throttled': return t('Failed sign-in, must wait before the next try ({detail})', { detail: d.replace(/^Wrong password/, t('wrong password')) });
+    case 'sign_out_everywhere': return t('Signed out on all devices');
+    case 'sign_out_user_everywhere': return t('Signed {who} out on all devices', { who: name(id) });
     case 'logout': return t('Signed out');
     case 'change_password': return t('Changed their own password');
     case 'create_first_admin': return t('Created the first Admin ({detail})', { detail: d });

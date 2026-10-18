@@ -66,7 +66,10 @@ var ACTION_RULES = {
   // 1.9.0: sending a report or an actions report by email needs Edit on Reports (the Admin role always may);
   // the test email is for the Admin role only.
   sendReport: { auth: 'tabs', tabs: ['reports'], level: 'Edit', admin: true },
-  sendTestEmail: { auth: 'admin' }
+  sendTestEmail: { auth: 'admin' },
+  // 1.10.0: anyone may end their own sessions everywhere; ending another person's is for the Admin role
+  signOutEverywhere: { auth: 'session', mustChangeOk: true },
+  signOutUserEverywhere: { auth: 'admin' }
 };
 
 function levelRank_(level) { return LEVELS.indexOf(level); }

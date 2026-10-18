@@ -1710,8 +1710,8 @@ var SCHEMA = {
    },
    {
     "key": "lockout_minutes",
-    "value": "15",
-    "description": "Length of the temporary lock"
+    "value": "30",
+    "description": "Longest wait between attempts after too many wrong passwords (1, 2, 4, 8, 16 minutes, then this)"
    },
    {
     "key": "session_hours",
@@ -1720,8 +1720,8 @@ var SCHEMA = {
    },
    {
     "key": "session_hours_keep",
-    "value": "720",
-    "description": "Session length with 'Keep me signed in'"
+    "value": "336",
+    "description": "Session length with 'Keep me signed in' (336 h = 14 days)"
    },
    {
     "key": "min_password_length",

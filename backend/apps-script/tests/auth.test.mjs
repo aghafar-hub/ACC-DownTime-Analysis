@@ -32,7 +32,7 @@ test('login success returns a session with access, never hash fields', () => {
 test('keep signed in uses the longer session', () => {
   const { env, eng } = setup();
   const s = env.ok('login', '', { email: eng.email, password: eng.password, keepSignedIn: true });
-  assert.equal(Date.parse(s.expires_at) - env.clock.now, 720 * HOUR);
+  assert.equal(Date.parse(s.expires_at) - env.clock.now, 336 * HOUR); // 1.10.0: 14 days
 });
 
 test('wrong password and unknown email give the same message', () => {
@@ -45,17 +45,26 @@ test('wrong password and unknown email give the same message', () => {
   assert.equal(env.call('login', '', { email: '', password: '' }).error.code, 'bad_request');
 });
 
-test('lockout after the configured number of wrong passwords, then unlock after the time', () => {
+test('1.10.0: after the limit each further attempt waits 1, 2, 4, 8, 16, then 30 minutes; the password is not checked early', () => {
   const { env, eng } = setup();
-  for (let i = 1; i <= 4; i++) assert.equal(env.call('login', '', { email: eng.email, password: 'nope-nope-1' }).error.code, 'bad_credentials');
-  const fifth = env.call('login', '', { email: eng.email, password: 'nope-nope-1' });
+  const wrong = () => env.call('login', '', { email: eng.email, password: 'nope-nope-1' });
+  for (let i = 1; i <= 4; i++) assert.equal(wrong().error.code, 'bad_credentials');
+  const fifth = wrong();
   assert.equal(fifth.error.code, 'locked');
-  assert.match(fifth.error.message, /15 minutes/);
-  // the correct password is refused while locked
+  assert.equal(fifth.error.message, 'Too many attempts. Try again in 1 minute.');
+  // too early: refused without checking the password, even the right one
   assert.equal(env.call('login', '', { email: eng.email, password: eng.password }).error.code, 'locked');
-  env.advance(14 * MIN);
-  assert.equal(env.call('login', '', { email: eng.email, password: eng.password }).error.code, 'locked');
-  env.advance(2 * MIN);
+  const expect = [2, 4, 8, 16, 30, 30];
+  // walk the waits: wait out the current one, fail again, the next wait doubles up to the cap
+  let wait = 1;
+  for (const m of expect) {
+    env.advance(wait * MIN);
+    const r = wrong();
+    assert.equal(r.error.code, 'locked');
+    assert.match(r.error.message, new RegExp(`in ${m} minutes`));
+    wait = m;
+  }
+  env.advance(wait * MIN);
   const ok = env.call('login', '', { email: eng.email, password: eng.password });
   assert.equal(ok.status, 'ok');
   const row = env.rows('users').find((u) => u.email === eng.email);
@@ -70,19 +79,49 @@ test('a correct login resets the failed-attempt counter', () => {
   for (let i = 0; i < 4; i++) assert.equal(env.call('login', '', { email: eng.email, password: 'nope-nope-1' }).error.code, 'bad_credentials');
 });
 
-test('lockout settings are honoured', () => {
+test('lockout settings are honoured: the limit, and lockout_minutes as the longest wait', () => {
   const { env, admin, eng } = setup();
   env.ok('saveSettings', admin.token, { changes: { lockout_attempts: '2', lockout_minutes: '3' } });
   env.call('login', '', { email: eng.email, password: 'nope-nope-1' });
   const r = env.call('login', '', { email: eng.email, password: 'nope-nope-1' });
   assert.equal(r.error.code, 'locked');
-  assert.match(r.error.message, /3 minutes/);
+  assert.match(r.error.message, /1 minute\./);
+  env.advance(MIN);
+  assert.match(env.call('login', '', { email: eng.email, password: 'nope-nope-1' }).error.message, /2 minutes/);
+  env.advance(2 * MIN);
+  assert.match(env.call('login', '', { email: eng.email, password: 'nope-nope-1' }).error.message, /3 minutes/); // capped
 });
 
-test('an existing token stops working while the user is locked', () => {
+test('1.10.0: wrong passwords never end an existing session', () => {
   const { env, eng } = setup();
-  for (let i = 0; i < 5; i++) env.call('login', '', { email: eng.email, password: 'nope-nope-1' });
-  assert.equal(env.call('getStartup', eng.token).error.code, 'locked');
+  for (let i = 0; i < 8; i++) env.call('login', '', { email: eng.email, password: 'nope-nope-1' });
+  assert.equal(env.call('getStartup', eng.token).status, 'ok');
+});
+
+test('1.10.0: sign out of all devices ends every earlier session of that person; a new sign-in works', () => {
+  const { env, admin, eng } = setup();
+  const other = env.ok('login', '', { email: eng.email, password: eng.password }).token;
+  env.advance(1000);
+  env.ok('signOutEverywhere', eng.token);
+  for (const tok of [eng.token, other]) {
+    const r = env.call('getStartup', tok);
+    assert.equal(r.error.code, 'unauthenticated');
+    assert.match(r.error.message, /signed out on all devices/);
+  }
+  env.advance(1000);
+  const again = env.ok('login', '', { email: eng.email, password: eng.password });
+  assert.equal(env.call('getStartup', again.token).status, 'ok');
+  // the Admin can do it for someone else; nobody else can
+  env.advance(1000);
+  assert.equal(env.call('signOutUserEverywhere', again.token, { userId: admin.user_id }).error.code, 'forbidden');
+  env.ok('signOutUserEverywhere', admin.token, { userId: eng.user_id });
+  assert.equal(env.call('getStartup', again.token).error.code, 'unauthenticated');
+  assert.equal(env.call('getStartup', admin.token).status, 'ok');
+  const audit = env.rows('audit_log').map((r) => r.action);
+  assert.ok(audit.includes('sign_out_everywhere') && audit.includes('sign_out_user_everywhere'));
+  // the session says which server answers (the app shows the 1.10.0 features only then)
+  assert.equal(again.server_version, '1.10.0');
+  assert.equal(env.ok('getMyAccess', admin.token).server_version, '1.10.0');
 });
 
 test('temporary password: must_change limits actions to changePassword, getMyAccess and login', () => {

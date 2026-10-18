@@ -105,6 +105,8 @@ export interface Session {
   token: string; expires_at: string; user: SessionUser; must_change: boolean; access: Access;
   /** The theme saved with the account (backend 1.5.0; '' or absent when none, or from an older server). */
   theme?: string;
+  /** The server's version (backend 1.10.0; absent from an older server). */
+  server_version?: string;
 }
 export interface AdminUser extends SessionUser { active: boolean; must_change: boolean; last_login_at?: string; overrides?: Partial<Access> }
 
@@ -613,7 +615,7 @@ export interface Api {
    * while it is open and visible: it is also the heartbeat of Settings > Active users (backend 1.6.0), carrying the
    * address open and the device in `activity` (older servers ignore it).
    */
-  getMyAccess(token: string, activity?: ActivityHint): Promise<{ user: SessionUser; access: Access; must_change: boolean; theme?: string }>;
+  getMyAccess(token: string, activity?: ActivityHint): Promise<{ user: SessionUser; access: Access; must_change: boolean; theme?: string; server_version?: string }>;
   /** Writes the sign-out to the activity log (backend 1.6.0). Best effort: the app signs out whatever the answer. */
   logout(token: string): Promise<void>;
 
@@ -734,6 +736,12 @@ export interface Api {
   sendReport(token: string, email: OutgoingEmail): Promise<SendResult>;
   /** A short test email to the Admin's own address; says which sender was used (Admin role only). */
   sendTestEmail(token: string): Promise<SendResult & { to: string }>;
+
+  // --- backend 1.10.0 (the app offers these only when session.server_version says 1.10.0 or later) ---
+  /** Ends every session of the caller on every device, this one included. */
+  signOutEverywhere(token: string): Promise<null>;
+  /** Ends every session of another person (Admin role only). */
+  signOutUserEverywhere(token: string, userId: string): Promise<null>;
 
   // --- admin only (backend 1.6.0, the Admin role ROLE-ADMIN whatever the tab access says) ---
   /** Every user with when they were last seen, the page open and the device; online ones first. */

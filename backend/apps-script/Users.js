@@ -26,6 +26,16 @@ function userOrThrow_(userId) {
   return u;
 }
 
+/**
+ * 1.10.0: only an Admin manages Admins. A person with Edit on the Users tab who is not an Admin may not create an Admin,
+ * give the Admin role, or change, reset, sign out or set the access of an Admin. `what` ends the sentence.
+ */
+function requireAdminFor_(session, isAdminTarget, what) {
+  if (isAdminTarget && session.user.role_id !== 'ROLE-ADMIN') {
+    throw apiError_(ERR.FORBIDDEN, 'Only an Admin can ' + what + '.');
+  }
+}
+
 function activeAdminCount_(exceptUserId) {
   return readUsers_().filter(function (u) {
     return u.active && u.role_id === 'ROLE-ADMIN' && u.user_id !== exceptUserId;
@@ -52,6 +62,7 @@ function createUser_(session, u) {
   var name = cleanText_(u.display_name, 'Name', true, 100);
   var roleId = cleanText_(u.role_id, 'Role', true, 50);
   requireRole_(roleId);
+  requireAdminFor_(session, roleId === 'ROLE-ADMIN', 'create an Admin');
   var temp = generateTempPassword_();
   var created = withLock_(function () {
     if (findUserByEmail_(email)) throw apiError_(ERR.CONFLICT, 'A user with this email already exists.');
@@ -76,6 +87,8 @@ function updateUser_(session, userId, changes) {
   var roleChange = null;
   withLock_(function () {
     var u = userOrThrow_(userId);
+    requireAdminFor_(session, u.role_id === 'ROLE-ADMIN', 'change an Admin');
+    requireAdminFor_(session, patch.role_id === 'ROLE-ADMIN', 'give the Admin role');
     var willBeAdmin = (patch.role_id || u.role_id) === 'ROLE-ADMIN' && (patch.active === undefined ? u.active : patch.active);
     if (u.role_id === 'ROLE-ADMIN' && u.active && !willBeAdmin && activeAdminCount_(u.user_id) === 0) {
       throw apiError_(ERR.CONFLICT, 'There must be at least one active Admin.');
@@ -97,6 +110,7 @@ function resetPassword_(session, userId) {
   var target = null;
   withLock_(function () {
     var u = userOrThrow_(userId);
+    requireAdminFor_(session, u.role_id === 'ROLE-ADMIN', 'reset the password of an Admin');
     updateRow_(T.USERS, u._row, {
       password_hash: c.password_hash, password_salt: c.password_salt, hash_rounds: c.hash_rounds,
       must_change: true, failed_attempts: 0, locked_until: ''
@@ -122,6 +136,7 @@ function setUserTabAccess_(session, userId, overrides) {
   }
   withLock_(function () {
     var u = userOrThrow_(userId);
+    requireAdminFor_(session, u.role_id === 'ROLE-ADMIN', 'change the page access of an Admin');
     var existing = readTable_(T.TAB_ACCESS).filter(function (r) { return r.subject_type === 'user' && r.subject_id === u.user_id; });
     deleteRows_(T.TAB_ACCESS, existing.map(function (r) { return r._row; }));
     appendRows_(T.TAB_ACCESS, Object.keys(clean).map(function (tab) {

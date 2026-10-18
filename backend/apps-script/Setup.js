@@ -46,7 +46,8 @@ function applyColumnFormats_(sheet, table, headers) {
 
 /**
  * Adds the starting lines, areas, classifications, roles, settings, role access, contractors and task templates. Never
- * overwrites. 1.7.0: also moves the old action statuses to tasks, once (migrateActions_ in Tasks.js).
+ * overwrites. 1.7.0: also moves the old action statuses to tasks, once (migrateActions_ in Tasks.js). 1.10.0: new defaults
+ * for two untouched settings (updateUntouchedSettings_).
  */
 function seedDefaults() {
   var seeds = SCHEMA.seeds;
@@ -81,12 +82,28 @@ function seedDefaults() {
     // 1.7.0: the three task templates (an existing template id is never touched), then the one-time move of the old action
     // statuses Contractor informed / Waiting stoppage / In progress to tasks (Tasks.js migrateActions_; runs once)
     added[T.TASK_TEMPLATES] = seedTaskTemplates_(seeds.taskTemplates || []);
+    // 1.10.0: new defaults for settings nobody has changed since setup (keep me signed in 30 -> 14 days, the longest
+    // wait after wrong passwords 15 -> 30 minutes); a value someone saved is left alone
+    added.settings_updated = updateUntouchedSettings_({ session_hours_keep: ['720', '336'], lockout_minutes: ['15', '30'] });
     var moved = migrateActions_();
     added.actions_moved_to_tasks = moved.migrated;
     auditLog_('setup', 'seed_defaults', '', '', JSON.stringify(added));
   });
   Logger.log('Defaults added: ' + JSON.stringify(added));
   return added;
+}
+
+/** Sets `key` from its old default to the new one where the row was written by setup and never changed. */
+function updateUntouchedSettings_(changes) {
+  var n = 0;
+  readTable_(T.SETTINGS).forEach(function (r) {
+    var c = changes[r.key];
+    if (c && r.updated_by === 'setup' && String(r.value) === c[0]) {
+      updateRow_(T.SETTINGS, r._row, { value: c[1], updated_at: nowTs_() });
+      n++;
+    }
+  });
+  return n;
 }
 
 /** Creates the first Admin with a random temporary password, written to the log ONCE. */

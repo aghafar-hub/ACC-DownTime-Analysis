@@ -73,7 +73,10 @@ var HANDLERS = {
   listAuditLog: function (s, p) { return listAuditLog_(p.filter, p.cursor); },
   // 1.9.0: email (Mail.js)
   sendReport: function (s, p) { return sendReport_(s, p.email); },
-  sendTestEmail: function (s) { return sendTestEmail_(s); }
+  sendTestEmail: function (s) { return sendTestEmail_(s); },
+  // 1.10.0
+  signOutEverywhere: function (s) { return signOutEverywhere_(s); },
+  signOutUserEverywhere: function (s, p) { return signOutUserEverywhere_(s, p.userId); }
 };
 
 /** Runs one request and returns the response envelope (an object, never throws). */

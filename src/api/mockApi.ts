@@ -108,6 +108,9 @@ export interface SentMockMail { from: string; to: string[]; cc: string[]; subjec
  * `keepAccountThemes` (the app's demo mode) keeps each demo account's saved theme in this browser's storage, so it
  * outlives a reload and a fresh sign-in like on a real server (everything else in the mock starts again on a reload).
  */
+/** The backend version the demo behaves like. */
+export const MOCK_SERVER_VERSION = '1.10.0';
+
 export function createMockApi(opts: { seed?: number; demoActions?: boolean; keepAccountThemes?: boolean } = {}): MockApi {
   let db: SyntheticDb | null = null;
   let now: () => number = () => Date.now();
@@ -185,8 +188,14 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
     const payload = b64urlEncode(JSON.stringify({ uid: u.user_id, role: u.role_id, iat, exp, pv: pwVersion(u) }));
     return {
       token: `${payload}.mock`, expires_at: new Date(exp).toISOString(), user: sessionUser(u),
-      must_change: u.must_change, access: accessFor(u), theme: accountTheme(u.user_id),
+      must_change: u.must_change, access: accessFor(u), theme: accountTheme(u.user_id), server_version: MOCK_SERVER_VERSION,
     };
+  }
+  // backend 1.10.0: 'sign out of all devices' refuses tokens issued before this moment (per user)
+  const signedOutAt = new Map<string, number>();
+  /** 1.10.0: only an Admin manages Admins. */
+  function requireAdminFor(caller: MockUser, isAdminTarget: boolean, what: string) {
+    if (isAdminTarget && caller.role_id !== 'ROLE-ADMIN') throw new ApiError(`Only an Admin can ${what}.`, 'forbidden');
   }
 
   function auth(token: string, allowMustChange = false): { user: MockUser; access: Access; iat: number; exp: number } {
@@ -200,6 +209,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
     const user = get().users.find((u) => u.user_id === payload.uid);
     if (!user || !user.active) throw fail();
     if (payload.pv !== pwVersion(user)) throw new ApiError('Your password changed. Please sign in again.', 'unauthenticated');
+    if ((payload.iat ?? 0) < (signedOutAt.get(user.user_id) ?? 0)) throw new ApiError('You were signed out on all devices. Please sign in again.', 'unauthenticated');
     noteActivity(user.user_id); // like the server: every signed-in call counts as activity
     if (user.must_change && !allowMustChange) {
       throw new ApiError('You must set a new password before you continue.', 'forbidden', true);
@@ -781,20 +791,22 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       const d = get();
       const user = d.users.find((u) => u.email === String(email ?? '').trim().toLowerCase());
       if (!user || !user.active) throw new ApiError(BAD_LOGIN, 'bad_credentials');
-      if (user.locked_until && user.locked_until > now()) {
-        const mins = Math.max(1, Math.ceil((user.locked_until - now()) / 60_000));
-        throw new ApiError(`Too many wrong passwords. This account is locked. Try again in ${mins} minute${mins === 1 ? '' : 's'}.`, 'locked');
-      }
+      const waitError = (until: number) => {
+        const mins = Math.max(1, Math.ceil((until - now()) / 60_000));
+        return new ApiError(`Too many attempts. Try again in ${mins} minute${mins === 1 ? '' : 's'}.`, 'locked');
+      };
+      // backend 1.10.0: no lock; from the limit on each further attempt waits 1, 2, 4, 8, 16 min, then lockout_minutes
+      if (user.locked_until && user.locked_until > now()) throw waitError(user.locked_until);
       if (user.password !== password) {
         user.failed_attempts += 1;
         const limit = numSetting('lockout_attempts', 5);
         if (user.failed_attempts >= limit) {
-          audit(user.user_id, 'login_locked', 'users', user.user_id, `Account locked after ${user.failed_attempts} wrong passwords`);
-          user.locked_until = now() + numSetting('lockout_minutes', 15) * 60_000;
-          user.failed_attempts = 0;
-        } else {
-          audit(user.user_id, 'login_failed', 'users', user.user_id, `Wrong password (${user.failed_attempts} of ${limit})`);
+          const wait = Math.min(2 ** Math.min(user.failed_attempts - limit, 20), Math.max(1, numSetting('lockout_minutes', 30)));
+          user.locked_until = now() + wait * 60_000;
+          audit(user.user_id, 'login_throttled', 'users', user.user_id, `Wrong password (${user.failed_attempts}); next attempt allowed in ${wait} min`);
+          throw waitError(user.locked_until);
         }
+        audit(user.user_id, 'login_failed', 'users', user.user_id, `Wrong password (${user.failed_attempts} of ${limit})`);
         throw new ApiError(BAD_LOGIN, 'bad_credentials');
       }
       user.failed_attempts = 0;
@@ -802,7 +814,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       user.last_login_at = nowTs();
       audit(user.user_id, 'login', 'users', user.user_id, 'Signed in');
       noteActivity(user.user_id);
-      const hours = keepSignedIn ? numSetting('session_hours_keep', 720) : numSetting('session_hours', 12);
+      const hours = keepSignedIn ? numSetting('session_hours_keep', 336) : numSetting('session_hours', 12);
       return clone(makeSession(user, hours * 3_600_000));
     },
     async changePassword(token, current, next) {
@@ -816,6 +828,21 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       audit(a.user.user_id, 'change_password', 'users', a.user.user_id, 'Password changed by the user');
       return clone(makeSession(a.user, a.exp - a.iat));
     },
+    async signOutEverywhere(token) {
+      const a = auth(token, true);
+      signedOutAt.set(a.user.user_id, now() + 1);
+      audit(a.user.user_id, 'sign_out_everywhere', 'users', a.user.user_id, 'Signed out on all devices');
+      return null;
+    },
+    async signOutUserEverywhere(token, userId) {
+      const a = auth(token);
+      if (a.user.role_id !== 'ROLE-ADMIN') throw new ApiError('You do not have access to do this.', 'forbidden');
+      const user = get().users.find((x) => x.user_id === userId);
+      if (!user) throw new ApiError('That user was not found.', 'not_found');
+      signedOutAt.set(user.user_id, now() + 1);
+      audit(a.user.user_id, 'sign_out_user_everywhere', 'users', user.user_id, `Signed ${user.email} out on all devices`);
+      return null;
+    },
     async logout(token) {
       const a = auth(token, true);
       audit(a.user.user_id, 'logout', 'users', a.user.user_id, 'Signed out');
@@ -823,7 +850,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
     async getMyAccess(token, activityHint) {
       const a = auth(token, true);
       noteActivity(a.user.user_id, activityHint);
-      return clone({ user: sessionUser(a.user), access: a.access, must_change: a.user.must_change, theme: accountTheme(a.user.user_id) });
+      return clone({ user: sessionUser(a.user), access: a.access, must_change: a.user.must_change, theme: accountTheme(a.user.user_id), server_version: MOCK_SERVER_VERSION });
     },
 
     // --- reads
@@ -1167,6 +1194,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
     async createUser(token, u) {
       const a = need(token, ['users'], 'Edit');
       const d = get();
+      requireAdminFor(a.user, u?.role_id === 'ROLE-ADMIN', 'create an Admin');
       const email = String(u?.email ?? '').trim().toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError('Please enter a valid email address.', 'bad_request');
       if (d.users.some((x) => x.email === email)) throw new ApiError('Someone already has that email address.', 'conflict');
@@ -1187,6 +1215,8 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       const d = get();
       const user = d.users.find((x) => x.user_id === userId);
       if (!user) throw new ApiError('That user was not found.', 'not_found');
+      requireAdminFor(a.user, user.role_id === 'ROLE-ADMIN', 'change an Admin');
+      requireAdminFor(a.user, changes.role_id === 'ROLE-ADMIN', 'give the Admin role');
       if (user.user_id === a.user.user_id && (changes.active === false || (changes.role_id && changes.role_id !== user.role_id))) {
         throw new ApiError('You cannot deactivate yourself or change your own role.', 'conflict');
       }
@@ -1208,6 +1238,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       const a = need(token, ['users'], 'Edit');
       const user = get().users.find((x) => x.user_id === userId);
       if (!user) throw new ApiError('That user was not found.', 'not_found');
+      requireAdminFor(a.user, user.role_id === 'ROLE-ADMIN', 'reset the password of an Admin');
       const temp = randomTempPassword();
       user.password = temp;
       user.must_change = true;
@@ -1221,6 +1252,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       const a = need(token, ['users'], 'Edit');
       const user = get().users.find((x) => x.user_id === userId);
       if (!user) throw new ApiError('That user was not found.', 'not_found');
+      requireAdminFor(a.user, user.role_id === 'ROLE-ADMIN', 'change the page access of an Admin');
       const clean: Partial<Access> = {};
       for (const [k, v] of Object.entries(overrides ?? {})) {
         if (!TAB_IDS.includes(k as TabId)) throw new ApiError(`There is no tab called "${k}".`, 'bad_request');

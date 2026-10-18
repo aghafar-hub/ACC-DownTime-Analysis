@@ -45,8 +45,8 @@ function auditChanges_(before, after, fields, max) {
  * not listed is in 'system'.
  */
 var AUDIT_GROUPS_ = {
-  signin: ['login', 'login_failed', 'login_locked', 'logout', 'change_password'],
-  users: ['create_user', 'update_user', 'reset_password', 'set_tab_access', 'create_first_admin'],
+  signin: ['login', 'login_failed', 'login_locked', 'login_throttled', 'logout', 'change_password', 'sign_out_everywhere'],
+  users: ['create_user', 'update_user', 'reset_password', 'set_tab_access', 'create_first_admin', 'sign_out_user_everywhere'],
   settings: ['save_setting', 'save_contractors', 'save_area_targets', 'save_task_templates'],
   master: ['add_equipment', 'update_equipment', 'add_area', 'update_area', 'add_reason', 'update_reason', 'add_alias', 'update_alias', 'delete_alias'],
   events: ['edit_event', 'void_event', 'unvoid_event', 'accept_event_flags', 'revalidate_events'],

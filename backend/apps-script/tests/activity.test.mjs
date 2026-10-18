@@ -182,7 +182,7 @@ test('listAuditLog filters on the server: user, kind of change, dates (inclusive
   assert.equal(events.entries.length, 100);
   assert.ok(events.entries.every((e) => e.group === 'events' && e.action === 'edit_event'));
   const signins = f({ group: 'signin', limit: 200 });
-  assert.ok(signins.entries.length > 0 && signins.entries.every((e) => ['login', 'change_password', 'login_failed', 'login_locked', 'logout'].includes(e.action)));
+  assert.ok(signins.entries.length > 0 && signins.entries.every((e) => ['login', 'change_password', 'login_failed', 'login_locked', 'login_throttled', 'logout', 'sign_out_everywhere'].includes(e.action)));
   // 2026-10-20 00:00 UTC is 03:00 plant... the rows carry the text as written: 300 rows from 2026-10-20 00:00 to 04:59
   const day = f({ from: '2026-10-20', to: '2026-10-20', limit: 200 });
   assert.equal(day.entries.length, 200);
@@ -271,6 +271,9 @@ function writeCases(w) {
     ['sendReport', () => { stubMailApp(w.env); return { params: { email: { to: ['someone@outside.org'], subject: 'August report', html: '<p>Hi</p>' } } }; }, 'send_report',
       /^Report to 1 recipient: August report$/],
     ['sendTestEmail', () => { stubMailApp(w.env); return { params: {} }; }, 'send_test_email', /^Test email to admin@example\.com \(mailapp\)$/],
+    // 1.10.0 (the clock does not move here, so the tokens of this test stay valid)
+    ['signOutUserEverywhere', () => ({ params: { userId: w.eng.user_id } }), 'sign_out_user_everywhere', /^Signed eng@example\.com out on all devices$/],
+    ['signOutEverywhere', () => ({ token: w.mgr.token, params: {} }), 'sign_out_everywhere'],
   ];
 }
 
