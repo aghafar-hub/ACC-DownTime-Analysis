@@ -1,5 +1,5 @@
 // A number in the By area table that opens its split by classification: hover with a mouse, tap, click or Enter /
-// Space with the keyboard. Escape, a tap elsewhere or scrolling closes it. Drawn on <body> (fixed, kept on screen) so the
+// Space with the keyboard. Escape, a tap elsewhere or scrolling the cell away closes it. Drawn on <body> (fixed, kept on screen) so the
 // scrolling table does not cut it off. The parts are rounded so they add up to the number in the cell.
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -32,6 +32,8 @@ export default function BreakdownCell({ split, text, decimals, unit, title, test
   /** closed with Escape while the mouse is on the cell: no hover reopening until the mouse leaves */
   const quiet = useRef(false);
   const close = useCallback(() => setOpen(null), []);
+  /** where the cell was when the split was placed: a scroll closes it only once the cell has moved */
+  const anchor = useRef<{ x: number; y: number } | null>(null);
 
   const values = split.parts.map((p) => p.value);
   const shown = roundParts(values, decimals);
@@ -39,7 +41,7 @@ export default function BreakdownCell({ split, text, decimals, unit, title, test
   const fmt = (n: number) => n.toLocaleString('en-GB', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 
   useLayoutEffect(() => {
-    if (!open || !btn.current) { setPos(null); return; }
+    if (!open || !btn.current) { anchor.current = null; setPos(null); return; }
     const r = btn.current.getBoundingClientRect();
     setPos({ left: r.left, top: r.bottom + 4 });
   }, [open]);
@@ -50,6 +52,7 @@ export default function BreakdownCell({ split, text, decimals, unit, title, test
     el.style.translate = '';
     // no room below the cell: open above it (never over the number, so the pointer stays on the cell)
     const r = b.getBoundingClientRect();
+    anchor.current = { x: r.left, y: r.top };
     const h = el.getBoundingClientRect().height;
     const top = r.bottom + 4 + h > window.innerHeight - 8 && r.top - 4 - h >= 8 ? r.top - 4 - h : r.bottom + 4;
     el.style.top = `${top}px`;
@@ -65,12 +68,18 @@ export default function BreakdownCell({ split, text, decimals, unit, title, test
     };
     window.addEventListener('keydown', onKey);
     document.addEventListener('pointerdown', onDoc);
-    window.addEventListener('scroll', close, true);
+    // a scroll event can arrive just after the click that scrolled the cell into view: only a real move closes it
+    const onScroll = () => {
+      const r = btn.current?.getBoundingClientRect();
+      const a = anchor.current;
+      if (!r || !a || Math.abs(r.left - a.x) > 2 || Math.abs(r.top - a.y) > 2) close();
+    };
+    window.addEventListener('scroll', onScroll, true);
     window.addEventListener('resize', close);
     return () => {
       window.removeEventListener('keydown', onKey);
       document.removeEventListener('pointerdown', onDoc);
-      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('resize', close);
     };
   }, [open, close]);

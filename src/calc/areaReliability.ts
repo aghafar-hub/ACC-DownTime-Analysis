@@ -135,3 +135,51 @@ export function areaMonthAvailability(input: MonthlyInput & { areaIds: string[];
   });
   return { months, areas };
 }
+
+export interface RfPoint {
+  area_id: string;
+  /** reliability factor, 0..1 */
+  rf: number;
+  /** x: MTBF, hours */
+  mtbf: number;
+  /** MTTR, hours (null when the area has no failure event) */
+  mttr: number | null;
+  /** incidental (INC) hours */
+  incHours: number;
+  failures: number;
+  /** RF judged against the target as shown (to 0.1 point); null when the target is off */
+  onTarget: boolean | null;
+}
+
+export interface RfMtbfResult {
+  points: RfPoint[];
+  /** areas left out: RF or MTBF not defined (no failures, no running time) */
+  excluded: { area_id: string; reason: string }[];
+  /** median MTBF of the plotted areas; null with fewer than two points */
+  medianMtbf: number | null;
+  /** plotted areas below the RF target, lowest RF first (empty when the target is off) */
+  below: string[];
+}
+
+/**
+ * The reliability factor of each area against its MTBF: one point per area with both figures. RF and MTBF come from
+ * the same AreaKpis as the By area table. `targetPct`: the RF target in percent (null = off).
+ */
+export function rfAgainstMtbf(areas: AreaKpis[], targetPct: number | null): RfMtbfResult {
+  const points: RfPoint[] = [];
+  const excluded: RfMtbfResult['excluded'] = [];
+  for (const a of areas) {
+    if (a.reliabilityFactor.available && a.mtbfHours.available) {
+      const shown = Math.round(a.reliabilityFactor.value * 1000) / 10;
+      points.push({
+        area_id: a.area_id, rf: a.reliabilityFactor.value, mtbf: a.mtbfHours.value, mttr: a.mttrHours.available ? a.mttrHours.value : null,
+        incHours: a.failureHours, failures: a.failureCount, onTarget: targetPct === null ? null : shown >= targetPct,
+      });
+    } else {
+      const m = !a.mtbfHours.available ? a.mtbfHours : a.reliabilityFactor;
+      excluded.push({ area_id: a.area_id, reason: m.available ? '' : m.reason });
+    }
+  }
+  const below = points.filter((p) => p.onTarget === false).sort((x, y) => x.rf - y.rf).map((p) => p.area_id);
+  return { points, excluded, medianMtbf: points.length >= 2 ? median(points.map((p) => p.mtbf)) : null, below };
+}

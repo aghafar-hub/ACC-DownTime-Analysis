@@ -31,7 +31,9 @@ const T_DEF = 'T = scheduled time = 24 h × days in the period × areas, months 
 const OPERATING = 'Operating hours = T − stopped hours (PL + INC + CIR)';
 const MTBF_F = 'MTBF = operating hours ÷ failure events';
 const MTTR_F = 'MTTR = sum of the failure events’ full durations ÷ number of failure events';
-const RATE_F = 'Failures per 1,000 h = failure events ÷ operating hours × 1,000';
+const RF_F = 'Reliability factor RF = running hours ÷ (running hours + INC hours) = MTBF ÷ (MTBF + INC hours per failure)';
+const UF_F = 'Utilization factor UF = running hours ÷ T';
+const RATE_F ='Failures per 1,000 h = failure events ÷ operating hours × 1,000';
 const SHARE_F = 'Share = item ÷ complete total × 100; cumulative % = running sum ÷ complete total × 100';
 
 const P1 = 'Overlapping stops in one area are counted once: the shared time goes to planned (PL) first, then incidental, then CIR; between stops of the same kind, to the one that started first. An exact duplicate record counts once (P1).';
@@ -344,8 +346,8 @@ export const CHART_HELP = {
   },
   'area-table': {
     title: 'By area',
-    what: 'For every area: running and stopped hours, failure hours and failures, availability, MTBF and MTTR, with the target status.',
-    formulas: [T_DEF, OPERATING, '{af}', MTBF_F, MTTR_F, 'Failure h = hours of the area’s failure events (all their rows, clipped to the period)'],
+    what: 'For every area: running and stopped hours, failure hours and failures, availability, reliability factor (RF), utilization factor (UF), MTBF and MTTR, with the target status.',
+    formulas: [T_DEF, OPERATING, '{af}', RF_F, UF_F, MTBF_F, MTTR_F, 'Failure h = hours of the area’s failure events (all their rows, clipped to the period)'],
     how: [P1, P2, 'Stopped h counts each row under its own classification; Failure h and Failures count under the classification of the failure’s first row.', 'Point at, tap or press Enter on Stopped h, Failure h or Failures for the split by classification; the parts add up to the cell.', 'MTBF is per area; the all-area figure is MTBF · all areas (area-hours), never an average of the areas.'],
     example: 'Here, {a}: {T} h − {s} h = {o} h running; {o} h ÷ {n} failures = {mtbf} h MTBF.',
   },
@@ -368,6 +370,20 @@ export const CHART_HELP = {
     what: 'One point per area; the dashed medians split the plot into four quadrants.',
     formulas: [MTBF_F, MTTR_F],
     how: [P2, 'Areas without a failure are not plotted.', 'Low MTBF and high MTTR = the worst quadrant.'],
+  },
+  'rf-mtbf': {
+    title: 'Reliability factor against MTBF by area',
+    what: 'One point per area: how reliable it is (RF, up) against how often it fails (MTBF, right). Below the dashed target line the area is not reliable enough; left of the median MTBF it fails more often than most areas. The size of the mark grows with the MTTR.',
+    formulas: [RF_F, OPERATING, MTBF_F, MTTR_F],
+    how: [P1, P2, 'A green circle is at or above the RF target (Settings), a red triangle below it; the RF is judged as shown, to 0.1 point.', 'MTBF is on a log scale because it spans from a few hours to hundreds.', 'Areas without a failure (no MTBF) or without running time (no RF) are not plotted; they are listed under the chart.'],
+    example: 'Here, {a}: RF {r}, MTBF {m} h, MTTR {n} h.',
+  },
+  'rf-uf-month': {
+    title: 'Reliability and utilization factor by month',
+    what: 'The reliability factor (RF) and the utilization factor (UF) of each month, for all areas (area-hours) or for one area. RF says how much of the time it was meant to run was lost to its own failures; UF says how much of the calendar it ran.',
+    formulas: [RF_F, UF_F, OPERATING, T_DEF],
+    how: [P1, 'Planned and CIR stops lower the UF but not the RF.', RATIO, P6],
+    example: 'Here: {m}: RF {r}, UF {u}.',
   },
   'area-month-heat': {
     title: 'Availability by area and month',

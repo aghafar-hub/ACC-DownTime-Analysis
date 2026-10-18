@@ -606,3 +606,9 @@
 .area-table td {
   vertical-align: middle;
 }
+/* the utilization factor is left out on a phone: the table is already wide there */
+@media (max-width: 640px) {
+  .area-table .col-uf {
+    display: none;
+  }
+}
