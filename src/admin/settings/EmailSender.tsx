@@ -1,15 +1,14 @@
-// Settings > Notifications, for administrators (backend 1.9.0): the system email the app sends from, the steps to make it a
-// Gmail "Send mail as" address of the account that runs the app, and "Send a test email" (Admin role only).
+// Settings > Notifications, for administrators (backend 1.9.0): under the Email sender fields (saved with the alert rules), the
+// steps to make the system email a Gmail "Send mail as" address of the account that runs the app, and "Send a test email"
+// (Admin role only).
 import { useState } from 'react';
 import { api } from '../../api';
 import { useAuth } from '../../auth/AuthContext';
 import { Icon } from '../../icons';
 import { t } from '../../i18n/t';
 import { useAction } from '../useAction';
-import SettingsForm from '../SettingsForm';
-import type { Setting } from '../../api/types';
 
-export default function EmailSender({ settings, onSaved }: { settings: Setting[]; onSaved: (text: string) => void }) {
+export default function EmailSender() {
   const admin = useAuth().user?.role_id === 'ROLE-ADMIN';
   const { run, busy, error } = useAction();
   const [result, setResult] = useState<string | null>(null);
@@ -20,7 +19,6 @@ export default function EmailSender({ settings, onSaved }: { settings: Setting[]
   }
   return (
     <div data-testid="email-sender">
-      <SettingsForm settings={settings} canEdit groupIds={['email']} onSaved={onSaved} />
       <section className="card" aria-label={t('How to set up the system email')} data-testid="email-steps">
         <h3 className="np-admin-h" style={{ marginTop: 0 }}>{t('How to set up the system email')}</h3>
         <ol className="adm-steps">

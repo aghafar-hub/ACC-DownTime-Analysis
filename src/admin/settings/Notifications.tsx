@@ -135,8 +135,9 @@ function AdminBlock({ onSaved }: { onSaved: (text: string) => void }) {
         </div>
         {error && <div className="callout callout--danger" role="alert" data-testid="run-checks-error"><Icon name="alert" size={16} /><span>{error}</span></div>}
       </section>
-      {st.startup && <SettingsForm settings={settings} canEdit groupIds={['alert-rules']} onSaved={(text) => { onSaved(text); st.reload(); }} />}
-      {st.startup && <EmailSender settings={settings} onSaved={(text) => { onSaved(text); st.reload(); }} />}
+      {/* backend 1.9.0: the email sender is saved with the alert rules (one Save bar); its setup steps and test email follow */}
+      {st.startup && <SettingsForm settings={settings} canEdit groupIds={['alert-rules', 'email']} onSaved={(text) => { onSaved(text); st.reload(); }} />}
+      {st.startup && <EmailSender />}
     </div>
   );
 }

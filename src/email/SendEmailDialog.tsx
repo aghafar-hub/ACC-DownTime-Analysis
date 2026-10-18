@@ -27,11 +27,12 @@ export interface SendEmailProps {
   onSent: (r: SendResult, to: number) => void;
 }
 
-function AddressField({ id, label, chips, onChips, people, picked, onPicked, testid }: {
-  id: string; label: string; chips: string[]; onChips: (c: string[]) => void;
+/** The addresses typed so far but not turned into chips yet count as well (Send works without pressing Enter first). */
+function AddressField({ id, label, chips, onChips, text, onText, people, picked, onPicked, testid }: {
+  id: string; label: string; chips: string[]; onChips: (c: string[]) => void; text: string; onText: (s: string) => void;
   people?: ActionPerson[]; picked?: string[]; onPicked?: (ids: string[]) => void; testid: string;
 }) {
-  const [text, setText] = useState('');
+  const setText = onText;
   const [bad, setBad] = useState<string[]>([]);
   const commit = (raw: string) => {
     const { ok, bad: wrong } = parseAddresses(raw);
@@ -81,9 +82,15 @@ function AddressField({ id, label, chips, onChips, people, picked, onPicked, tes
 export default function SendEmailDialog({ title, defaultSubject, kind, people, excel, build, onClose, onSent }: SendEmailProps) {
   const uid = useId();
   const { token } = useAuth();
-  const [to, setTo] = useState<string[]>([]);
+  const [toChips, setTo] = useState<string[]>([]);
+  const [toText, setToText] = useState('');
   const [users, setUsers] = useState<string[]>([]);
-  const [cc, setCc] = useState<string[]>([]);
+  const [ccChips, setCc] = useState<string[]>([]);
+  const [ccText, setCcText] = useState('');
+  const merge = (chips: string[], text: string) => [...new Set([...chips, ...parseAddresses(text).ok])];
+  const to = useMemo(() => merge(toChips, toText), [toChips, toText]);
+  const cc = useMemo(() => merge(ccChips, ccText).filter((x) => !to.includes(x)), [ccChips, ccText, to]);
+  const typedBad = parseAddresses(toText).bad.length + parseAddresses(ccText).bad.length;
   const [subject, setSubject] = useState(defaultSubject);
   const [message, setMessage] = useState('');
   const [attachExcel, setAttachExcel] = useState(false);
@@ -91,8 +98,8 @@ export default function SendEmailDialog({ title, defaultSubject, kind, people, e
   const [step, setStep] = useState('');
   const [error, setError] = useState<string | null>(null);
   const count = to.length + users.length;
-  const problem = useMemo(() => (count === 0 ? t('Add at least one recipient.') : count > 25 ? t('At most 25 recipients in To.') : cc.length > 25 ? t('At most 25 in Cc.')
-    : !subject.trim() ? t('Write a subject.') : subject.length > 200 ? t('The subject is longer than 200 characters.') : null), [count, cc.length, subject]);
+  const problem = useMemo(() => (typedBad ? t('Correct or remove what is not an email address.') : count === 0 ? t('Add at least one recipient.') : count > 25 ? t('At most 25 recipients in To.') : cc.length > 25 ? t('At most 25 in Cc.')
+    : !subject.trim() ? t('Write a subject.') : subject.length > 200 ? t('The subject is longer than 200 characters.') : null), [count, cc.length, subject, typedBad]);
 
   async function send() {
     if (problem || busy || !token) return;
@@ -125,8 +132,8 @@ export default function SendEmailDialog({ title, defaultSubject, kind, people, e
       subtitle={t('The email holds a summary; the report goes with it as a PDF. Replies come back to you.')}>
       {error && <div className="callout callout--danger" role="alert" data-testid="ems-error"><Icon name="alert" size={16} /><span>{error}</span></div>}
       <div className="ems-grid">
-        <AddressField id={`${uid}-to`} label={t('To')} chips={to} onChips={setTo} people={people} picked={users} onPicked={setUsers} testid="ems-to" />
-        <AddressField id={`${uid}-cc`} label={t('Cc (optional)')} chips={cc} onChips={setCc} testid="ems-cc" />
+        <AddressField id={`${uid}-to`} label={t('To')} chips={toChips} onChips={setTo} text={toText} onText={setToText} people={people} picked={users} onPicked={setUsers} testid="ems-to" />
+        <AddressField id={`${uid}-cc`} label={t('Cc (optional)')} chips={ccChips} onChips={setCc} text={ccText} onText={setCcText} testid="ems-cc" />
         <div className="field ems-field">
           <label htmlFor={`${uid}-subject`}>{t('Subject')}</label>
           <input id={`${uid}-subject`} className="input" value={subject} maxLength={220} onChange={(e) => setSubject(e.target.value)} data-testid="ems-subject" />

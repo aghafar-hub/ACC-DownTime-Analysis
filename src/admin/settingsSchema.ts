@@ -2,7 +2,7 @@
 // allowed range (the same ranges the server enforces) and when it takes effect.
 import { t } from '../i18n/t';
 
-export type When = 'now' | 'signin' | 'password' | 'checks';
+export type When = 'now' | 'signin' | 'password' | 'checks' | 'mail';
 
 /** `fallback`: the value the server uses while the database has no row for the key (databases made before the key existed). */
 export interface NumberField { key: string; kind: 'int' | 'number_or_blank'; min: number; max: number; label: string; help: string; unit?: string; fallback?: string }
@@ -20,6 +20,7 @@ export const WHEN_TEXT: Record<When, { badge: string; detail: string }> = {
   now: { badge: 'Applies right away', detail: 'The dashboards recalculate as soon as this is saved.' },
   signin: { badge: 'Applies to new sign-ins', detail: 'People who are already signed in keep their current session.' },
   password: { badge: 'Applies from the next password change', detail: 'Existing passwords stay valid.' },
+  mail: { badge: 'Applies to the next email', detail: 'Emails already sent stay as they are.' },
   checks: { badge: 'Applies at the next check', detail: 'Alerts already raised stay until they resolve or expire. Use "Run checks now" to apply it straight away.' },
 };
 
@@ -94,7 +95,7 @@ export function groups(): Group[] {
     },
     {
       // Shown in Settings > Notifications for administrators (backend 1.9.0, backend/apps-script/Mail.js)
-      id: 'email', title: t('Email sender'), icon: 'bell', when: 'now',
+      id: 'email', title: t('Email sender'), icon: 'mail', when: 'mail',
       intro: t('The address the app sends its emails from: digests, reports and actions reports. Blank: the Google account that runs the app sends them.'),
       fields: [
         { key: 'system_email', kind: 'text', format: 'email', maxLength: 254, label: t('System email'), placeholder: 'downtime@arabiancement.com', fallback: '', help: t('Must be a "Send mail as" address of the Google account that runs the app (see the steps below). Leave blank to send from that account.') },

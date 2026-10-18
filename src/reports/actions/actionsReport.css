@@ -129,6 +129,9 @@
   border-bottom: 1px solid #eceff4;
   vertical-align: top;
 }
+.arp-table td.arp-nowrap {
+  white-space: nowrap;
+}
 .arp-bad {
   color: #b3261e;
   font-weight: 700;

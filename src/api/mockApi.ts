@@ -98,7 +98,7 @@ export interface MockApi extends Api {
   __setNow(fn: () => number): void;
 }
 
-export interface SentMockMail { from: string; to: string[]; cc: string[]; subject: string; html: string; attachments: { name: string; mimeType: string; bytes: number }[]; by: string }
+export interface SentMockMail { from: string; to: string[]; cc: string[]; subject: string; html: string; attachments: { name: string; mimeType: string; bytes: number; base64: string }[]; by: string }
 
 /**
  * `demoActions` (the app's demo mode) fills the Actions page on first use: area targets, auto drafts moved along the board,
@@ -1470,7 +1470,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       if (n >= 30) throw bad(`You have sent ${n} emails today, the most allowed in one day. Try again tomorrow.`);
       mailCount.set(a.user.user_id, { day: today, n: n + 1 });
       const from = mailFrom();
-      sentMail.push({ from: from.from, to, cc, subject, html: String(email?.html ?? ''), attachments: atts.map((f) => ({ name: f.name, mimeType: f.mimeType, bytes: Math.floor(f.base64.length * 3 / 4) })), by: a.user.user_id });
+      sentMail.push({ from: from.from, to, cc, subject, html: String(email?.html ?? ''), attachments: atts.map((f) => ({ name: f.name, mimeType: f.mimeType, bytes: Math.floor(f.base64.length * 3 / 4), base64: f.base64 })), by: a.user.user_id });
       const r = to.length + cc.length;
       audit(a.user.user_id, 'send_report', '', email?.kind === 'actions' ? 'actions' : 'report',
         `${email?.kind === 'actions' ? 'Actions report' : 'Report'} to ${r} recipient${r === 1 ? '' : 's'}: ${subject}${atts.length ? ` (${atts.map((f) => f.name).join(', ')})` : ''}`);
@@ -1538,3 +1538,5 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
 }
 
 export const mockApi: MockApi = createMockApi({ demoActions: true, keepAccountThemes: true });
+// demo mode only: the end-to-end tests read what the mock 'sent' (nothing leaves the browser)
+if (typeof window !== 'undefined') (window as unknown as { __accSentMail?: () => SentMockMail[] }).__accSentMail = () => mockApi.__sentMail();

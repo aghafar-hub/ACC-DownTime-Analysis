@@ -54,7 +54,7 @@ function Document({ m }: { m: ActionsReportModel }) {
                 <tbody>
                   {m.rows.map((r) => (
                     <tr key={r.id} data-testid="arp-row">
-                      {actionCells(r).map((c, i) => <td key={i} className={i === 8 && r.overdue ? 'arp-bad' : undefined}>{c}</td>)}
+                      {actionCells(r).map((c, i) => <td key={i} className={[i === 0 || i === 8 ? 'arp-nowrap' : '', i === 8 && r.overdue ? 'arp-bad' : ''].join(' ').trim() || undefined}>{c}</td>)}
                     </tr>
                   ))}
                 </tbody>
@@ -83,7 +83,7 @@ function Document({ m }: { m: ActionsReportModel }) {
             <div className="arp-table-wrap">
               <table className="arp-table" data-testid="arp-tasks">
                 <thead><tr>{TASK_HEAD().map((h) => <th key={h} scope="col">{h}</th>)}</tr></thead>
-                <tbody>{d.tasks.map((x) => <tr key={x.seq}>{taskCells(x).map((c, i) => <td key={i} className={i === 4 && x.overdue ? 'arp-bad' : undefined}>{c}</td>)}</tr>)}</tbody>
+                <tbody>{d.tasks.map((x) => <tr key={x.seq}>{taskCells(x).map((c, i) => <td key={i} className={[i === 4 ? 'arp-nowrap' : '', i === 4 && x.overdue ? 'arp-bad' : ''].join(' ').trim() || undefined}>{c}</td>)}</tr>)}</tbody>
               </table>
             </div>
           )}

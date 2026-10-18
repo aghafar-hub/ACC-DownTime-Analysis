@@ -7,7 +7,7 @@ import { buildSyntheticDb, DEMO_PASSWORD } from '../mock/synthetic';
 import { createMockApi } from '../api/mockApi';
 import { validateSettings } from '../admin/settingsSchema';
 import { actionsEmailHtml, dataTable, esc, messageHtml, parseAddresses, reportEmailHtml, reportSubject } from './emailHtml';
-import { bytesToBase64, pageStarts, pixelRatioFor, textToBase64 } from './pdf';
+import { bytesToBase64, pageStarts, pickLatinFaces, pixelRatioFor, textToBase64 } from './pdf';
 
 describe('the mock server sends like the real one (backend 1.9.0)', () => {
   it('Reports Edit or Admin may send; recipients and files are checked; picked people are looked up; the log has a line', async () => {
@@ -64,6 +64,10 @@ describe('PDF helpers', () => {
     expect(textToBase64('été')).toBe('w6l0w6k=');
     const big = new Uint8Array(200_000).fill(65);
     expect(atob(bytesToBase64(big)).length).toBe(200_000);
+  });
+  it('keeps only the latin font faces of the font service style sheet', () => {
+    const css = '/* cyrillic */\n@font-face { src: url(https://f/c.woff2); }\n/* latin-ext */\n@font-face { src: url(https://f/le.woff2); }\n/* latin */\n@font-face { src: url(https://f/l.woff2); }';
+    expect(pickLatinFaces(css).map((f) => /url\(([^)]+)\)/.exec(f)![1])).toEqual(['https://f/le.woff2', 'https://f/l.woff2']);
   });
   it('page breaks fall at the end of the last block that fits; a block taller than a page is cut', () => {
     expect(pageStarts([300, 700, 1000], 1000, 800)).toEqual([0, 700]);

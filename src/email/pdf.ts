@@ -11,6 +11,44 @@ export function pixelRatioFor(cssWidth: number, dpi = 150): number {
   return Math.min(4, Math.max(1, targetPx / cssWidth));
 }
 
+/**
+ * The page's web fonts as CSS with the font files inside (data: URLs), so the pictures use the same fonts as the screen.
+ * The library cannot read a style sheet from another site itself; the font service allows a plain fetch. Only the latin
+ * subsets are kept. '' when anything fails (then the pictures use the system fonts). Made once per page load.
+ */
+let fontCss: Promise<string> | null = null;
+export function pickLatinFaces(css: string): string[] {
+  return [...css.matchAll(/\/\*\s*(latin(?:-ext)?)\s*\*\/\s*(@font-face\s*\{[^}]*\})/g)].map((m) => m[2]!);
+}
+async function loadFontCss(): Promise<string> {
+  try {
+    const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"][href*="fonts.googleapis.com"]')];
+    const faces: string[] = [];
+    for (const l of links) faces.push(...pickLatinFaces(await (await fetch(l.href)).text()));
+    const out: string[] = [];
+    for (const face of faces) {
+      const url = /url\((['"]?)(https:[^)'"]+)\1\)/.exec(face)?.[2];
+      if (!url) continue;
+      const blob = await (await fetch(url)).blob();
+      const data = await new Promise<string>((ok, bad) => {
+        const r = new FileReader();
+        r.onload = () => ok(String(r.result));
+        r.onerror = () => bad(r.error);
+        r.readAsDataURL(blob);
+      });
+      out.push(face.replace(url, data));
+    }
+    return out.join('\n');
+  } catch {
+    return '';
+  }
+}
+const fontOptions = async (): Promise<{ fontEmbedCSS: string } | { skipFonts: true }> => {
+  fontCss ??= loadFontCss();
+  const css = await fontCss;
+  return css ? { fontEmbedCSS: css } : { skipFonts: true };
+};
+
 /** Bytes to base64 (no data: prefix), in chunks so a large file never overflows the call stack. */
 export function bytesToBase64(bytes: Uint8Array): string {
   let s = '';
@@ -29,6 +67,7 @@ export const textToBase64 = (text: string): string => bytesToBase64(new TextEnco
 export async function pagesToPdf(pages: HTMLElement[], onPage?: (i: number, n: number) => void): Promise<Uint8Array> {
   const [{ toJpeg }, { jsPDF }] = await Promise.all([import('html-to-image'), import('jspdf')]);
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+  const fonts = await fontOptions();
   for (let i = 0; i < pages.length; i++) {
     onPage?.(i + 1, pages.length);
     const page = pages[i]!;
@@ -36,14 +75,13 @@ export async function pagesToPdf(pages: HTMLElement[], onPage?: (i: number, n: n
     const h = page.offsetHeight;
     const opts = {
       quality: 0.85, backgroundColor: '#ffffff', pixelRatio: pixelRatioFor(w), width: w, height: h, cacheBust: false,
-      style: { transform: 'none', boxShadow: 'none', margin: '0' },
+      style: { transform: 'none', boxShadow: 'none', margin: '0' }, ...fonts,
     };
     let url: string;
     try {
       url = await toJpeg(page, opts);
     } catch {
-      // web fonts from another site can refuse to be read: draw with the system fonts instead
-      url = await toJpeg(page, { ...opts, skipFonts: true });
+      url = await toJpeg(page, { ...opts, fontEmbedCSS: undefined, skipFonts: true });
     }
     if (i > 0) pdf.addPage('a4', 'portrait');
     pdf.addImage(url, 'JPEG', 0, 0, A4_MM.w, A4_MM.h, undefined, 'FAST');
@@ -79,13 +117,17 @@ export async function documentToPdf(root: HTMLElement, onStep?: (text: string) =
   const total = root.scrollHeight;
   const top = root.getBoundingClientRect().top;
   const ends = [...root.querySelectorAll<HTMLElement>('[data-pdf-block]')].map((b) => b.getBoundingClientRect().bottom - top);
-  const opts = { backgroundColor: '#ffffff', pixelRatio: pixelRatioFor(w * (A4_MM.w / contentW)), width: w, height: total, cacheBust: false };
+  const opts = {
+    backgroundColor: '#ffffff', pixelRatio: pixelRatioFor(w * (A4_MM.w / contentW)), width: w, height: total, cacheBust: false,
+    // the screen centres the document with a margin: the picture starts at its left edge
+    style: { margin: '0', border: '0', borderRadius: '0' }, ...(await fontOptions()),
+  };
   onStep?.('draw');
   let canvas: HTMLCanvasElement;
   try {
     canvas = await toCanvas(root, opts);
   } catch {
-    canvas = await toCanvas(root, { ...opts, skipFonts: true });
+    canvas = await toCanvas(root, { ...opts, fontEmbedCSS: undefined, skipFonts: true });
   }
   const scale = canvas.width / w;
   const starts = pageStarts(ends, total, w * (contentH / contentW));
