@@ -9,7 +9,7 @@ import {
   type TopN, type YoyMonth,
 } from '../calc';
 import type { CompareMode } from './filters';
-import { areaTargetStatuses, belowTargetCount, getTargets, kpiTargetStatuses, type KpiTargetStatuses, type Targets } from './targets';
+import { areaTargetStatuses, belowTargetCount, getTargets, kpiTargetStatuses, targetsOfArea, type KpiTargetStatuses, type OwnTargets, type Targets } from './targets';
 import type { DashCtx } from './scope';
 
 // ---------------------------------------------------------------- overview
@@ -421,7 +421,8 @@ export interface AreaReliabilityModel {
 }
 
 /** Everything the Areas block adds below the By area table; all figures come from the same AreaKpis as that table. */
-export function areaReliabilityModel(ctx: DashCtx): AreaReliabilityModel | null {
+/** `own`: targets of single areas for the year; the RF of each area is judged against its own one when it has one. */
+export function areaReliabilityModel(ctx: DashCtx, own?: ReadonlyMap<string, OwnTargets> | null): AreaReliabilityModel | null {
   const k = ctx.kpis.current;
   const window = ctx.win.effective;
   if (k.status !== 'ok' || !window) return null;
@@ -435,7 +436,7 @@ export function areaReliabilityModel(ctx: DashCtx): AreaReliabilityModel | null 
     mtbf: rankAreas(k.areas, (a) => a.mtbfHours, 'asc'),
     mttr: rankAreas(k.areas, (a) => a.mttrHours, 'desc'),
     quadrant: mtbfMttrQuadrants(k.areas),
-    rfMtbf: rfAgainstMtbf(k.areas, targets.reliabilityPct ?? null),
+    rfMtbf: rfAgainstMtbf(k.areas, (id) => targetsOfArea(targets, own, id).reliabilityPct ?? null),
     rate: { rows: rankAreas(k.areas, (a) => a.failureRatePer1000h, 'desc'), overall: k.total.failureRatePer1000h },
     monthAvailability: areaMonthAvailability({
       rows: ctx.scope.kpiRows, chains: ctx.scope.chains, range: ctx.win.range, dataRange: ctx.coverage, areaIds: ctx.base.areaIds, settings: ctx.master.settings,

@@ -11,7 +11,7 @@ import { monthShort, monthText, rangeText } from '../util/dates';
 import type { DashFilters } from './filters';
 import { areaModel, daily, equipmentModel, lineModel, reasonModel } from './models';
 import type { DashCtx } from './scope';
-import { getTargets, targetsOfArea, targetStatus, type TargetStatus, type Targets } from './targets';
+import { getTargets, targetsOfArea, targetStatus, type OwnTargets, type TargetStatus, type Targets } from './targets';
 
 // ---------------------------------------------------------------- ranges
 
@@ -416,12 +416,12 @@ export const NEAR_POINTS = 5;
 /** What the heat map shows: availability (settings basis), the reliability factor or the utilization factor. */
 export type HeatMetric = 'availability' | 'reliability' | 'utilization';
 
-/** The target a heat-map metric is coloured against, in percent; the utilization factor has none. */
-export function heatTarget(targets: Pick<Targets, 'availabilityPct'> & Partial<Pick<Targets, 'reliabilityPct'>>, metric: HeatMetric = 'availability'): number | null {
-  return metric === 'availability' ? targets.availabilityPct : metric === 'reliability' ? targets.reliabilityPct ?? null : null;
+/** The target a heat-map metric is coloured against, in percent (null = none). */
+export function heatTarget(targets: Pick<Targets, 'availabilityPct'> & Partial<Pick<Targets, 'reliabilityPct' | 'utilizationPct'>>, metric: HeatMetric = 'availability'): number | null {
+  return metric === 'availability' ? targets.availabilityPct : metric === 'reliability' ? targets.reliabilityPct ?? null : targets.utilizationPct ?? null;
 }
 
-export function heatTone(frac: number | null, targets: Pick<Targets, 'availabilityPct'> & Partial<Pick<Targets, 'reliabilityPct'>>, metric: HeatMetric = 'availability'): HeatTone | null {
+export function heatTone(frac: number | null, targets: Pick<Targets, 'availabilityPct'> & Partial<Pick<Targets, 'reliabilityPct' | 'utilizationPct'>>, metric: HeatMetric = 'availability'): HeatTone | null {
   const target = heatTarget(targets, metric);
   if (frac === null || target === null) return null;
   const s = targetStatus('availability', frac, { availabilityPct: target, mtbfH: null, mttrH: null })!;
@@ -440,7 +440,8 @@ export interface HeatModel {
   metric: HeatMetric;
 }
 
-export function availabilityHeat(ctx: DashCtx, metric: HeatMetric = 'availability'): HeatModel | null {
+/** `own`: targets of single areas for the year (Settings › Actions & targets); each row is coloured against its own one. */
+export function availabilityHeat(ctx: DashCtx, metric: HeatMetric = 'availability', own?: ReadonlyMap<string, OwnTargets> | null): HeatModel | null {
   const range = contextRange(ctx);
   const eff = ctx.win.effective;
   if (!range || !eff) return null;
@@ -455,7 +456,7 @@ export function availabilityHeat(ctx: DashCtx, metric: HeatMetric = 'availabilit
     area_id: a.area_id, name: areaName(ctx, a.area_id),
     cells: (metric === 'reliability' ? a.reliability : metric === 'utilization' ? a.utilization : a.values).map((v, i) => {
       const x = num(v);
-      return { pct: x === null ? null : x * 100, status: months[i]!.status, tone: heatTone(x, targets, metric) };
+      return { pct: x === null ? null : x * 100, status: months[i]!.status, tone: heatTone(x, targetsOfArea(targets, own, a.area_id), metric) };
     }),
   }));
   // sort by the last month of the period that has values (worst first)

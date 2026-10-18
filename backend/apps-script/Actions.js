@@ -650,6 +650,9 @@ function areaTargetOut_(r) {
   var allowance = r.planned_allowance_h_year === null ? 0 : r.planned_allowance_h_year;
   return {
     area_id: r.area_id, year: r.year, availability_target_pct: r.availability_target_pct,
+    // 1.9.0: RF and UF targets of the area (null = the plant-wide target)
+    reliability_target_pct: r.reliability_target_pct === undefined ? null : r.reliability_target_pct,
+    utilization_target_pct: r.utilization_target_pct === undefined ? null : r.utilization_target_pct,
     planned_allowance_h_year: allowance, monthly_split: parseSplit_(r.monthly_split) || evenMonthlySplit_(allowance),
     overhaul_months: csv_(r.overhaul_months).map(Number).filter(function (n) { return n >= 1 && n <= 12 && n % 1 === 0; }),
     updated_at: r.updated_at, updated_by: r.updated_by
@@ -683,7 +686,7 @@ function saveAreaTargets_(session, year, rows) {
   var uid = session.user.user_id;
   var clean = rows.map(function (r) {
     if (!plainObject_(r)) throw apiError_(ERR.BAD_REQUEST, 'Each area target must be an object.');
-    onlyKeys_(r, ['area_id', 'availability_target_pct', 'planned_allowance_h_year', 'monthly_split', 'overhaul_months'], 'An area target');
+    onlyKeys_(r, ['area_id', 'availability_target_pct', 'reliability_target_pct', 'utilization_target_pct', 'planned_allowance_h_year', 'monthly_split', 'overhaul_months'], 'An area target');
     var area = typeof r.area_id === 'string' ? areaLower[r.area_id.trim().toLowerCase()] : undefined;
     if (!area) throw apiError_(ERR.BAD_REQUEST, 'Area "' + oneLine_(r.area_id, 40) + '" is not in the list of areas.');
     if (seen[area]) throw apiError_(ERR.BAD_REQUEST, 'Area ' + area + ' is listed twice.');
@@ -693,6 +696,17 @@ function saveAreaTargets_(session, year, rows) {
     if (target !== null && !(typeof target === 'number' && isFinite(target) && target >= 0 && target <= 100)) {
       throw apiError_(ERR.BAD_REQUEST, area + ': the availability target must be between 0 and 100, or blank.');
     }
+    // 1.9.0: RF and UF targets; a key left out keeps what is stored (an older app does not send them)
+    var factor = {};
+    [['reliability_target_pct', 'reliability factor (RF)'], ['utilization_target_pct', 'utilization factor (UF)']].forEach(function (k) {
+      if (!(k[0] in r)) return;
+      var v = r[k[0]];
+      if (v === '' || v === null) { factor[k[0]] = ''; return; }
+      if (!(typeof v === 'number' && isFinite(v) && v >= 0 && v <= 100)) {
+        throw apiError_(ERR.BAD_REQUEST, area + ': the ' + k[1] + ' target must be between 0 and 100, or blank.');
+      }
+      factor[k[0]] = v;
+    });
     var allowance = r.planned_allowance_h_year;
     if (!(typeof allowance === 'number' && isFinite(allowance) && allowance >= 0 && allowance <= 8784)) {
       throw apiError_(ERR.BAD_REQUEST, area + ': the planned allowance must be between 0 and 8784 hours a year.');
@@ -713,11 +727,21 @@ function saveAreaTargets_(session, year, rows) {
     var uniq = [];
     months.forEach(function (n) { if (uniq.indexOf(n) < 0) uniq.push(n); });
     uniq.sort(function (a, b) { return a - b; });
-    return {
+    var out = {
       area_id: area, year: year, availability_target_pct: target === null ? '' : target, planned_allowance_h_year: allowance,
       monthly_split: JSON.stringify(split), overhaul_months: uniq.join(','), updated_by: uid
     };
+    Object.keys(factor).forEach(function (k) { out[k] = factor[k]; });
+    return out;
   });
+  // 1.9.0: the RF / UF columns exist only after ensureSchema has run; say so instead of dropping the values
+  var sentFactor = clean.some(function (c) { return 'reliability_target_pct' in c || 'utilization_target_pct' in c; });
+  if (sentFactor) {
+    var have = sheetHeaders_(getSheet_(T.AREA_TARGETS));
+    if (have.indexOf('reliability_target_pct') < 0 || have.indexOf('utilization_target_pct') < 0) {
+      throw apiError_(ERR.BAD_REQUEST, 'The RF and UF target columns are not in the database yet. An Admin must run ensureSchema in the Apps Script editor once.');
+    }
+  }
   withLock_(function () {
     var stamp = nowTs_();
     var existing = readTable_(T.AREA_TARGETS);
@@ -726,8 +750,11 @@ function saveAreaTargets_(session, year, rows) {
       c.updated_at = stamp;
       var ex = existing.filter(function (e) { return e.area_id === c.area_id && e.year === year; })[0];
       if (ex) updateRow_(T.AREA_TARGETS, ex._row, c); else appendRow_(T.AREA_TARGETS, c);
-      var fields = ['availability_target_pct', 'planned_allowance_h_year', 'overhaul_months', 'monthly_split'];
-      var what = auditChanges_(ex ? { availability_target_pct: ex.availability_target_pct === null ? '' : ex.availability_target_pct,
+      var fields = ['availability_target_pct', 'reliability_target_pct', 'utilization_target_pct', 'planned_allowance_h_year', 'overhaul_months', 'monthly_split']
+        .filter(function (f) { return f in c; });
+      var blankNull = function (v) { return v === null || v === undefined ? '' : v; };
+      var what = auditChanges_(ex ? { availability_target_pct: blankNull(ex.availability_target_pct),
+        reliability_target_pct: blankNull(ex.reliability_target_pct), utilization_target_pct: blankNull(ex.utilization_target_pct),
         planned_allowance_h_year: ex.planned_allowance_h_year, overhaul_months: ex.overhaul_months, monthly_split: ex.monthly_split } : {}, c, fields, 40);
       if (what) said.push(c.area_id + ' ' + what.replace(/monthly_split: [^;]*/, 'monthly split changed'));
     });

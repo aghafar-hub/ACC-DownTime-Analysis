@@ -164,17 +164,19 @@ export interface RfMtbfResult {
 
 /**
  * The reliability factor of each area against its MTBF: one point per area with both figures. RF and MTBF come from
- * the same AreaKpis as the By area table. `targetPct`: the RF target in percent (null = off).
+ * the same AreaKpis as the By area table. `targetPct`: the RF target in percent (null = off), or the target of each area.
  */
-export function rfAgainstMtbf(areas: AreaKpis[], targetPct: number | null): RfMtbfResult {
+export function rfAgainstMtbf(areas: AreaKpis[], targetPct: number | null | ((areaId: string) => number | null)): RfMtbfResult {
+  const targetOf = typeof targetPct === 'function' ? targetPct : () => targetPct;
   const points: RfPoint[] = [];
   const excluded: RfMtbfResult['excluded'] = [];
   for (const a of areas) {
     if (a.reliabilityFactor.available && a.mtbfHours.available) {
       const shown = Math.round(a.reliabilityFactor.value * 1000) / 10;
+      const tg = targetOf(a.area_id);
       points.push({
         area_id: a.area_id, rf: a.reliabilityFactor.value, mtbf: a.mtbfHours.value, mttr: a.mttrHours.available ? a.mttrHours.value : null,
-        incHours: a.failureHours, failures: a.failureCount, onTarget: targetPct === null ? null : shown >= targetPct,
+        incHours: a.failureHours, failures: a.failureCount, onTarget: tg === null ? null : shown >= tg,
       });
     } else {
       const m = !a.mtbfHours.available ? a.mtbfHours : a.reliabilityFactor;

@@ -299,7 +299,7 @@ describe('targets in the page adapters', () => {
 
   it('are off (no status anywhere) while the settings are blank; only the RF target has its 95 % default', () => {
     const m = overviewModel(ctx);
-    expect(m.targets).toEqual({ availabilityPct: null, mtbfH: null, mttrH: null, reliabilityPct: 95 });
+    expect(m.targets).toEqual({ availabilityPct: null, mtbfH: null, mttrH: null, reliabilityPct: 95, utilizationPct: null });
     expect(m.status).toMatchObject({ availability: null, mtbf: null, mttr: null });
     if (m.kpi!.total.reliabilityFactor.available) expect(m.status.reliability?.target).toBe(95);
     expect(m.belowTarget).toBeNull();
@@ -311,7 +311,7 @@ describe('targets in the page adapters', () => {
     const c = withTargets([{ key: 'availability_target_pct', value: '95' }, { key: 'target_mtbf_h', value: '100' }, { key: 'target_mttr_h', value: '2' }]);
     const m = overviewModel(c);
     const tot = m.kpi!.total;
-    expect(m.targets).toEqual({ availabilityPct: 95, mtbfH: 100, mttrH: 2, reliabilityPct: 95 });
+    expect(m.targets).toEqual({ availabilityPct: 95, mtbfH: 100, mttrH: 2, reliabilityPct: 95, utilizationPct: null });
     if (tot.availabilityHeadline.available) expect(m.status.availability?.ok).toBe(Math.round(tot.availabilityHeadline.value * 1000) / 10 >= 95);
     if (tot.mttrHours.available) expect(m.status.mttr?.ok).toBe(Math.round(tot.mttrHours.value * 100) / 100 <= 2);
     // P4: the MTBF status is for 'MTBF · all areas (area-hours)', the same figure as the tile, also with several areas

@@ -88,6 +88,9 @@ export function kpiInfo(id: HeroId, basis: 'A' | 'B' | 'C', targets?: Targets, r
   if (id === 'reliability' && targets?.reliabilityPct != null) {
     info.paragraphs.push(t('Target: {x}%, set in Settings. The card says whether the reliability factor is on target (at or above it) or below it.', { x: targets.reliabilityPct }));
   }
+  if (id === 'utilization' && targets?.utilizationPct != null) {
+    info.paragraphs.push(t('Target: {x}%, set in Settings. The card says whether the utilization factor is on target (at or above it) or below it.', { x: targets.utilizationPct }));
+  }
   if (id === 'mtbf' && targets?.mtbfH != null) {
     info.paragraphs.push(t('Target: {x} h, set in Settings. The card says whether the MTBF is on target (at or above it) or below it.', { x: targets.mtbfH }));
   }

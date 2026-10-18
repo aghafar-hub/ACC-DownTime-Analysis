@@ -507,11 +507,15 @@ export function taskStatusProblem(task: Pick<ActionTask, 'owner_kind'>, status: 
 export interface AreaTarget {
   area_id: string; year: number; availability_target_pct: number | null; planned_allowance_h_year: number;
   monthly_split: number[]; overhaul_months: number[]; updated_at: string; updated_by: string;
+  /** backend 1.9.0: RF and UF targets of the area, percent (null or missing = the plant-wide target) */
+  reliability_target_pct?: number | null; utilization_target_pct?: number | null;
 }
 /** saveAreaTargets input; monthly_split left out = even split (evenMonthlySplit). */
 export interface AreaTargetInput {
   area_id: string; availability_target_pct?: number | null; planned_allowance_h_year: number;
   monthly_split?: number[]; overhaul_months?: number[];
+  /** backend 1.9.0; left out = kept as stored */
+  reliability_target_pct?: number | null; utilization_target_pct?: number | null;
 }
 
 /** The even split the server uses: 2-decimal months, December takes the rounding rest. */

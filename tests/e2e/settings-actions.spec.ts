@@ -149,6 +149,34 @@ test.describe('desktop', () => {
     expect((await noSidewaysScroll(page)).ok).toBe(true);
   });
 
+  test('area targets 1.9.0: RF and UF targets per area (blank = plant-wide) judge the area on the Reliability page', async ({ page }) => {
+    await signInAndWait(page, 'admin');
+    await page.goto('/#/settings/actions');
+    const cr = targetRow(page, 'CR');
+    // blank shows the plant-wide RF target in grey
+    await expect(cr.getByTestId('target-rf')).toHaveValue('');
+    await expect(cr.getByTestId('target-rf')).toHaveAttribute('placeholder', '95');
+    await cr.getByTestId('target-rf').fill('101');
+    await page.getByTestId('targets-save').click();
+    await expect(page.getByTestId('targets-problems')).toContainText('CR');
+    await cr.getByTestId('target-rf').fill('99.9');
+    await cr.getByTestId('target-uf').fill('99.9');
+    await page.getByTestId('targets-save').click();
+    await expect(page.getByTestId('saved-toast')).toContainText('saved');
+    await expect(cr.getByTestId('target-rf')).toHaveValue('99.9');
+    await expect(cr.getByTestId('target-uf')).toHaveValue('99.9');
+    // CR is judged against its own 99.9 %: below on RF and UF; the UF column gets a status as an area has a UF target
+    await page.goto('/#/reliability?r=last90');
+    const row = page.locator('[data-testid=area-row][data-area="CR"]');
+    await expect(row.getByTestId('status-reliability')).toHaveAttribute('data-state', 'below');
+    await expect(row.getByTestId('status-utilization')).toHaveAttribute('data-state', 'below');
+    await expect(row.getByTestId('status-reliability')).toHaveAttribute('title', /Target 99\.9%/);
+    // another area keeps the plant-wide RF target of 95 % and has no UF target
+    const hd = page.locator('[data-testid=area-row][data-area="HD"]');
+    await expect(hd.getByTestId('status-reliability')).toHaveAttribute('title', /Target 95%/);
+    await expect(hd.getByTestId('status-utilization')).toHaveText('–');
+  });
+
   test('View on Settings: everything read-only; Hidden: no subtab', async ({ page }) => {
     await signInAndWait(page, 'engineer');
     await page.getByTestId('settings-btn').click();

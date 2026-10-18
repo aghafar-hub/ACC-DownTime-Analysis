@@ -399,7 +399,9 @@
         {"name": "monthly_split", "type": "text", "required": true, "description": "JSON list of 12 hour numbers (Jan..Dec) adding up to planned_allowance_h_year (within 0.1)"},
         {"name": "overhaul_months", "type": "text", "required": false, "description": "Comma-separated month numbers 1-12 with a planned overhaul"},
         {"name": "updated_at", "type": "timestamp", "required": false, "description": ""},
-        {"name": "updated_by", "type": "text", "required": false, "description": ""}
+        {"name": "updated_by", "type": "text", "required": false, "description": ""},
+        {"name": "reliability_target_pct", "type": "float", "required": false, "description": "1.9.0: reliability factor (RF) target of the area, 0-100; blank = the plant-wide RF target"},
+        {"name": "utilization_target_pct", "type": "float", "required": false, "description": "1.9.0: utilization factor (UF) target of the area, 0-100; blank = the plant-wide UF target"}
       ]
     },
     {
@@ -467,6 +469,7 @@
     {"key": "target_mtbf_h", "value": "", "description": "MTBF target, hours (above 0, up to 100000); blank = no target"},
     {"key": "target_mttr_h", "value": "", "description": "MTTR target, hours (above 0, up to 100000); blank = no target"},
     {"key": "reliability_target_pct", "value": "95", "description": "Reliability factor (RF) target, percent; blank = none"},
+    {"key": "utilization_target_pct", "value": "", "description": "Utilization factor (UF) target, percent; blank = none"},
     {"key": "actions_closers", "value": "", "description": "Comma-separated user ids who may close or cancel actions (Admins always can)"},
     {"key": "actions_repeat_n", "value": "3", "description": "Repeated-failure draft: this many failure events of the same equipment and reason ..."},
     {"key": "actions_repeat_days", "value": "30", "description": "... within this many days"},

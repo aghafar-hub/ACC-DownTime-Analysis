@@ -14,6 +14,7 @@ import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
 import { MONTHS } from '../../util/dates';
 import { num } from '../../util/format';
+import { parseSettings } from '../../calc';
 import { useValidationOptional } from '../../validate/ValidationContext';
 import { useAction } from '../useAction';
 import SettingsForm from '../SettingsForm';
@@ -274,6 +275,10 @@ function AreaTargets({ edit, onSaved }: { edit: boolean; onSaved: (text: string)
     return new Map(plannedYtd({ rows: v.rows, targets: fake, year, dataEnd: end }).map((p) => [p.area_id, p]));
   }, [v?.ready, v?.rows, areas, drafts, stored, year]);
 
+  const pctOf = (s: string): number | null => (s.trim() === '' ? null : Number(s.replace(',', '.')));
+  const plantRf = st.startup ? parseSettings(st.startup.settings).reliabilityTargetPct : null;
+  const plantUf = st.startup ? parseSettings(st.startup.settings).utilizationTargetPct : null;
+
   async function save() {
     setShown(true);
     if (problems.length || !toSend.length) return;
@@ -281,7 +286,10 @@ function AreaTargets({ edit, onSaved }: { edit: boolean; onSaved: (text: string)
       const d = draftFor(a);
       const c = checks[a]!;
       return {
-        area_id: a, availability_target_pct: d.target.trim() === '' ? null : Number(d.target.replace(',', '.')),
+        area_id: a, availability_target_pct: pctOf(d.target),
+        // backend 1.9.0: sent only when changed, so an older server (which refuses unknown keys) still saves the rest
+        ...(d.rf !== draftOf(stored.get(a)).rf ? { reliability_target_pct: pctOf(d.rf) } : {}),
+        ...(d.uf !== draftOf(stored.get(a)).uf ? { utilization_target_pct: pctOf(d.uf) } : {}),
         planned_allowance_h_year: c.allowance, monthly_split: c.split, overhaul_months: [...d.overhaul].sort((x, y) => x - y),
       };
     });
@@ -298,7 +306,7 @@ function AreaTargets({ edit, onSaved }: { edit: boolean; onSaved: (text: string)
   return (
     <section className="card at-sec" aria-labelledby="at-targets" data-testid="area-targets">
       <header className="at-sec-head"><span className="at-letter" aria-hidden="true">e</span><div><h2 id="at-targets">{t('Area targets')}</h2>
-        <p className="adm-note">{t('Availability target and planned-stop allowance per area per year. The year is split evenly by month unless you change a month; an overhaul is marked in the month it is planned. Used by the rules Availability below target and Planned overrun, and by the Dashboard.')}</p></div>
+        <p className="adm-note">{t('Availability, reliability factor (RF) and utilization factor (UF) targets and the planned-stop allowance per area per year. A blank RF or UF uses the plant-wide target (shown in grey). The year is split evenly by month unless you change a month; an overhaul is marked in the month it is planned. Used by the rules Availability below target and Planned overrun, and by the Dashboard.')}</p></div>
         <label className="af-pill at-head-btn">
           <span className="af-pill-label">{t('Year')}:</span>
           <select value={year} onChange={(e) => setYear(Number(e.target.value))} aria-label={t('Year')} data-testid="targets-year">
@@ -311,7 +319,7 @@ function AreaTargets({ edit, onSaved }: { edit: boolean; onSaved: (text: string)
       <div className="table-wrap">
         <table className="data-table at-table at-targets" data-testid="targets-table">
           <thead>
-            <tr><th scope="col">{t('Area · line')}</th><th scope="col">{t('Target %')}</th><th scope="col">{t('Allowance h / year')}</th><th scope="col">{t('Overhaul')}</th><th scope="col">{t('Monthly split')}</th><th scope="col">{t('Planned used, year to date')}</th></tr>
+            <tr><th scope="col">{t('Area · line')}</th><th scope="col">{t('Availability %')}</th><th scope="col" title={t('Reliability factor target; blank = the plant-wide target')}>{t('RF %')}</th><th scope="col" title={t('Utilization factor target; blank = the plant-wide target')}>{t('UF %')}</th><th scope="col">{t('Allowance h / year')}</th><th scope="col">{t('Overhaul')}</th><th scope="col">{t('Monthly split')}</th><th scope="col">{t('Planned used, year to date')}</th></tr>
           </thead>
           <tbody>
             {visible.map((a) => {
@@ -331,6 +339,12 @@ function AreaTargets({ edit, onSaved }: { edit: boolean; onSaved: (text: string)
                   </td>
                   <td>
                     <input className={bad('target') ? 'input at-num at-bad' : 'input at-num'} inputMode="decimal" value={d.target} readOnly={!edit} onChange={(e) => set(a.area_id, { target: e.target.value })} aria-label={t('Availability target of {a} (%)', { a: a.area_id })} data-testid="target-pct" placeholder="–" />
+                  </td>
+                  <td>
+                    <input className={bad('rf') ? 'input at-num at-bad' : 'input at-num'} inputMode="decimal" value={d.rf} readOnly={!edit} onChange={(e) => set(a.area_id, { rf: e.target.value })} aria-label={t('Reliability factor target of {a} (%)', { a: a.area_id })} data-testid="target-rf" placeholder={plantRf !== null ? String(plantRf) : '–'} title={t('Blank = the plant-wide target')} />
+                  </td>
+                  <td>
+                    <input className={bad('uf') ? 'input at-num at-bad' : 'input at-num'} inputMode="decimal" value={d.uf} readOnly={!edit} onChange={(e) => set(a.area_id, { uf: e.target.value })} aria-label={t('Utilization factor target of {a} (%)', { a: a.area_id })} data-testid="target-uf" placeholder={plantUf !== null ? String(plantUf) : '–'} title={t('Blank = the plant-wide target')} />
                   </td>
                   <td>
                     <input className={bad('allowance') ? 'input at-num at-bad' : 'input at-num'} inputMode="decimal" value={d.allowance} readOnly={!edit} aria-label={t('Planned allowance of {a} (hours a year)', { a: a.area_id })} data-testid="target-allowance" placeholder="–"
@@ -354,7 +368,7 @@ function AreaTargets({ edit, onSaved }: { edit: boolean; onSaved: (text: string)
                 </tr>,
                 isOpen && (
                   <tr key={`${a.area_id}-m`} className="at-months-row" data-testid="target-months">
-                    <td colSpan={6}>
+                    <td colSpan={8}>
                       <div className="at-months">
                         {MONTHS.map((m, i) => {
                           const used = p?.months[i]?.used;

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { evenMonthlySplit, type AreaTarget, type EventRow } from '../api/types';
 import { areaTargetMap, checkDraft, draftOf, isEvenSplit, plannedYtd, splitSummary, targetForArea, ytdAllowance } from './targets';
 
-const draft = (allowance: string, split: (number | string)[], target = '', overhaul: number[] = []) => ({ target, allowance, split: split.map(String), overhaul });
+const draft = (allowance: string, split: (number | string)[], target = '', overhaul: number[] = [], rf = '', uf = '') => ({ target, rf, uf, allowance, split: split.map(String), overhaul });
 
 describe('area target validation (as saveAreaTargets checks it)', () => {
   it('an even split adds up', () => {
@@ -22,6 +22,12 @@ describe('area target validation (as saveAreaTargets checks it)', () => {
   it('K.1 of the mockup: Feb overhaul and an edited August still add up', () => {
     expect(checkDraft(draft('576', [14, 374, 14, 14, 14, 14, 14, 62, 14, 14, 14, 14], '90', [2])).problems).toEqual({});
     expect(checkDraft(draft('576', [14, 374, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14])).problems.split).toBeDefined();
+  });
+  it('RF and UF targets: 0-100 or blank (blank = plant-wide)', () => {
+    expect(checkDraft(draft('100', evenMonthlySplit(100), '', [], '101')).problems.rf).toBeDefined();
+    expect(checkDraft(draft('100', evenMonthlySplit(100), '', [], '', '-1')).problems.uf).toBeDefined();
+    expect(checkDraft(draft('100', evenMonthlySplit(100), '', [], '97.5', '90')).problems).toEqual({});
+    expect(checkDraft(draft('', [], '', [], '97')).blank).toBe(false);
   });
   it('ranges: target 0-100 or blank, allowance 0-8784, months 0 or more', () => {
     expect(checkDraft(draft('100', evenMonthlySplit(100), '101')).problems.target).toBeDefined();
@@ -46,8 +52,9 @@ describe('area target validation (as saveAreaTargets checks it)', () => {
   });
   it('the typed form of a stored row', () => {
     const row: AreaTarget = { area_id: 'K.1', year: 2026, availability_target_pct: null, planned_allowance_h_year: 120, monthly_split: evenMonthlySplit(120), overhaul_months: [4], updated_at: '', updated_by: '' };
-    expect(draftOf(row)).toEqual({ target: '', allowance: '120', split: evenMonthlySplit(120).map(String), overhaul: [4] });
+    expect(draftOf(row)).toEqual({ target: '', rf: '', uf: '', allowance: '120', split: evenMonthlySplit(120).map(String), overhaul: [4] });
     expect(draftOf(undefined).split).toHaveLength(12);
+    expect(draftOf({ ...row, reliability_target_pct: 97.5, utilization_target_pct: 90 })).toMatchObject({ rf: '97.5', uf: '90' });
   });
 });
 

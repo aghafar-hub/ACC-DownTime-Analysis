@@ -917,7 +917,7 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
       const seen = new Set<string>();
       const clean = rows.map((r: unknown): AreaTarget => {
         if (!isObj(r)) throw bad('Each area target must be an object.');
-        onlyKeys(r, ['area_id', 'availability_target_pct', 'planned_allowance_h_year', 'monthly_split', 'overhaul_months'], 'An area target');
+        onlyKeys(r, ['area_id', 'availability_target_pct', 'reliability_target_pct', 'utilization_target_pct', 'planned_allowance_h_year', 'monthly_split', 'overhaul_months'], 'An area target');
         const area = typeof r.area_id === 'string' ? d.areas.find((a) => a.area_id.toLowerCase() === (r.area_id as string).trim().toLowerCase())?.area_id : undefined;
         if (!area) throw bad(`Area "${oneLine(String(r.area_id ?? ''), 40)}" is not in the list of areas.`);
         if (seen.has(area)) throw bad(`Area ${area} is listed twice.`);
@@ -927,6 +927,17 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
         if (target !== null && !(typeof target === 'number' && Number.isFinite(target) && target >= 0 && target <= 100)) {
           throw bad(`${area}: the availability target must be between 0 and 100, or blank.`);
         }
+        // backend 1.9.0: RF / UF targets; a key left out keeps what is stored
+        const before = targets.find((t) => t.area_id === area && t.year === year);
+        const factor = (key: 'reliability_target_pct' | 'utilization_target_pct', name: string): number | null => {
+          if (!(key in r)) return before?.[key] ?? null;
+          const v = r[key];
+          if (v === '' || v === null || v === undefined) return null;
+          if (!(typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 100)) throw bad(`${area}: the ${name} target must be between 0 and 100, or blank.`);
+          return v;
+        };
+        const rfT = factor('reliability_target_pct', 'reliability factor (RF)');
+        const ufT = factor('utilization_target_pct', 'utilization factor (UF)');
         const allowance = r.planned_allowance_h_year;
         if (!(typeof allowance === 'number' && Number.isFinite(allowance) && allowance >= 0 && allowance <= 8784)) {
           throw bad(`${area}: the planned allowance must be between 0 and 8784 hours a year.`);
@@ -943,7 +954,8 @@ export function createActionStore(deps: ActionStoreDeps): ActionStore {
           throw bad(`${area}: overhaul months must be month numbers from 1 to 12.`);
         }
         return {
-          area_id: area, year, availability_target_pct: target as number | null, planned_allowance_h_year: allowance, monthly_split: [...(split as number[])],
+          area_id: area, year, availability_target_pct: target as number | null, reliability_target_pct: rfT, utilization_target_pct: ufT,
+          planned_allowance_h_year: allowance, monthly_split: [...(split as number[])],
           overhaul_months: [...new Set(months as number[])].sort((a, b) => a - b), updated_at: '', updated_by: u.user_id,
         };
       });

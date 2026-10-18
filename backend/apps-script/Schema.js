@@ -1518,6 +1518,16 @@ var SCHEMA = {
      "name": "updated_by",
      "type": "text",
      "required": false
+    },
+    {
+     "name": "reliability_target_pct",
+     "type": "float",
+     "required": false
+    },
+    {
+     "name": "utilization_target_pct",
+     "type": "float",
+     "required": false
     }
    ]
   },
@@ -1762,6 +1772,11 @@ var SCHEMA = {
     "key": "reliability_target_pct",
     "value": "95",
     "description": "Reliability factor (RF) target, percent; blank = none"
+   },
+   {
+    "key": "utilization_target_pct",
+    "value": "",
+    "description": "Utilization factor (UF) target, percent; blank = none"
    },
    {
     "key": "actions_closers",

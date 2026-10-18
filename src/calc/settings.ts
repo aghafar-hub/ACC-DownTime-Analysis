@@ -20,6 +20,8 @@ export interface CalcSettings {
   targetMttrH: number | null;
   /** reliability factor target in percent; 95 when the setting is not in the sheet yet, null when it is blank (off) */
   reliabilityTargetPct: number | null;
+  /** utilization factor target in percent; null = off (blank or not set) */
+  utilizationTargetPct: number | null;
   defaultComparison: ComparisonKind;
 }
 
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: CalcSettings = {
   targetMtbfH: null,
   targetMttrH: null,
   reliabilityTargetPct: 95,
+  utilizationTargetPct: null,
   defaultComparison: 'previous_period',
 };
 
@@ -49,6 +52,13 @@ function positiveOrNull(raw: string | undefined): number | null {
   const s = (raw ?? '').trim();
   const n = Number(s);
   return s !== '' && Number.isFinite(n) && n > 0 && n <= 100000 ? n : null;
+}
+
+/** A percentage 0-100, or null (blank, missing or out of range). */
+function pctOrNull(raw: string | undefined): number | null {
+  const s = (raw ?? '').trim();
+  const n = Number(s);
+  return s !== '' && Number.isFinite(n) && n >= 0 && n <= 100 ? n : null;
 }
 
 /** Parse settings rows (or a key/value map). Missing or invalid values fall back to defaults. */
@@ -75,6 +85,7 @@ export function parseSettings(source: Setting[] | Record<string, string> = []): 
     targetMtbfH: positiveOrNull(map.target_mtbf_h),
     targetMttrH: positiveOrNull(map.target_mttr_h),
     reliabilityTargetPct: rfTarget,
+    utilizationTargetPct: pctOrNull(map.utilization_target_pct),
     defaultComparison: cmp === 'same_period_last_year' ? cmp : d.defaultComparison,
   };
 }

@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useAreaTargets } from '../actions/ActionsContext';
-import { areaTargetMap } from '../actions/targets';
+import { areaOwnTargets, areaTargetMap } from '../actions/targets';
+import type { OwnTargets } from './targets';
 import type { DashCtx } from './scope';
 
 /** The year the Dashboard figures are about: the year of the end of the period shown. */
@@ -19,6 +20,17 @@ export function useAreaTargetMap(ctx: DashCtx | null): ReadonlyMap<string, numbe
   return useMemo(() => {
     if (year === null) return null;
     const m = areaTargetMap(targets, year);
+    return m.size ? m : null;
+  }, [targets, year]);
+}
+
+/** All own targets of single areas (availability, RF, UF) for the year of the period, or null when no area has one. */
+export function useAreaOwnTargets(ctx: DashCtx | null): ReadonlyMap<string, OwnTargets> | null {
+  const { targets } = useAreaTargets();
+  const year = ctxYear(ctx);
+  return useMemo(() => {
+    if (year === null) return null;
+    const m = areaOwnTargets(targets, year);
     return m.size ? m : null;
   }, [targets, year]);
 }

@@ -22,15 +22,20 @@ export function isEvenSplit(split: readonly number[], allowance: number): boolea
 export interface TargetDraft {
   /** text as typed: '' = no target */
   target: string;
+  /** RF and UF targets as typed (backend 1.9.0): '' = the plant-wide target */
+  rf: string;
+  uf: string;
   allowance: string;
   /** 12 month cells as typed */
   split: string[];
   overhaul: number[];
 }
 
+const pctText = (n: number | null | undefined): string => (n === null || n === undefined ? '' : String(n));
+
 export const draftOf = (row: AreaTarget | undefined): TargetDraft => row
-  ? { target: row.availability_target_pct === null ? '' : String(row.availability_target_pct), allowance: String(row.planned_allowance_h_year), split: row.monthly_split.map((n) => String(n)), overhaul: [...row.overhaul_months] }
-  : { target: '', allowance: '', split: Array.from({ length: 12 }, () => ''), overhaul: [] };
+  ? { target: row.availability_target_pct === null ? '' : String(row.availability_target_pct), rf: pctText(row.reliability_target_pct), uf: pctText(row.utilization_target_pct), allowance: String(row.planned_allowance_h_year), split: row.monthly_split.map((n) => String(n)), overhaul: [...row.overhaul_months] }
+  : { target: '', rf: '', uf: '', allowance: '', split: Array.from({ length: 12 }, () => ''), overhaul: [] };
 
 const numOf = (s: string): number | null => {
   const v = s.trim();
@@ -58,10 +63,15 @@ export interface DraftCheck {
 export function checkDraft(d: TargetDraft): DraftCheck {
   const problems: Record<string, string> = {};
   const target = numOf(d.target);
+  const rf = numOf(d.rf ?? '');
+  const uf = numOf(d.uf ?? '');
   const allowance = numOf(d.allowance);
   const cells = d.split.map(numOf);
-  const blank = target === null && allowance === null && cells.every((c) => c === null);
-  if (target !== null && (Number.isNaN(target) || target < 0 || target > 100)) problems.target = t('Use a number from 0 to 100, or leave it blank.');
+  const blank = target === null && rf === null && uf === null && allowance === null && cells.every((c) => c === null);
+  const pctBad = (n: number | null) => n !== null && (Number.isNaN(n) || n < 0 || n > 100);
+  if (pctBad(target)) problems.target = t('Use a number from 0 to 100, or leave it blank.');
+  if (pctBad(rf)) problems.rf = t('Use a number from 0 to 100, or leave it blank.');
+  if (pctBad(uf)) problems.uf = t('Use a number from 0 to 100, or leave it blank.');
   if (!blank && allowance === null) problems.allowance = t('Write the planned-stop hours allowed in the year (0 or more).');
   else if (allowance !== null && (Number.isNaN(allowance) || allowance < 0 || allowance > ALLOWANCE_MAX)) problems.allowance = t('Use a number from 0 to {max} hours.', { max: ALLOWANCE_MAX.toLocaleString('en-GB') });
   cells.forEach((c, i) => {
@@ -165,6 +175,21 @@ export function plannedYtd(input: { rows: readonly EventRow[]; targets: readonly
 export function areaTargetMap(targets: readonly AreaTarget[], year: number): Map<string, number> {
   const out = new Map<string, number>();
   for (const tg of targets) if (tg.year === year && tg.availability_target_pct !== null && Number.isFinite(tg.availability_target_pct)) out.set(tg.area_id, tg.availability_target_pct);
+  return out;
+}
+
+/** All own targets of each area for the year (availability, RF, UF; percent), for the areas that have any. */
+export function areaOwnTargets(targets: readonly AreaTarget[], year: number): Map<string, { availability?: number; reliability?: number; utilization?: number }> {
+  const out = new Map<string, { availability?: number; reliability?: number; utilization?: number }>();
+  const ok = (n: number | null | undefined): n is number => n !== null && n !== undefined && Number.isFinite(n);
+  for (const tg of targets) {
+    if (tg.year !== year) continue;
+    const o: { availability?: number; reliability?: number; utilization?: number } = {};
+    if (ok(tg.availability_target_pct)) o.availability = tg.availability_target_pct;
+    if (ok(tg.reliability_target_pct)) o.reliability = tg.reliability_target_pct;
+    if (ok(tg.utilization_target_pct)) o.utilization = tg.utilization_target_pct;
+    if (Object.keys(o).length) out.set(tg.area_id, o);
+  }
   return out;
 }
 

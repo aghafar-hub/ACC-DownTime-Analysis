@@ -23,6 +23,7 @@ import type { DashFilters } from '../filters';
 import { areaReliabilityModel, ROLLING_DAYS, type OverviewModel } from '../models';
 import type { DashCtx } from '../scope';
 import DashCard, { OpenLink, Seg, type OpenFn } from './DashCard';
+import { useAreaOwnTargets } from '../useAreaTargetMap';
 
 const HALO = { stroke: 'var(--tk-card-bg)', strokeWidth: 3, paintOrder: 'stroke' } as const;
 
@@ -152,7 +153,8 @@ export function FailMttrCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: 
 export function AttentionCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: DashFilters; onOpen: OpenFn }) {
   const mobile = useIsMobile();
   const eff = ctx.win.effective!;
-  const m = useMemo(() => areaReliabilityModel(ctx), [ctx]);
+  const ownTargets = useAreaOwnTargets(ctx);
+  const m = useMemo(() => areaReliabilityModel(ctx, ownTargets), [ctx, ownTargets]);
   const ids = useMemo(() => failureIdsStarted(ctx, eff), [ctx, eff]);
   const [boxRef, width] = useMeasure<HTMLDivElement>();
   if (!m) return null;
@@ -251,7 +253,8 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
   const [all, setAll] = useState(false);
   const [metric, setMetricState] = useState<HeatMetric>(readHeatMetric);
   const setMetric = (v: HeatMetric) => { setMetricState(v); store.set(HEAT_KEY, v); };
-  const m = useMemo(() => availabilityHeat(ctx, metric), [ctx, metric]);
+  const ownTargets = useAreaOwnTargets(ctx);
+  const m = useMemo(() => availabilityHeat(ctx, metric, ownTargets), [ctx, metric, ownTargets]);
   const ids = useMemo(() => (m ? idsWithHours(ctx, m.range) : []), [ctx, m]);
   if (!m) return null;
   const tg = m.target;
@@ -269,7 +272,7 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
   const basis = ctx.master.settings.availabilityBasis;
   const what = metric === 'reliability' ? t('Reliability factor (RF)') : metric === 'utilization' ? t('Utilization factor (UF)') : t('Availability');
   const short = metric === 'reliability' ? 'RF' : metric === 'utilization' ? 'UF' : t('Availability');
-  const summary = `${what}: ${t('{n} areas by month', { n: m.rows.length })}${sortName ? `, ${t('worst {m} first', { m: sortName })}` : ''}. ${tg !== null ? t('Green: at or above {x}%; amber: up to 5 points below; red: further below.', { x: tg }) : metric === 'utilization' ? t('No target for UF: darker = lower.') : t('No target set: darker = lower.')}`;
+  const summary = `${what}: ${t('{n} areas by month', { n: m.rows.length })}${sortName ? `, ${t('worst {m} first', { m: sortName })}` : ''}. ${tg !== null ? t('Green: at or above {x}%; amber: up to 5 points below; red: further below.', { x: tg }) : t('No target set: darker = lower.')}`;
   const sortAt = m.months.findIndex((x) => x.key === m.sortMonth);
   // a phone shows at most 8 months: those up to the month after the sorted one
   const end = mobile ? Math.min(m.months.length, (sortAt >= 0 ? sortAt : m.months.length - 1) + 2) : m.months.length;
@@ -292,7 +295,7 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
       ] : [{ kind: 'box', className: 'hm-scale', label: t('Darker = lower') }, { kind: 'box', className: 'hm-nodata', label: t('No data') }]}
       summary={summary} scope={scopeText(m.range, filters, 'all')} open={{ ids, label: t('{w} by area and month', { w: what }) }} onOpen={onOpen}
     >
-      {tg === null && metric !== 'utilization' && <p className="at-note" data-testid="heat-no-target">{metric === 'reliability' ? t('No RF target is set: the colours show lower and higher only (darker = lower), not on or below target.') : t('No availability target is set: the colours show lower and higher only (darker = lower), not on or below target.')}</p>}
+      {tg === null && <p className="at-note" data-testid="heat-no-target">{metric === 'reliability' ? t('No RF target is set: the colours show lower and higher only (darker = lower), not on or below target.') : metric === 'utilization' ? t('No plant-wide UF target is set: the colours show lower and higher only (darker = lower). Set one in Settings › Calculations.') : t('No availability target is set: the colours show lower and higher only (darker = lower), not on or below target.')}</p>}
       <div className="hm-wrap">
         <table className="hm" data-testid="heat-table">
           <caption className="sr-only">{t('{w} by area and month', { w: what })}</caption>

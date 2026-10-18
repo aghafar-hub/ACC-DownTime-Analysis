@@ -480,7 +480,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       actionStore.saveTargets(admin, year, [
         { area_id: 'CR', availability_target_pct: 92, planned_allowance_h_year: 240 },
         { area_id: 'RM.1', availability_target_pct: 88, planned_allowance_h_year: 300, overhaul_months: [6] },
-        { area_id: 'K.1', availability_target_pct: 90, planned_allowance_h_year: 576, overhaul_months: [2],
+        { area_id: 'K.1', availability_target_pct: 90, reliability_target_pct: 97, planned_allowance_h_year: 576, overhaul_months: [2],
           monthly_split: [14, 374, 14, 14, 14, 14, 14, 62, 14, 14, 14, 14] },
         { area_id: 'K.2', availability_target_pct: 90, planned_allowance_h_year: 552, overhaul_months: [11] },
         { area_id: 'CM.1', availability_target_pct: 85, planned_allowance_h_year: 120, overhaul_months: [4] },
@@ -1120,6 +1120,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         if (k === 'notif_repeat_alert' && !['true', 'false'].includes(val)) throw new ApiError('Repeat alerts must be true or false.', 'bad_request');
         if (k === 'app_url' && val !== '' && (val.length > 300 || !/^https?:\/\/[^\s<>"']+$/i.test(val))) throw new ApiError('The app address must start with http:// or https://, or be blank.', 'bad_request');
         if ((k === 'target_mtbf_h' || k === 'target_mttr_h') && val !== '' && !(Number.isFinite(Number(val)) && Number(val) > 0 && Number(val) <= 100000)) throw new ApiError('The target must be above 0 and at most 100000 hours, or blank.', 'bad_request');
+        if (k === 'utilization_target_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The utilization factor target must be between 0 and 100, or blank.', 'bad_request');
         if (k === 'reliability_target_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The reliability factor target must be between 0 and 100, or blank.', 'bad_request');
         if (k === 'availability_target_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The availability target must be between 0 and 100, or blank.', 'bad_request');
         if (k === 'actions_auto_draft' && !['true', 'false'].includes(val)) throw new ApiError('Auto drafts must be true or false.', 'bad_request');

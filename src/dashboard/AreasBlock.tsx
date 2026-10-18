@@ -18,7 +18,7 @@ import { monthly } from './models';
 import AreaReliabilityCharts from './AreaReliabilityCharts';
 import { TargetCell } from './TargetStatus';
 import { anyTarget, areaTargetStatuses, getTargets, type TargetStatus } from './targets';
-import { useAreaTargetMap } from './useAreaTargetMap';
+import { useAreaOwnTargets } from './useAreaTargetMap';
 import type { DashCtx } from './scope';
 
 export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (label: string, eventIds: string[]) => void }) {
@@ -27,9 +27,13 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
   const settings = ctx.master.settings;
   const basis = settings.availabilityBasis;
   const targets = getTargets(settings);
-  const ownTargets = useAreaTargetMap(ctx);
+  const ownTargets = useAreaOwnTargets(ctx);
   const rfTarget = targets.reliabilityPct ?? null;
-  const statuses = useMemo(() => areaTargetStatuses(perArea, targets, ownTargets), [perArea, ownTargets, targets.availabilityPct, targets.mtbfH, targets.mttrH, rfTarget]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ufTarget = targets.utilizationPct ?? null;
+  // an RF / UF status column whenever the plant or any area has that target
+  const rfOn = rfTarget !== null || [...(ownTargets?.values() ?? [])].some((o) => o.reliability !== undefined);
+  const ufOn = ufTarget !== null || [...(ownTargets?.values() ?? [])].some((o) => o.utilization !== undefined);
+  const statuses = useMemo(() => areaTargetStatuses(perArea, targets, ownTargets), [perArea, ownTargets, targets.availabilityPct, targets.mtbfH, targets.mttrH, rfTarget, ufTarget]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const breakdown = useMemo(() => (kpi ? areaBreakdowns({
     rows: ctx.scope.kpiRows, failureChains: ctx.scope.failureChains, window: kpi.window, attribution: ctx.scope.attribution, areaIds: kpi.areas.map((a) => a.area_id),
@@ -42,8 +46,8 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
     } : { b: basis },
   };
   // the value and, when a target is set, its status (symbol + words, never colour alone) in one cell
-  const withStatus = (text: string, on: boolean, st: TargetStatus | null | undefined, testid: string, reason?: string) => (
-    <td className="num" title={reason}>
+  const withStatus = (text: string, on: boolean, st: TargetStatus | null | undefined, testid: string, reason?: string, cls?: string, cellTestid?: string) => (
+    <td className={cls ? `num ${cls}` : 'num'} title={reason} data-testid={cellTestid}>
       {on ? <span className="num-status"><span>{text}</span><TargetCell status={st} testid={testid} /></span> : text}
     </td>
   );
@@ -83,8 +87,10 @@ export default function AreasBlock({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (la
                       <td className="num">{bd ? <BreakdownCell split={bd.failureHours} text={fh(bd.failureHours.total)} decimals={1} unit="h" title={t('Failure h of {a}', { a: a.area_id })} testid="area-failure-hours" /> : '–'}</td>
                       <td className="num">{bd ? <BreakdownCell split={bd.failures} text={fint(bd.failures.total)} decimals={0} unit="" title={t('Failures of {a}', { a: a.area_id })} testid="area-failures" /> : fint(a.failureCount)}</td>
                       {withStatus(metricText(a.availabilityHeadline, fpct).text, targets.availabilityPct !== null, st?.availability, 'status-availability')}
-                      {withStatus(metricText(a.reliabilityFactor, fpct).text, rfTarget !== null, st?.reliability, 'status-reliability', metricText(a.reliabilityFactor, fpct).reason)}
-                      <td className="num col-uf" data-testid="area-uf" title={metricText(a.utilizationFactor, fpct).reason}>{metricText(a.utilizationFactor, fpct).text}</td>
+                      {withStatus(metricText(a.reliabilityFactor, fpct).text, rfOn, st?.reliability, 'status-reliability', metricText(a.reliabilityFactor, fpct).reason)}
+                      {ufOn
+                        ? withStatus(metricText(a.utilizationFactor, fpct).text, true, st?.utilization, 'status-utilization', metricText(a.utilizationFactor, fpct).reason, 'col-uf', 'area-uf')
+                        : <td className="num col-uf" data-testid="area-uf" title={metricText(a.utilizationFactor, fpct).reason}>{metricText(a.utilizationFactor, fpct).text}</td>}
                       {withStatus(metricText(a.mtbfHours, fh).text, targets.mtbfH !== null, st?.mtbf, 'status-mtbf', metricText(a.mtbfHours, fh).reason)}
                       {withStatus(metricText(a.mttrHours, fh2).text, targets.mttrH !== null, st?.mttr, 'status-mttr', metricText(a.mttrHours, fh2).reason)}
                     </tr>

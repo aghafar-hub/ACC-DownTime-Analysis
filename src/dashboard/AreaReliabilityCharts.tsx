@@ -15,6 +15,7 @@ import { areaReliabilityModel } from './models';
 import { targetNumber, type TargetStatus } from './targets';
 import { stateWords } from './targets';
 import type { DashCtx } from './scope';
+import { useAreaOwnTargets } from './useAreaTargetMap';
 
 const BAR = 'var(--tk-accent)';
 const AVAIL_MIN = 90;
@@ -31,7 +32,8 @@ const quadrantWords = (q: Quadrant): string => {
 };
 
 export default function AreaReliabilityCharts({ ctx, onOpen }: { ctx: DashCtx; onOpen?: (label: string, eventIds: string[]) => void }) {
-  const m = useMemo(() => areaReliabilityModel(ctx), [ctx]);
+  const ownTargets = useAreaOwnTargets(ctx);
+  const m = useMemo(() => areaReliabilityModel(ctx, ownTargets), [ctx, ownTargets]);
   if (!m) return null;
   const basis = m.basis;
   const none = (r: AreaRank): string | undefined => (r.value !== null ? undefined : r.code === 'no_failures' ? t('no failures') : t('unavailable'));

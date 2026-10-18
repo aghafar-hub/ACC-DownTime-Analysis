@@ -423,3 +423,30 @@ test('code pasted before ensureSchema: uploads and alerts still work, the action
   assert.deepEqual(env.ok('getAreaTargets', admin.token, {}), []);
   assert.equal(env.call('listActions', admin.token).error.code, 'server');
 });
+
+test('area targets 1.9.0: RF and UF targets per area, blank = plant-wide; left out = kept; 0-100', () => {
+  const { env, admin } = setup();
+  const saved = env.ok('saveAreaTargets', admin.token, { year: 2026, rows: [
+    { area_id: 'K.1', planned_allowance_h_year: 120, reliability_target_pct: 97.5, utilization_target_pct: 90 },
+    { area_id: 'CR', planned_allowance_h_year: 100 },
+  ] });
+  const by = (list, a) => list.find((t) => t.area_id === a);
+  assert.equal(by(saved, 'K.1').reliability_target_pct, 97.5);
+  assert.equal(by(saved, 'K.1').utilization_target_pct, 90);
+  assert.equal(by(saved, 'CR').reliability_target_pct, null);
+  assert.equal(by(saved, 'CR').utilization_target_pct, null);
+  // an older app that does not send the keys keeps them
+  const kept = env.ok('saveAreaTargets', admin.token, { year: 2026, rows: [{ area_id: 'K.1', planned_allowance_h_year: 240 }] });
+  assert.equal(by(kept, 'K.1').reliability_target_pct, 97.5);
+  assert.equal(by(kept, 'K.1').planned_allowance_h_year, 240);
+  // blank clears
+  const cleared = env.ok('saveAreaTargets', admin.token, { year: 2026, rows: [{ area_id: 'K.1', planned_allowance_h_year: 240, reliability_target_pct: null, utilization_target_pct: '' }] });
+  assert.equal(by(cleared, 'K.1').reliability_target_pct, null);
+  assert.equal(by(cleared, 'K.1').utilization_target_pct, null);
+  const bad = (row) => env.call('saveAreaTargets', admin.token, { year: 2026, rows: [row] }).error.message;
+  assert.match(bad({ area_id: 'CR', planned_allowance_h_year: 1, reliability_target_pct: 101 }), /reliability factor \(RF\) target must be between 0 and 100/);
+  assert.match(bad({ area_id: 'CR', planned_allowance_h_year: 1, utilization_target_pct: -1 }), /utilization factor \(UF\) target must be between 0 and 100/);
+  // the plant-wide UF target is a setting like the RF one
+  assert.equal(env.call('saveSettings', admin.token, { changes: { utilization_target_pct: '85' } }).status, 'ok');
+  assert.equal(env.call('saveSettings', admin.token, { changes: { utilization_target_pct: '101' } }).error.code, 'bad_request');
+});

@@ -210,6 +210,7 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
       <Tile
         id="utilization" label={t('Utilization (UF)')} info={<InfoButton info={kpiInfo('utilization', basis, model.targets, runExample, live)} testid="kpi-utilization-info" />}
         value={uf.text} unit={uf.unavailable ? undefined : '%'}
+        extra={<TargetChip status={model.status.utilization ?? null} testid="kpi-utilization-target" />}
         change={<ChangeLine change={ch?.utilizationFactor ?? null} fmt={(n) => (n * 100).toFixed(1)} unit=" pts" label={cmpLabel} compare={cmp} />}
         sub={run && run.value.available
           ? <><b data-testid="kpi-uf-running">{fh(run.value.value)} h</b> {t('running of {T} h', { T: fh(run.scheduledHours) })}</>
