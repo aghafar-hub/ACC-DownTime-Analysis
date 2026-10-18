@@ -49,7 +49,7 @@ describe('Event Explorer export', () => {
       expect(row[3]).toBe(e.area_id);
       expect(row[8]).toBeCloseTo(e.duration_s / 3600, 9);
       expect(row[6]).toBe(serialOfStamp(e.stop_ts));
-      expect(row[12]).toBe('Yes');
+      expect(row[12]).toBe(e.is_failure ? 'Yes' : 'No'); // 'Failures only' lists whole failure events: a continuation row says No
     });
   });
 
