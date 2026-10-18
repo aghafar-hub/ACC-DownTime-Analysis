@@ -785,11 +785,18 @@
   position: relative;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(230px, 1fr);
+  grid-auto-columns: minmax(200px, 1fr);
   gap: 12px;
   overflow-x: auto;
   padding-bottom: 8px;
   align-items: start;
+}
+/* a tablet (about 900 px of page) fits the four columns, Closed included, without sideways scrolling */
+@media (min-width: 861px) and (max-width: 1279.98px) {
+  .ab-board {
+    gap: 8px;
+    grid-auto-columns: minmax(0, 1fr);
+  }
 }
 .ab-col {
   background: var(--tk-card-sub-bg);

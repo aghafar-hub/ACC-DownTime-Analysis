@@ -12,6 +12,7 @@ import {
   ACTION_PRIORITIES, ACTION_ROOT_CAUSES, actionProgress, isTerminalStatus,
   type Action, type ActionChanges, type ActionLog, type ActionPriority, type ActionRootCause, type ActionStatus, type EventRow,
 } from '../api/types';
+import { buildFailureEvents } from '../calc';
 import AccessBadge from '../components/AccessBadge';
 import { useStartup } from '../data/useStartup';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -159,6 +160,17 @@ export default function ActionDetail({ id, onClose, taskId }: { id: string; onCl
     for (const r of v.rows) if (want.has(r.event_id)) m.set(r.event_id, r);
     return m;
   }, [a, v?.rows]);
+  // an evidence record is the head of a failure event: its hours are the whole event (the rows that carry it on too),
+  // the same length the action's title and the alerts give
+  const eventHours = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!v?.rows || rowsById.size === 0) return m;
+    const areas = new Set([...rowsById.values()].map((r) => r.area_id));
+    const { chains } = buildFailureEvents(v.rows.filter((r) => areas.has(r.area_id)), { includeInvalid: true });
+    for (const c of chains) if (rowsById.has(c.id)) m.set(c.id, c.durationS / 3600);
+    return m;
+  }, [rowsById, v?.rows]);
+  const hoursOfEvent = (r: EventRow): number => eventHours.get(r.event_id) ?? hoursOf(r);
 
   const save = async (changes: ActionChanges, text = t('Saved.')): Promise<boolean> => {
     if (!a) return false;
@@ -208,7 +220,7 @@ export default function ActionDetail({ id, onClose, taskId }: { id: string; onCl
     const reachedAt = (s: ActionStatus) => statusLogs.find((l) => l.to_status === s)?.at;
     const ids = evidenceIds(a);
     const evRows = ids.map((x) => ({ id: x, row: rowsById.get(x), item: a.evidence.find((e) => e.event_id === x)! }));
-    const evHours = evRows.reduce((s, e) => s + (e.row ? hoursOf(e.row) : 0), 0);
+    const evHours = evRows.reduce((s, e) => s + (e.row ? hoursOfEvent(e.row) : 0), 0);
     const fresh = newEvidence(a);
     const due = dueInfo(a, today);
     const eqDesc = a.equipment_id ? startup?.equipment.find((e) => e.equipment_id === a.equipment_id)?.description : '';
@@ -408,7 +420,7 @@ export default function ActionDetail({ id, onClose, taskId }: { id: string; onCl
                           <tr key={e.id} data-testid="evidence-row">
                             <td className="nowrap">{e.row ? tsText(e.row.stop_ts).replace(/ \d{4}/, '') : <span className="mono">{e.id}</span>}</td>
                             <td>{e.row ? <>{e.row.reason_raw || t('(no reason)')}{e.row.description ? <span className="muted"> · {e.row.description}</span> : null}<span className="muted"> · {e.row.area_id} {e.row.code_raw}</span></> : <span className="muted">{t('Record not loaded on this device')}</span>}</td>
-                            <td className="num">{e.row ? hoursOf(e.row).toFixed(1) : '–'}</td>
+                            <td className="num">{e.row ? hoursOfEvent(e.row).toFixed(1) : '–'}</td>
                             <td>{isNew ? <span className="act-tag act-tag--new"><Icon name="trend" size={12} />{t('New')}</span> : <span className="act-tag">{t('At opening')}</span>}</td>
                           </tr>
                         );

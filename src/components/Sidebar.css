@@ -233,8 +233,13 @@
   left: 30px;
   margin: 0;
   padding: 0 5px;
+  /* never wider than the rest of the narrow rail */
+  max-width: calc(var(--rail-w) - 34px);
+  overflow: hidden;
+  box-sizing: border-box;
 }
-.sidebar-rail--icons .sidebar-link .vbadge .vbadge-sym {
+.sidebar-rail--icons .sidebar-link .vbadge .vbadge-sym,
+.sidebar-rail--icons .sidebar-link .vbadge > span[aria-hidden='true'] {
   display: none;
 }
 .sidebar-rail--icons:not(.sidebar-rail--rest) .sidebar-panel:hover .sidebar-link .vbadge,
@@ -244,7 +249,9 @@
   padding: 1px 8px;
 }
 .sidebar-rail--icons:not(.sidebar-rail--rest) .sidebar-panel:hover .sidebar-link .vbadge .vbadge-sym,
-.sidebar-rail--icons .sidebar-panel:has(:focus-visible) .sidebar-link .vbadge .vbadge-sym {
+.sidebar-rail--icons .sidebar-panel:has(:focus-visible) .sidebar-link .vbadge .vbadge-sym,
+.sidebar-rail--icons:not(.sidebar-rail--rest) .sidebar-panel:hover .sidebar-link .vbadge > span[aria-hidden='true'],
+.sidebar-rail--icons .sidebar-panel:has(:focus-visible) .sidebar-link .vbadge > span[aria-hidden='true'] {
   display: inline;
 }
 
