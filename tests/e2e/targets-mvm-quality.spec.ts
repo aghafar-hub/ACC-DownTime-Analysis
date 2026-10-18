@@ -33,10 +33,12 @@ test.describe('targets', () => {
     const errors = watchConsole(page);
     await as(page, 'engineer');
     await open(page, '/overview', 'page-overview');
-    for (const id of ['kpi-availability-target', 'kpi-mttr-target', 'hbars-extra-ref']) await expect(page.getByTestId(id)).toHaveCount(0);
+    for (const id of ['kpi-mttr-target', 'kpi-mtbf-target', 'hbars-extra-ref']) await expect(page.getByTestId(id)).toHaveCount(0);
     // the demo has availability targets for some areas (Settings > Actions & targets): only those rows are judged
     await expect(page.getByTestId('chart-area-availability').getByTestId('own-target-note')).toBeVisible();
-    await expect(page.getByTestId('kpi-availability')).not.toContainText('Target');
+    // the KPI row shows the reliability factor (no availability tile); its target is 95 % until one is saved
+    await expect(page.getByTestId('kpi-availability')).toHaveCount(0);
+    await expect(page.getByTestId('kpi-reliability')).toContainText('Target 95%');
     await open(page, '/reliability', 'page-reliability');
     await expect(page.getByTestId('area-table')).toBeVisible();
     for (const id of ['status-availability', 'status-mtbf', 'status-mttr']) await expect(page.getByTestId(id)).toHaveCount(0);
@@ -56,11 +58,10 @@ test.describe('targets', () => {
     await setTargets(page, { avail: '99.9', mtbf: '200', mttr: '0.5' });
 
     await open(page, '/overview', 'page-overview');
-    const av = page.getByTestId('kpi-availability-target');
-    await expect(av).toBeVisible();
-    await expect(av).toHaveText(/^(✔ On target \([+−]?\d+\.\d pt\)|▼ \d+\.\d pt below target)$/);
-    await expect(av.locator('.target-sym')).toHaveText(/[✔▼]/);
-    await expect(page.getByTestId('kpi-availability')).toContainText('Target 99.9%');
+    const rf = page.getByTestId('kpi-reliability-target');
+    await expect(rf).toBeVisible();
+    await expect(rf).toHaveText(/^(✔ On target \([+−]?\d+\.\d pt\)|▼ \d+\.\d pt below target)$/);
+    await expect(rf.locator('.target-sym')).toHaveText(/[✔▼]/);
     const mttr = page.getByTestId('kpi-mttr-target');
     await expect(mttr).toHaveText(/^(✔ On target \([+−]?\d+\.\d\d h\)|▲ \d+\.\d\d h above target)$/);
     await expect(mttr.locator('.target-sym')).toHaveText(/[✔▲]/);
@@ -85,8 +86,8 @@ test.describe('targets', () => {
     await expect(page.getByTestId('chart-avail-heat').getByTestId('chart-legend')).toContainText('At or above 99.9%');
 
     // info dialogs mention the target
-    await page.getByTestId('kpi-availability-info').click();
-    await expect(page.getByTestId('kpi-info')).toContainText('Target: 99.9%');
+    await page.getByTestId('kpi-reliability-info').click();
+    await expect(page.getByTestId('kpi-info')).toContainText('Target: 95%');
     await page.getByTestId('kpi-info-close').click();
     await page.getByTestId('kpi-mttr-info').click();
     await expect(page.getByTestId('kpi-info')).toContainText('Target: 0.5 h');
@@ -129,7 +130,7 @@ test.describe('targets', () => {
     // blank again: everything disappears
     await setTargets(page, { avail: '', mtbf: '', mttr: '' });
     await open(page, '/overview', 'page-overview');
-    await expect(page.getByTestId('kpi-availability-target')).toHaveCount(0);
+    await expect(page.getByTestId('kpi-mttr-target')).toHaveCount(0);
     // the demo's own area targets (Settings > Actions & targets) still mark their rows; the plant-wide wording is gone
     await expect(page.getByTestId('chart-area-availability').getByTestId('own-target-note')).toBeVisible();
     expect(errors, errors.join('\n')).toEqual([]);
@@ -139,9 +140,7 @@ test.describe('targets', () => {
     await as(page, 'admin');
     await setTargets(page, { avail: '1', mttr: '99999' });
     await open(page, '/overview', 'page-overview');
-    await expect(page.getByTestId('kpi-availability-target')).toHaveText(/^✔ On target \(\+\d+\.\d pt\)$/);
     await expect(page.locator('[data-testid="at-row"][data-state="below"]')).toHaveCount(0);
-    await expect(page.getByTestId('kpi-availability-target')).toHaveAttribute('data-state', 'on');
     await expect(page.getByTestId('kpi-mttr-target')).toHaveAttribute('data-state', 'on');
     await expect(page.getByTestId('below-target-count')).toHaveText(/^0 of \d+ areas below target/);
     // Settings > Notifications has no second availability target any more
@@ -296,7 +295,7 @@ for (const width of [360, 390]) {
         expect(await smallText(page), `${label} text`).toEqual([]);
       };
       await open(page, '/overview', 'page-overview');
-      await expect(page.getByTestId('kpi-availability-target')).toBeVisible();
+      await expect(page.getByTestId('kpi-reliability-target')).toBeVisible();
       await expect(page.getByTestId('overview-mvm')).toHaveAttribute('data-open', 'no'); // collapsed on a phone
       await checks('overview');
       await page.getByTestId('overview-mvm-toggle').click();
