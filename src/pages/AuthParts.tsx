@@ -118,3 +118,8 @@ export function PasswordField({ label, value, onChange, testid, autoComplete, na
     </div>
   );
 }
+
+/** Put the cursor in the first field only with a mouse: on a touch screen it would open the keyboard at once and push
+ * Sign in below the screen (inspection, phase 2). */
+export const focusOnOpen = (): boolean =>
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(hover: hover) and (pointer: fine)').matches;

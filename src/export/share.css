@@ -58,6 +58,6 @@
 }
 @media (max-width: 860px) {
   .share-prompt {
-    bottom: calc(var(--bottom-nav-h, 0px) + 12px);
+    bottom: calc(var(--bottom-nav-h, 0px) + 12px + var(--install-banner-h, 0px));
   }
 }

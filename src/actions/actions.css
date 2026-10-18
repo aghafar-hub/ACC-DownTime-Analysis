@@ -941,7 +941,7 @@
 .act-fab {
   position: fixed;
   right: calc(16px + var(--safe-r, 0px));
-  bottom: calc(var(--bottom-nav-h, 64px) + 16px);
+  bottom: calc(var(--bottom-nav-h, 64px) + 16px + var(--install-banner-h, 0px));
   z-index: 60;
   display: inline-flex;
   align-items: center;
@@ -994,7 +994,7 @@
 .act-toast-x { color: var(--tk-card-bg); }
 @media (max-width: 860px) {
   .act-toast {
-    bottom: calc(var(--bottom-nav-h, 64px) + 12px);
+    bottom: calc(var(--bottom-nav-h, 64px) + 12px + var(--install-banner-h, 0px));
     flex-wrap: wrap;
   }
 }
