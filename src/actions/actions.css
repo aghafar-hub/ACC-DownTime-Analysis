@@ -1693,9 +1693,6 @@
 }
 
 /* Create action: closing with typed input asks first (Escape, close button, shade, Back) */
-.ca-form-wrap {
-  display: contents;
-}
 .ca-discard {
   display: flex;
   flex-wrap: wrap;

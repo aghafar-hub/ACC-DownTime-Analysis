@@ -437,7 +437,7 @@ test.describe('Event records list (R3, phone)', () => {
     const errors = watchConsole(page);
     await drillFromPareto(page);
     const chip = page.getByTestId('drill-chip');
-    await expect(page.getByTestId('drill-text')).toHaveText(/^From Pareto: \S+ · .+ · \d+ events?$/);
+    await expect(page.getByTestId('drill-text')).toHaveText(/^From Causes: \S+ · .+ · \d+ events?$/);
     // it sits in the sticky scope slot: still in view after scrolling down the list
     await page.evaluate(() => window.scrollBy(0, 900));
     const box = (await chip.boundingBox())!;

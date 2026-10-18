@@ -6,7 +6,7 @@
 // matches what the action came from is suggested) and its tasks are listed pre-filled and editable: untick to skip, change the
 // title, owner, person, due offset and the stop switch, or add another. "Area contractor" becomes the area's contractor. The
 // action's own due date then follows its tasks.
-import { useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ACTION_PRIORITIES, ACTION_ROOT_CAUSES, type ActionPriority, type ActionRootCause, type ActionScope, type NewAction } from '../api/types';
 import ShellModal from '../components/ShellModal';
@@ -72,6 +72,11 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
   const [error, setError] = useState<string | null>(null);
   // something was typed or changed: Escape, the close button, the shade and Back ask before throwing it away
   const [dirty, setDirty] = useState(false);
+  const opened = useRef(true);
+  useEffect(() => {
+    if (opened.current) { opened.current = false; return; }
+    setDirty(true);
+  }, [scope, eq, area, line, reason, title, detail, root, required, priority, needsStop, owner, assignee]);
   const [asking, setAsking] = useState(false);
   const requestClose = () => {
     if (busy) return;
@@ -171,7 +176,6 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
       icon="compliance" title={t('Create action')} width={980} testid="create-action" onClose={requestClose} footer={footer}
       subtitle={prefill && prefill.source !== 'manual' ? t('Filled in from what you picked. Check it, then save as draft or open it.') : t('Describe the problem, then save it as a draft or open it.')}
     >
-      <div className="ca-form-wrap" onInputCapture={() => setDirty(true)} onChangeCapture={() => setDirty(true)}>
       {prefill?.trail && prefill.trail.length > 0 && (
         <p className="ca-from" data-testid="ca-from">
           <b>{t('FROM')}</b>
@@ -397,7 +401,6 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
           </label>
         </div>}
 
-      </div>
       </div>
     </ShellModal>
   );
