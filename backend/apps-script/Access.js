@@ -62,7 +62,11 @@ var ACTION_RULES = {
   // 1.6.0: signing out is logged; who is online and the change log are for the Admin role only.
   logout: { auth: 'session', mustChangeOk: true },
   listActiveUsers: { auth: 'admin' },
-  listAuditLog: { auth: 'admin' }
+  listAuditLog: { auth: 'admin' },
+  // 1.9.0: sending a report or an actions report by email needs Edit on Reports (the Admin role always may);
+  // the test email is for the Admin role only.
+  sendReport: { auth: 'tabs', tabs: ['reports'], level: 'Edit', admin: true },
+  sendTestEmail: { auth: 'admin' }
 };
 
 function levelRank_(level) { return LEVELS.indexOf(level); }
@@ -93,6 +97,7 @@ function userOverrides_(userId, accessRows) {
 function accessAllows_(rule, access, user) {
   if (rule.auth === 'none' || rule.auth === 'session') return true;
   if (rule.auth === 'admin') return !!user && user.role_id === 'ROLE-ADMIN';
+  if (rule.admin && !!user && user.role_id === 'ROLE-ADMIN') return true;
   if (rule.auth === 'anyTab') return TAB_IDS.some(function (t) { return access[t] !== 'Hidden'; });
   var need = levelRank_(rule.level);
   return rule.tabs.some(function (t) { return levelRank_(access[t]) >= need; });

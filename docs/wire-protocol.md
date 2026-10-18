@@ -651,3 +651,34 @@ owner, person and due date from the action; Waiting stoppage also sets `needs_st
 internal team (not allowed for tasks) becomes In progress. History: a `task_create` row and a `status` row "Moved to tasks (backend
 1.7.0)", by `system`; one audit row `migrate_actions` by `setup`. Draft, Open, Closed and Cancelled stay as they are. It is idempotent: the
 Script Property `ACTIONS_TASKS_MIGRATED` marks it done, and an action that already has tasks is never touched.
+
+## 14. Email (backend 1.9.0)
+
+Every email the app sends (the daily / weekly digest, reports, actions reports, the test email) goes through one helper,
+`sendMail_` in `Mail.js`.
+
+### 14.1 Sender
+
+| Setting | Meaning |
+|---|---|
+| `system_email` | Blank: MailApp, sent by the Google account that deploys the script (as before 1.9.0). Set: the Gmail advanced service (`Gmail.Users.Messages.send`, raw MIME) with `From: "<system_email_name>" <system_email>`. |
+| `system_email_name` | The sender name (plain text, at most 80 characters; default `ACC Downtime Analysis`). |
+
+Gmail keeps that From only for a verified **Send mail as** address of the deploying account, so the server reads the alias list
+(`Gmail.Users.Settings.SendAs.list`, cached 6 hours) and refuses with plain words when the address is not on it. Other errors in words:
+the Gmail service not turned on in the project, the daily mail quota used up. Reply-To is the person who sends a report.
+The manifest (`appsscript.json`) turns on the Gmail advanced service and adds the scopes `gmail.send` and `gmail.settings.basic`.
+
+### 14.2 Calls
+
+| Action | Access | Params | Returns |
+|---|---|---|---|
+| `sendReport` | reports Edit, or the Admin role | `{ email: { to: string[], cc?: string[], subject, html, attachments?: [{ name, mimeType, base64 }], kind?: 'report' \| 'actions' } }` | `{ from, via: 'gmail' \| 'mailapp', recipients }` |
+| `sendTestEmail` | Admin role | `{}` | `{ from, via, to }` (to = the Admin's own address) |
+
+`sendReport` rules: 1-25 To and up to 25 Cc, any domain, each a single address; the subject is required (at most 200 characters, one
+line); the HTML summary is cleaned (scripts, styles blocks, frames, forms, event handlers, `javascript:` and non-https links, CSS
+`url()` removed; `data:image` pictures kept) and a plain-text copy is made from it; up to 3 attachments, PDF / Excel / CSV only,
+15 MB together; at most 30 sends per person per plant day (Script Property `MAILCOUNT_<user_id>`). Audit: `send_report` with
+"Report to N recipients: subject (files)" or "Actions report to ..."; `send_test_email` with "Test email to address (gmail|mailapp)".
+Both are in the Notifications group of the activity log.

@@ -26,6 +26,9 @@ var SETTING_RULES = {
   target_mttr_h: { type: 'number_or_blank', min: 0, max: 100000, minExclusive: true },
   // 1.8.0: reliability factor target, percent (blank = no target)
   reliability_target_pct: { type: 'number_or_blank', min: 0, max: 100 },
+  // 1.9.0: outgoing mail (Mail.js). The address must be a 'Send mail as' alias of the deploying Google account.
+  system_email: { type: 'email_or_blank' },
+  system_email_name: { type: 'text', max: 80 },
   // Actions (1.4.0): who may close or cancel (csv of existing user ids; Admins always can), and the draft rules.
   actions_closers: { type: 'user_csv' },
   actions_repeat_n: { type: 'int', min: 2, max: 100 },
@@ -66,6 +69,16 @@ function validateSetting_(key, value) {
       if (ids.indexOf(id) < 0) ids.push(id);
     });
     return ids.join(',');
+  }
+  if (rule.type === 'email_or_blank') {
+    s = s.toLowerCase();
+    if (s !== '' && (s.length > 254 || !EMAIL_PATTERN_.test(s) || /[<>,;"\s]/.test(s))) throw apiError_(ERR.BAD_REQUEST, 'Setting ' + key + ' must be an email address, or blank.');
+    return s;
+  }
+  if (rule.type === 'text') {
+    s = s.replace(/[\r\n<>"]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (s.length > rule.max) throw apiError_(ERR.BAD_REQUEST, 'Setting ' + key + ' is longer than ' + rule.max + ' characters.');
+    return s;
   }
   if (rule.type === 'url_or_blank') {
     if (s !== '' && (s.length > 300 || !/^https?:\/\/[^\s<>"']+$/i.test(s))) {

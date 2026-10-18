@@ -26,6 +26,7 @@ const REQ = {
   saveAreaTargets: [['settings'], 'Edit'], runActionChecks: [['settings'], 'Edit'],
   setAreaActive: 'admin',
   logout: 'session', listActiveUsers: 'admin', listAuditLog: 'admin',
+  sendReport: [['reports'], 'Edit'], sendTestEmail: 'admin',
   addTask: [['actions'], 'Edit'], updateTask: [['actions'], 'Edit'], applyTemplate: [['actions'], 'Edit'], listTasks: [['actions'], 'View'],
   listTaskTemplates: 'session', saveTaskTemplates: [['settings'], 'Edit'],
 };

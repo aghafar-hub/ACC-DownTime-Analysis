@@ -17,7 +17,7 @@ test('getStartup returns masters and settings, but never users or the audit log'
   assert.equal(s.areas.length, 19);
   assert.equal(s.lines.length, 2);
   assert.equal(s.classifications.length, 6);
-  assert.equal(s.settings.length, 30);
+  assert.equal(s.settings.length, 32);
   const text = JSON.stringify(s);
   assert.ok(!/password_hash|password_salt|hash_rounds|@example\.com|audit_log/i.test(text));
   assert.deepEqual(s.years, []);

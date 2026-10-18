@@ -1764,6 +1764,16 @@ var SCHEMA = {
     "description": "Reliability factor (RF) target, percent; blank = none"
    },
    {
+    "key": "system_email",
+    "value": "",
+    "description": "Address the app's emails are sent from: a 'Send mail as' alias of the Google account that deploys the script; blank = that account"
+   },
+   {
+    "key": "system_email_name",
+    "value": "ACC Downtime Analysis",
+    "description": "Sender name shown on the app's emails"
+   },
+   {
     "key": "actions_closers",
     "value": "",
     "description": "Comma-separated user ids who may close or cancel actions (Admins always can)"

@@ -129,7 +129,9 @@ function makeUtilities() {
     computeHmacSignature: (_a, v, k) => toSigned(crypto.createHmac('sha256', toBuf(k)).update(toBuf(v)).digest()),
     base64EncodeWebSafe: (v) => toBuf(v).toString('base64url') + '='.repeat((4 - (toBuf(v).toString('base64url').length % 4)) % 4),
     base64DecodeWebSafe: (s) => toSigned(Buffer.from(s, 'base64url')),
-    newBlob: (bytes) => ({ getDataAsString: () => toBuf(bytes).toString('utf8') }),
+    newBlob: (bytes, contentType, name) => ({ getDataAsString: () => toBuf(bytes).toString('utf8'), contentType, name, size: toBuf(bytes).length }),
+    base64Encode: (v) => toBuf(v).toString('base64'),
+    base64Decode: (s) => toSigned(Buffer.from(s, 'base64')),
     getUuid: () => crypto.randomUUID(),
     formatDate: fmtDate,
   };
@@ -283,6 +285,34 @@ export function stubMailApp(env, { quota = 100, failWith = null } = {}) {
     sendEmail: (msg) => {
       if (failWith) throw new Error(failWith);
       sent.push(JSON.parse(JSON.stringify(msg)));
+    },
+  };
+  return sent;
+}
+
+/**
+ * A Gmail advanced-service stub (1.9.0). `aliases`: the verified Send-mail-as addresses (null = the list call fails);
+ * `failWith` makes every send throw. Returns the sent list of { raw, mime } (mime = the decoded MIME text).
+ */
+export function stubGmail(env, { aliases = ['owner@example.com'], failWith = null } = {}) {
+  const sent = [];
+  env.ctx.Gmail = {
+    Users: {
+      Settings: {
+        SendAs: {
+          list: () => {
+            if (aliases === null) throw new Error('Insufficient Permission');
+            return { sendAs: aliases.map((a, i) => ({ sendAsEmail: a, isPrimary: i === 0, verificationStatus: i === 0 ? undefined : 'accepted' })) };
+          },
+        },
+      },
+      Messages: {
+        send: (msg, user) => {
+          if (failWith) throw new Error(failWith);
+          sent.push({ raw: msg.raw, user, mime: Buffer.from(msg.raw, 'base64url').toString('utf8') });
+          return { id: 'm' + sent.length };
+        },
+      },
     },
   };
   return sent;

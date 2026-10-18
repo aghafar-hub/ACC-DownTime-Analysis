@@ -22,6 +22,8 @@ import { store } from '../storagePrefix';
 const LEVEL_RANK: Record<AccessLevel, number> = { Hidden: 0, View: 1, Edit: 2 };
 const CLASS_CODES: ClassificationCode[] = ['PRO', 'MEC', 'ELE', 'AUT', 'PL', 'CIR'];
 const TEXT_MAX = 1000;
+/** the server's EMAIL_PATTERN_ (backend/apps-script/Users.js) */
+const MAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ACCEPT_NOTE_MIN = 3;
 const PRUNE_NOTE = 'Removed automatically: the record no longer has this problem.';
 const SAVED_VIEW_PAGES = ['overview', 'pareto', 'repeats', 'reliability', 'events'];
@@ -91,8 +93,12 @@ function writeKeptTheme(userId: string, theme: string): void {
 export interface MockApi extends Api {
   /** Test helpers: the live data and a clock override. Not part of Api. */
   __db(): SyntheticDb;
+  /** The emails 'sent' by sendReport / sendTestEmail (backend 1.9.0), newest last. */
+  __sentMail(): SentMockMail[];
   __setNow(fn: () => number): void;
 }
+
+export interface SentMockMail { from: string; to: string[]; cc: string[]; subject: string; html: string; attachments: { name: string; mimeType: string; bytes: number }[]; by: string }
 
 /**
  * `demoActions` (the app's demo mode) fills the Actions page on first use: area targets, auto drafts moved along the board,
@@ -199,6 +205,16 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       throw new ApiError('You must set a new password before you continue.', 'forbidden', true);
     }
     return { user, access: accessFor(user), iat: payload.iat ?? 0, exp: payload.exp };
+  }
+
+  // backend 1.9.0: the emails the mock 'sends' (never leave the browser) and the per-person daily count
+  const sentMail: SentMockMail[] = [];
+  const mailCount = new Map<string, { day: string; n: number }>();
+  function mailFrom(): { from: string; via: 'gmail' | 'mailapp' } {
+    const val = (k: string) => get().settings.find((s) => s.key === k)?.value ?? '';
+    const email = val('system_email');
+    const name = val('system_email_name') || 'ACC Downtime Analysis';
+    return email ? { from: `"${name}" <${email}>`, via: 'gmail' } : { from: `${name} (the Google account that runs the app)`, via: 'mailapp' };
   }
 
   function needAdmin(token: string): { user: MockUser; access: Access } {
@@ -758,6 +774,7 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
   const api: MockApi = {
     __db: () => get(),
     __setNow: (fn) => { now = fn; },
+    __sentMail: () => structuredClone(sentMail),
 
     // --- auth
     async login(email, password, keepSignedIn) {
@@ -1122,12 +1139,17 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         if ((k === 'target_mtbf_h' || k === 'target_mttr_h') && val !== '' && !(Number.isFinite(Number(val)) && Number(val) > 0 && Number(val) <= 100000)) throw new ApiError('The target must be above 0 and at most 100000 hours, or blank.', 'bad_request');
         if (k === 'reliability_target_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The reliability factor target must be between 0 and 100, or blank.', 'bad_request');
         if (k === 'availability_target_pct' && val !== '' && !(Number.isFinite(Number(val)) && Number(val) >= 0 && Number(val) <= 100)) throw new ApiError('The availability target must be between 0 and 100, or blank.', 'bad_request');
+        if (k === 'system_email' && val !== '' && (val.length > 254 || !MAIL_RE.test(val))) throw new ApiError('Setting system_email must be an email address, or blank.', 'bad_request');
+        if (k === 'system_email_name' && val.length > 80) throw new ApiError('Setting system_email_name is longer than 80 characters.', 'bad_request');
         if (k === 'actions_auto_draft' && !['true', 'false'].includes(val)) throw new ApiError('Auto drafts must be true or false.', 'bad_request');
         if (k === 'actions_closers') actionStore.cleanClosers(val);
       }
       for (const [k, v] of Object.entries(changes ?? {})) {
         const s = d.settings.find((x) => x.key === k)!;
-        const value = k === 'actions_closers' ? actionStore.cleanClosers(String(v ?? '')) : String(v ?? '').trim();
+        const value = k === 'actions_closers' ? actionStore.cleanClosers(String(v ?? ''))
+          : k === 'system_email' ? String(v ?? '').trim().toLowerCase()
+            : k === 'system_email_name' ? String(v ?? '').replace(/[\r\n<>"]+/g, ' ').replace(/\s+/g, ' ').trim()
+              : String(v ?? '').trim();
         if (value === s.value) continue; // like the server: an unchanged value is not written or logged
         audit(a.user.user_id, 'save_setting', 'settings', k, `${s.value} -> ${value}`);
         s.value = value;
@@ -1406,6 +1428,57 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         online_count: users.filter((u) => u.online).length, today_count: users.filter((u) => u.today).length,
       });
     },
+    // --- email (backend/apps-script/Mail.js): checked like the server, kept in memory, never sent
+    async sendReport(token, email) {
+      const a = auth(token);
+      if (a.user.role_id !== 'ROLE-ADMIN' && LEVEL_RANK[a.access.reports] < LEVEL_RANK.Edit) throw new ApiError('You do not have access to do this.', 'forbidden', true);
+      const bad = (m: string) => new ApiError(m, 'bad_request');
+      const list = (xs: unknown, label: string, min: number) => {
+        if (xs !== undefined && xs !== null && !Array.isArray(xs)) throw bad(`${label} must be a list of email addresses.`);
+        const out: string[] = [];
+        for (const x of (xs as unknown[] | undefined) ?? []) {
+          const e = String(x ?? '').trim().toLowerCase();
+          if (!e) continue;
+          if (e.length > 254 || !MAIL_RE.test(e) || /[<>,;"\s]/.test(e)) throw bad(`${label}: "${e.slice(0, 60)}" is not a valid email address.`);
+          if (!out.includes(e)) out.push(e);
+        }
+        if (out.length < min) throw bad('Add at least one recipient.');
+        if (out.length > 25) throw bad(`${label}: at most 25 addresses.`);
+        return out;
+      };
+      const to = list(email?.to, 'To', 1);
+      const cc = list(email?.cc, 'Cc', 0).filter((e) => !to.includes(e));
+      const subject = String(email?.subject ?? '').trim();
+      if (!subject) throw bad('The subject is required.');
+      if (subject.length > 200) throw bad('The subject is too long.');
+      const atts = email?.attachments ?? [];
+      if (atts.length > 3) throw bad('At most 3 attachments.');
+      let total = 0;
+      for (const f of atts) {
+        if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'text/csv'].includes(f.mimeType)) throw bad('Only PDF, Excel and CSV files can be attached.');
+        total += Math.floor(f.base64.length * 3 / 4);
+      }
+      if (total > 15 * 1024 * 1024) throw bad('The attachments are larger than 15 MB together.');
+      const today = nowTs().slice(0, 10);
+      const count = mailCount.get(a.user.user_id);
+      const n = count && count.day === today ? count.n : 0;
+      if (n >= 30) throw bad(`You have sent ${n} emails today, the most allowed in one day. Try again tomorrow.`);
+      mailCount.set(a.user.user_id, { day: today, n: n + 1 });
+      const from = mailFrom();
+      sentMail.push({ from: from.from, to, cc, subject, html: String(email?.html ?? ''), attachments: atts.map((f) => ({ name: f.name, mimeType: f.mimeType, bytes: Math.floor(f.base64.length * 3 / 4) })), by: a.user.user_id });
+      const r = to.length + cc.length;
+      audit(a.user.user_id, 'send_report', '', email?.kind === 'actions' ? 'actions' : 'report',
+        `${email?.kind === 'actions' ? 'Actions report' : 'Report'} to ${r} recipient${r === 1 ? '' : 's'}: ${subject}${atts.length ? ` (${atts.map((f) => f.name).join(', ')})` : ''}`);
+      return { ...from, recipients: r };
+    },
+    async sendTestEmail(token) {
+      const a = needAdmin(token);
+      const from = mailFrom();
+      sentMail.push({ from: from.from, to: [a.user.email], cc: [], subject: 'ACC Downtime Analysis: test email', html: '<p>This is a test email.</p>', attachments: [], by: a.user.user_id });
+      audit(a.user.user_id, 'send_test_email', '', '', `Test email to ${a.user.email} (${from.via})`);
+      return { ...from, to: a.user.email };
+    },
+
     async listAuditLog(token, filter, cursor) {
       needAdmin(token);
       const bad = (m: string) => new ApiError(m, 'bad_request');

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createEnv, bootstrapAdmin, makeUser, seedMaster, startBatch, uploadAll, uploadRow, GOOD_PASSWORD } from './harness.mjs';
+import { createEnv, bootstrapAdmin, makeUser, seedMaster, startBatch, uploadAll, uploadRow, GOOD_PASSWORD, stubMailApp } from './harness.mjs';
 
 // Backend 1.6.0: who is online (throttled activity notes, listActiveUsers), the activity log (listAuditLog: newest first,
 // server-side filters and paging) and the audit coverage of every write. Synthetic data only. The harness clock reads
@@ -267,6 +267,10 @@ function writeCases(w) {
     ['saveContractors', () => ({ params: { rows: [{ contractor_id: 'NEWCO', name: 'New Co', areas: [], kind: 'internal', active: true, sort_order: 9 }] } }), 'save_contractors'],
     ['saveAreaTargets', () => ({ params: { year: 2026, rows: [{ area_id: 'K.1', availability_target_pct: 90, planned_allowance_h_year: 120 }] } }), 'save_area_targets', /K\.1 availability_target_pct: \(blank\) -> 90/],
     ['runActionChecks', () => ({ params: {} }), 'action_check'],
+    // 1.9.0: email
+    ['sendReport', () => { stubMailApp(w.env); return { params: { email: { to: ['someone@outside.org'], subject: 'August report', html: '<p>Hi</p>' } } }; }, 'send_report',
+      /^Report to 1 recipient: August report$/],
+    ['sendTestEmail', () => { stubMailApp(w.env); return { params: {} }; }, 'send_test_email', /^Test email to admin@example\.com \(mailapp\)$/],
   ];
 }
 

@@ -578,6 +578,26 @@ export class ApiError extends Error {
   }
 }
 
+/** An attachment of an outgoing email: the file as base64 (no data: prefix). */
+export interface MailAttachment {
+  name: string;
+  mimeType: 'application/pdf' | 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' | 'text/csv';
+  base64: string;
+}
+
+/** sendReport input (backend 1.9.0). `kind` only names the email in the activity log. */
+export interface OutgoingEmail {
+  to: string[];
+  cc?: string[];
+  subject: string;
+  html: string;
+  attachments?: MailAttachment[];
+  kind?: 'report' | 'actions';
+}
+
+/** Which sender the server used: the system email through Gmail, or the deploying account through MailApp. */
+export interface SendResult { from: string; via: 'gmail' | 'mailapp'; recipients?: number }
+
 export interface Api {
   // --- auth ---
   login(email: string, password: string, keepSignedIn: boolean): Promise<Session>;
@@ -699,6 +719,15 @@ export interface Api {
   listTaskTemplates(token: string): Promise<TaskTemplate[]>;
   /** Inserts or updates the templates sent, replacing their steps (settings Edit). Returns all templates. */
   saveTaskTemplates(token: string, templates: TaskTemplateInput[]): Promise<TaskTemplate[]>;
+
+  // --- email (backend 1.9.0, backend/apps-script/Mail.js) ---
+  /**
+   * Sends a report or an actions report (reports Edit, or the Admin role): 1-25 To, up to 25 Cc (any domain), a subject,
+   * an HTML summary (cleaned on the server) and up to 3 attachments (PDF, Excel, CSV; 15 MB together). At most 30 a day each.
+   */
+  sendReport(token: string, email: OutgoingEmail): Promise<SendResult>;
+  /** A short test email to the Admin's own address; says which sender was used (Admin role only). */
+  sendTestEmail(token: string): Promise<SendResult & { to: string }>;
 
   // --- admin only (backend 1.6.0, the Admin role ROLE-ADMIN whatever the tab access says) ---
   /** Every user with when they were last seen, the page open and the device; online ones first. */

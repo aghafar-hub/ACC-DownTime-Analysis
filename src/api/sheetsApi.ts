@@ -115,6 +115,9 @@ export function createSheetsApi(url: string): Api {
     listTaskTemplates: (token) => call('listTaskTemplates', token),
     saveTaskTemplates: (token, templates) => call('saveTaskTemplates', token, { templates }),
 
+    sendReport: (token, email) => call('sendReport', token, { email }),
+    sendTestEmail: (token) => call('sendTestEmail', token),
+
     listActiveUsers: (token) => call('listActiveUsers', token),
     listAuditLog: (token, filter, cursor) => call('listAuditLog', token, { filter: filter ?? {}, ...(cursor ? { cursor } : {}) }),
   };
