@@ -89,7 +89,24 @@ a.ds-left:hover {
     min-height: 44px;
     flex-shrink: 0;
   }
+  .ds-left {
+    min-width: 44px;
+    justify-content: center;
+  }
   .ds-strip--phone {
     min-height: 44px;
+  }
+}
+
+/* a narrow phone: "Data to …" gives way first, so "68 to check" and "◆ 10" stay readable */
+@media (max-width: 860px) {
+  .ds-strip--phone > span[data-testid='data-status-covers'] {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+}
+@media (max-width: 400px) {
+  .ds-strip--phone > svg {
+    display: none;
   }
 }

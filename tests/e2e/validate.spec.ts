@@ -428,15 +428,15 @@ test.describe('validate (desktop)', () => {
     for (const p of ['pareto', 'repeats', 'reliability', 'events', 'overview']) {
       await page.goto(`/#/${p}`);
       await expect(page.getByTestId(`page-${p}`)).toBeVisible();
-      await expect(page.getByTestId('data-status-left-out')).toHaveText(`◆ ${n} left out`);
+      await expect(page.getByTestId('data-status-left-out')).toHaveText(`◆ ${n} left out`); // desktop words; a phone shows ◆ and the number
       await expect(notice).toHaveCount(0);
     }
     await page.reload();
     await expect(page.getByTestId('page-overview')).toBeVisible();
     await expect(page.getByTestId('data-status-left-out')).toBeVisible({ timeout: 20000 });
     await expect(notice).toHaveCount(0);
-    // the viewer cannot open Validate: the count is plain text
-    expect(await page.getByTestId('data-status-left-out').evaluate((e) => e.tagName)).toBe('SPAN');
+    // it opens Validate (the viewer may read the list)
+    await expect(page.getByTestId('data-status-left-out')).toHaveAttribute('href', '#/validate');
     // a new sign-in shows the notice again (sign-out forgets it); Open Validate goes there and the Validate page does not repeat it
     await page.getByTestId('user-menu-trigger').click();
     await page.getByTestId('sign-out').click();

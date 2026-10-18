@@ -685,6 +685,14 @@
     min-height: 53px;
     flex-wrap: nowrap;
   }
+  /* one row: the data line gives way (it ends in "…") so Views always fits */
+  .app-shell-right--scoped > .scope-meta > .ds-strip {
+    min-width: 0;
+    flex: 1 1 0;
+  }
+  .app-shell-right--scoped > .scope-meta > .scope-info-slot {
+    flex: 0 0 auto;
+  }
   .app-shell-right--scoped > .scope-meta:has(.sb-active) {
     flex-wrap: wrap;
   }

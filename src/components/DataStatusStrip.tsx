@@ -51,10 +51,13 @@ export default function DataStatusStrip() {
   );
   // records left out of the numbers (a blocking problem): the small indicator that stays after the once-per-session notice
   const blocked = v.ready ? v.list.summary.blocked.count : 0;
-  const leftText = t('{n} left out', { n: num(blocked) });
+  // phone: just "◆ 10" (the line is short); the words stay in the accessible name and the tooltip
+  const leftWords = t('{n} records left out of the numbers', { n: num(blocked) });
+  const leftText = mobile ? num(blocked) : t('{n} left out', { n: num(blocked) });
+  const leftTitle = `${leftWords}. ${t('Records with a problem that blocks them are left out of every number until they are fixed or kept on the Validate page.')}`;
   const leftOut = blocked > 0 && (canView('events')
-    ? <Link to="/validate" className="ds-left" data-testid="data-status-left-out" title={t('Records with a problem that blocks them are left out of every number until they are fixed or kept on the Validate page.')}><span aria-hidden="true">◆</span> {leftText}</Link>
-    : <span className="ds-left" data-testid="data-status-left-out"><span aria-hidden="true">◆</span> {leftText}</span>);
+    ? <Link to="/validate" className="ds-left" data-testid="data-status-left-out" title={leftTitle} aria-label={mobile ? leftWords : undefined}><span aria-hidden="true">◆</span> {leftText}</Link>
+    : <span className="ds-left" data-testid="data-status-left-out" title={leftTitle} aria-label={mobile ? leftWords : undefined}><span aria-hidden="true">◆</span> {leftText}</span>);
   const leftPart = leftOut && <><span className="ds-sep" aria-hidden="true">·</span>{leftOut}</>;
   // the same box while loading, so the band keeps its height
   const cls = mobile ? 'ds-strip ds-strip--phone' : 'ds-strip';

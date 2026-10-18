@@ -248,7 +248,7 @@ test.describe('dashboards (desktop)', () => {
     await card.getByTestId('pareto-bar').first().click();
     await expect(page).toHaveURL(/#\/events/);
     await expect(page.getByTestId('drill-chip')).toBeVisible();
-    await expect(page.getByTestId('drill-text')).toContainText(/^Pareto › \S+ · .+ · \d+ events?( \([\d,]+ rows\))?, [\d,.]+ h$/);
+    await expect(page.getByTestId('drill-text')).toContainText(/^Causes › \S+ · .+ · \d+ events?( \([\d,]+ rows\))?, [\d,.]+ h$/);
     const n = num((await page.getByTestId('drill-text').textContent())!.match(/ ([\d,]+) events?/)![1]!);
     expect(n).toBeGreaterThan(0);
     await expect(page.getByTestId('event-row').first()).toBeVisible();

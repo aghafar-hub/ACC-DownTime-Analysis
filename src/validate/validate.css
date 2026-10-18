@@ -40,7 +40,7 @@
   box-sizing: border-box;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0 8px;
   padding: 0 6px 0 12px;
@@ -54,6 +54,7 @@
 }
 @media (max-width: 860px) {
   .vbanner {
+    flex-wrap: wrap;
     left: 12px;
     right: 12px;
     transform: none;

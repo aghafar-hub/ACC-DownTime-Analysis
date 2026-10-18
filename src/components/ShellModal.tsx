@@ -29,7 +29,12 @@ export default function ShellModal({
   const drawer = variant === 'drawer';
   useBackClose(!drawer, onClose);
   const boxRef = useRef<HTMLDivElement>(null);
+  // the latest close handler, so a parent that passes a new function on every render does not re-run the effect below
+  // (that would move the focus back to the box after each keystroke)
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
+    const onClose = () => closeRef.current();
     const prev = document.activeElement as HTMLElement | null;
     boxRef.current?.focus({ preventScroll: true });
     // a popup opened over the drawer (Keep as entered) handles its own Escape
@@ -46,7 +51,7 @@ export default function ShellModal({
       window.removeEventListener('keydown', onKey);
       prev?.focus?.({ preventScroll: true });
     };
-  }, [onClose, drawer]);
+  }, [drawer]);
   const box = (
       <div
         className={drawer ? 'sm-box sm-box--drawer' : 'sm-box'}
