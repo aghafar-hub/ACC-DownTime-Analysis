@@ -49,12 +49,21 @@ export default function DataStatusStrip() {
       {' '}<span aria-hidden="true">›</span>
     </Link>
   );
+  // records left out of the numbers (a blocking problem): the small indicator that stays after the once-per-session notice
+  const blocked = v.ready ? v.list.summary.blocked.count : 0;
+  const leftText = t('{n} left out', { n: num(blocked) });
+  const leftOut = blocked > 0 && (canView('events')
+    ? <Link to="/validate" className="ds-left" data-testid="data-status-left-out" title={t('Records with a problem that blocks them are left out of every number until they are fixed or kept on the Validate page.')}><span aria-hidden="true">◆</span> {leftText}</Link>
+    : <span className="ds-left" data-testid="data-status-left-out"><span aria-hidden="true">◆</span> {leftText}</span>);
+  const leftPart = leftOut && <><span className="ds-sep" aria-hidden="true">·</span>{leftOut}</>;
+  // the same box while loading, so the band keeps its height
+  const cls = mobile ? 'ds-strip ds-strip--phone' : 'ds-strip';
 
   if (!facts) {
-    return <div className="ds-strip" role="status" data-testid="data-status"><Icon name="database" size={15} /><span className="ds-muted">{t('Checking what the data covers…')}</span></div>;
+    return <div className={cls} role="status" data-testid="data-status"><Icon name="database" size={15} /><span className="ds-muted">{mobile ? t('Checking data…') : t('Checking what the data covers…')}</span></div>;
   }
   if (!facts.coverage) {
-    return <div className="ds-strip" role="status" data-testid="data-status"><Icon name="database" size={15} /><span>{t('No records uploaded yet.')}</span></div>;
+    return <div className={cls} role="status" data-testid="data-status"><Icon name="database" size={15} /><span>{t('No records uploaded yet.')}</span></div>;
   }
   if (mobile) {
     return (
@@ -65,6 +74,7 @@ export default function DataStatusStrip() {
         {facts.gaps.length > 0 && <span className="ds-gap" data-testid="data-status-not-uploaded">{t('{m} not uploaded', { m: facts.gaps.map(monthText).join(', ') })}</span>}
         {checkLink && <span className="ds-sep" aria-hidden="true">·</span>}
         {checkLink}
+        {leftPart}
         {offPart}
       </div>
     );
@@ -83,6 +93,7 @@ export default function DataStatusStrip() {
       )}
       {checkLink && <span className="ds-sep" aria-hidden="true">·</span>}
       {checkLink}
+      {leftPart}
       {offPart}
       {facts.added && <span className="ds-upload" data-testid="data-status-upload">{t('Last upload {d}', { d: tsText(facts.added) })}</span>}
     </div>

@@ -107,6 +107,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setNotice(why ?? null);
     resetDataStores();
     forgetDashFilters();
+    // the next person sees the 'records left out' notice again (ValidationBanner, once per session)
+    store.remove('vbanner_seen', 'session');
     void clearDataCaches();
   }, []);
 

@@ -48,6 +48,17 @@
   margin-inline-start: auto;
   color: var(--tk-text-muted);
 }
+.ds-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--tk-danger);
+  font-weight: 650;
+  text-decoration: none;
+}
+a.ds-left:hover {
+  text-decoration: underline;
+}
 .ds-muted {
   color: var(--tk-text-muted);
 }
@@ -71,10 +82,12 @@
   .ds-strip {
     padding-block: 0;
   }
-  .ds-check {
+  .ds-check,
+  .ds-left {
     display: inline-flex;
     align-items: center;
     min-height: 44px;
+    flex-shrink: 0;
   }
   .ds-strip--phone {
     min-height: 44px;

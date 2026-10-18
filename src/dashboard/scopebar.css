@@ -668,3 +668,24 @@
     flex-basis: 100%;
   }
 }
+
+/* pages with the scope bar: its space and the data band's are kept from the first paint, so the page does not jump down
+   when the bar and the data line arrive (layout shift) */
+.app-shell-right--scoped > .scope-slot {
+  display: block;
+  min-height: 61px;
+  box-sizing: border-box;
+}
+.app-shell-right--scoped > .scope-meta {
+  display: flex;
+  min-height: 34px;
+}
+@media (max-width: 860px) {
+  .app-shell-right--scoped > .scope-meta {
+    min-height: 53px;
+    flex-wrap: nowrap;
+  }
+  .app-shell-right--scoped > .scope-meta:has(.sb-active) {
+    flex-wrap: wrap;
+  }
+}
