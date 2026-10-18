@@ -397,6 +397,10 @@ test.describe('phone', () => {
       test('the preview scrolls vertically with pages scaled to the screen width', async ({ page }) => {
         await openReport(page, 'manager', 'tpl=custom&p=lastmonth&s=cover,summary,daily');
         expect((await noSidewaysScroll(page)).ok).toBe(true);
+        // a phone opens at a readable zoom (the pages scroll sideways inside the preview); Fit scales them to the screen
+        await page.getByTestId('rpt-zoom-fit').click();
+        await expect(page.getByTestId('rpt-zoom-fit')).toHaveAttribute('aria-pressed', 'true');
+        await expect.poll(() => page.locator('[data-testid=rpt-page]').first().evaluate((el) => el.getBoundingClientRect().width)).toBeLessThanOrEqual(width);
         const w = await page.locator('[data-testid=rpt-page]').first().evaluate((el) => el.getBoundingClientRect().width);
         expect(w).toBeLessThanOrEqual(width);
         expect(w).toBeGreaterThan(width * 0.8);
