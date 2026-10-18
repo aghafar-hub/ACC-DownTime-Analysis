@@ -115,6 +115,10 @@ html .module-sheet {
   html .app-shell-right .scope-slot {
     position: static;
   }
+  /* the space kept for the scope bar against layout shift (scopebar.css) is the compact landscape bar's height here */
+  html .app-shell-right--scoped > .scope-slot {
+    min-height: 0;
+  }
   html .install-banner {
     display: none !important;
   }
@@ -131,14 +135,14 @@ html .module-sheet {
 @media (pointer: coarse) {
   html :is(
     button, select, summary, [role='tab'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='option'],
-    .btn, .btn-primary, .btn-brand, .btn-danger, .btn-sm, .chip, a.row-link, .module-tab, .ds-check,
+    .btn, .btn-primary, .btn-brand, .btn-danger, .btn-sm, .chip, a.row-link, .module-tab, .ds-check, a.ds-left,
     input:not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='range']):not([type='file']), textarea
   ):not(.rpt-page *):not(.sr-only):not(svg *) {
     min-height: 44px !important;
     min-width: 44px !important;
   }
   /* links that are controls: their box, not just the text line, takes the tap */
-  html :is(.module-tab, .ds-check) {
+  html :is(.module-tab, .ds-check, a.ds-left) {
     display: inline-flex;
     align-items: center;
     box-sizing: border-box;

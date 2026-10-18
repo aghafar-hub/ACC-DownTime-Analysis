@@ -83,6 +83,9 @@ export default function ShutdownView() {
     if (v) n.set(k, v); else n.delete(k);
     return n;
   }, { replace: true });
+  // the address updates in a transition: show the tick at once, then follow the address again
+  const [odShown, setOdShown] = useState<boolean | null>(null);
+  useEffect(() => { setOdShown(null); }, [f.overdue]);
   const nOn = [f.area, f.line, f.ctr, f.owner, f.status].filter(Boolean).length + (f.overdue ? 1 : 0);
 
   const allStop = useMemo(() => (p ? buildTaskViews(p.actions, p.tasks ?? [], p.logs, today).filter((v) => isTaskOpen(v) && v.needs_stop) : []), [p, today]);
@@ -151,7 +154,7 @@ export default function ShutdownView() {
       <Pick label={t('Owner')} value={f.owner} onChange={(v) => set('owner', v)} testid="sd-owner" options={[{ value: '-', label: t('Nobody yet') }, ...contractors.map((c) => ({ value: c.contractor_id, label: c.name }))]} />
       <Pick label={t('Status')} value={f.status} onChange={(v) => set('sst', v)} testid="sd-status" options={OPEN_TASK_STATUSES.map((s) => ({ value: s, label: t(s) }))} />
       <label className="act-switch af-toggle">
-        <input type="checkbox" checked={f.overdue} onChange={(e) => set('od', e.target.checked ? '1' : '')} data-testid="sd-overdue" />
+        <input type="checkbox" checked={odShown ?? f.overdue} onChange={(e) => { setOdShown(e.target.checked); set('od', e.target.checked ? '1' : ''); }} data-testid="sd-overdue" />
         <span className="act-switch-ui" aria-hidden="true" /><span>{t('Overdue only')}</span>
       </label>
     </>

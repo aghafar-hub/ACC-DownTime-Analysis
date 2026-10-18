@@ -72,6 +72,7 @@ test.describe('desktop', () => {
     await page.getByTestId('login-email').fill('engineer@demo.test');
     await page.getByTestId('login-password').fill('Demo-Pass-1234');
     await page.getByTestId('login-submit').click();
+    await expect(page.getByTestId('page-title')).toBeVisible();
     await page.evaluate(() => { window.location.hash = '#/reports?s=summary&v=report'; });
     await ready(page).waitFor({ timeout: 60_000 });
     await expect(page.getByTestId('rpt-kpis')).toBeVisible();
