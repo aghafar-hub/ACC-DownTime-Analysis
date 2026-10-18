@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { buildSyntheticDb } from '../../mock/synthetic';
 import type { Startup } from '../../api/types';
-import { defaultFilters } from '../../dashboard/filters';
+import { defaultFilters, resolveRange } from '../../dashboard/filters';
+import { buildCtx, rowsInRange } from '../../dashboard/scope';
+import { buildFailureEvents, dataRangeOf } from '../../calc';
 import {
-  activeCount, applyFilters, describeExplorerFilters, EMPTY, hasExplorerParams, parseExplorerFilters, scopeRows, serializeExplorerFilters, totalActive, type Filters,
+  activeCount, applyFilters, countedInScope, describeExplorerFilters, EMPTY, hasExplorerParams, parseExplorerFilters, scopeRows, serializeExplorerFilters, totalActive, type Filters,
 } from './explorerFilters';
 
 const db = buildSyntheticDb();
@@ -63,12 +65,16 @@ describe('Event records follow the shared scope', () => {
     expect(out.length).toBe(rows2026.filter((e) => e.event_date >= range.from && e.event_date <= range.to).length);
   });
 
-  it('failures only keeps failure rows that are not voided; area and line narrow by the master', () => {
+  it('failures only keeps the rows of failure EVENTS (as on the dashboards), never voided; area and line narrow by the master', () => {
     const range = { from: '2026-01-01', to: '2026-12-31' };
     const area = db.areas.find((a) => a.active && a.in_downtime_sheet)!;
     const out = scopeRows(rows2026, { filters: { ...defaultFilters(), failureOnly: true, areaIds: [area.area_id] }, range }, startup);
     expect(out.length).toBeGreaterThan(0);
-    expect(out.every((e) => e.is_failure && !e.is_void && e.area_id === area.area_id)).toBe(true);
+    const failureRows = new Set(buildFailureEvents(rows2026).chains.filter((c) => c.isFailure).flatMap((c) => c.rows.map((r) => r.event_id)));
+    expect(out.every((e) => failureRows.has(e.event_id) && !e.is_void && e.area_id === area.area_id)).toBe(true);
+    // a row with Failure YES that is not part of a failure event (for example a PL row) is not listed
+    const raw = rows2026.filter((e) => e.is_failure && !e.is_void && e.area_id === area.area_id && !failureRows.has(e.event_id));
+    for (const e of raw) expect(out.includes(e)).toBe(false);
     const line = scopeRows(rows2026, { filters: { ...defaultFilters(), lineIds: [area.line_id] }, range }, startup);
     const areasOfLine = new Set(db.areas.filter((a) => a.line_id === area.line_id).map((a) => a.area_id));
     expect(line.every((e) => areasOfLine.has(e.area_id))).toBe(true);
@@ -77,5 +83,19 @@ describe('Event records follow the shared scope', () => {
   it('without the period (the timeline) only the narrowing filters apply', () => {
     const out = scopeRows(rows2026, { filters: { ...defaultFilters(), classifications: ['PL'] }, range: { from: '2026-03-01', to: '2026-03-02' } }, startup, false);
     expect(out.length).toBe(rows2026.filter((e) => e.classification === 'PL').length);
+  });
+});
+
+describe('one counting rule: \'events in scope\' on Event records equals the dashboards', () => {
+  it('counts the records the dashboards count; voided rows and rows with a data problem are listed, not counted', () => {
+    const coverage = dataRangeOf(db.events.filter((r) => !r.is_void))!;
+    for (const r of ['last90', 'month', 'ytd'] as const) {
+      const f = { ...defaultFilters(), range: r } as ReturnType<typeof defaultFilters>;
+      const range = resolveRange(f, coverage.to);
+      const dash = rowsInRange(buildCtx(db.events, startup, f, range).scope, range);
+      const listed = scopeRows(db.events, { filters: f, range }, startup);
+      expect(countedInScope(listed), r).toBe(dash.length);
+      expect(listed.length).toBeGreaterThanOrEqual(dash.length);
+    }
   });
 });

@@ -265,14 +265,14 @@ export default function EventExplorer() {
   }, [pageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const stats = useMemo(() => {
-    let sec = 0, failures = 0, issues = 0;
+    let sec = 0, failures = 0, issues = 0, notCounted = 0;
     for (const e of filtered) {
       if (hasOpenProblemFlags(e)) issues++;
-      if (e.is_void || isBlocked(e)) continue; // left out of the numbers like everywhere else, but still listed below
+      if (e.is_void || isBlocked(e)) { notCounted++; continue; } // left out of the numbers like everywhere else, but still listed below
       if (e.duration_s > 0) sec += e.duration_s;
       if (isFailureHead(e)) failures++; // P2: a failure = the first row of a failure event (Freq 1, Failure YES, not PL / CIR)
     }
-    return { sec, failures, issues };
+    return { sec, failures, issues, notCounted };
   }, [filtered]);
   const facts = useMemo(() => {
     let edited = 0, voided = 0;
@@ -423,7 +423,7 @@ export default function EventExplorer() {
           filters: sc.filters, setFilters: sc.setFilters, reset, startup, range: sc.range, compareMode: cmpMode,
           compareRange: sc.range && cmpMode !== 'none' ? comparisonRange(sc.range, cmpMode) : null, settings, rows: sc.rows,
         }}
-        eventCount={dataReady ? filtered.length : null} views={viewsMenu} exportMenu={exportMenu}
+        eventCount={dataReady ? filtered.length - stats.notCounted : null} views={viewsMenu} exportMenu={exportMenu}
       />
       <PageHeader
         title={t('Event Explorer')}
@@ -431,6 +431,7 @@ export default function EventExplorer() {
           ? (drill
             ? t('{shown} of {total} opened events · {hours} stoppage hours · {failures} failures', { shown: num(filtered.length), total: num(total), hours: hours(stats.sec), failures: num(stats.failures) })
             : t('{shown} of {total} events in {period} · {hours} stoppage hours · {failures} failures', { shown: num(filtered.length), total: num(total), period: periodName, hours: hours(stats.sec), failures: num(stats.failures) }))
+            + (stats.notCounted ? ` · ${t('{n} listed but not counted (voided or a data problem)', { n: num(stats.notCounted) })}` : '')
           : t('Loading…')}
         right={
           <>
