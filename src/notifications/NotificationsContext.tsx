@@ -9,7 +9,7 @@ import { formatStamp, parseStamp } from './age';
 import { deriveActionItems } from './derive';
 import { inactiveAreaIds } from '../data/activeAreas';
 import { storedTarget, type LinkEnv } from './links';
-import { buildFeed, restoreState, settleState, snoozeUntilStamp, stateMap, withState, type Feed } from './merge';
+import { applyRecent, buildFeed, RECENT_KEEP_MS, restoreState, settleState, snoozeUntilStamp, stateMap, withState, type Feed, type RecentChange } from './merge';
 import type { FeedItem } from './model';
 import { parsePrefs, type Prefs } from './prefs';
 
@@ -91,10 +91,21 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   // changes sent but not answered yet: a refresh that lands meanwhile must not undo them
   const pendingState = useRef(new Map<string, NotificationState>());
   const pendingPrefs = useRef(new Map<string, string>());
+  // changes saved from this device in the last minutes, also kept on the device: a refresh that was already on its way
+  // (or a reload) cannot bring a dismissed item back
+  const recent = useRef(new Map<string, RecentChange>());
+  const recentKey = (uid: string) => `notif_recent_${uid}`;
+  const remember = useCallback((uid: string, row: NotificationState | null, id: string) => {
+    if (row) recent.current.set(id, { row, at: Date.now() });
+    else recent.current.delete(id);
+    const keep = [...recent.current.values()].filter((c) => Date.now() - c.at <= RECENT_KEEP_MS);
+    if (keep.length) store.set(recentKey(uid), JSON.stringify(keep));
+    else store.remove(recentKey(uid));
+  }, []);
   const prefsQueue = useRef<Promise<unknown>>(Promise.resolve());
 
   const overlay = useCallback((p: Payload): Payload => {
-    let state = p.state;
+    let state = applyRecent(p.state, recent.current.values(), Date.now());
     for (const row of pendingState.current.values()) state = settleState(state, row);
     const prefs = { ...p.prefs };
     for (const [k, val] of pendingPrefs.current) prefs[k] = val;
@@ -151,6 +162,16 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setLocalSeen(userId ? store.get(localKey(userId)) ?? '' : '');
+    // this person's recent changes made on this device (another person's are never applied)
+    recent.current = new Map();
+    if (!userId) return;
+    try {
+      const list = JSON.parse(store.get(recentKey(userId)) ?? '[]') as RecentChange[];
+      for (const c of list) if (c?.row?.notification_id && Date.now() - c.at <= RECENT_KEEP_MS) recent.current.set(c.row.notification_id, c);
+    } catch {
+      /* a damaged entry: start empty */
+    }
+    setPayload((p) => (p ? { ...p, state: applyRecent(p.state, recent.current.values(), Date.now()) } : p));
   }, [userId]);
 
   // ---------------------------------------------------------------- derived action items
@@ -218,19 +239,22 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
     const optimistic = withState(cur.state, userId, id, state, snoozeUntil, nowRef.current);
     const row = optimistic.find((r) => r.notification_id === id)!;
     pendingState.current.set(id, row);
+    remember(userId, row, id); // at once: a reload before the answer keeps it too
     setPayload((p) => (p ? { ...p, state: settleState(p.state, row) } : p));
     try {
       const saved = await api.setNotificationState(tok, id, state, snoozeUntil);
       pendingState.current.delete(id);
+      remember(userId, saved, id);
       setPayload((p) => (p ? { ...p, state: settleState(p.state, saved) } : p));
       return true;
     } catch (err) {
       pendingState.current.delete(id);
+      remember(userId, null, id);
       setPayload((p) => (p ? { ...p, state: restoreState(p.state, id, previous) } : p));
       fail(err);
       return false;
     }
-  }, [userId, fail]);
+  }, [userId, fail, remember]);
 
   const markSeen = useCallback(async (ids: readonly string[]) => {
     // a few at a time: the server takes one notification per call

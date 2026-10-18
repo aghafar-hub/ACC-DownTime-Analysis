@@ -2,7 +2,8 @@
 // Shows when stops happened side by side (for example a raw mill stop and then a kiln stop). The overlap line only
 // lists stops that share time; it never says that one caused another.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { useLiveSearchParams } from '../../hooks/useLiveSearchParams';
 import type { EventRow, Startup } from '../../api/types';
 import { buildFailureEvents } from '../../calc';
 import { ChartCard } from '../../charts/ChartKit';
@@ -44,7 +45,7 @@ export default function TimelineView({
   sourceRows: EventRow[]; filteredRows: EventRow[]; startup: Startup | null; year: string | number | null; mobile: boolean; onOpen: (eventId: string) => void;
 }) {
   const location = useLocation();
-  const [params, setParams] = useSearchParams();
+  const [params, setParams] = useLiveSearchParams();
   const [showAll, setShowAll] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);

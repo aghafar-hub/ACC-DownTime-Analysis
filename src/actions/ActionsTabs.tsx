@@ -2,7 +2,8 @@
 // (Tasks also says how many are overdue). They are addresses (/actions, /actions/tasks, /actions/shutdown), so Back and a
 // shared link bring the same tab back. The open action (?id=…&task=…) is shown over whichever tab it was opened from.
 import { useCallback, useMemo } from 'react';
-import { NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useLiveSearchParams } from '../hooks/useLiveSearchParams';
 import { isTaskOpen, isTerminalStatus } from '../api/types';
 import { tapHaptic } from '../haptics';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -14,7 +15,7 @@ import { buildTaskViews } from './tasks';
 
 /** The open action of the page address and how to open and close it (Back closes it when it was opened here). */
 export function useActionOpener() {
-  const [sp, setSp] = useSearchParams();
+  const [sp, setSp] = useLiveSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
   const openId = sp.get('id');
