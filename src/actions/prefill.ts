@@ -45,7 +45,7 @@ export type ParetoDim = 'equipment' | 'reason' | 'area' | 'line' | 'class';
 
 /** From a Pareto bar: equipment bars are equipment actions, area / line bars are area / line actions, reasons keep the reason. */
 export function paretoPrefill(input: { dim: ParetoDim; key: string; label: string; eventIds: string[]; hours?: number; chart: string; equipment?: string; area?: string }): ActionPrefill {
-  const trail = [t('Losses (Pareto)'), input.chart, input.label];
+  const trail = [t('Causes'), input.chart, input.label];
   const base: ActionPrefill = { source: 'pareto', source_ref: `${input.chart}: ${input.label}`.slice(0, 200), trail, eventIds: input.eventIds.slice(0, 200), hours: input.hours };
   switch (input.dim) {
     case 'equipment':
@@ -83,7 +83,7 @@ export function eventPrefill(row: EventRow, isEquipment: (code: string) => boole
     source: 'event', source_ref: row.event_id, eventIds: [row.event_id], hours: (row.duration_s ?? 0) / 3600,
     scope_kind: eq ? 'equipment' : 'area', equipment_id: eq ? row.code_raw : undefined, area_id: row.area_id, line_id: row.line_id, reason_key: reason,
     title: [eq ? row.code_raw : row.area_id, reason || row.description || ''].filter(Boolean).join(' · ').slice(0, 200),
-    trail: [t('Event records'), row.area_id, row.code_raw || 'N/A', row.event_date],
+    trail: [t('Events'), row.area_id, row.code_raw || 'N/A', row.event_date],
   };
 }
 

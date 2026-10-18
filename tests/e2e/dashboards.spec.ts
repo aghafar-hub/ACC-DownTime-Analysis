@@ -76,7 +76,7 @@ test.describe('dashboards (desktop)', () => {
 
     // one sticky scope bar: each chip opens its own small panel
     await expect(page.getByTestId('scope-note')).toContainText('Shared filters');
-    await expect(page.getByTestId('scope-note')).toHaveAttribute('title', /Shared by Dashboard, Losses, Repeated failures, Reliability, Event records/);
+    await expect(page.getByTestId('scope-note')).toHaveAttribute('title', /Shared by Dashboard, Causes, Repeated failures, Reliability, Events/);
     await page.getByTestId('fb-area').click();
     const before = await page.getByTestId('fb-area-opt').count();
     await page.keyboard.press('Escape');
@@ -248,7 +248,7 @@ test.describe('dashboards (desktop)', () => {
     await card.getByTestId('pareto-bar').first().click();
     await expect(page).toHaveURL(/#\/events/);
     await expect(page.getByTestId('drill-chip')).toBeVisible();
-    await expect(page.getByTestId('drill-text')).toContainText(/^Pareto › \S+ · .+ · \d+ events?( \([\d,]+ rows\))?, [\d,.]+ h$/);
+    await expect(page.getByTestId('drill-text')).toContainText(/^Causes › \S+ · .+ · \d+ events?( \([\d,]+ rows\))?, [\d,.]+ h$/);
     const n = num((await page.getByTestId('drill-text').textContent())!.match(/ ([\d,]+) events?/)![1]!);
     expect(n).toBeGreaterThan(0);
     await expect(page.getByTestId('event-row').first()).toBeVisible();
@@ -282,9 +282,15 @@ test.describe('dashboards (desktop)', () => {
     const errors = watchConsole(page);
     await page.goto('/');
     await signInAndWait(page, 'engineer');
+    // the Dashboard card and the page count the same repeated failures, repeat events and hours
+    await open(page, '/dashboard', 'page-overview');
+    const card = page.getByTestId('chart-repeats');
+    const listed = num((await card.getByTestId('repeats-all').textContent())!.replace(/\D+/g, ' '));
+    const [ev, hrs] = (await card.locator('b', { hasText: 'repeat events' }).textContent())!.match(/[\d,.]+/g)!.map(num);
     await open(page, '/repeats', 'page-repeats');
-    await expect(page.getByTestId('rt-groups')).toBeVisible();
-    await expect(page.getByTestId('rt-recurrences')).toBeVisible();
+    await expect(page.getByTestId('rt-groups')).toHaveText(String(listed));
+    expect(num(await page.getByTestId('rt-events').textContent())).toBe(ev);
+    expect(num(await page.getByTestId('rt-hours').textContent())).toBeCloseTo(hrs!, 1);
     const rows = page.getByTestId('repeat-row');
     expect(await rows.count()).toBeGreaterThan(0);
     await page.getByTestId('sort-totalHours').click();
@@ -559,6 +565,11 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     await expect(page.getByTestId('kpi-info')).toHaveCount(0);
     await page.getByTestId('kpi-mttr-info').click();
     await expect(page.getByTestId('kpi-info')).toContainText('failure');
+    // the dialog keeps the keyboard: Tab and Shift+Tab stay on its close button
+    for (const k of ['Tab', 'Tab', 'Shift+Tab', 'Tab']) {
+      await page.keyboard.press(k);
+      await expect(page.getByTestId('kpi-info-close')).toBeFocused();
+    }
     await page.getByTestId('kpi-info-close').click();
     await expect(page.getByTestId('kpi-info')).toHaveCount(0);
 

@@ -397,7 +397,7 @@ test.describe('Event records list (R3, desktop)', () => {
   test('opened from a Pareto bar: the banner says where from, the period, the count and the hours, and that they match the bar', async ({ page }) => {
     await drillFromPareto(page);
     const text = page.getByTestId('drill-text');
-    await expect(text).toHaveText(/^Pareto › \S+ · .+ · \d+ events?( \([\d,]+ rows\))?, [\d,.]+ h$/);
+    await expect(text).toHaveText(/^Causes › \S+ · .+ · \d+ events?( \([\d,]+ rows\))?, [\d,.]+ h$/);
     await expect(page.getByTestId('drill-match')).toHaveAttribute('data-match', 'yes');
     await expect(page.getByTestId('drill-match')).toHaveText(/matches the bar/);
     // the banner's hours are the list's hours (clipped to the period)
@@ -437,7 +437,7 @@ test.describe('Event records list (R3, phone)', () => {
     const errors = watchConsole(page);
     await drillFromPareto(page);
     const chip = page.getByTestId('drill-chip');
-    await expect(page.getByTestId('drill-text')).toHaveText(/^From Pareto: \S+ · .+ · \d+ events?$/);
+    await expect(page.getByTestId('drill-text')).toHaveText(/^From Causes: \S+ · .+ · \d+ events?$/);
     // it sits in the sticky scope slot: still in view after scrolling down the list
     await page.evaluate(() => window.scrollBy(0, 900));
     const box = (await chip.boundingBox())!;

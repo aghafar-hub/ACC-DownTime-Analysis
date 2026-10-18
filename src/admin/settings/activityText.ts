@@ -31,7 +31,7 @@ export function actorName(userId: string, names: ReadonlyMap<string, string>): s
 /** Action sources (task templates' "suggested first for") in words. */
 const SOURCE_WORDS: Record<string, string> = {
   auto_repeat: 'repeated failure drafts', auto_chronic: 'chronic equipment drafts', auto_long_stop: 'long stop drafts',
-  auto_planned_overrun: 'planned overrun drafts', notification: 'notifications', report: 'reports', pareto: 'Pareto', event: 'records', manual: 'new actions',
+  auto_planned_overrun: 'planned overrun drafts', notification: 'notifications', report: 'reports', pareto: 'Causes', event: 'events', manual: 'new actions',
 };
 const roleText = (s: string): string => s
   .replace(/\bROLE-[A-Z]+\b/g, (r) => ROLE_LABELS[r] ?? r)

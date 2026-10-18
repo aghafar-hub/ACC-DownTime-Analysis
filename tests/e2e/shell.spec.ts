@@ -3,8 +3,8 @@ import { closePanel, noSidewaysScroll, openType, PASSWORD, pickPeriod, signIn, s
 
 // Runs against `vite preview` of a production build in mock mode (made-up data).
 
-const ANALYZE = ['Dashboard', 'Pareto', 'Repeated Failures', 'Reliability'];
-const ANALYZE_RAIL = ['Dashboard', 'Pareto & Contributors', 'Repeated Failures', 'Reliability Trends'];
+const ANALYZE = ['Dashboard', 'Causes', 'Repeated failures', 'Reliability'];
+const ANALYZE_RAIL = ['Dashboard', 'Causes', 'Repeated failures', 'Reliability'];
 // the left rail: every page the role may open, grouped under Analyze / Data / Setup; Data is ONE item (its pages are
 // the tabs under the top bar) and Notifications is reached from the bell
 const DATA_RAIL = ['Events & data'];
@@ -70,8 +70,8 @@ test.describe('desktop', () => {
     expect(await tabNames()).toEqual(ANALYZE);
     await page.goto('/#/events');
     await expect(page.getByTestId('page-events')).toBeVisible();
-    expect(await tabNames()).toEqual(['Event Explorer', 'Validate', 'Upload']);
-    await expect(page.getByTestId('breadcrumb')).toHaveText('Data›Event Explorer');
+    expect(await tabNames()).toEqual(['Events', 'Validate', 'Upload']);
+    await expect(page.getByTestId('breadcrumb')).toHaveText('Data›Events');
     await page.goto('/#/master');
     await expect(page.getByTestId('page-master')).toBeVisible();
     await expect(page.getByTestId('page-tabs')).toHaveCount(0);
@@ -117,15 +117,15 @@ test.describe('desktop', () => {
     const nav = page.getByRole('navigation', { name: 'Primary' });
     const pages: [string, string][] = [
       ['Dashboard', 'page-overview'],
-      ['Pareto', 'page-pareto'],
-      ['Repeated Failures', 'page-repeats'],
+      ['Causes', 'page-pareto'],
+      ['Repeated failures', 'page-repeats'],
       ['Reliability', 'page-reliability'],
-      ['Event Explorer', 'page-events'],
+      ['Events', 'page-events'],
       ['Validate', 'page-validate'],
       ['Upload', 'page-upload'],
       ['Master Data', 'page-master'],
     ];
-    const dataPages = ['Event Explorer', 'Validate', 'Upload'];
+    const dataPages = ['Events', 'Validate', 'Upload'];
     for (const [label, id] of pages) {
       if (dataPages.includes(label)) {
         // one rail item for Data; its pages are the tabs under the top bar
@@ -438,7 +438,7 @@ test.describe('phone', () => {
     await expect(page.getByTestId('page-title')).toHaveText('Dashboard');
     await page.getByTestId('bottom-more').click();
     await sheet.getByTestId('more-tile-events').click();
-    await expect(page.getByTestId('page-title')).toHaveText('Event Explorer');
+    await expect(page.getByTestId('page-title')).toHaveText('Events');
     await page.getByTestId('bottom-more').click();
     await page.getByTestId('more-logout').click();
     await expect(page.getByTestId('login-form')).toBeVisible();

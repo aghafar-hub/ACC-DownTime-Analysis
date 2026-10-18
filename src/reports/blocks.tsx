@@ -378,10 +378,10 @@ function repeatsBlocks(s: RepeatsSection): Block[] {
   const d = s.data;
   out.push(node('repeats:stats', (
     <div className="rpt-stats" data-testid="rpt-repeat-stats">
-      <div><b>{fint(d.totalGroups)}</b><span>{t('qualifying groups')}</span></div>
-      <div><b>{fint(d.recurrences)}</b><span>{t('recurrence events')}</span></div>
+      <div><b>{fint(d.totalGroups)}</b><span>{t('repeated failures')}</span></div>
+      <div><b>{fint(d.events)}</b><span>{t('repeat events')}</span></div>
       <div><b>{fint(d.equipmentCount)}</b><span>{t('equipment affected')}</span></div>
-      <div><b>{fh(d.groupHours)} h</b><span>{t('in these groups')}</span></div>
+      <div><b>{fh(d.groupHours)} h</b><span>{t('repeat hours')}</span></div>
     </div>
   ), true));
   const win = d.window;

@@ -426,7 +426,7 @@ export default function EventExplorer() {
         eventCount={dataReady ? filtered.length - stats.notCounted : null} views={viewsMenu} exportMenu={exportMenu}
       />
       <PageHeader
-        title={t('Event Explorer')}
+        title={t('Events')}
         subtitle={dataReady
           ? (drill
             ? t('{shown} of {total} opened events · {hours} stoppage hours · {failures} failures', { shown: num(filtered.length), total: num(total), hours: hours(stats.sec), failures: num(stats.failures) })

@@ -129,6 +129,30 @@ test.describe('desktop', () => {
     await expect(detail(page)).toHaveCount(0);
   });
 
+  test('Create action: Escape closes an untouched dialog, asks first once something is typed; Tab stays inside', async ({ page }) => {
+    await openActions(page, 'engineer');
+    await page.getByTestId('new-action').click();
+    await expect(dialog(page)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toHaveCount(0);
+    await page.getByTestId('new-action').click();
+    await page.getByTestId('ca-title').fill('Half-written problem');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('ca-discard')).toBeVisible();
+    await expect(page.getByTestId('ca-discard-keep')).toBeFocused();
+    await page.getByTestId('ca-discard-keep').click();
+    await expect(page.getByTestId('ca-discard')).toHaveCount(0);
+    await expect(page.getByTestId('ca-title')).toHaveValue('Half-written problem');
+    // Tab never leaves the dialog
+    for (let i = 0; i < 60; i++) {
+      await page.keyboard.press('Tab');
+      expect(await page.evaluate(() => !!document.activeElement?.closest('[data-testid="create-action"]'))).toBe(true);
+    }
+    await page.getByTestId('modal-close').click();
+    await page.getByTestId('ca-discard-yes').click();
+    await expect(dialog(page)).toHaveCount(0);
+  });
+
   test('the same equipment and reason: the dialog offers to add to the open action, and the result says "Added to existing action"', async ({ page }) => {
     await openActions(page, 'manager');
     const code = await codeOf(page, 'Chute blockage (demo)');
@@ -166,13 +190,13 @@ test.describe('desktop', () => {
     await page.getByTestId('pareto-eq-hours-action').click();
     await page.getByTestId('bar-action').first().click();
     await expect(dialog(page)).toBeVisible();
-    await expect(page.getByTestId('ca-from')).toContainText('Losses (Pareto)');
+    await expect(page.getByTestId('ca-from')).toContainText('Causes');
     await expect(page.getByTestId('ca-from')).toContainText(key ?? '-');
     await expect(page.getByTestId('ca-from')).toContainText('Equipment by failure hours');
     await expect(page.getByTestId('ca-scope-equipment')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('ca-equipment')).toHaveValue(key ?? '');
     await expect(page.getByTestId('ca-evidence')).toContainText(/\d+ linked records? · \d/);
-    await expect(page.getByTestId('ca-source')).toContainText('Pareto');
+    await expect(page.getByTestId('ca-source')).toContainText('Causes');
     await page.getByTestId('ca-draft').click();
     await expect(toast(page)).toContainText(/(Created AC-\d{6}-\d{4} \(Draft\)|Added to existing action)/);
 
@@ -196,7 +220,7 @@ test.describe('desktop', () => {
     await page.goto('/#/events');
     await page.locator('[data-testid=event-row]').first().click();
     await page.getByTestId('event-create-action').click();
-    await expect(page.getByTestId('ca-from')).toContainText('Event records');
+    await expect(page.getByTestId('ca-from')).toContainText('Events');
     await expect(page.getByTestId('ca-evidence')).toContainText('1 linked record');
     await page.getByTestId('ca-cancel').click();
     await expect(dialog(page)).toHaveCount(0);

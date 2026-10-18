@@ -36,12 +36,12 @@ export interface PageDef {
 export const PAGES: PageDef[] = [
   // The Dashboard keeps the id (and access tab) `overview`; its address is /dashboard (/overview redirects there).
   { id: 'overview', access: 'overview', path: '/dashboard', label: 'Dashboard', tab: 'Dashboard', short: 'Dashboard', icon: 'dashboard', group: 'analyze' },
-  { id: 'pareto', access: 'pareto', path: '/pareto', label: 'Pareto & Contributors', tab: 'Pareto', short: 'Causes', icon: 'limits', group: 'analyze' },
-  { id: 'repeats', access: 'repeats', path: '/repeats', label: 'Repeated Failures', tab: 'Repeated Failures', short: 'Repeats', icon: 'repeat', group: 'analyze' },
-  { id: 'reliability', access: 'reliability', path: '/reliability', label: 'Reliability Trends', tab: 'Reliability', short: 'Reliability', icon: 'trend', group: 'analyze' },
+  { id: 'pareto', access: 'pareto', path: '/pareto', label: 'Causes', tab: 'Causes', short: 'Causes', icon: 'limits', group: 'analyze' },
+  { id: 'repeats', access: 'repeats', path: '/repeats', label: 'Repeated failures', tab: 'Repeated failures', short: 'Repeats', icon: 'repeat', group: 'analyze' },
+  { id: 'reliability', access: 'reliability', path: '/reliability', label: 'Reliability', tab: 'Reliability', short: 'Reliability', icon: 'trend', group: 'analyze' },
   { id: 'reports', access: 'reports', path: '/reports', label: 'Reports', tab: 'Reports', short: 'Reports', icon: 'registry', group: 'reports' },
   { id: 'actions', access: 'actions', path: '/actions', label: 'Actions', tab: 'Actions', short: 'Actions', icon: 'target', group: 'act' },
-  { id: 'events', access: 'events', path: '/events', label: 'Event Explorer', tab: 'Event Explorer', short: 'Events', icon: 'list', group: 'data' },
+  { id: 'events', access: 'events', path: '/events', label: 'Events', tab: 'Events', short: 'Events', icon: 'list', group: 'data' },
   { id: 'validate', access: 'events', path: '/validate', label: 'Validate', tab: 'Validate', short: 'Validate', icon: 'compliance', group: 'data' },
   { id: 'upload', access: 'upload', path: '/upload', label: 'Upload', tab: 'Upload', short: 'Upload', icon: 'upload', group: 'data' },
   { id: 'master', access: 'master', path: '/master', label: 'Master Data', tab: 'Master Data', short: 'Master data', icon: 'database', group: 'setup' },

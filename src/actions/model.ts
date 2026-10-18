@@ -29,7 +29,7 @@ export const SOURCE_LABEL: Record<ActionSource, string> = {
   auto_planned_overrun: 'Auto · Planned overrun',
   notification: 'Notification',
   report: 'Report',
-  pareto: 'Pareto',
+  pareto: 'Causes',
   event: 'Event',
   manual: 'Manual',
 };

@@ -51,7 +51,7 @@ test.describe('validate (desktop)', () => {
       await expect(page.getByTestId('page-events')).toBeVisible();
       await expect(railLink).toHaveClass(/sidebar-link--active/);
       const tabs = page.getByRole('navigation', { name: 'Pages' });
-      expect((await tabs.getByRole('link').allTextContents()).map((x) => x.replace(/[◆\d,\s]+$/, '').trim()).slice(0, 2)).toEqual(['Event Explorer', 'Validate']);
+      expect((await tabs.getByRole('link').allTextContents()).map((x) => x.replace(/[◆\d,\s]+$/, '').trim()).slice(0, 2)).toEqual(['Events', 'Validate']);
       await tabs.getByRole('link', { name: /^Validate/ }).click();
       await expect(page.getByTestId('page-validate')).toBeVisible();
       await expect(railLink).toHaveClass(/sidebar-link--active/);
@@ -149,9 +149,10 @@ test.describe('validate (desktop)', () => {
     // the Overview total for that month and the banner, before the fix
     await page.goto(`/#/overview?r=month&m=${month}&cmp=none`);
     await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
-    const banner = page.getByTestId('validation-banner');
-    await expect(banner).toContainText('left out of these numbers because they need checking');
-    expect(num(await banner.textContent())).toBe(blocked0);
+    // the notice was shown once this session already: the data line keeps the count
+    const left = page.getByTestId('data-status-left-out');
+    await expect(left).toBeVisible();
+    expect(num(await left.textContent())).toBe(blocked0);
     const hours0 = num(await page.getByTestId('kpi-total-hours-value').textContent());
 
     await page.goto('/#/validate');
@@ -182,8 +183,7 @@ test.describe('validate (desktop)', () => {
 
     await page.goto(`/#/overview?r=month&m=${month}&cmp=none`);
     await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
-    await expect(page.getByTestId('validation-banner')).toBeVisible();
-    expect(num(await page.getByTestId('validation-banner').textContent())).toBe(blocked0 - 1);
+    await expect.poll(async () => num(await page.getByTestId('data-status-left-out').textContent())).toBe(blocked0 - 1);
     // a record can straddle the month edge: only the part inside the month is added
     await expect.poll(async () => num(await page.getByTestId('kpi-total-hours-value').textContent()) - hours0).toBeGreaterThan(0);
     const delta = num(await page.getByTestId('kpi-total-hours-value').textContent()) - hours0;
@@ -417,29 +417,37 @@ test.describe('validate (desktop)', () => {
     expect(n1).toBe(n0 - sameCode);
   });
 
-  test('banner: one line on every dashboard and the Event Explorer, links to Validate, comes back after a reload', async ({ page }) => {
+  test('notice: once per session, floating (never pushes the page), then the count stays in the data line; links to Validate', async ({ page }) => {
     await signInAndWait(page, 'viewer');
-    await expect(page.getByTestId('validation-banner')).toBeVisible();
-    for (const p of ['overview', 'pareto', 'repeats', 'reliability', 'events']) {
+    const notice = page.getByTestId('validation-banner');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText(/records? \([\d,.]+ h\) (is|are) left out of these numbers because (it|they) needs? checking/);
+    expect(await notice.evaluate((e) => getComputedStyle(e).position)).toBe('fixed');
+    const n = num(await notice.textContent());
+    // every other page, and a reload, show only the small count in the data line
+    for (const p of ['pareto', 'repeats', 'reliability', 'events', 'overview']) {
       await page.goto(`/#/${p}`);
       await expect(page.getByTestId(`page-${p}`)).toBeVisible();
-      await expect(page.getByTestId('validation-banner')).toBeVisible();
-      await expect(page.getByTestId('validation-banner')).toContainText(/records? \([\d,.]+ h\) (is|are) left out of these numbers because (it|they) needs? checking/);
-      const box = await page.getByTestId('validation-banner').boundingBox();
-      expect(box!.height).toBeLessThan(70);
+      await expect(page.getByTestId('data-status-left-out')).toHaveText(`◆ ${n} left out`); // desktop words; a phone shows ◆ and the number
+      await expect(notice).toHaveCount(0);
     }
+    await page.reload();
+    await expect(page.getByTestId('page-overview')).toBeVisible();
+    await expect(page.getByTestId('data-status-left-out')).toBeVisible({ timeout: 20000 });
+    await expect(notice).toHaveCount(0);
+    // it opens Validate (the viewer may read the list)
+    await expect(page.getByTestId('data-status-left-out')).toHaveAttribute('href', '#/validate');
+    // a new sign-in shows the notice again (sign-out forgets it); Open Validate goes there and the Validate page does not repeat it
+    await page.getByTestId('user-menu-trigger').click();
+    await page.getByTestId('sign-out').click();
+    await expect(page.getByTestId('login-form')).toBeVisible();
+    await page.getByTestId('login-email').fill('engineer@demo.test');
+    await page.getByTestId('login-password').fill('Demo-Pass-1234');
+    await page.getByTestId('login-submit').click();
+    await expect(notice).toBeVisible({ timeout: 20000 });
     await page.getByTestId('validation-banner-open').click();
     await expect(page.getByTestId('page-validate')).toBeVisible();
-    await expect(page.getByTestId('validation-banner')).toHaveCount(0); // the Validate page does not repeat it
-    await page.goto('/#/overview');
-    await page.getByTestId('validation-banner-close').click();
-    await expect(page.getByTestId('validation-banner')).toHaveCount(0);
-    await page.goto('/#/events');
-    await expect(page.getByTestId('page-events')).toBeVisible();
-    await expect(page.getByTestId('validation-banner')).toHaveCount(0);
-    await page.reload();
-    await expect(page.getByTestId('page-events')).toBeVisible();
-    await expect(page.getByTestId('validation-banner')).toBeVisible({ timeout: 20000 });
+    await expect(notice).toHaveCount(0);
   });
 
   test('Event Explorer still lists blocked records, with their flag badges', async ({ page }) => {
@@ -576,8 +584,8 @@ test.describe('validate (desktop)', () => {
 
     await page.goto(`/#/overview?r=month&m=${month}&cmp=none`);
     await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
-    await expect(page.getByTestId('validation-banner')).toBeVisible();
-    expect(num(await page.getByTestId('validation-banner').textContent())).toBe(blocked0);
+    await expect(page.getByTestId('data-status-left-out')).toBeVisible();
+    expect(num(await page.getByTestId('data-status-left-out').textContent())).toBe(blocked0);
     const overview0 = num(await page.getByTestId('kpi-total-hours-value').textContent());
 
     await page.goto('/#/validate');
@@ -598,7 +606,7 @@ test.describe('validate (desktop)', () => {
     await page.goto(`/#/overview?r=month&m=${month}&cmp=none`);
     await expect(page.getByTestId('kpi-total-hours-value')).toBeVisible({ timeout: 20000 });
     expect(num(await page.getByTestId('kpi-total-hours-value').textContent())).toBe(overview0);
-    expect(num(await page.getByTestId('validation-banner').textContent())).toBe(blocked0 - 1);
+    await expect.poll(async () => num(await page.getByTestId('data-status-left-out').textContent())).toBe(blocked0 - 1);
 
     // it shows under Kept as entered as still left out of the numbers; Event Explorer shows a neutral badge, no problem badge
     await page.goto('/#/validate');

@@ -18,7 +18,8 @@ export default function PageTabs() {
   const mobile = useIsMobile();
   const { pinned } = useRail();
   const location = useLocation();
-  const active = pageForPath(location.pathname);
+  // '/' is about to become the first page: draw its tabs already, so the page does not jump when it opens
+  const active = location.pathname === '/' ? pages[0] : pageForPath(location.pathname);
   if (!active) return null;
   // the pinned, labelled rail already lists every page: no second row of tabs (the icon rail keeps them)
   if (!mobile && pinned) return null;

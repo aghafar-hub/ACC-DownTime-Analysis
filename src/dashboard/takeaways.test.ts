@@ -46,11 +46,11 @@ describe('paretoTakeaway', () => {
 
 describe('repeatsTakeaway', () => {
   it('names the group with the most occurrences', () => {
-    expect(repeatsTakeaway({ groups: 4, recurrences: 9, equipmentCount: 3, top: { equipmentId: '100.A1', occurrences: 5, totalHours: 7.25, reason: 'Belt slip' }, minEvents: 3, windowDays: 30 }))
-      .toBe('4 repeated-failure groups (9 recurrence events) across 3 equipment codes; 100.A1 repeats most, 5 times and 7.3 h (Belt slip).');
+    expect(repeatsTakeaway({ groups: 4, events: 9, equipmentCount: 3, top: { equipmentId: '100.A1', occurrences: 5, totalHours: 7.25, reason: 'Belt slip' }, minEvents: 3, windowDays: 30 }))
+      .toBe('4 repeated failures (9 repeat events) across 3 equipment codes; 100.A1 repeats most, 5 times and 7.3 h (Belt slip).');
   });
   it('explains the rule when there are none', () => {
-    expect(repeatsTakeaway({ groups: 0, recurrences: 0, equipmentCount: 0, top: null, minEvents: 3, windowDays: 30 })).toContain('at least 3 events');
+    expect(repeatsTakeaway({ groups: 0, events: 0, equipmentCount: 0, top: null, minEvents: 3, windowDays: 30 })).toContain('at least 3 events');
   });
 });
 
@@ -81,7 +81,7 @@ describe('report takeaways (real numbers only)', () => {
     expect(b[1]).toBe('Availability (basis B) was 97.7%, −0.1 pts vs previous period.');
     expect(b[2]).toBe('233 failures; mean restoration time 0.87 h.');
     expect(b[3]).toBe('K.2 is the largest contributor by failure hours (13.1% of them); 141.VL170 is the top equipment with 12.6 h.');
-    expect(b[4]).toBe('10 repeated-failure groups with 10 recurrence events.');
+    expect(b[4]).toBe('10 repeated failures with 10 repeat events.');
   });
   it('says what is missing instead of inventing it', () => {
     const b = summaryBullets({ ...facts, failureCount: 0, failureEventCount: 0, mttr: unavail('no_failures', 'x'), topArea: { available: false }, topEquipment: null, repeatGroups: 0, availability: unavail('no_scheduled_time', 'No scheduled time'), compare: 'none' });

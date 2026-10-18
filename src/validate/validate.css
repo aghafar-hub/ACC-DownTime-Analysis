@@ -29,11 +29,20 @@
 
 /* one-line banner above a page */
 .vbanner {
+  /* floats over the page (never pushes it down); shown once per session */
+  position: fixed;
+  z-index: 900;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(640px, calc(100vw - 32px));
+  box-sizing: border-box;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0 8px;
-  margin-bottom: 12px;
   padding: 0 6px 0 12px;
   min-height: 44px;
   border-radius: 8px;
@@ -42,6 +51,17 @@
   color: var(--tk-text-primary);
   font-size: 13px;
   line-height: 1.4;
+}
+@media (max-width: 860px) {
+  .vbanner {
+    flex-wrap: wrap;
+    left: 12px;
+    right: 12px;
+    transform: none;
+    width: auto;
+    max-width: none;
+    bottom: calc(var(--bottom-nav-h, 60px) + 14px);
+  }
 }
 .vbanner-sym {
   color: var(--tk-danger);

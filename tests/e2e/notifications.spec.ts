@@ -134,7 +134,7 @@ test.describe('desktop', () => {
     await open(page);
     await panel(page).locator('[data-testid="notif-row"][data-type="long_stop"]').first().getByTestId('notif-go').click();
     await expect(page).toHaveURL(/#\/events/);
-    await expect(page.getByTestId('page-title')).toHaveText('Event Explorer');
+    await expect(page.getByTestId('page-title')).toHaveText('Events');
     await expect(page.getByTestId('drill-chip')).toBeVisible();
     await open(page);
     const rep = panel(page).locator('[data-testid="notif-row"][data-type="repeat_group"]').first();
@@ -243,16 +243,21 @@ test.describe('desktop', () => {
     await signInAndWait(page, 'admin');
     const card = page.getByTestId('since-card');
     await expect(card).toBeVisible({ timeout: 20000 });
+    // one line until opened (it arrives after the page, so it must not push the page down much)
+    await expect(page.getByTestId('slv-events')).toHaveCount(0);
+    await expect(page.getByTestId('since-summary')).toContainText(/new events?/);
+    await page.getByTestId('since-toggle').click();
     expect(num(await page.getByTestId('slv-events').locator('b').textContent())).toBeGreaterThan(0);
     await expect(page.getByTestId('slv-failures')).toBeVisible();
     await expect(page.getByTestId('slv-hours')).toBeVisible();
     await expect(page.getByTestId('slv-area')).toBeVisible();
     await expect(page.getByTestId('slv-repeats')).toBeVisible();
     await expect(page.getByTestId('slv-alerts')).toBeVisible();
-    // it sits under the takeaway, above the data-quality banner and the filters
-    const t = (await page.getByTestId('takeaway').boundingBox())!;
+    // it sits under the KPI row, above the cards (it arrives late, so it must not push the KPIs down)
+    const k = (await page.getByTestId('hero-kpis').boundingBox())!;
     const c = (await card.boundingBox())!;
-    expect(c.y).toBeGreaterThanOrEqual(t.y + t.height - 1);
+    expect(c.y).toBeGreaterThanOrEqual(k.y + k.height - 1);
+    expect(c.y).toBeLessThan((await page.getByTestId('dash-cards').boundingBox())!.y);
     await page.getByTestId('since-toggle').click();
     await expect(page.getByTestId('slv-events')).toHaveCount(0);
     await page.getByTestId('since-toggle').click();

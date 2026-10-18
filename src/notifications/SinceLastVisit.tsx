@@ -1,7 +1,7 @@
 import { useId, useMemo, useState } from 'react';
+import type { EventRow, Startup } from '../api/types';
 import { tsText } from '../util/dates';
 import { buildCodeLookup, parseSettings } from '../calc';
-import { useIsMobile } from '../hooks/useIsMobile';
 import { t, tn } from '../i18n/t';
 import { Icon } from '../icons';
 import { hours, num } from '../util/format';
@@ -10,19 +10,21 @@ import { useNotificationsOptional } from './NotificationsContext';
 import { computeSince, countNewAlerts, EMPTY_SINCE } from './since';
 import './notifications.css';
 
-// "Since your last visit": a collapsible card under the Dashboard takeaway. Worked out from the loaded events and the person's
+// "Since your last visit": a collapsible card under the Dashboard KPI row. Worked out from the loaded events and the person's
 // last-seen time; nothing is drawn when nothing is new. Dismiss moves last-seen to now.
-export default function SinceLastVisit() {
+export default function SinceLastVisit({ rows: pageRows, startup: pageStartup }: {
+  /** the page's own loaded events (the Dashboard passes them, so the card arrives with the KPI row and moves nothing) */
+  rows?: EventRow[] | null; startup?: Startup | null;
+} = {}) {
   const n = useNotificationsOptional();
   const v = useValidationOptional();
-  const mobile = useIsMobile();
   const [openState, setOpen] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const bodyId = useId();
-  const startup = v?.st.startup ?? null;
+  const startup = pageStartup ?? v?.st.startup ?? null;
   const lastSeenAt = n?.lastSeenAt ?? '';
-  const ready = !!v?.ready;
-  const rows = v?.rows;
+  const ready = pageRows ? true : !!v?.ready;
+  const rows = pageRows ?? v?.rows;
   const alerts = n?.items;
 
   const repeat = useMemo(
@@ -36,7 +38,8 @@ export default function SinceLastVisit() {
   }, [ready, rows, lastSeenAt, repeat, alerts]);
 
   if (!n || !since.any) return null;
-  const open = openState ?? !mobile;
+  // closed until asked: it appears once the events are loaded, and a one-line card barely moves the page (layout shift)
+  const open = openState ?? false;
   const summary = [
     tn(since.newEvents, '{n} new event', '{n} new events'),
     since.newAlerts > 0 ? tn(since.newAlerts, '{n} new alert', '{n} new alerts') : '',

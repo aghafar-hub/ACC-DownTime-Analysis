@@ -6,6 +6,13 @@
   border-bottom: 1px solid var(--tk-border);
   margin-bottom: 12px;
 }
+/* a tablet or desktop shows every tab (they wrap); the phone keeps one row that scrolls */
+@media (min-width: 861px) {
+  .nx-tabs {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+}
 .nx-tab {
   flex: 0 0 auto;
   display: inline-flex;

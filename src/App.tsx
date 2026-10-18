@@ -70,7 +70,9 @@ function ShellLayout() {
   const [slotBar, setSlotBar] = useState<HTMLElement | null>(null);
   const [slotInfo, setSlotInfo] = useState<HTMLElement | null>(null);
   const slots = useMemo(() => ({ bar: slotBar, info: slotInfo }), [slotBar, slotInfo]);
-  const page = pageForPath(location.pathname);
+  const visiblePages = useVisiblePages();
+  // '/' is about to become the first page (Home): lay the shell out for that page already, so nothing jumps
+  const page = location.pathname === '/' ? visiblePages[0] : pageForPath(location.pathname);
   const scoped = !!page && (page.group === 'analyze' || page.id === 'events');
 
   useEffect(() => {
@@ -104,7 +106,7 @@ function ShellLayout() {
       onPointerOver={preloadFromEvent} onPointerDown={preloadFromEvent} onFocus={preloadFromEvent}
     >
       {!mobile && <Sidebar />}
-      <div className="app-shell-right">
+      <div className={scoped ? 'app-shell-right app-shell-right--scoped' : 'app-shell-right'}>
         <TopBar />
         <PageTabs />
         <div className="scope-slot" ref={setSlotBar} />

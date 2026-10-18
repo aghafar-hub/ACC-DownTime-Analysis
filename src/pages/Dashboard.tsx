@@ -83,12 +83,14 @@ export default function Dashboard() {
 
   return (
     <div className="page dash-page dash-v2" data-testid="page-overview" style={vars}>
-      <DashTop title={t('Dashboard')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} belowTakeaway={<SinceLastVisit />} right={right} />
+      <DashTop title={t('Dashboard')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} right={right} />
       {ctx && model && !kpi && <NoData reason={model.noDataReason ?? t('No data')} />}
       {empty && <><EmptyScope dash={dash} /><MonthCompare dash={dash} page="overview" compact /></>}
       {ctx && model && kpi && !empty && (
         <>
           <KpiRow model={model} sparks={sparks} basis={basis} cmpLabel={cmpLabel} prevLabel={prevLabel} dark={dark} />
+          {/* under the KPI row: it arrives after the events load, and here it only moves the cards (no page jump) */}
+          <SinceLastVisit rows={dash.allRows} startup={dash.startup} />
           <div className="dcards" data-testid="dash-cards">
             <TrendCard ctx={ctx} filters={dash.filters} dark={dark} classNames={classNames} onOpen={onOpen} />
             <ClassCard ctx={ctx} filters={dash.filters} dark={dark} classNames={classNames} onOpen={onOpen} />

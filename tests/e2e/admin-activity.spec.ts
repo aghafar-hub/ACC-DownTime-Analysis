@@ -46,7 +46,7 @@ test.describe('desktop', () => {
     await expect(mgr).toContainText('Manager');
     await expect(mgr).toContainText('Online now');
     await expect(mgr).toContainText('Phone');
-    await expect(mgr).toContainText('Pareto & Contributors');
+    await expect(mgr).toContainText('Causes');
     const eng = page.locator('[data-testid="au-row"][data-user="U-DEMO-ENG"]');
     await expect(eng).toContainText('Desktop');
     await expect(eng).toContainText('Validate');

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { useBackClose } from '../mobile/useBackClose';
+import { trapTab } from '../util/focusTrap';
 import './ShellModal.css';
 
 // The platform's ModalShell / FormSection pattern: header with icon, title,
@@ -28,17 +29,29 @@ export default function ShellModal({
   const drawer = variant === 'drawer';
   useBackClose(!drawer, onClose);
   const boxRef = useRef<HTMLDivElement>(null);
+  // the latest close handler, so a parent that passes a new function on every render does not re-run the effect below
+  // (that would move the focus back to the box after each keystroke)
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
+    const onClose = () => closeRef.current();
     const prev = document.activeElement as HTMLElement | null;
     boxRef.current?.focus({ preventScroll: true });
     // a popup opened over the drawer (Keep as entered) handles its own Escape
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !(drawer && document.querySelector('.sm-shade')) && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (!(drawer && document.querySelector('.sm-shade'))) onClose();
+        return;
+      }
+      // a modal keeps Tab inside it (the topmost one, when a popup is open over another); the drawer leaves the page usable
+      if (!drawer && boxRef.current && !document.querySelector('.info-shade') && boxRef.current.closest('.sm-shade') === [...document.querySelectorAll('.sm-shade')].pop()) trapTab(e, boxRef.current);
+    };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
       prev?.focus?.({ preventScroll: true });
     };
-  }, [onClose, drawer]);
+  }, [drawer]);
   const box = (
       <div
         className={drawer ? 'sm-box sm-box--drawer' : 'sm-box'}

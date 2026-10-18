@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { store } from '../storagePrefix';
 import { buildStyles, DEFAULT_THEME, resolveThemeName, THEME_NAMES, THEMES, type Tokens } from './themes';
 import type { CSSProperties } from 'react';
+import { TYPE_DARK, TYPE_LIGHT } from '../charts/palette';
 
 // The five platform themes. The choice is kept on this device under
 // `acc_dt_theme` and applied to <body> as CSS custom properties, so the
@@ -59,6 +60,10 @@ export function themeVars(T: Tokens, dark: boolean): Record<string, string> {
     '--shell-topbar-success': topbarInverse ? '#4CC38A' : T.success,
     '--shell-topbar-danger': topbarInverse ? '#FF6B6B' : T.danger,
     '--shell-grid-strength': topbarInverse ? '10%' : '55%',
+    // the three stop types (INC, PL, CIR): one colour each on every page, chart, timeline and report
+    '--type-inc': (dark ? TYPE_DARK : TYPE_LIGHT).inc,
+    '--type-pl': (dark ? TYPE_DARK : TYPE_LIGHT).pl,
+    '--type-cir': (dark ? TYPE_DARK : TYPE_LIGHT).cir,
   };
   // every token as --tk-<name> for the page stylesheets
   for (const [k, v] of Object.entries(T)) vars[`--tk${kebab(k).replace(/^-?/, '-')}`] = v;
