@@ -129,6 +129,30 @@ test.describe('desktop', () => {
     await expect(detail(page)).toHaveCount(0);
   });
 
+  test('Create action: Escape closes an untouched dialog, asks first once something is typed; Tab stays inside', async ({ page }) => {
+    await openActions(page, 'engineer');
+    await page.getByTestId('new-action').click();
+    await expect(dialog(page)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(dialog(page)).toHaveCount(0);
+    await page.getByTestId('new-action').click();
+    await page.getByTestId('ca-title').fill('Half-written problem');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('ca-discard')).toBeVisible();
+    await expect(page.getByTestId('ca-discard-keep')).toBeFocused();
+    await page.getByTestId('ca-discard-keep').click();
+    await expect(page.getByTestId('ca-discard')).toHaveCount(0);
+    await expect(page.getByTestId('ca-title')).toHaveValue('Half-written problem');
+    // Tab never leaves the dialog
+    for (let i = 0; i < 60; i++) {
+      await page.keyboard.press('Tab');
+      expect(await page.evaluate(() => !!document.activeElement?.closest('[data-testid="create-action"]'))).toBe(true);
+    }
+    await page.getByTestId('modal-close').click();
+    await page.getByTestId('ca-discard-yes').click();
+    await expect(dialog(page)).toHaveCount(0);
+  });
+
   test('the same equipment and reason: the dialog offers to add to the open action, and the result says "Added to existing action"', async ({ page }) => {
     await openActions(page, 'manager');
     const code = await codeOf(page, 'Chute blockage (demo)');

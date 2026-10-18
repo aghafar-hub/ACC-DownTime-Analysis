@@ -565,6 +565,11 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     await expect(page.getByTestId('kpi-info')).toHaveCount(0);
     await page.getByTestId('kpi-mttr-info').click();
     await expect(page.getByTestId('kpi-info')).toContainText('failure');
+    // the dialog keeps the keyboard: Tab and Shift+Tab stay on its close button
+    for (const k of ['Tab', 'Tab', 'Shift+Tab', 'Tab']) {
+      await page.keyboard.press(k);
+      await expect(page.getByTestId('kpi-info-close')).toBeFocused();
+    }
     await page.getByTestId('kpi-info-close').click();
     await expect(page.getByTestId('kpi-info')).toHaveCount(0);
 

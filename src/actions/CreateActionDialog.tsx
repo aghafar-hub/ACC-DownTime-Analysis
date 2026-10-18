@@ -70,6 +70,14 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
   const [shown, setShown] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // something was typed or changed: Escape, the close button, the shade and Back ask before throwing it away
+  const [dirty, setDirty] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const requestClose = () => {
+    if (busy) return;
+    if (!dirty) onClose();
+    else setAsking((a) => !a); // a second Escape while asking means: keep editing
+  };
   // backend 1.7.0: the task template and the tasks to create
   const templates = useMemo(() => (acts.payload?.templates ?? []).filter((x) => x.active).sort((a, b) => a.sort_order - b.sort_order), [acts.payload]);
   const suggested = suggestedTemplate(templates, prefill?.suggest ?? prefill?.source);
@@ -141,7 +149,13 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
   const blocked = acts.blockedReason;
   const err = (k: string) => shown && problems[k] && <span className="field-error" role="alert" data-testid={`ca-error-${k}`}>{problems[k]}</span>;
   const drill = eventIds.length && startup ? { drill: { label: prefill?.trail?.slice(-1)[0] ?? t('Create action'), eventIds, rowIds: eventIds, years: startup.years, source: t('Create action') } } : undefined;
-  const footer = (
+  const footer = asking ? (
+    <div className="ca-discard" role="alertdialog" aria-label={t('Discard this action?')} data-testid="ca-discard">
+      <span className="ca-discard-text"><Icon name="alert" size={15} /> {t('Close without saving? What you typed will be lost.')}</span>
+      <button type="button" className="btn" onClick={() => setAsking(false)} data-testid="ca-discard-keep" autoFocus>{t('Keep editing')}</button>
+      <button type="button" className="btn-danger" onClick={onClose} data-testid="ca-discard-yes">{t('Discard')}</button>
+    </div>
+  ) : (
     <>
       <span className="sm-foot-note ca-foot-note"><Icon name="info" size={14} /> {t('Templates are edited in Settings › Actions & targets › Task templates.')}</span>
       <button type="button" className="btn" onClick={onClose} disabled={busy} data-testid="ca-cancel">{t('Cancel')}</button>
@@ -154,9 +168,10 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
 
   return (
     <ShellModal
-      icon="compliance" title={t('Create action')} width={980} testid="create-action" onClose={onClose} footer={footer}
+      icon="compliance" title={t('Create action')} width={980} testid="create-action" onClose={requestClose} footer={footer}
       subtitle={prefill && prefill.source !== 'manual' ? t('Filled in from what you picked. Check it, then save as draft or open it.') : t('Describe the problem, then save it as a draft or open it.')}
     >
+      <div className="ca-form-wrap" onInputCapture={() => setDirty(true)} onChangeCapture={() => setDirty(true)}>
       {prefill?.trail && prefill.trail.length > 0 && (
         <p className="ca-from" data-testid="ca-from">
           <b>{t('FROM')}</b>
@@ -382,6 +397,7 @@ export default function CreateActionDialog({ prefill, onClose }: { prefill?: Act
           </label>
         </div>}
 
+      </div>
       </div>
     </ShellModal>
   );

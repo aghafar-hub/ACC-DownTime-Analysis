@@ -5,6 +5,7 @@ import Sparkline from '../charts/Sparkline';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { useBackClose } from '../mobile/useBackClose';
+import { trapTab } from '../util/focusTrap';
 import type { KpiInfo } from './kpiInfo';
 import '../help/help.css';
 
@@ -15,7 +16,10 @@ function InfoDialog({ info, onClose, testid = 'kpi-info' }: { info: KpiInfo; onC
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.focus({ preventScroll: true });
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else trapTab(e, ref.current); // Tab stays inside the dialog
+    };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
