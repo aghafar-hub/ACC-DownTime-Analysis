@@ -57,7 +57,7 @@ export function defaultMonthPair(months: readonly string[], coverage?: DateRange
   return { a, b: before.length ? before[before.length - 1]! : a };
 }
 
-export type CompareId = 'stoppage' | 'failureHours' | 'planned' | 'other' | 'failureCount' | 'operating' | 'availability' | 'mttr' | 'mtbf' | 'repeated';
+export type CompareId = 'stoppage' | 'failureHours' | 'planned' | 'other' | 'failureCount' | 'operating' | 'availability' | 'reliability' | 'utilization' | 'mttr' | 'mtbf' | 'repeated';
 
 export interface CompareRow {
   id: CompareId;
@@ -103,12 +103,13 @@ function figures(k: KpiResult, month: string): Record<CompareId, Metric> {
   if (k.status !== 'ok') {
     // P6: a month inside the data without any record is 'Not uploaded', never 0 h
     const na = k.reason.startsWith('Not uploaded') ? unavail('not_uploaded', `Not uploaded: no records in ${month}`) : NO_DATA(month);
-    return { stoppage: na, failureHours: na, planned: na, other: na, failureCount: na, operating: na, availability: na, mttr: na, mtbf: na, repeated: na };
+    return { stoppage: na, failureHours: na, planned: na, other: na, failureCount: na, operating: na, availability: na, reliability: na, utilization: na, mttr: na, mtbf: na, repeated: na };
   }
   const t = k.total;
   return {
     stoppage: avail(t.downtimeHours), failureHours: avail(t.failureHours), planned: avail(t.plannedHours), other: avail(t.otherHours),
-    failureCount: avail(t.failureCount), operating: t.operatingHours, availability: t.availabilityHeadline, mttr: t.mttrHours, mtbf: t.mtbfHours,
+    failureCount: avail(t.failureCount), operating: t.operatingHours, availability: t.availabilityHeadline,
+    reliability: t.reliabilityFactor, utilization: t.utilizationFactor, mttr: t.mttrHours, mtbf: t.mtbfHours,
     repeated: avail(k.repeatedFailureCount),
   };
 }
@@ -121,6 +122,8 @@ const ROWS: { id: CompareId; kind: CompareRow['kind']; better: CompareRow['bette
   { id: 'failureCount', kind: 'count', better: 'lower' },
   { id: 'operating', kind: 'hours', better: 'higher' },
   { id: 'availability', kind: 'pct', better: 'higher' },
+  { id: 'reliability', kind: 'pct', better: 'higher' },
+  { id: 'utilization', kind: 'pct', better: 'higher' },
   { id: 'mttr', kind: 'hours2', better: 'lower' },
   { id: 'mtbf', kind: 'hours', better: 'higher' },
   { id: 'repeated', kind: 'count', better: 'lower' },

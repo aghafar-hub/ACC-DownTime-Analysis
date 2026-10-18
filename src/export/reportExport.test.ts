@@ -144,14 +144,14 @@ describe('report workbook', () => {
     expect(w[1]!.slice(1, 1 + heat.cols.length)).toEqual(heat.values[0]);
   });
 
-  it('executive summary: the KPI strip numbers (availability as a percentage) and the key findings', async () => {
+  it('executive summary: the KPI strip numbers (availability, RF and UF as percentages) and the key findings', async () => {
     const s = get(model, 'summary').data;
     const e = await sheet(wb.bytes, SHEET_TITLES.summary);
     expect(e[0]![0]).toBe('Measure');
     s.kpis.forEach((k, i) => {
       expect(e[1 + i]![0]).toBe(k.label);
       expect(e[1 + i]![1]).toBe(k.text);
-      const want = k.value === null ? null : k.id === 'availability' ? k.value * 100 : k.value;
+      const want = k.value === null ? null : ['availability', 'reliability', 'utilization'].includes(k.id) ? k.value * 100 : k.value;
       if (want === null) expect(e[1 + i]![2] ?? null).toBeNull();
       else expect(e[1 + i]![2]).toBeCloseTo(want, 9);
     });

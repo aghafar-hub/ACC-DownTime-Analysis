@@ -283,12 +283,15 @@ test.describe('desktop', () => {
     await openReport(page, 'manager', 'tpl=custom&p=lastmonth&cmp=1&line=L.1&area=K.1&s=summary');
     const stop = await kpiNumber(page, 'stoppage');
     const fails = await kpiNumber(page, 'failures');
-    const avail = await kpiNumber(page, 'availability');
+    const rf = await kpiNumber(page, 'reliability');
+    const uf = await kpiNumber(page, 'utilization');
     const mttr = await kpiNumber(page, 'mttr');
     await page.goto('/#/overview?r=prevmonth&line=L.1&area=K.1');
     await expect(page.getByTestId('kpi-total-hours-value')).toHaveText(stop);
     await expect(page.getByTestId('kpi-failure-count-value')).toHaveText(fails);
-    await expect(page.getByTestId('kpi-availability-value')).toHaveText(avail);
+    // the Dashboard shows RF and UF instead of availability on its KPI row
+    await expect(page.getByTestId('kpi-reliability-value')).toHaveText(rf);
+    await expect(page.getByTestId('kpi-utilization-value')).toHaveText(uf);
     await expect(page.getByTestId('kpi-mttr-value')).toHaveText(mttr);
     await page.goto('/#/reliability?r=prevmonth&line=L.1&area=K.1');
     await expect(page.getByTestId('rt-mttr')).toHaveText(mttr);

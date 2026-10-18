@@ -117,10 +117,10 @@ export const CHART_HELP = {
     example: 'Here: {h} h ÷ {t} h = {p}.',
   },
   'heat': {
-    title: 'Availability heat map, area × month',
-    what: 'The availability of each area in each month. With a target: green at or above it, amber up to 5 points below, red further below.',
-    formulas: ['{af}', T_DEF],
-    how: [P1, RATIO, P6, 'A month in progress is partial.'],
+    title: 'Heat map, area × month: availability, RF or UF',
+    what: 'The availability, reliability factor (RF) or utilization factor (UF) of each area in each month; the switch above the map picks one. With a target (availability, RF): green at or above it, amber up to 5 points below, red further below. UF has no target: darker = lower.',
+    formulas: ['{af}', 'RF = running h ÷ (running h + incidental h)', 'UF = running h ÷ scheduled h', 'Running h = T − planned − incidental − CIR', T_DEF],
+    how: [P1, RATIO, P6, 'A month in progress is partial.', 'The RF target is set in Settings (95% until changed).'],
   },
   'daily': {
     title: 'Daily stopped hours',
