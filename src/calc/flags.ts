@@ -10,6 +10,7 @@
 //    listed on Validate, never counted in the badge, the banner or the "data issues" filters. They only
 //    explain a record (e.g. code_not_in_area: the cause sits in another area, which is a normal case).
 import type { EventRow } from '../api/types';
+import { parseTs } from './time';
 
 export const BLOCKING_FLAGS = ['missing_classification', 'invalid_classification', 'unknown_area', 'end_before_start'] as const;
 export const WARNING_FLAGS = [
@@ -23,8 +24,13 @@ export const INFO_FLAGS = ['code_not_in_area'] as const;
  *    there is nothing to fix; Validate shows them apart, as information.
  *  - failure_flag_mismatch: WARNING. Failure = YES on a PL or CIR row, or on a continuation (Freq = 0) row. Such a row
  *    is never a failure event (events.ts isFailureHead); a person may keep it as entered.
+ *  - unreadable_time: BLOCKING. The stop or restart time cannot be read as a date and time (for example typed by hand
+ *    into the Sheet as 1/2/2026 08:00, or with a year far off). Marked when the records are loaded (markUnreadableTimes)
+ *    so such a record is listed on Validate and left out of every number, never a freeze or a crash.
  */
-export const DERIVED_FLAGS = ['overlap_in_area', 'failure_flag_mismatch'] as const;
+export const DERIVED_FLAGS = ['overlap_in_area', 'failure_flag_mismatch', 'unreadable_time'] as const;
+/** Derived flags that keep the record out of the numbers. */
+export const DERIVED_BLOCKING_FLAGS = ['unreadable_time'] as const;
 /** Derived flags that are information only (nothing to fix). */
 export const DERIVED_INFO_FLAGS = ['overlap_in_area'] as const;
 
@@ -53,6 +59,11 @@ export interface FlagInfo {
 }
 
 export const FLAG_INFO: Record<EventFlag, FlagInfo> = {
+  unreadable_time: {
+    flag: 'unreadable_time', blocking: true, label: 'Unreadable time',
+    problem: 'The stop or restart time cannot be read as a date and time (YYYY-MM-DD HH:MM:SS), or its year is not plausible.',
+    fix: 'Correct the stop and restart time. Until then the record is left out of the numbers.',
+  },
   missing_classification: {
     flag: 'missing_classification', blocking: true, label: 'No classification',
     problem: 'The classification (PRO, MEC, ELE, AUT, PL or CIR) is empty.',
@@ -120,7 +131,7 @@ export const FLAG_INFO: Record<EventFlag, FlagInfo> = {
   },
 };
 
-const BLOCKING = new Set<string>(BLOCKING_FLAGS);
+const BLOCKING = new Set<string>([...BLOCKING_FLAGS, ...DERIVED_BLOCKING_FLAGS]);
 const INFO = new Set<string>([...INFO_FLAGS, ...DERIVED_INFO_FLAGS]);
 
 /** True for a flag that only explains a record (nothing to fix): code_not_in_area and the derived overlap_in_area. */
@@ -202,3 +213,37 @@ export function pruneAcceptedFlags(accepted: string | undefined | null, storedFl
   const have = new Set(splitFlags(storedFlags));
   return canonicalFlags(splitFlags(accepted)).filter((f) => (DERIVED_FLAGS as readonly string[]).includes(f) || have.has(f));
 }
+
+/** A stop or restart time the app can work with: a readable date and time with a year from 2000 to `maxYear` (2100). */
+export function readableTime(text: string | null | undefined, maxYear = 2100): boolean {
+  if (!text) return false;
+  const ms = parseTs(text);
+  if (ms === null) return false;
+  const y = Number(text.slice(0, 4));
+  return y >= 2000 && y <= maxYear;
+}
+
+/**
+ * Adds the derived blocking flag unreadable_time to a record whose stop or restart time cannot be read (the Sheet can
+ * be edited by hand, after the upload checks). `maxYear`: the latest plausible year (the caller passes next year, so a
+ * typo such as 2062 is caught). The same object when nothing is wrong.
+ */
+export function markUnreadableTime<T extends Pick<EventRow, 'stop_ts' | 'start_ts' | 'flags'>>(e: T, maxYear = 2100): T {
+  const bad = !readableTime(e.stop_ts, maxYear) || !readableTime(e.start_ts, maxYear);
+  const has = splitFlags(e.flags).includes('unreadable_time');
+  if (bad === has) return e;
+  const rest = splitFlags(e.flags).filter((f) => f !== 'unreadable_time');
+  return { ...e, flags: (bad ? [...rest, 'unreadable_time'] : rest).join(',') };
+}
+
+/** markUnreadableTime over a list; the same list when no record changes. */
+export function markUnreadableTimes<T extends Pick<EventRow, 'stop_ts' | 'start_ts' | 'flags'>>(rows: T[], maxYear = 2100): T[] {
+  let changed = false;
+  const out = rows.map((e) => {
+    const m = markUnreadableTime(e, maxYear);
+    if (m !== e) changed = true;
+    return m;
+  });
+  return changed ? out : rows;
+}
+

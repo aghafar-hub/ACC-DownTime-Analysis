@@ -4,7 +4,8 @@
 // and updates), and Create action for alerts. The items the app derives (records to check ...) are under Data quality and
 // only for people who can fix them, as in the bell. Every signed-in person may open it.
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useLiveSearchParams } from '../hooks/useLiveSearchParams';
 import type { NotificationCategory } from '../api/types';
 import { useCreateAction } from '../actions/ActionsContext';
 import { notificationPrefill } from '../actions/prefill';
@@ -53,7 +54,7 @@ export default function Notifications() {
   const { startup } = useStartup();
   const v = useValidationOptional();
   const createAction = useCreateAction();
-  const [sp, setSp] = useSearchParams();
+  const [sp, setSp] = useLiveSearchParams();
   const cat: CategoryFilter = (CATEGORIES as readonly string[]).includes(sp.get('cat') ?? '') ? (sp.get('cat') as NotificationCategory) : 'all';
   const area = sp.get('area') ?? '';
   const line = sp.get('line') ?? '';

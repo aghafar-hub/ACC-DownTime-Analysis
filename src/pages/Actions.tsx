@@ -8,7 +8,8 @@
 // progress, the next task and who still has open tasks. Open and In progress follow the tasks, so a card with tasks cannot be
 // dragged between them: only accepting a draft (Draft -> Open), closing and cancelling stay manual.
 import { useCallback, useMemo, useState, type DragEvent } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { useLiveSearchParams } from '../hooks/useLiveSearchParams';
 import { ACTION_PRIORITIES, ACTION_STATUSES, actionProgress, isTerminalStatus, type Action, type ActionSource, type ActionStatus } from '../api/types';
 import ActionDetail from '../actions/ActionDetail';
 import { useActions } from '../actions/ActionsContext';
@@ -72,7 +73,7 @@ function Board() {
   const { user } = useAuth();
   const { startup } = useStartup();
   const mobile = useIsMobile();
-  const [sp, setSp] = useSearchParams();
+  const [sp, setSp] = useLiveSearchParams();
   const today = todayLocal();
   const f = useMemo(() => parseActionFilters(sp), [sp]);
   const view: 'board' | 'list' = sp.get('view') === 'list' ? 'list' : 'board';

@@ -4,7 +4,7 @@
 // status, an Overdue switch, "Jump to area" chips, Print (one area or all, the browser's print dialog) and Excel. The app has
 // no planned-stop dates, so there is no stop calendar.
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLiveSearchParams } from '../hooks/useLiveSearchParams';
 import { isTaskOpen, TASK_STATUSES, type TaskStatus, type TaskView } from '../api/types';
 import AccessBadge from '../components/AccessBadge';
 import { BottomSheet } from '../components/PhoneParts';
@@ -64,7 +64,7 @@ export default function ShutdownView() {
   const acts = useActions();
   const { startup } = useStartup();
   const mobile = useIsMobile();
-  const [sp, setSp] = useSearchParams();
+  const [sp, setSp] = useLiveSearchParams();
   const { openId, taskId, open, close } = useActionOpener();
   const today = todayLocal();
   const p = acts.payload;

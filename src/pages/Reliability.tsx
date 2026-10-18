@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLiveSearchParams } from '../hooks/useLiveSearchParams';
 import SubTabs from '../dashboard/SubTabs';
 import { tsText } from '../util/dates';
 import type { Metric } from '../calc';
@@ -42,7 +42,7 @@ export default function Reliability() {
   const mobile = useIsMobile();
   const { dark } = useTheme();
   const drill = useDrill(dash, 'Reliability');
-  const [sp, setSp] = useSearchParams();
+  const [sp, setSp] = useLiveSearchParams();
   const tabParam = sp.get('tab');
   const tab: RelTab = (REL_TABS as readonly string[]).includes(tabParam ?? '') ? (tabParam as RelTab) : 'areas';
   const setTab = (next: RelTab) => setSp((cur) => {

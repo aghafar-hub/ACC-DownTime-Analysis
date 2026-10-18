@@ -47,6 +47,8 @@ export interface ReportInput {
   generatedAt: string;
   generatedBy: string;
   plant: string;
+  /** what the data covers over every year (src/data/coverage.ts), shown as the data coverage; else that of `rows` */
+  coverage?: DateRange | null;
 }
 
 /** A table cell: text, a number (formatted by the column kind) or null (shown as a dash). */
@@ -248,7 +250,7 @@ export function buildReport(input: ReportInput): ReportModel {
   return {
     title: t(TEMPLATE_BY_ID[setup.template].label),
     plant: input.plant, generatedAt: input.generatedAt, generatedBy: input.generatedBy,
-    range, effective, coverage: ctx.coverage,
+    range, effective, coverage: input.coverage ?? ctx.coverage,
     compare: {
       on: setup.compare, kind: setup.compare ? kind : 'none', range: setup.compare ? cmpRange : null,
       label: !setup.compare ? t('No comparison') : kind === 'same_period_last_year' ? t('Same period last year') : t('Previous period'),

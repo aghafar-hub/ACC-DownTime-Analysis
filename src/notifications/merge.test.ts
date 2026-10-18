@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Notification, NotificationState } from '../api/types';
 import { formatStamp } from './age';
-import { badgeText, buildFeed, isHidden, isSnoozed, restoreState, settleState, snoozeUntilStamp, stateMap, withState } from './merge';
+import { applyRecent, badgeText, buildFeed, RECENT_KEEP_MS, isHidden, isSnoozed, restoreState, settleState, snoozeUntilStamp, stateMap, withState } from './merge';
 import { groupItems, type FeedItem } from './model';
 import { parsePrefs } from './prefs';
 
@@ -131,3 +131,18 @@ describe('badgeText', () => {
     expect(badgeText(100)).toBe('99+');
   });
 });
+
+describe('a dismiss made here never comes back with an older server answer (inspection)', () => {
+  const row = (state: NotificationState['state'], ms: number): NotificationState => ({ user_id: 'U1', notification_id: 'N1', state, snooze_until: '', updated_at: formatStamp(ms) });
+  it('applies the recent change over a server answer that does not hold it yet', () => {
+    const dismissed = row('dismissed', NOW - 1000);
+    expect(applyRecent([], [{ row: dismissed, at: NOW - 1000 }], NOW)).toEqual([dismissed]);
+    expect(applyRecent([row('seen', NOW - 60_000)], [{ row: dismissed, at: NOW - 1000 }], NOW)).toEqual([dismissed]);
+  });
+  it('a newer server row wins (changed later on another device); old changes are left to the server', () => {
+    const later = row('seen', NOW);
+    expect(applyRecent([later], [{ row: row('dismissed', NOW - 1000), at: NOW - 1000 }], NOW)).toEqual([later]);
+    expect(applyRecent([], [{ row: row('dismissed', NOW - RECENT_KEEP_MS - 1), at: NOW - RECENT_KEEP_MS - 1 }], NOW)).toEqual([]);
+  });
+});
+

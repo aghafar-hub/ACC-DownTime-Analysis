@@ -3,7 +3,7 @@
 // and a Needs stoppage switch; every column sorts; overdue first by default. A click on a status changes it (Edit on Actions),
 // a click on a row opens the action at that task. The filters live in the address. Phone: chips, a Filters sheet and cards.
 import { Fragment, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLiveSearchParams } from '../hooks/useLiveSearchParams';
 import { isTaskOpen, isTerminalStatus, TASK_STATUSES, type TaskStatus, type TaskView } from '../api/types';
 import AccessBadge from '../components/AccessBadge';
 import { BottomSheet, ShowMore } from '../components/PhoneParts';
@@ -57,7 +57,7 @@ export default function TasksView() {
   const { user } = useAuth();
   const { startup } = useStartup();
   const mobile = useIsMobile();
-  const [sp, setSp] = useSearchParams();
+  const [sp, setSp] = useLiveSearchParams();
   const { openId, taskId, open, close } = useActionOpener();
   const today = todayLocal();
   const f = useMemo(() => parseTaskFilters(sp), [sp]);

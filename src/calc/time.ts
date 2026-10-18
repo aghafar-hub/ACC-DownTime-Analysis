@@ -202,9 +202,14 @@ export function addMonthsClamped(date: string, n: number): string {
 }
 
 /** Inclusive list of month keys from `fromMonth` to `toMonth`. */
+/** Longest month list ever built (100 years): a bad input can never make an endless loop. */
+const MAX_MONTHS = 1200;
+const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 export function monthsBetween(fromMonth: string, toMonth: string): string[] {
   const out: string[] = [];
-  for (let m = fromMonth; m <= toMonth; m = addMonthsToKey(m, 1)) out.push(m);
+  if (!MONTH_KEY.test(fromMonth) || !MONTH_KEY.test(toMonth)) return out;
+  for (let m = fromMonth; m <= toMonth && out.length < MAX_MONTHS; m = addMonthsToKey(m, 1)) out.push(m);
   return out;
 }
 

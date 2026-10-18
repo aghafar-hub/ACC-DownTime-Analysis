@@ -101,3 +101,28 @@ export function restoreState(rows: readonly NotificationState[], id: string, pre
 export function settleState(rows: readonly NotificationState[], saved: NotificationState): NotificationState[] {
   return [...rows.filter((r) => r.notification_id !== saved.notification_id), saved];
 }
+
+/** A change this device made (dismiss, snooze, seen), kept for a while: `at` is when it was made (ms). */
+export interface RecentChange { row: NotificationState; at: number }
+
+/** How long a change made here wins over a server answer that does not hold it yet (an answer to a request sent before). */
+export const RECENT_KEEP_MS = 10 * 60 * 1000;
+
+/**
+ * The server's state with this device's recent changes on top: a refresh that was sent before a dismiss was saved
+ * answers without it, and the item must not come back. A server row at least as new as the change wins (a change
+ * made later on another device). Changes older than RECENT_KEEP_MS are left to the server.
+ */
+export function applyRecent(rows: readonly NotificationState[], recent: Iterable<RecentChange>, nowMs: number): NotificationState[] {
+  let out = rows as NotificationState[];
+  for (const c of recent) {
+    if (nowMs - c.at > RECENT_KEEP_MS) continue;
+    const server = out.find((r) => r.notification_id === c.row.notification_id);
+    const serverAt = parseStamp(server?.updated_at);
+    const mine = parseStamp(c.row.updated_at);
+    if (server && serverAt !== null && mine !== null && serverAt >= mine) continue;
+    out = settleState(out, c.row);
+  }
+  return out;
+}
+

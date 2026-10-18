@@ -285,7 +285,10 @@ test.describe('desktop', () => {
       'Reason', 'Description', 'Open problems', 'Kept as entered', 'Edited', 'Void', 'Source file', 'Source row', 'Batch ID', 'Created at',
     ]);
     expect(rows.slice(1, 11).map((r) => r[0])).toEqual(firstIds);
-    expect(rows.slice(1).every((r) => r[12] === 'Yes')).toBe(true);
+    // 'Failures only' lists whole failure events (as on the dashboards): the first row says Failure Yes, a row that carries
+    // the stop on (Freq 0) may say No
+    expect(rows.slice(1).every((r) => r[12] === 'Yes' || Number(r[9]) === 0)).toBe(true);
+    expect(rows.slice(1).some((r) => r[12] === 'Yes')).toBe(true);
     const durations = rows.slice(1).map((r) => Number(r[8]));
     expect(durations).toEqual([...durations].sort((a, b) => b - a));
     const info = await rowsOf(xl.bytes, 'Export info');

@@ -343,6 +343,21 @@ describe('P7: comparisons with a partly covered comparison period', () => {
     expect(fh.available && fh.perDay).toBeFalsy();
     expect(fh.available && fh.assessment).toBe('good'); // 4 h against 10 h
   });
+  it('a month not uploaded inside the CURRENT period also compares per day (no false "better")', () => {
+    // previous period (29 Nov - 28 Feb) fully covered; the current one (Mar - May) has April not uploaded
+    const r2 = [
+      row({ stop: '2025-11-29 08:00', start: '2025-11-29 18:00' }), row({ stop: '2025-12-10 08:00', start: '2025-12-10 18:00' }),
+      row({ stop: '2026-01-10 08:00', start: '2026-01-10 18:00' }), row({ stop: '2026-02-10 08:00', start: '2026-02-10 18:00' }),
+      row({ stop: '2026-03-10 08:00', start: '2026-03-10 18:00' }), row({ stop: '2026-05-10 08:00', start: '2026-05-10 18:00' }),
+      row({ stop: '2026-05-31 08:00', start: '2026-05-31 09:00' }),
+    ];
+    const c = computeKpisWithComparison({ rows: r2, window: { from: '2026-03-01', to: '2026-05-31' }, settings }, 'previous_period');
+    expect(c.previousCoverage?.fraction).toBe(1);
+    expect(c.scaling).toMatchObject({ perDay: true, note: 'per day (this period only partly covered: 62 of 92 days)' });
+    const fh = c.changes!.failureHours;
+    expect(fh).toMatchObject({ perDay: true, assessment: 'neutral' });
+    expect(totalsScaling(62, { coveredDays: 92, totalDays: 92, fraction: 1 }, 'previous period', { coveredDays: 85, totalDays: 92, fraction: 85 / 92 }).perDay).toBe(false); // 92 %
+  });
   it('compareTotal without a scaling is compareValues', () => {
     expect(compareTotal(avail(2), avail(4), 'lower', null)).toMatchObject({ assessment: 'good', abs: -2 });
   });

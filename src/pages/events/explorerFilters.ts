@@ -4,6 +4,7 @@
 // and the order. Both live in the address, so Back, a reload or a saved view restore the same list. Pure.
 import type { EventRow, Startup } from '../../api/types';
 import { applyFilters as applyRowFilters, buildIndex, emptyFilter, matchKey, parseSettings, type DateRange, type MasterIndex } from '../../calc';
+import { buildFailureEvents, isAnalysable, rowSpan } from '../../calc/events';
 import { hasOpenProblemFlags, isBlockingFlag, openFlagsOf } from '../../calc/flags';
 import { activeCount as sharedCount, type DashFilters } from '../../dashboard/filters';
 import { t } from '../../i18n/t';
@@ -44,26 +45,57 @@ function masterOf(startup: Startup) {
 
 /**
  * The rows of the shared scope, row by row (a list of records, so a continuation row is listed on its own): the
- * stop date inside the period, then line (through the area), area, equipment, equipment type, classification,
+ * stop overlapping the period (as on the dashboards), then line (through the area), area, equipment, equipment type, classification,
  * criticality, failures only, reason and duration band. Voided rows and rows with a data problem stay in (the list
  * shows them; 'Show' picks them out). `withDates: false` leaves the period out (the timeline has its own window).
  */
 export function scopeRows(rows: readonly EventRow[], shared: SharedScope, startup: Startup | null, withDates = true): EventRow[] {
   const f = shared.filters;
-  const from = withDates ? shared.range?.from ?? '' : '';
-  const to = withDates ? shared.range?.to ?? '' : '';
-  const dated = from || to ? rows.filter((e) => (!from || e.event_date >= from) && (!to || e.event_date <= to)) : [...rows];
+  const range = withDates ? shared.range : null;
+  const m = startup ? masterOf(startup) : null;
+  const settings = m?.settings ?? { durationShortMaxMin: 30, durationLongMinMin: 120 };
+  // the period as the dashboards apply it: a stop that overlaps it (one that started the evening before and runs into
+  // it counts too); a row whose times cannot be read goes by its date, so it stays listed
+  let dated: EventRow[];
+  if (range) {
+    const inWindow = new Set(applyRowFilters([...rows], { ...emptyFilter(), dateRange: range, includeVoid: true, includeInvalid: true }, { settings }));
+    dated = rows.filter((e) => inWindow.has(e) || (!rowSpan(e) && e.event_date >= range.from && e.event_date <= range.to));
+  } else dated = [...rows];
   const narrowing = f.lineIds.length || f.areaIds.length || f.equipmentIds.length || f.equipmentTypes.length || f.classifications.length || f.criticality.length
     || f.failureOnly || f.reasonKeys.length || f.durationBand;
   if (!narrowing) return dated;
-  const m = startup ? masterOf(startup) : null;
   const kept = applyRowFilters(dated, {
     ...emptyFilter(), lineIds: f.lineIds, areaIds: f.areaIds, equipmentIds: f.equipmentIds, equipmentTypes: f.equipmentTypes,
-    classifications: f.classifications, criticality: f.criticality, failureOnly: f.failureOnly, reasonKeys: f.reasonKeys.map(matchKey),
+    classifications: f.classifications, criticality: f.criticality, reasonKeys: f.reasonKeys.map(matchKey),
     durationBand: f.durationBand, includeVoid: true, includeInvalid: true,
-  }, { settings: m?.settings ?? { durationShortMaxMin: 30, durationLongMinMin: 120 }, index: m?.index });
-  // a voided row is never a failure
-  return f.failureOnly ? kept.filter((e) => !e.is_void) : kept;
+  }, { settings, index: m?.index });
+  if (!f.failureOnly) return kept;
+  // 'Failures only' as on the dashboards: the rows of failure EVENTS (the first row has Freq 1 and Failure YES and is
+  // not PL or CIR, plus the rows that carry it on), not the raw Failure column; a voided row is never a failure
+  const ids = failureRowIds(rows);
+  return kept.filter((e) => ids.has(e.event_id));
+}
+
+const failureIds = new WeakMap<readonly EventRow[], Set<string>>();
+/** The ids of the rows that belong to failure events (cached per list of rows). */
+function failureRowIds(rows: readonly EventRow[]): Set<string> {
+  let ids = failureIds.get(rows);
+  if (!ids) {
+    ids = new Set(buildFailureEvents([...rows]).chains.filter((c) => c.isFailure).flatMap((c) => c.rows.map((r) => r.event_id)));
+    failureIds.set(rows, ids);
+  }
+  return ids;
+}
+
+/**
+ * 'N events in scope' counts the same records on every page: not voided and without a blocking data problem (the rows
+ * the dashboards count, src/dashboard/scope.ts rowsInRange). The list here also shows the others, marked, but they are
+ * not counted.
+ */
+export function countedInScope(rows: readonly EventRow[]): number {
+  let n = 0;
+  for (const e of rows) if (isAnalysable(e)) n++;
+  return n;
 }
 
 /** The page's own choices on top: which rows to show, the search text, then the order. */

@@ -278,7 +278,11 @@ test.describe('desktop', () => {
     await page.getByTestId('tq-mine').click();
     await expect(page.getByTestId('tl-row')).toHaveCount(2);
     await page.getByTestId('tq-stop').click();
-    await expect(page.locator('[data-testid=tl-row] [data-testid=task-stop]')).toHaveCount(await page.getByTestId('tl-row').count());
+    // every row of the 'Needs a stop' view carries the stop mark (read both counts once the list has changed)
+    await expect.poll(async () => {
+      const rows = await page.getByTestId('tl-row').count();
+      return rows > 0 && rows === await page.locator('[data-testid=tl-row] [data-testid=task-stop]').count();
+    }).toBe(true);
     await page.getByTestId('tq-done').click();
     await expect(page.locator('[data-testid=tl-row][data-status=Open]')).toHaveCount(0);
     await page.getByTestId('tq-open').click();

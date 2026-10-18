@@ -72,8 +72,9 @@
   position: relative;
   min-width: 100%;
 }
+/* div only: the Tasks table (Actions) uses tl-row on its <tr> rows */
 .tl-axis,
-.tl-row {
+div.tl-row {
   display: flex;
   border-bottom: 1px solid var(--tk-border2);
 }

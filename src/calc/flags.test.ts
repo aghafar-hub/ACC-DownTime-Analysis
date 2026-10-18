@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   acceptedFlagsOf, BLOCKING_FLAGS, canonicalFlags, DERIVED_FLAGS, FLAG_INFO, hasOpenProblemFlags, hasProblemFlags, infoFlagsOf, INFO_FLAGS, isBlocked,
   isBlockingFlag, isInfoFlag, isKeptLeftOut, isKnownFlag, isOpenBlocked, KNOWN_FLAGS, openBlockingFlagsOf, openFlagsOf, problemFlagsOf,
-  pruneAcceptedFlags, splitFlags, WARNING_FLAGS,
+  markUnreadableTime, markUnreadableTimes, pruneAcceptedFlags, readableTime, splitFlags, WARNING_FLAGS,
 } from './flags';
+import { dataRangeOf, notUploadedMonths } from './kpis';
+import { monthsBetween } from './time';
+import { createRowFactory } from './fixtures';
 import { blockedSummary } from './filters';
 import { isAnalysable } from './events';
 
@@ -87,3 +90,34 @@ describe('information flags', () => {
     expect(blockedSummary([{ ...(row as object), stop_ts: '2026-01-01 08:00:00.000', start_ts: '2026-01-01 09:00:00.000' } as never]).total.count).toBe(0);
   });
 });
+
+describe('a time typed by hand into the Sheet never freezes the app (inspection, crash safety)', () => {
+  const row = createRowFactory('T');
+  const good = row({ stop: '2026-03-10 08:00', start: '2026-03-10 10:00' });
+  const handTyped = (stop: string, start = good.start_ts) => ({ ...good, event_id: `B-${stop}`, stop_ts: stop, start_ts: start, flags: '' });
+  it('readableTime: a date and time with a plausible year', () => {
+    expect(readableTime('2026-03-10 08:00:00')).toBe(true);
+    for (const x of ['1/2/2026 08:00', '2026-02-30 08:00:00', '20266-01-01 08:00:00', '1999-12-31 23:00:00', '', null]) expect(readableTime(x), String(x)).toBe(false);
+    expect(readableTime('2062-01-01 08:00:00', 2027)).toBe(false);
+  });
+  it('marks the record with the blocking flag unreadable_time (and takes it off once fixed); a good record is the same object', () => {
+    expect(markUnreadableTime(good)).toBe(good);
+    const bad = markUnreadableTime(handTyped('1/2/2026 08:00'));
+    expect(splitFlags(bad.flags)).toContain('unreadable_time');
+    expect(isBlocked(bad)).toBe(true);
+    expect(isAnalysable(bad)).toBe(false);
+    expect(FLAG_INFO.unreadable_time.blocking).toBe(true);
+    expect(splitFlags(markUnreadableTime({ ...bad, stop_ts: good.stop_ts }).flags)).not.toContain('unreadable_time');
+    expect(splitFlags(markUnreadableTime(handTyped('2062-01-01 08:00:00'), 2027).flags)).toContain('unreadable_time');
+    const list = [good];
+    expect(markUnreadableTimes(list)).toBe(list);
+  });
+  it('coverage and the not-uploaded months ignore unreadable times even when unflagged (no endless loop)', () => {
+    const rows = [good, handTyped('1/2/2026 08:00'), handTyped('2026-03-11 08:00:00', '9/9/2026 10:00')];
+    expect(dataRangeOf(rows)).toEqual({ from: '2026-03-10', to: '2026-03-11' });
+    expect(notUploadedMonths(rows)).toEqual([]);
+    expect(monthsBetween('1/2/2026 0', '2026-03')).toEqual([]);
+    expect(monthsBetween('2000-01', '2999-12')).toHaveLength(1200);
+  });
+});
+
