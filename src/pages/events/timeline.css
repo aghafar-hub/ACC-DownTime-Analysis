@@ -178,16 +178,16 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  --c: var(--tk-danger);
+  --c: var(--type-inc);
   background-color: var(--c);
   border: 1px solid var(--c);
 }
 .tl-vis--planned {
-  --c: var(--tk-info);
+  --c: var(--type-pl);
   background-image: repeating-linear-gradient(45deg, var(--tk-card-bg) 0 2px, transparent 2px 6px);
 }
 .tl-vis--other {
-  --c: var(--tk-warning);
+  --c: var(--type-cir);
   background-image: radial-gradient(circle, var(--tk-card-bg) 1.3px, transparent 1.8px);
   background-size: 6px 6px;
 }

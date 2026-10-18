@@ -405,6 +405,10 @@
   --tk-table-head: #f3f6fa;
   --tk-nav-active: rgba(30, 91, 184, 0.1);
   --tk-info-bar-bg: #eef3fa;
+  /* the stop types in the Dashboard's light colours, whatever the app theme */
+  --type-inc: #C2512A;
+  --type-pl: #2F6BC2;
+  --type-cir: #17927E;
   --rpt-navy: #0b1b2e;
   color: var(--tk-text-primary);
   font-family: var(--sans);

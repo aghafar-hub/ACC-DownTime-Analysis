@@ -14,11 +14,11 @@ export function classColor(dark: boolean, code: string): string {
   return seriesColor(dark, CLASS_ORDER.indexOf(code as (typeof CLASS_ORDER)[number]));
 }
 
-/** Planned / failure / other stacks use meaning tokens, not the categorical palette. */
+/** Planned / failure / other stacks: the three stop-type colours of the Dashboard (--type-* set by the theme), on every page. */
 export const STACK_COLORS = {
-  planned: 'var(--tk-info)',
-  failure: 'var(--tk-danger)',
-  other: 'var(--tk-warning)',
+  planned: 'var(--type-pl, #2F6BC2)',
+  failure: 'var(--type-inc, #C2512A)',
+  other: 'var(--type-cir, #17927E)',
   operating: 'var(--tk-success)',
   stopped: 'var(--tk-text-muted)',
 } as const;
@@ -39,8 +39,8 @@ export const MARKERS: Marker[] = ['circle', 'square', 'diamond', 'triangle'];
 export type FillPattern = 'solid' | 'hatch' | 'dots' | 'stripes' | 'grid' | 'backhatch';
 export interface Paint { key: string; label: string; short: string; color: string; pattern: FillPattern }
 
-const TYPE_LIGHT = { inc: '#C2512A', pl: '#2F6BC2', cir: '#17927E' };
-const TYPE_DARK = { inc: '#E27A4E', pl: '#5E9CF2', cir: '#2FB89F' };
+export const TYPE_LIGHT = { inc: '#C2512A', pl: '#2F6BC2', cir: '#17927E' };
+export const TYPE_DARK = { inc: '#E27A4E', pl: '#5E9CF2', cir: '#2FB89F' };
 
 /** Incidental (INC), planned (PL) and CIR: the three stop types, always in this order. */
 export function typePaints(dark: boolean): Paint[] {
