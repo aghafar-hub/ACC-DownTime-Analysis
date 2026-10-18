@@ -1,0 +1,56 @@
+/* The crash screen sits outside the theme provider: the tokens may be missing, so every colour has a fallback. */
+.crash {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--bg, #f4f6f9);
+  color: var(--tk-text-primary, #14213d);
+  font-family: inherit;
+}
+.crash-box {
+  width: min(480px, 100%);
+  padding: 24px;
+  background: var(--tk-card-bg, #fff);
+  border: 1px solid var(--tk-border, #dfe3ea);
+  border-radius: 12px;
+}
+.crash-title {
+  margin: 0 0 8px;
+  font-size: 20px;
+}
+.crash-p {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.crash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.crash-btn {
+  min-height: 44px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 15px;
+  border-radius: 8px;
+  border: 1px solid var(--tk-border, #c9ced8);
+  background: var(--tk-card-bg, #fff);
+  color: inherit;
+  cursor: pointer;
+}
+.crash-btn--primary {
+  background: var(--tk-brand, #2b2e83);
+  border-color: var(--tk-brand, #2b2e83);
+  color: #fff;
+}
+.crash-details {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--tk-text-secondary, #52514e);
+}
+.crash-details pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

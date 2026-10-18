@@ -5,6 +5,16 @@ import { api, describeError } from '../api';
 import type { ActionsPayload, AreaTarget, EventRow, Startup } from '../api/types';
 import { ApiError } from '../api/types';
 import { t } from '../i18n/t';
+import { markUnreadableTimes } from '../calc/flags';
+
+/** Next year: a stop dated later is a typo. */
+export const latestPlausibleYear = (): number => new Date().getFullYear() + 1;
+
+/**
+ * Records as the app holds them: a time typed by hand into the Sheet that cannot be read (or a year far off) carries the
+ * blocking flag unreadable_time, so the record is listed on Validate and left out of the numbers, never a freeze.
+ */
+export const checkTimes = (rows: EventRow[]): EventRow[] => markUnreadableTimes(rows, latestPlausibleYear());
 import { getCached, setCached } from './cache';
 
 export interface ResState<T> {
@@ -119,6 +129,13 @@ export class Resource<T> {
   }
 }
 
+/** The events of one year: every change (an edit, a void) is checked like the loaded records. */
+class EventsResource extends Resource<EventRow[]> {
+  override patch(fn: (data: EventRow[]) => EventRow[]) {
+    super.patch((d) => checkTimes(fn(d)));
+  }
+}
+
 export const startupResource = new Resource<Startup>('startup', (token) => api.getStartup(token));
 
 /** Every action with its history, the contractors and the people (backend 1.4.0). Cached on the device, readable offline. */
@@ -130,7 +147,7 @@ let eventResources = new Map<number, Resource<EventRow[]>>();
 export function eventsResource(year: number): Resource<EventRow[]> {
   let r = eventResources.get(year);
   if (!r) {
-    r = new Resource<EventRow[]>(`events:${year}`, (token) => api.getEvents(token, year));
+    r = new EventsResource(`events:${year}`, (token) => api.getEvents(token, year).then(checkTimes));
     eventResources.set(year, r);
   }
   return r;

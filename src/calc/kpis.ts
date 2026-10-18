@@ -2,6 +2,7 @@
 import type { EventRow } from '../api/types';
 import { attributedHours, attributeRows, type Attribution } from './attribution';
 import { analysableChains, buildFailureEvents, isAnalysable, type ChainedEvent } from './events';
+import { readableTime } from './flags';
 import type { MasterIndex } from './masters';
 import { avail, ratio, unavail, type Metric } from './metric';
 import { equipmentPareto } from './pareto';
@@ -107,7 +108,9 @@ const NO_TIME = 'No scheduled time in the window';
 export function lastDayOf(r: Pick<EventRow, 'stop_ts' | 'start_ts'>): string {
   const a = dateOf(r.stop_ts);
   const ms = parseTs(r.start_ts);
-  const b = ms === null ? dateOf(r.start_ts) : formatDate(ms - 1);
+  const raw = dateOf(r.start_ts ?? '');
+  // an unreadable restart (typed by hand) never stretches the coverage
+  const b = ms !== null ? formatDate(ms - 1) : /^(20\d\d|2100)-\d\d-\d\d$/.test(raw) ? raw : a;
   return b > a ? b : a;
 }
 
@@ -124,10 +127,10 @@ export function notUploadedMonths(rows: readonly EventRow[], range?: DateRange |
     let hiStop = '';
     let hiStart: EventRow | null = null;
     for (const r of rows) {
-      if (r.is_void || !r.stop_ts) continue;
+      if (r.is_void || !readableTime(r.stop_ts)) continue;
       if (lo === '' || r.stop_ts < lo) lo = r.stop_ts;
       if (r.stop_ts > hiStop) hiStop = r.stop_ts;
-      if (!hiStart || r.start_ts > hiStart.start_ts) hiStart = r;
+      if (readableTime(r.start_ts) && (!hiStart || r.start_ts > hiStart.start_ts)) hiStart = r;
     }
     if (lo === '') return [];
     const end = hiStart ? lastDayOf(hiStart) : '';
@@ -182,7 +185,7 @@ export function dataRangeOf(rows: EventRow[]): DateRange | null {
   let lo = '';
   let hi = '';
   for (const r of rows) {
-    if (!isAnalysable(r)) continue;
+    if (!isAnalysable(r) || !readableTime(r.stop_ts)) continue; // a time typed by hand that cannot be read never sets the coverage
     const a = dateOf(r.stop_ts);
     const b = lastDayOf(r);
     if (lo === '' || a < lo) lo = a;
