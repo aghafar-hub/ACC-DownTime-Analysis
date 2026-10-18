@@ -531,7 +531,7 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     expect(num(await page.getByTestId('takeaway').textContent())).toBe(hours);
   });
 
-  test('Dashboard: the KPI row (seven figures, monthly sparklines, info), then the twelve cards in order, then the compact sections', async ({ page }) => {
+  test('Dashboard: the KPI row (six figures, monthly sparklines, info), then the twelve cards in order, then the compact sections', async ({ page }) => {
     const errors = watchConsole(page);
     await page.goto('/');
     await signInAndWait(page, 'engineer');
@@ -954,14 +954,14 @@ for (const width of [360, 390]) {
       await page.goto('/');
       await signInAndWait(page, 'engineer');
       await open(page, '/overview?r=month&m=2026-08', 'page-overview');
-      const boxes = await Promise.all(['total-hours', 'failure-count', 'reliability', 'mtbf', 'mttr', 'utilization', 'running-hours'].map((id) => page.getByTestId(`kpi-${id}`).boundingBox()));
-      // two per row: total + failures, RF + MTBF, MTTR + UF; running hours alone on the last row, full width
+      const boxes = await Promise.all(['total-hours', 'failure-count', 'reliability', 'mtbf', 'mttr', 'utilization'].map((id) => page.getByTestId(`kpi-${id}`).boundingBox()));
+      // two per row, all the same width: total + failures, RF + MTBF, MTTR + UF
       for (const i of [0, 2, 4]) {
         expect(Math.abs(boxes[i]!.y - boxes[i + 1]!.y)).toBeLessThan(2);
         expect(Math.abs(boxes[i]!.width - boxes[0]!.width)).toBeLessThan(2);
-        expect(boxes[i + 2]!.y).toBeGreaterThan(boxes[i]!.y + 40);
+        if (i < 4) expect(boxes[i + 2]!.y).toBeGreaterThan(boxes[i]!.y + 40);
       }
-      expect(boxes[6]!.width).toBeGreaterThan(boxes[0]!.width * 1.8);
+      await expect(page.getByTestId('kpi-running-hours')).toHaveCount(0);
       // the cards one under the other, in the same order as on a desktop
       const cards = await page.locator('[data-dash-card]').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { id: e.getAttribute('data-dash-card'), x: r.x, y: r.y }; }));
       expect(cards.map((c) => c.id)).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'planned-allowance', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);

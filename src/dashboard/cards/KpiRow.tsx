@@ -1,5 +1,5 @@
 // (1) The KPI row: total stoppage with its type split, failures, the reliability factor against its target, the
-// all-area MTBF, MTTR, the utilization factor and the running hours, each with a monthly sparkline from January to the period (gaps for months not uploaded, a dashed
+// all-area MTBF (with running hours ÷ failures), MTTR and the utilization factor (with the running hours), each with a monthly sparkline from January to the period (gaps for months not uploaded, a dashed
 // last step for a month in progress).
 import type { ReactNode } from 'react';
 import { PaintSwatch, paintCss } from '../../charts/paint';
@@ -139,7 +139,13 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
   const prevRf = prev && prev.reliabilityFactor.available ? fpct(prev.reliabilityFactor.value) : null;
   const pre = prevLabel ? `${prevLabel} ` : `${t('Before')} `;
   const run = model.running;
-  const runText = run ? metricText(run.value, fh, '') : { text: '', unavailable: true, reason: undefined };
+  // running hours live in the UF tile (its numerator) and the MTBF tile (running ÷ failures); the (i) of UF explains them
+  const runExample = run && run.value.available ? {
+    perDay: fh(run.days > 0 && run.areas > 0 ? run.scheduledHours / (run.days * run.areas) : 0), scheduled: fh(run.scheduledHours), stopped: fh(run.stoppedHours),
+    running: fh(run.value.value), days: run.days, areas: run.areas, notUploaded: run.notUploaded.map(monthText),
+    change: run.change && run.change.available && !run.change.perDay ? `${run.change.abs >= 0 ? '+' : '−'}${fh(Math.abs(run.change.abs))} h ${cmpLabel}` : undefined,
+  } : undefined;
+  const mtbfSub = run && run.value.available && tot.failureCount > 0 ? t('{h} h running ÷ {n} failures', { h: fh(run.value.value), n: fint(tot.failureCount) }) : t('Run area-hours ÷ failures');
 
   return (
     <div className="krow" data-testid="hero-kpis">
@@ -183,7 +189,7 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
         value={mtbf.text} unit={mtbf.unavailable || !tot.mtbfHours.available ? undefined : 'h'}
         extra={<TargetChip status={model.status.mtbf} testid="kpi-mtbf-target" />}
         change={<ChangeLine change={ch?.mtbfHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmp} />}
-        sub={mtbf.reason ?? t('Run area-hours ÷ failures')}
+        sub={mtbf.reason ?? <span data-testid="kpi-mtbf-calc">{mtbfSub}</span>}
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.mtbfHours} label={t(MTBF_ALL_LABEL)} format={(n) => `${fh(n)} h`} />)}
       />
       <Tile
@@ -195,25 +201,14 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.mttrHours} label={t('MTTR')} format={(n) => `${fh2(n)} h`} />)}
       />
       <Tile
-        id="utilization" label={t('Utilization (UF)')} info={<InfoButton info={kpiInfo('utilization', basis, model.targets)} testid="kpi-utilization-info" />}
+        id="utilization" label={t('Utilization (UF)')} info={<InfoButton info={kpiInfo('utilization', basis, model.targets, runExample)} testid="kpi-utilization-info" />}
         value={uf.text} unit={uf.unavailable ? undefined : '%'}
         change={<ChangeLine change={ch?.utilizationFactor ?? null} fmt={(n) => (n * 100).toFixed(1)} unit=" pts" label={cmpLabel} compare={cmp} />}
-        sub={uf.reason ?? t('Running ÷ calendar hours')}
+        sub={run && run.value.available
+          ? <><b data-testid="kpi-uf-running">{fh(run.value.value)} h</b> {t('running of {T} h', { T: fh(run.scheduledHours) })}</>
+          : (uf.reason ?? t('Running ÷ calendar hours'))}
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.utilization.map((v) => (v === null ? null : v * 100))} label={t('Utilization (UF)')} format={(n) => `${n.toFixed(1)}%`} />)}
       />
-      {run && (
-        <Tile
-          id="running-hours" label={t('Running hours')}
-          info={<InfoButton info={kpiInfo('running-hours', basis, model.targets, run.value.available ? {
-            perDay: fh(run.days > 0 && run.areas > 0 ? run.scheduledHours / (run.days * run.areas) : 0), scheduled: fh(run.scheduledHours), stopped: fh(run.stoppedHours),
-            running: fh(run.value.value), days: run.days, areas: run.areas, notUploaded: run.notUploaded.map(monthText),
-          } : undefined)} testid="kpi-running-hours-info" />}
-          value={runText.text} unit={runText.unavailable || !run.value.available ? undefined : 'h'}
-          change={<ChangeLine change={run.change} fmt={fh} unit=" h" label={cmpLabel} compare={cmp} />}
-          sub={runText.reason ?? t('Scheduled − stopped, area-hours')}
-          spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.operatingHours} label={t('Running hours')} format={(n) => `${fh(n)} h`} />)}
-        />
-      )}
     </div>
   );
 }

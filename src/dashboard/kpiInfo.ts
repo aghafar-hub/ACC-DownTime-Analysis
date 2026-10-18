@@ -5,7 +5,7 @@ import type { Targets } from './targets';
 export type HeroId = 'total-hours' | 'failure-count' | 'availability' | 'reliability' | 'utilization' | 'mttr' | 'mtbf' | 'running-hours';
 
 /** The numbers of the Running hours tile, for its live example. */
-export interface RunningExample { perDay: string; scheduled: string; stopped: string; running: string; days: number; areas: number; notUploaded: string[] }
+export interface RunningExample { perDay: string; scheduled: string; stopped: string; running: string; days: number; areas: number; notUploaded: string[]; change?: string }
 
 /** A part of the explanation: what it shows, the formulas, how it is calculated, a live example. */
 export interface InfoSection { kind: 'what' | 'formula' | 'how' | 'example'; heading: string; items: string[] }
@@ -26,9 +26,11 @@ const BASIS_TEXT = {
 
 export function kpiInfo(id: HeroId, basis: 'A' | 'B' | 'C', targets?: Targets, running?: RunningExample): KpiInfo {
   const info = baseInfo(id, basis);
-  if (id === 'running-hours' && running) {
+  if ((id === 'running-hours' || id === 'utilization') && running) {
+    if (id === 'utilization') info.paragraphs.push(...baseInfo('running-hours', basis).paragraphs.slice(0, 3));
     info.paragraphs.push(t('Here: {h} h × {d} days × {a} areas = {T} h scheduled − {S} h stopped = {R} h running.', { h: running.perDay, d: running.days, a: running.areas, T: running.scheduled, S: running.stopped, R: running.running })
       + (running.notUploaded.length ? ` ${t('Not uploaded, left out: {m}.', { m: running.notUploaded.join(', ') })}` : ''));
+    if (running.change) info.paragraphs.push(t('Running hours: {c}.', { c: running.change }));
   }
   if (id === 'availability' && targets?.availabilityPct != null) {
     info.paragraphs.push(t('Target: {x}%, set in Settings. The card says whether the availability is on target (at or above it) or below it.', { x: targets.availabilityPct }));

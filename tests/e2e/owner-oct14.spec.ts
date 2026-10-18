@@ -93,28 +93,32 @@ test.describe('desktop', () => {
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
-  test('Running hours on the KPI row: scheduled minus stopped, change, monthly sparkline and an (i) that says it is derived', async ({ page }) => {
+  test('Running hours inside the UF and MTBF tiles: scheduled minus stopped, and an (i) that says it is derived', async ({ page }) => {
     const errors = watchConsole(page);
     await stubFonts(page);
     await page.goto('/');
     await signInAndWait(page, 'engineer');
     await open(page, '/dashboard', 'page-overview');
     const row = page.getByTestId('hero-kpis');
-    await expect(row.locator('.ktile')).toHaveCount(7);
-    // RF replaced availability; MTBF before MTTR; UF and running hours at the end
+    await expect(row.locator('.ktile')).toHaveCount(6);
+    // RF replaced availability; MTBF before MTTR; UF at the end carries the running hours (no tile of its own)
     expect(await row.locator('.ktile').evaluateAll((els) => els.map((e) => e.getAttribute('data-testid')))).toEqual(
-      ['kpi-total-hours', 'kpi-failure-count', 'kpi-reliability', 'kpi-mtbf', 'kpi-mttr', 'kpi-utilization', 'kpi-running-hours']);
+      ['kpi-total-hours', 'kpi-failure-count', 'kpi-reliability', 'kpi-mtbf', 'kpi-mttr', 'kpi-utilization']);
     await expect(page.getByTestId('kpi-reliability-value')).toHaveText(/^\d+\.\d%$/);
     await expect(page.getByTestId('kpi-reliability')).toContainText('Target 95%');
     await expect(page.getByTestId('kpi-reliability-target')).toHaveAttribute('data-state', /^(on|below)$/);
     await expect(page.getByTestId('kpi-utilization-value')).toHaveText(/^\d+\.\d%$/);
-    const tile = page.getByTestId('kpi-running-hours');
-    await expect(tile).toContainText('Running hours');
-    await expect(tile.getByTestId('spark')).toBeVisible();
-    await expect(tile.locator('.kpi-change')).toBeVisible();
-    const value = num(await page.getByTestId('kpi-running-hours-value').textContent());
+    await expect(page.getByTestId('kpi-utilization')).toContainText(/running of [\d,.]+ h/);
+    const value = num(await page.getByTestId('kpi-uf-running').textContent());
     expect(value).toBeGreaterThan(0);
-    await page.getByTestId('kpi-running-hours-info').click();
+    // MTBF shows its own sum: running hours ÷ failures
+    const failures = num(await page.getByTestId('kpi-failure-count-value').textContent());
+    await expect(page.getByTestId('kpi-mtbf-calc')).toHaveText(/^[\d,.]+ h running ÷ [\d,]+ failures$/);
+    const calc = (await page.getByTestId('kpi-mtbf-calc').textContent())!.match(/^([\d,.]+) h running ÷ ([\d,]+) failures$/)!;
+    expect(num(calc[1]!)).toBeCloseTo(value, 1);
+    expect(num(calc[2]!)).toBe(failures);
+    expect(num(await page.getByTestId('kpi-mtbf-value').textContent())).toBeCloseTo(value / failures, 1);
+    await page.getByTestId('kpi-utilization-info').click();
     const dlg = page.getByTestId('kpi-info');
     await expect(dlg).toContainText('NOT measured run hours');
     await expect(dlg).toContainText('Running hours = T − stopped hours');
@@ -126,7 +130,7 @@ test.describe('desktop', () => {
     // the stopped hours are the Total stoppage tile
     expect(num(S!)).toBeCloseTo(num(await page.getByTestId('kpi-total-hours-value').textContent()), 1);
     await page.getByTestId('kpi-info-close').click();
-    // one row of seven on a wide desktop
+    // one row of six on a wide desktop
     const tops = await row.locator('.ktile').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     expect(new Set(tops).size).toBe(1);
     expect((await noSidewaysScroll(page)).ok).toBe(true);
@@ -304,10 +308,10 @@ for (const width of [360, 390]) {
       };
       await open(page, '/dashboard', 'page-overview');
       const tiles = page.getByTestId('hero-kpis').locator('.ktile');
-      await expect(tiles).toHaveCount(7);
-      // four rows of two (the last one full width)
+      await expect(tiles).toHaveCount(6);
+      // three rows of two
       const tops = await tiles.evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-      expect(new Set(tops).size).toBe(4);
+      expect(new Set(tops).size).toBe(3);
       await checks('dashboard');
       // the (i) of a chart is a sheet from the bottom
       const info = page.getByTestId('chart-class').getByTestId('chart-info');
@@ -348,13 +352,13 @@ for (const width of [360, 390]) {
 
 test.describe('tablet', () => {
   test.use({ viewport: { width: 1024, height: 768 } });
-  test('KPI row: two rows (four and three)', async ({ page }) => {
+  test('KPI row: two rows of three', async ({ page }) => {
     await stubFonts(page);
     await page.goto('/');
     await signInAndWait(page, 'engineer');
     await open(page, '/dashboard', 'page-overview');
     const tops = await page.getByTestId('hero-kpis').locator('.ktile').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    expect(tops).toHaveLength(7);
+    expect(tops).toHaveLength(6);
     expect(new Set(tops).size).toBe(2);
     expect((await noSidewaysScroll(page)).ok).toBe(true);
   });
