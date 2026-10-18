@@ -2,7 +2,7 @@
 import { t } from '../i18n/t';
 import type { Targets } from './targets';
 
-export type HeroId = 'total-hours' | 'failure-count' | 'availability' | 'mttr' | 'mtbf' | 'running-hours';
+export type HeroId = 'total-hours' | 'failure-count' | 'availability' | 'reliability' | 'utilization' | 'mttr' | 'mtbf' | 'running-hours';
 
 /** The numbers of the Running hours tile, for its live example. */
 export interface RunningExample { perDay: string; scheduled: string; stopped: string; running: string; days: number; areas: number; notUploaded: string[] }
@@ -32,6 +32,9 @@ export function kpiInfo(id: HeroId, basis: 'A' | 'B' | 'C', targets?: Targets, r
   }
   if (id === 'availability' && targets?.availabilityPct != null) {
     info.paragraphs.push(t('Target: {x}%, set in Settings. The card says whether the availability is on target (at or above it) or below it.', { x: targets.availabilityPct }));
+  }
+  if (id === 'reliability' && targets?.reliabilityPct != null) {
+    info.paragraphs.push(t('Target: {x}%, set in Settings. The card says whether the reliability factor is on target (at or above it) or below it.', { x: targets.reliabilityPct }));
   }
   if (id === 'mtbf' && targets?.mtbfH != null) {
     info.paragraphs.push(t('Target: {x} h, set in Settings. The card says whether the MTBF is on target (at or above it) or below it.', { x: targets.mtbfH }));
@@ -69,6 +72,25 @@ function baseInfo(id: HeroId, basis: 'A' | 'B' | 'C'): KpiInfo {
           t('The share of the expected running time in which the areas were actually available.'),
           t(BASIS_TEXT[basis]),
           t('It is worked out from the summed area-hours, never as an average of area percentages. The basis is chosen in Settings; all three bases are shown on the card.'),
+        ],
+      };
+    case 'reliability':
+      return {
+        title: t('Reliability factor (RF)'),
+        paragraphs: [
+          t('Of the time the areas were meant to run, the share they were not stopped by their own failures.'),
+          t('RF = running hours ÷ (running hours + incidental hours). Running hours = scheduled time − planned − incidental − CIR. Planned stops and CIR stops do not lower the RF: they are not failures of the equipment.'),
+          t('It also equals MTBF ÷ (MTBF + incidental hours per failure), so a high MTBF with long repairs can still give a low RF. It is the same arithmetic as availability basis C.'),
+          t('Worked out from the summed area-hours, never as an average of area percentages. An area with no running time in the period shows no RF; one that ran only a few hours gives an RF that says little.'),
+        ],
+      };
+    case 'utilization':
+      return {
+        title: t('Utilization factor (UF)'),
+        paragraphs: [
+          t('The share of the calendar the areas actually ran.'),
+          t('UF = running hours ÷ scheduled (calendar) hours. Every stop lowers it: planned, incidental and CIR. It is the same arithmetic as availability basis A.'),
+          t('A low UF with a high RF means the areas were stopped for planned work or outside reasons, not because they failed.'),
         ],
       };
     case 'mtbf':

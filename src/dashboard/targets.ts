@@ -1,21 +1,21 @@
 // Targets (all optional; blank = off) and the status of a figure against its target. Pure: no React.
-//  - availability and MTBF want to be AT LEAST the target ("On target" / "Below target"),
+//  - availability, the reliability factor and MTBF want to be AT LEAST the target ("On target" / "Below target"),
 //  - MTTR wants to be AT MOST the target ("On target" / "Above target").
 // A figure is judged as it is shown (availability to 0.1 points, MTBF to 0.1 h, MTTR to 0.01 h), so a card that reads
 // "95.0%" is never "below" a 95% target. Nothing is produced for a target that is off or a figure that is unavailable.
 import type { AreaKpis, CalcSettings, Metric } from '../calc';
 import { t } from '../i18n/t';
 
-export interface Targets { availabilityPct: number | null; mtbfH: number | null; mttrH: number | null }
+export interface Targets { availabilityPct: number | null; mtbfH: number | null; mttrH: number | null; reliabilityPct?: number | null }
 
-export type TargetMetric = 'availability' | 'mtbf' | 'mttr';
+export type TargetMetric = 'availability' | 'reliability' | 'mtbf' | 'mttr';
 
-/** The three targets from the parsed settings; null = off. */
-export function getTargets(settings: Pick<CalcSettings, 'availabilityTargetPct' | 'targetMtbfH' | 'targetMttrH'>): Targets {
-  return { availabilityPct: settings.availabilityTargetPct ?? null, mtbfH: settings.targetMtbfH ?? null, mttrH: settings.targetMttrH ?? null };
+/** The targets from the parsed settings; null = off. */
+export function getTargets(settings: Pick<CalcSettings, 'availabilityTargetPct' | 'targetMtbfH' | 'targetMttrH'> & Partial<Pick<CalcSettings, 'reliabilityTargetPct'>>): Targets {
+  return { availabilityPct: settings.availabilityTargetPct ?? null, mtbfH: settings.targetMtbfH ?? null, mttrH: settings.targetMttrH ?? null, reliabilityPct: settings.reliabilityTargetPct ?? null };
 }
 
-export const anyTarget = (t: Targets): boolean => t.availabilityPct !== null || t.mtbfH !== null || t.mttrH !== null;
+export const anyTarget = (t: Targets): boolean => t.availabilityPct !== null || t.mtbfH !== null || t.mttrH !== null || (t.reliabilityPct ?? null) !== null;
 
 export interface TargetStatus {
   metric: TargetMetric;
@@ -32,23 +32,24 @@ export interface TargetStatus {
 }
 
 /** Decimals a figure is shown with. */
-const DECIMALS: Record<TargetMetric, number> = { availability: 1, mtbf: 1, mttr: 2 };
+const DECIMALS: Record<TargetMetric, number> = { availability: 1, reliability: 1, mtbf: 1, mttr: 2 };
 const round = (n: number, d: number): number => Math.round((n + Number.EPSILON * Math.sign(n)) * 10 ** d) / 10 ** d;
 
 /**
  * The status of a figure against its target, or null when there is no target or no figure.
- * `value`: availability as a fraction (0 to 1, as a Metric holds it); MTBF and MTTR in hours.
+ * `value`: availability and reliability factor as a fraction (0 to 1, as a Metric holds it); MTBF and MTTR in hours.
  */
 export function targetStatus(metric: TargetMetric, value: number | null | undefined, targets: Targets): TargetStatus | null {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
-  const target = metric === 'availability' ? targets.availabilityPct : metric === 'mtbf' ? targets.mtbfH : targets.mttrH;
+  const target = metric === 'availability' ? targets.availabilityPct : metric === 'reliability' ? (targets.reliabilityPct ?? null) : metric === 'mtbf' ? targets.mtbfH : targets.mttrH;
   if (target === null || target === undefined) return null;
   const d = DECIMALS[metric];
-  const shown = round(metric === 'availability' ? value * 100 : value, d);
+  const pct = metric === 'availability' || metric === 'reliability';
+  const shown = round(pct ? value * 100 : value, d);
   const gap = round(shown - target, d);
   const wantsHigh = metric !== 'mttr';
   const ok = wantsHigh ? shown >= target : shown <= target;
-  return { metric, target, value: shown, unit: metric === 'availability' ? '%' : 'h', ok, gap, state: ok ? 'on' : wantsHigh ? 'below' : 'above' };
+  return { metric, target, value: shown, unit: pct ? '%' : 'h', ok, gap, state: ok ? 'on' : wantsHigh ? 'below' : 'above' };
 }
 
 /** The same for a Metric (unavailable -> null). */
@@ -56,12 +57,13 @@ export function metricStatus(metric: TargetMetric, m: Metric, targets: Targets):
   return targetStatus(metric, m.available ? m.value : null, targets);
 }
 
-export interface KpiTargetStatuses { availability: TargetStatus | null; mtbf: TargetStatus | null; mttr: TargetStatus | null }
+export interface KpiTargetStatuses { availability: TargetStatus | null; reliability?: TargetStatus | null; mtbf: TargetStatus | null; mttr: TargetStatus | null }
 
-/** Availability (settings basis), MTBF and MTTR of one KPI set against the targets. */
-export function kpiTargetStatuses(k: Pick<AreaKpis, 'availabilityHeadline' | 'mtbfHours' | 'mttrHours'>, targets: Targets): KpiTargetStatuses {
+/** Availability (settings basis), reliability factor, MTBF and MTTR of one KPI set against the targets. */
+export function kpiTargetStatuses(k: Pick<AreaKpis, 'availabilityHeadline' | 'mtbfHours' | 'mttrHours'> & Partial<Pick<AreaKpis, 'reliabilityFactor'>>, targets: Targets): KpiTargetStatuses {
   return {
     availability: metricStatus('availability', k.availabilityHeadline, targets),
+    reliability: k.reliabilityFactor ? metricStatus('reliability', k.reliabilityFactor, targets) : null,
     mtbf: metricStatus('mtbf', k.mtbfHours, targets),
     mttr: metricStatus('mttr', k.mttrHours, targets),
   };

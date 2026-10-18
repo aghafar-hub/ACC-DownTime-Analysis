@@ -336,3 +336,20 @@ describe('data range end (dataRangeOf)', () => {
     expect(k.total.failureHours).toBe(4);
   });
 });
+
+describe('reliability and utilization factors', () => {
+  it('RF = running ÷ (running + INC) and UF = running ÷ scheduled, from the summed hours', () => {
+    const k = composeKpis('X', 744, { pl: 40, inc: 30, cir: 4, events: 6, eventSeconds: 30 * 3600 }, { availabilityBasis: 'B' });
+    const run = 744 - 40 - 30 - 4;
+    expect(k.reliabilityFactor).toEqual(avail(run / (run + 30)));
+    expect(k.utilizationFactor).toEqual(avail(run / 744));
+    // RF = MTBF / (MTBF + INC hours per failure): the same identity the RF lines on the MTBF-MTTR chart rely on
+    const m = (k.mtbfHours as { value: number }).value;
+    expect((k.reliabilityFactor as { value: number }).value).toBeCloseTo(m / (m + 30 / 6), 12);
+  });
+  it('is not defined without running time; no INC gives an RF of 100 %', () => {
+    expect(composeKpis('X', 0, emptySums(), { availabilityBasis: 'B' }).reliabilityFactor.available).toBe(false);
+    expect(composeKpis('X', 24, { pl: 24, inc: 0, cir: 0, events: 0, eventSeconds: 0 }, { availabilityBasis: 'B' }).reliabilityFactor.available).toBe(false);
+    expect(composeKpis('X', 24, emptySums(), { availabilityBasis: 'B' }).reliabilityFactor).toEqual(avail(1));
+  });
+});

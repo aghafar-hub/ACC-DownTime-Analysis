@@ -3,16 +3,27 @@ import { avail, unavail, parseSettings } from '../calc';
 import { anyTarget, areaTargetStatuses, belowTargetCount, getTargets, gapText, kpiTargetStatuses, metricStatus, statusLine, targetStatus, type Targets } from './targets';
 
 const all: Targets = { availabilityPct: 95, mtbfH: 120, mttrH: 2 };
-const none: Targets = { availabilityPct: null, mtbfH: null, mttrH: null };
+const none: Targets = { availabilityPct: null, mtbfH: null, mttrH: null, reliabilityPct: null };
+const OFF = { reliability_target_pct: '' };
 
 describe('getTargets', () => {
   it('reads the three optional targets from the settings; blank means off', () => {
-    expect(getTargets(parseSettings({}))).toEqual(none);
-    expect(anyTarget(getTargets(parseSettings({})))).toBe(false);
-    const t = getTargets(parseSettings({ availability_target_pct: '95.5', target_mtbf_h: '120', target_mttr_h: '2.5' }));
-    expect(t).toEqual({ availabilityPct: 95.5, mtbfH: 120, mttrH: 2.5 });
+    expect(getTargets(parseSettings(OFF))).toEqual(none);
+    expect(anyTarget(getTargets(parseSettings(OFF)))).toBe(false);
+    const t = getTargets(parseSettings({ ...OFF, availability_target_pct: '95.5', target_mtbf_h: '120', target_mttr_h: '2.5' }));
+    expect(t).toEqual({ availabilityPct: 95.5, mtbfH: 120, mttrH: 2.5, reliabilityPct: null });
     expect(anyTarget(t)).toBe(true);
-    expect(getTargets(parseSettings({ target_mttr_h: '3' }))).toEqual({ availabilityPct: null, mtbfH: null, mttrH: 3 });
+    expect(getTargets(parseSettings({ ...OFF, target_mttr_h: '3' }))).toEqual({ availabilityPct: null, mtbfH: null, mttrH: 3, reliabilityPct: null });
+  });
+  it('the RF target is 95 % until the setting exists in the sheet; blank there turns it off', () => {
+    expect(getTargets(parseSettings({})).reliabilityPct).toBe(95);
+    expect(getTargets(parseSettings({ reliability_target_pct: '97.5' })).reliabilityPct).toBe(97.5);
+    expect(getTargets(parseSettings({ reliability_target_pct: '' })).reliabilityPct).toBeNull();
+    expect(getTargets(parseSettings({ reliability_target_pct: '150' })).reliabilityPct).toBeNull();
+  });
+  it('the reliability factor wants at least the target, judged as shown', () => {
+    expect(targetStatus('reliability', 0.9496, { ...none, reliabilityPct: 95 })).toMatchObject({ ok: true, unit: '%', value: 95 });
+    expect(targetStatus('reliability', 0.93, { ...none, reliabilityPct: 95 })).toMatchObject({ ok: false, state: 'below', gap: -2 });
   });
 });
 

@@ -38,6 +38,11 @@ export interface AreaKpis {
   mtbfHours: Metric;
   failureRatePer1000h: Metric;
   mttrHours: Metric;
+  /** reliability factor RF = running ÷ (running + INC), 0..1: the share of the time it was meant to run that it was not
+   * lost to its own failures (PL and CIR left out; the same arithmetic as availability basis C) */
+  reliabilityFactor: Metric;
+  /** utilization factor UF = running ÷ scheduled (calendar) time, 0..1 (every stop counts; the same arithmetic as basis A) */
+  utilizationFactor: Metric;
 }
 
 export type TopArea = Metric & { areaId?: string; sharePct?: number };
@@ -215,6 +220,8 @@ export function composeKpis(id: string, t: number, a: HourSums, settings: Pick<C
     mtbfHours: a.events === 0 ? unavail('no_failures', NO_FAIL) : op > 0 ? avail(op / a.events) : noExposure,
     failureRatePer1000h: op > 0 ? avail((a.events / op) * 1000) : noExposure,
     mttrHours: a.events === 0 ? unavail('no_failures', NO_FAIL) : avail(a.eventSeconds / 3600 / a.events),
+    reliabilityFactor: clamp01(ratio(Math.max(0, op), Math.max(0, op) + a.inc, 'no_exposure', 'No running time outside planned and CIR stops')),
+    utilizationFactor: clamp01(ratio(Math.max(0, op), t, 'no_scheduled_time', NO_TIME)),
   };
 }
 
@@ -333,6 +340,7 @@ export function compareValues(current: Metric, previous: Metric, better: 'higher
 export interface KpiChanges {
   failureHours: Change; plannedHours: Change; failureCount: Change; availability: Change;
   mtbfHours: Change; mttrHours: Change; failureRatePer1000h: Change; operatingHours: Change;
+  reliabilityFactor: Change; utilizationFactor: Change;
 }
 
 /** P7: below this share of covered days the comparison period's totals are not compared as totals. */
@@ -397,6 +405,8 @@ export function kpiChanges(cur: AreaKpis, prev: AreaKpis, scaling?: TotalsScalin
     mttrHours: compareValues(cur.mttrHours, prev.mttrHours, 'lower'),
     failureRatePer1000h: compareValues(cur.failureRatePer1000h, prev.failureRatePer1000h, 'lower'),
     operatingHours: compareTotal(cur.operatingHours, prev.operatingHours, 'higher', scaling),
+    reliabilityFactor: compareValues(cur.reliabilityFactor, prev.reliabilityFactor, 'higher'),
+    utilizationFactor: compareValues(cur.utilizationFactor, prev.utilizationFactor, 'higher'),
   };
 }
 

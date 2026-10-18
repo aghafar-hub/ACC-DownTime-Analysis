@@ -103,6 +103,9 @@ export interface KpiSparks {
   mtbfHours: (number | null)[];
   /** running (operating) hours, area-hours */
   operatingHours: (number | null)[];
+  /** reliability factor and utilization factor, 0..1 */
+  reliability: (number | null)[];
+  utilization: (number | null)[];
 }
 
 const num = (m: Metric): number | null => (m.available ? m.value : null);
@@ -131,6 +134,8 @@ export function kpiSparks(ctx: DashCtx): KpiSparks | null {
     mttrHours: ms.map((m) => num(m.mttrHours)),
     mtbfHours: ms.map((m) => num(m.mtbfHours)),
     operatingHours: ms.map((m) => (m.hasData ? num(m.operatingHours) : null)),
+    reliability: ms.map((m) => (m.hasData && m.kpis ? num(m.kpis.reliabilityFactor) : null)),
+    utilization: ms.map((m) => (m.hasData && m.kpis ? num(m.kpis.utilizationFactor) : null)),
   };
 }
 

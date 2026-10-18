@@ -1,5 +1,5 @@
-// (1) The KPI row: total stoppage with its type split, failures, availability against the target, MTTR and the
-// all-area MTBF, each with a monthly sparkline from January to the period (gaps for months not uploaded, a dashed
+// (1) The KPI row: total stoppage with its type split, failures, the reliability factor against its target, the
+// all-area MTBF, MTTR, the utilization factor and the running hours, each with a monthly sparkline from January to the period (gaps for months not uploaded, a dashed
 // last step for a month in progress).
 import type { ReactNode } from 'react';
 import { PaintSwatch, paintCss } from '../../charts/paint';
@@ -131,10 +131,12 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
   );
   const mttr = metricText(tot.mttrHours, fh2, '');
   const mtbf = metricText(tot.mtbfHours, fh, '');
-  const av = metricText(tot.availabilityHeadline, (n) => (n * 100).toFixed(1), '');
-  const avPct = tot.availabilityHeadline.available ? tot.availabilityHeadline.value * 100 : null;
-  const target = model.targets.availabilityPct;
-  const prevAv = prev && prev.availabilityHeadline.available ? fpct(prev.availabilityHeadline.value) : null;
+  const pctText = (m: typeof tot.reliabilityFactor) => metricText(m, (n) => (n * 100).toFixed(1), '');
+  const rf = pctText(tot.reliabilityFactor);
+  const uf = pctText(tot.utilizationFactor);
+  const rfPct = tot.reliabilityFactor.available ? tot.reliabilityFactor.value * 100 : null;
+  const rfTarget = model.targets.reliabilityPct ?? null;
+  const prevRf = prev && prev.reliabilityFactor.available ? fpct(prev.reliabilityFactor.value) : null;
   const pre = prevLabel ? `${prevLabel} ` : `${t('Before')} `;
   const run = model.running;
   const runText = run ? metricText(run.value, fh, '') : { text: '', unavailable: true, reason: undefined };
@@ -162,20 +164,28 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.failureCount} label={t('Failures')} format={fint} />)}
       />
       <Tile
-        id="availability" label={t('Availability (basis {b})', { b: basis })} info={<InfoButton info={kpiInfo('availability', basis, model.targets)} testid="kpi-availability-info" />}
-        value={av.text} unit={av.unavailable ? undefined : '%'}
-        extra={<TargetChip status={model.status.availability} testid="kpi-availability-target" />}
-        sub={<>{target !== null ? <>{t('Target')} <b>{target}%</b>{prevAv ? ' · ' : ''}</> : null}{prevAv ? `${pre}${prevAv}` : null}{target === null && !prevAv ? t('No target set') : null}</>}
-        change={target === null ? <ChangeLine change={ch?.availability ?? null} fmt={(n) => (n * 100).toFixed(1)} unit=" pts" label={cmpLabel} compare={cmp} /> : undefined}
-        spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.availability.map((v) => (v === null ? null : v * 100))} label={t('Availability')} format={(n) => `${n.toFixed(1)}%`} target={target} />)}
+        id="reliability" label={t('Reliability (RF)')} info={<InfoButton info={kpiInfo('reliability', basis, model.targets)} testid="kpi-reliability-info" />}
+        value={rf.text} unit={rf.unavailable ? undefined : '%'}
+        extra={<TargetChip status={model.status.reliability ?? null} testid="kpi-reliability-target" />}
+        sub={<>{rfTarget !== null ? <>{t('Target')} <b>{rfTarget}%</b>{prevRf ? ' · ' : ''}</> : null}{prevRf ? `${pre}${prevRf}` : null}{rfTarget === null && !prevRf ? (rf.reason ?? t('Running ÷ (running + INC)')) : null}</>}
+        change={rfTarget === null ? <ChangeLine change={ch?.reliabilityFactor ?? null} fmt={(n) => (n * 100).toFixed(1)} unit=" pts" label={cmpLabel} compare={cmp} /> : undefined}
+        spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.reliability.map((v) => (v === null ? null : v * 100))} label={t('Reliability (RF)')} format={(n) => `${n.toFixed(1)}%`} target={rfTarget} />)}
       >
-        {avPct !== null && (
+        {rfPct !== null && (
           <div className="kmeter" aria-hidden="true">
-            <span className="kmeter-fill" style={{ width: `${Math.max(0, Math.min(100, avPct))}%` }} />
-            {target !== null && <span className="kmeter-target" style={{ left: `${Math.max(0, Math.min(100, target))}%` }} />}
+            <span className="kmeter-fill" style={{ width: `${Math.max(0, Math.min(100, rfPct))}%` }} />
+            {rfTarget !== null && <span className="kmeter-target" style={{ left: `${Math.max(0, Math.min(100, rfTarget))}%` }} />}
           </div>
         )}
       </Tile>
+      <Tile
+        id="mtbf" label={t(MTBF_ALL_LABEL)} info={<InfoButton info={kpiInfo('mtbf', basis, model.targets)} testid="kpi-mtbf-info" />}
+        value={mtbf.text} unit={mtbf.unavailable || !tot.mtbfHours.available ? undefined : 'h'}
+        extra={<TargetChip status={model.status.mtbf} testid="kpi-mtbf-target" />}
+        change={<ChangeLine change={ch?.mtbfHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmp} />}
+        sub={mtbf.reason ?? t('Run area-hours ÷ failures')}
+        spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.mtbfHours} label={t(MTBF_ALL_LABEL)} format={(n) => `${fh(n)} h`} />)}
+      />
       <Tile
         id="mttr" label={t('MTTR')} info={<InfoButton info={kpiInfo('mttr', basis, model.targets)} testid="kpi-mttr-info" />}
         value={mttr.text} unit={mttr.unavailable || !tot.mttrHours.available ? undefined : 'h'}
@@ -185,12 +195,11 @@ export default function KpiRow({ model, sparks, basis, cmpLabel, prevLabel, dark
         spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.mttrHours} label={t('MTTR')} format={(n) => `${fh2(n)} h`} />)}
       />
       <Tile
-        id="mtbf" label={t(MTBF_ALL_LABEL)} info={<InfoButton info={kpiInfo('mtbf', basis, model.targets)} testid="kpi-mtbf-info" />}
-        value={mtbf.text} unit={mtbf.unavailable || !tot.mtbfHours.available ? undefined : 'h'}
-        extra={<TargetChip status={model.status.mtbf} testid="kpi-mtbf-target" />}
-        change={<ChangeLine change={ch?.mtbfHours ?? null} fmt={fh} unit=" h" label={cmpLabel} compare={cmp} />}
-        sub={mtbf.reason ?? t('Run area-hours ÷ failures')}
-        spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.mtbfHours} label={t(MTBF_ALL_LABEL)} format={(n) => `${fh(n)} h`} />)}
+        id="utilization" label={t('Utilization (UF)')} info={<InfoButton info={kpiInfo('utilization', basis, model.targets)} testid="kpi-utilization-info" />}
+        value={uf.text} unit={uf.unavailable ? undefined : '%'}
+        change={<ChangeLine change={ch?.utilizationFactor ?? null} fmt={(n) => (n * 100).toFixed(1)} unit=" pts" label={cmpLabel} compare={cmp} />}
+        sub={uf.reason ?? t('Running ÷ calendar hours')}
+        spark={sparkFoot(sparks && <MonthSpark slots={slots} values={sparks.utilization.map((v) => (v === null ? null : v * 100))} label={t('Utilization (UF)')} format={(n) => `${n.toFixed(1)}%`} />)}
       />
       {run && (
         <Tile

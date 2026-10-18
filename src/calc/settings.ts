@@ -18,6 +18,8 @@ export interface CalcSettings {
   targetMtbfH: number | null;
   /** MTTR target in hours (above 0), null = no target */
   targetMttrH: number | null;
+  /** reliability factor target in percent; 95 when the setting is not in the sheet yet, null when it is blank (off) */
+  reliabilityTargetPct: number | null;
   defaultComparison: ComparisonKind;
 }
 
@@ -32,6 +34,7 @@ export const DEFAULT_SETTINGS: CalcSettings = {
   availabilityTargetPct: null,
   targetMtbfH: null,
   targetMttrH: null,
+  reliabilityTargetPct: 95,
   defaultComparison: 'previous_period',
 };
 
@@ -57,6 +60,9 @@ export function parseSettings(source: Setting[] | Record<string, string> = []): 
   const basis = (map.availability_basis ?? '').trim().toUpperCase();
   const cmp = (map.default_comparison ?? '').trim();
   const target = (map.availability_target_pct ?? '').trim();
+  const rfRaw = map.reliability_target_pct;
+  const rf = Number((rfRaw ?? '').trim());
+  const rfTarget = rfRaw === undefined ? d.reliabilityTargetPct : rfRaw.trim() === '' || !Number.isFinite(rf) || rf < 0 || rf > 100 ? null : rf;
   return {
     availabilityBasis: basis === 'A' || basis === 'B' || basis === 'C' ? basis : d.availabilityBasis,
     scheduledHoursPerDay: num(map.scheduled_hours_per_day, d.scheduledHoursPerDay, 0, 24),
@@ -68,6 +74,7 @@ export function parseSettings(source: Setting[] | Record<string, string> = []): 
     availabilityTargetPct: target === '' || !Number.isFinite(Number(target)) ? null : Number(target),
     targetMtbfH: positiveOrNull(map.target_mtbf_h),
     targetMttrH: positiveOrNull(map.target_mttr_h),
+    reliabilityTargetPct: rfTarget,
     defaultComparison: cmp === 'same_period_last_year' ? cmp : d.defaultComparison,
   };
 }
