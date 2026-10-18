@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { dataRangeOf, notUploadedMonths } from '../calc';
+import { plantCoverage } from '../data/coverage';
 import { coverageSegments, coverageText } from '../dashboard/scopeOptions';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
@@ -23,8 +23,7 @@ export default function DataStatusStrip() {
   const rows = v?.ready ? v.rows : null;
   const facts = useMemo(() => {
     if (!rows) return null;
-    const coverage = dataRangeOf(rows);
-    const gaps = coverage ? notUploadedMonths(rows, coverage) : [];
+    const { coverage, gaps } = plantCoverage(rows);
     let added = '';
     for (const r of rows) if (r.created_at && r.created_at > added) added = r.created_at;
     return { coverage, gaps, segments: coverageSegments(coverage, gaps), added };

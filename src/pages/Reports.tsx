@@ -14,6 +14,7 @@ import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import Builder from '../reports/Builder';
 import { buildReport, reportContext, scopeCounts, type ReportModel } from '../reports/model';
+import { usePlantCoverage } from '../data/coverage';
 import { comparisonKindFor } from '../reports/period';
 import ReportDocument, { type DocumentInfo } from '../reports/ReportDocument';
 import { parseSetup, serializeSetup, type ReportSetup } from '../reports/setup';
@@ -105,6 +106,8 @@ export default function Reports() {
     [data.ready, data.startup, data.rows, data.asOf, scopeKey],
   );
   const counts = useMemo(() => (live ? scopeCounts(live.ctx) : null), [live]);
+  // one data coverage on every page: the plant-wide one (all years), as the data strip shows it
+  const plant = usePlantCoverage();
   const range = live?.range ?? data.range;
   const compareRange = setup.compare && range ? (live?.ctx.win.compareRange ?? comparisonRange(range, comparisonKindFor(setup.preset))) : null;
 
@@ -114,8 +117,9 @@ export default function Reports() {
     if (!data.ready || !data.startup || !data.asOf) return null;
     return buildReport({
       setup: only ? { ...setup, sections: only } : setup, startup: data.startup, rows: data.rows, asOf: data.asOf, generatedAt: nowText(), generatedBy, plant: PLANT_NAME,
+      coverage: plant?.coverage,
     });
-  }, [data.ready, data.startup, data.rows, data.asOf, setup, generatedBy]);
+  }, [data.ready, data.startup, data.rows, data.asOf, setup, generatedBy, plant]);
 
   const subtitle = view === 'builder'
     ? t('Choose what goes into the report, add filters and press Build. The report can be printed or saved as a PDF.')
@@ -130,7 +134,7 @@ export default function Reports() {
       </div>
       {view === 'builder' ? (
         <Builder
-          setup={setup} onChange={change} startup={data.startup} range={range} compareRange={compareRange} scope={counts} coverage={live?.ctx.coverage ?? null}
+          setup={setup} onChange={change} startup={data.startup} range={range} compareRange={compareRange} scope={counts} coverage={plant?.coverage ?? live?.ctx.coverage ?? null}
           onBuild={build} onCopyLink={copyLink} copied={copied} getModel={getModel} dataReady={data.ready} asOf={data.asOf}
         />
       ) : (
@@ -145,6 +149,7 @@ function Preview({ setup, data, generatedBy, onEdit, onCopyLink, copied }: {
 }) {
   const generatedAt = useRef(nowText());
   const createAction = useCreateAction();
+  const plant = usePlantCoverage();
   const [model, setModel] = useState<ReportModel | null>(null);
   const [info, setInfo] = useState<DocumentInfo | null>(null);
   const setupKey = serializeSetup(setup).toString();
@@ -157,11 +162,11 @@ function Preview({ setup, data, generatedBy, onEdit, onCopyLink, copied }: {
     const asOf = data.asOf;
     const rows = data.rows;
     const handle = window.setTimeout(() => {
-      setModel(buildReport({ setup, startup, rows, asOf, generatedAt: generatedAt.current, generatedBy, plant: PLANT_NAME }));
+      setModel(buildReport({ setup, startup, rows, asOf, generatedAt: generatedAt.current, generatedBy, plant: PLANT_NAME, coverage: plant?.coverage }));
     }, 30);
     return () => window.clearTimeout(handle);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.ready, data.startup, data.rows, data.asOf, setupKey, generatedBy]);
+  }, [data.ready, data.startup, data.rows, data.asOf, setupKey, generatedBy, plant]);
 
   // the print stylesheet only applies while a report is on screen; the file name of "Save as PDF" is the page title
   useEffect(() => {

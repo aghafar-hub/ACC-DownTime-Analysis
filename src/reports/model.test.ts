@@ -9,6 +9,7 @@ import { buildReport, describeFilters, reportContext, scopeCounts, type ReportMo
 import { SECTION_ORDER } from './sections';
 import { MTBF_ALL_LABEL } from '../dashboard/format';
 import { defaultSetup, type ReportSetup } from './setup';
+import { plantCoverage } from '../data/coverage';
 
 const db = buildSyntheticDb();
 const startup: Startup = {
@@ -186,5 +187,19 @@ describe('P4: the report uses the one MTBF rule and label', () => {
       expect(card.value).toBe(k.total.mtbfHours.available ? k.total.mtbfHours.value : null);
       expect(get(m, 'summary').data.kpis.some((x) => x.id === 'repeats')).toBe(true);
     }
+  });
+});
+
+describe('one data coverage: the report says what the data covers over every year, like the data strip', () => {
+  it('uses the plant-wide coverage when given, not the first loaded year', () => {
+    const rows2026 = db.events.filter((e) => e.event_date.startsWith('2026'));
+    const plant = plantCoverage(db.events);
+    expect(plant.coverage!.from < '2026-01-01').toBe(true);
+    const only2026 = buildReport({ setup: base(), startup, rows: rows2026, asOf, generatedAt: '2026-10-13 11:00', generatedBy: 'Tester', plant: 'Sokhna' });
+    expect(only2026.coverage!.from >= '2026-01-01').toBe(true); // what the loaded rows alone would say
+    const fixed = buildReport({ setup: base(), startup, rows: rows2026, asOf, generatedAt: '2026-10-13 11:00', generatedBy: 'Tester', plant: 'Sokhna', coverage: plant.coverage });
+    expect(fixed.coverage).toEqual(plant.coverage);
+    // the numbers do not depend on it
+    expect(fixed.scope).toEqual(only2026.scope);
   });
 });
