@@ -13,6 +13,7 @@ import {
   type Action, type ActionChanges, type ActionLog, type ActionPriority, type ActionRootCause, type ActionStatus, type EventRow,
 } from '../api/types';
 import AccessBadge from '../components/AccessBadge';
+import { useAuth } from '../auth/AuthContext';
 import { useStartup } from '../data/useStartup';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
@@ -109,6 +110,7 @@ function logText(l: ActionLog, people: Parameters<typeof personName>[0]): { head
 
 export default function ActionDetail({ id, onClose, taskId }: { id: string; onClose: () => void; taskId?: string | null }) {
   const acts = useActions();
+  const canReports = useAuth().canView('reports');
   const mobile = useIsMobile();
   const { startup } = useStartup();
   const v = useValidationOptional();
@@ -217,6 +219,8 @@ export default function ActionDetail({ id, onClose, taskId }: { id: string; onCl
     const history = actionHistory(logs.filter((l) => l.kind !== 'comment')).reverse();
     const drill = ids.length && startup ? { drill: { label: t('Evidence of {id}', { id: a.action_id }), eventIds: ids, rowIds: ids, years: startup.years, source: t('Action') } } : undefined;
     const shownEv = showAllEv ? evRows : evRows.slice(-8);
+    // backend 1.9.0: this action alone in Reports › Actions report (print, Excel, send by email)
+    const reportLink = canReports ? `/reports?type=actions&aid=${encodeURIComponent(a.action_id)}` : null;
 
     content = (
       <>
@@ -225,6 +229,7 @@ export default function ActionDetail({ id, onClose, taskId }: { id: string; onCl
             <div className="ad-phonebar">
               <button type="button" className="ad-icon-btn" onClick={onClose} aria-label={t('Back to Actions')} data-testid="action-close"><Icon name="arrowLeft" size={20} /></button>
               <span className="ad-phone-id mono" data-testid="action-id">{a.action_id}</span>
+              {reportLink && <Link className="ad-icon-btn" to={reportLink} aria-label={t('Report / send')} data-testid="action-report"><Icon name="registry" size={18} /></Link>}
               <button type="button" className="ad-icon-btn" onClick={() => void copyLink()} aria-label={t('Copy link')} data-testid="action-copy"><Icon name="link" size={18} /></button>
             </div>
           ) : (
@@ -236,6 +241,7 @@ export default function ActionDetail({ id, onClose, taskId }: { id: string; onCl
               <span className="act-tag">{t('Scope: {s}', { s: t(a.scope_kind === 'equipment' ? 'Equipment' : a.scope_kind === 'area' ? 'Area' : a.scope_kind === 'line' ? 'Line' : 'Plant') })}</span>
               <AccessBadge edit={acts.canEdit} />
               <span className="ad-head-btns">
+                {reportLink && <Link className="btn btn-sm" to={reportLink} data-testid="action-report"><Icon name="registry" size={15} /> {t('Report / send')}</Link>}
                 <button type="button" className="btn btn-sm" onClick={() => void copyLink()} data-testid="action-copy"><Icon name="link" size={15} /> {copied ? t('Copied') : t('Copy link')}</button>
                 <button type="button" className="ad-icon-btn" onClick={onClose} aria-label={t('Close')} data-testid="action-close"><Icon name="close" size={18} /></button>
               </span>

@@ -50,3 +50,58 @@ export async function pagesToPdf(pages: HTMLElement[], onPage?: (i: number, n: n
   }
   return new Uint8Array(pdf.output('arraybuffer'));
 }
+
+/**
+ * Where each PDF page starts in a long document (CSS pixels from its top): a page ends at the last block end that fits,
+ * so a block (an action, a table row group) is not cut unless it is taller than a page.
+ */
+export function pageStarts(blockEnds: readonly number[], total: number, pageH: number): number[] {
+  const ends = [...new Set(blockEnds)].filter((e) => e > 0 && e <= total).sort((a, b) => a - b);
+  const starts: number[] = [];
+  let start = 0;
+  while (start < total - 0.5) {
+    starts.push(start);
+    const limit = start + pageH;
+    if (limit >= total) break;
+    const fit = ends.filter((e) => e > start + 1 && e <= limit);
+    start = fit.length ? fit[fit.length - 1]! : limit;
+  }
+  return starts;
+}
+
+/** A long document (the actions report) as A4 pages with 10 mm margins, cut between its `[data-pdf-block]` parts. */
+export async function documentToPdf(root: HTMLElement, onStep?: (text: string) => void): Promise<Uint8Array> {
+  const [{ toCanvas }, { jsPDF }] = await Promise.all([import('html-to-image'), import('jspdf')]);
+  const margin = 10;
+  const contentW = A4_MM.w - 2 * margin;
+  const contentH = A4_MM.h - 2 * margin;
+  const w = root.offsetWidth;
+  const total = root.scrollHeight;
+  const top = root.getBoundingClientRect().top;
+  const ends = [...root.querySelectorAll<HTMLElement>('[data-pdf-block]')].map((b) => b.getBoundingClientRect().bottom - top);
+  const opts = { backgroundColor: '#ffffff', pixelRatio: pixelRatioFor(w * (A4_MM.w / contentW)), width: w, height: total, cacheBust: false };
+  onStep?.('draw');
+  let canvas: HTMLCanvasElement;
+  try {
+    canvas = await toCanvas(root, opts);
+  } catch {
+    canvas = await toCanvas(root, { ...opts, skipFonts: true });
+  }
+  const scale = canvas.width / w;
+  const starts = pageStarts(ends, total, w * (contentH / contentW));
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+  starts.forEach((s, i) => {
+    const end = i + 1 < starts.length ? starts[i + 1]! : total;
+    const hPx = Math.max(1, Math.round((end - s) * scale));
+    const part = document.createElement('canvas');
+    part.width = canvas.width;
+    part.height = hPx;
+    const g = part.getContext('2d')!;
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, part.width, part.height);
+    g.drawImage(canvas, 0, Math.round(s * scale), canvas.width, hPx, 0, 0, canvas.width, hPx);
+    if (i > 0) pdf.addPage('a4', 'portrait');
+    pdf.addImage(part.toDataURL('image/jpeg', 0.85), 'JPEG', margin, margin, contentW, (hPx / canvas.width) * contentW, undefined, 'FAST');
+  });
+  return new Uint8Array(pdf.output('arraybuffer'));
+}

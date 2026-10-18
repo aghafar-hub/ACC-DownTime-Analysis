@@ -30,6 +30,8 @@ import { bytesToBase64, pagesToPdf } from '../email/pdf';
 import { safeFileName, useCanSendEmail, useEmailPeople } from '../email/useCanSend';
 import { buildReportWorkbook } from '../export/reportExport';
 import { XLSX_MIME } from '../export/xlsx';
+import ActionsReport from '../reports/actions/ActionsReport';
+import { Seg } from '../dashboard/cards/DashCard';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 const nowText = (): string => {
@@ -61,8 +63,11 @@ async function copyText(text: string): Promise<boolean> {
 
 export default function Reports() {
   const [sp, setSp] = useSearchParams();
-  const { user } = useAuth();
+  const { user, canView } = useAuth();
   const key = sp.toString();
+  // backend 1.9.0: Reports › Actions report (type=actions), for people who can see the Actions page
+  const withActions = canView('actions');
+  const type: 'downtime' | 'actions' = withActions && sp.get('type') === 'actions' ? 'actions' : 'downtime';
   // The setup is kept in state and mirrored to the URL (so quick successive clicks never lose a change to a late URL
   // update); a different URL (a pasted link, Back) replaces it.
   const [setup, setSetup] = useState<ReportSetup>(() => parseSetup(new URLSearchParams(key)));
@@ -123,6 +128,28 @@ export default function Reports() {
     });
   }, [data.ready, data.startup, data.rows, data.asOf, setup, generatedBy]);
 
+  const switchType = (next: 'downtime' | 'actions') => {
+    if (next === type) return;
+    setSp(next === 'actions' ? new URLSearchParams({ type: 'actions' }) : serializeSetup(setup), { replace: false });
+  };
+  const typeSwitch = withActions && (
+    <div className="rpt-type rpt-noprint">
+      <Seg value={type} onChange={switchType} label={t('Kind of report')} testid="report-type"
+        options={[{ value: 'downtime', label: t('Downtime report') }, { value: 'actions', label: t('Actions report') }]} />
+    </div>
+  );
+  if (type === 'actions') {
+    return (
+      <div className="page rb-page" data-testid="page-reports" data-view="actions">
+        <div className="rpt-noprint">
+          <PageHeader title={t('Reports')} subtitle={t('Actions of one area or of all areas, or one action, with their tasks and history. Print it, download Excel or send it by email.')} />
+        </div>
+        {typeSwitch}
+        <ActionsReport />
+      </div>
+    );
+  }
+
   const subtitle = view === 'builder'
     ? t('Choose what goes into the report, add filters and press Build. The report can be printed or saved as a PDF.')
     : t('Print or save the report as a PDF, or go back to change what it contains.');
@@ -134,6 +161,7 @@ export default function Reports() {
         {(data.st.error || (data.st.loading && !data.st.data)) && <DataStatus state={data.st} onRetry={data.st.reload} what={t('master data')} />}
         {!(data.st.error || (data.st.loading && !data.st.data)) && <DataStatus state={data.data.state} onRetry={data.data.reload} what={t('events')} />}
       </div>
+      {view === 'builder' && typeSwitch}
       {view === 'builder' ? (
         <Builder
           setup={setup} onChange={change} startup={data.startup} range={range} compareRange={compareRange} scope={counts} coverage={live?.ctx.coverage ?? null}
