@@ -1446,7 +1446,12 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
         if (out.length > 25) throw bad(`${label}: at most 25 addresses.`);
         return out;
       };
-      const to = list(email?.to, 'To', 1);
+      const picked = (email?.users ?? []).map((id) => {
+        const u = get().users.find((x) => x.user_id === id);
+        if (!u || !u.active || !MAIL_RE.test(u.email)) throw bad(`There is no active user ${String(id).slice(0, 40)} with an email address.`);
+        return u.email.toLowerCase();
+      });
+      const to = list([...(email?.to ?? []), ...picked], 'To', 1);
       const cc = list(email?.cc, 'Cc', 0).filter((e) => !to.includes(e));
       const subject = String(email?.subject ?? '').trim();
       if (!subject) throw bad('The subject is required.');

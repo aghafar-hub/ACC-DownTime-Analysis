@@ -588,6 +588,8 @@ export interface MailAttachment {
 /** sendReport input (backend 1.9.0). `kind` only names the email in the activity log. */
 export interface OutgoingEmail {
   to: string[];
+  /** people picked in the app (user ids): the server adds their addresses to To */
+  users?: string[];
   cc?: string[];
   subject: string;
   html: string;

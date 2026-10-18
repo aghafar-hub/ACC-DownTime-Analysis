@@ -673,10 +673,10 @@ The manifest (`appsscript.json`) turns on the Gmail advanced service and adds th
 
 | Action | Access | Params | Returns |
 |---|---|---|---|
-| `sendReport` | reports Edit, or the Admin role | `{ email: { to: string[], cc?: string[], subject, html, attachments?: [{ name, mimeType, base64 }], kind?: 'report' \| 'actions' } }` | `{ from, via: 'gmail' \| 'mailapp', recipients }` |
+| `sendReport` | reports Edit, or the Admin role | `{ email: { to: string[], users?: string[], cc?: string[], subject, html, attachments?: [{ name, mimeType, base64 }], kind?: 'report' \| 'actions' } }` | `{ from, via: 'gmail' \| 'mailapp', recipients }` |
 | `sendTestEmail` | Admin role | `{}` | `{ from, via, to }` (to = the Admin's own address) |
 
-`sendReport` rules: 1-25 To and up to 25 Cc, any domain, each a single address; the subject is required (at most 200 characters, one
+`sendReport` rules: `users` are user ids of active people (their addresses are looked up on the server and join To); 1-25 To and up to 25 Cc, any domain, each a single address; the subject is required (at most 200 characters, one
 line); the HTML summary is cleaned (scripts, styles blocks, frames, forms, event handlers, `javascript:` and non-https links, CSS
 `url()` removed; `data:image` pictures kept) and a plain-text copy is made from it; up to 3 attachments, PDF / Excel / CSV only,
 15 MB together; at most 30 sends per person per plant day (Script Property `MAILCOUNT_<user_id>`). Audit: `send_report` with

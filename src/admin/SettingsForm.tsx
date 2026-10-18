@@ -62,7 +62,7 @@ export default function SettingsForm({ settings, canEdit, onSaved, groupIds, bad
       return (
         <div className={bad ? 'field field--error span-2' : 'field span-2'} key={f.key}>
           <label htmlFor={`set-${f.key}`}>{f.label}</label>
-          <input id={`set-${f.key}`} className="input mono" type="url" inputMode="url" autoComplete="off" placeholder={f.placeholder} maxLength={f.maxLength + 20} value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} data-testid={`set-${f.key}`} aria-describedby={`help-${f.key}`} />
+          <input id={`set-${f.key}`} className={f.format === 'plain' ? 'input' : 'input mono'} type={f.format === 'email' ? 'email' : f.format === 'plain' ? 'text' : 'url'} inputMode={f.format === 'email' ? 'email' : f.format === 'plain' ? 'text' : 'url'} autoComplete="off" placeholder={f.placeholder} maxLength={f.maxLength + 20} value={values[f.key] ?? ''} onChange={(e) => set(f.key, e.target.value)} data-testid={`set-${f.key}`} aria-describedby={`help-${f.key}`} />
           <span className="field-hint" id={`help-${f.key}`}>{f.help}</span>
           {bad && <span className="field-error" role="alert" data-testid={`error-${f.key}`}>{problems[f.key]}</span>}
           {m?.updated_at && <span className="field-hint">{t('Changed {when}{who}', { when: tsText(m.updated_at), who: m.updated_by ? ` · ${who(m.updated_by)}` : '' })}</span>}

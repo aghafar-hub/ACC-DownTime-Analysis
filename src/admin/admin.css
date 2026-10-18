@@ -307,3 +307,15 @@ button.adm-card:focus-visible {
   gap: 6px 8px;
   margin: 0 0 12px;
 }
+
+/* Settings > Notifications: the steps to set up the system email (backend 1.9.0) */
+.adm-steps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--tk-text-secondary);
+}
+.adm-steps li + li {
+  margin-top: 4px;
+}

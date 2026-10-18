@@ -121,6 +121,15 @@ test('at most 30 report emails per person per day; the count starts again the ne
   assert.equal(env.call('sendReport', again, { email: email() }).status, 'ok');
 });
 
+test('people picked in the app by user id are looked up on the server and join To', () => {
+  const { env, mgr, viewer } = setup();
+  const sent = stubMailApp(env);
+  const r = env.ok('sendReport', mgr.token, { email: email({ to: [], users: [viewer.user_id] }) });
+  assert.equal(r.recipients, 1);
+  assert.equal(sent[0].to, 'view@example.com');
+  assert.match(env.call('sendReport', mgr.token, { email: email({ users: ['U-NOPE'] }) }).error.message, /no active user U-NOPE/);
+});
+
 test('a used-up mail quota is reported in words', () => {
   const { env, mgr } = setup();
   stubMailApp(env, { quota: 0 });

@@ -24,6 +24,12 @@ import '../reports/reports.css';
 import { useCreateAction } from '../actions/ActionsContext';
 import { reportPrefill } from '../actions/prefill';
 import { monthText, rangeText } from '../util/dates';
+import SendEmailDialog, { type BuiltEmail } from '../email/SendEmailDialog';
+import { reportEmailHtml, reportSubject } from '../email/emailHtml';
+import { bytesToBase64, pagesToPdf } from '../email/pdf';
+import { safeFileName, useCanSendEmail, useEmailPeople } from '../email/useCanSend';
+import { buildReportWorkbook } from '../export/reportExport';
+import { XLSX_MIME } from '../export/xlsx';
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 const nowText = (): string => {
@@ -177,9 +183,31 @@ function Preview({ setup, data, generatedBy, onEdit, onCopyLink, copied }: {
   }, [model]);
 
   const onLayout = useCallback((i: DocumentInfo) => setInfo(i), []);
+  const canSend = useCanSendEmail();
+  const people = useEmailPeople();
+  const [sending, setSending] = useState(false);
+  const [sentNote, setSentNote] = useState('');
+  const viewRef = useRef<HTMLDivElement>(null);
+
+  // the email: a summary of the same setup (the KPI block and key findings), the pages on screen as a PDF, Excel if ticked
+  const buildEmail = useCallback(async ({ message, attachExcel, progress }: { message: string; attachExcel: boolean; progress: (s: string) => void }): Promise<BuiltEmail> => {
+    if (!model || !data.startup || !data.asOf) throw new Error(t('The report is not ready yet.'));
+    const pages = [...(viewRef.current?.querySelectorAll<HTMLElement>('[data-testid="rpt-page"]') ?? [])];
+    if (!pages.length) throw new Error(t('The report pages are not laid out yet. Try again in a moment.'));
+    const base = safeFileName(`${model.title} ${model.range.from === model.range.to ? model.range.from : `${model.range.from} to ${model.range.to}`}`);
+    const pdf = await pagesToPdf(pages, (i, n) => progress(t('Making the PDF: page {i} of {n}…', { i, n })));
+    const attachments: BuiltEmail['attachments'] = [{ name: `${base}.pdf`, mimeType: 'application/pdf', base64: bytesToBase64(pdf) }];
+    if (attachExcel) {
+      progress(t('Making the Excel file…'));
+      const wb = buildReportWorkbook(model);
+      attachments.push({ name: wb.fileName, mimeType: XLSX_MIME as 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', base64: bytesToBase64(wb.bytes) });
+    }
+    const summary = buildReport({ setup: { ...setup, sections: ['summary'] }, startup: data.startup, rows: data.rows, asOf: data.asOf, generatedAt: generatedAt.current, generatedBy, plant: PLANT_NAME });
+    return { html: reportEmailHtml({ summary, message, attached: attachments.map((a) => a.name) }), attachments };
+  }, [model, data.startup, data.asOf, data.rows, setup, generatedBy]);
 
   return (
-    <div className="rpt-view" data-testid="report-view">
+    <div className="rpt-view" data-testid="report-view" ref={viewRef}>
       <div className="card rpt-toolbar rpt-noprint" role="toolbar" aria-label={t('Report actions')} data-testid="report-toolbar">
         <button type="button" className="btn" onClick={onEdit} data-testid="report-edit"><Icon name="chevronRight" size={16} style={{ transform: 'rotate(180deg)' }} /> {t('Edit setup')}</button>
         <button type="button" className="btn" onClick={onCopyLink} data-testid="report-copy-link"><Icon name="share" size={16} /> {t('Copy link')}</button>
@@ -196,12 +224,25 @@ function Preview({ setup, data, generatedBy, onEdit, onCopyLink, copied }: {
             <Icon name="plus" size={16} /> {t('Create action')}
           </button>
         )}
+        {canSend && (
+          <button type="button" className="btn" onClick={() => { setSentNote(''); setSending(true); }} disabled={!info || !model || setup.sections.length === 0} data-testid="report-send">
+            <Icon name="mail" size={16} /> {t('Send by email')}
+          </button>
+        )}
         <button type="button" className="btn-primary" onClick={() => window.print()} disabled={!info} data-testid="report-print"><Icon name="download" size={16} /> {t('Print / Save as PDF')}</button>
         <span className="rpt-toolbar-info" data-testid="report-info" role="status">
           {info ? t('{p} pages · {s} sections', { p: info.pages, s: info.sections }) : model ? t('Laying out the pages…') : ''}
         </span>
         <span className="rb-copied" role="status" aria-live="polite" data-testid="report-copied">{copied ? t('Link copied. It opens this report.') : ''}</span>
+        {sentNote && <span className="rb-copied" role="status" data-testid="report-sent">{sentNote}</span>}
       </div>
+      {sending && model && (
+        <SendEmailDialog
+          title={t('Send the report by email')} kind="report" defaultSubject={reportSubject(model)} people={people} excel
+          build={buildEmail} onClose={() => setSending(false)}
+          onSent={(r, n) => { setSending(false); setSentNote(n === 1 ? t('Sent to 1 recipient from {f}.', { f: r.from }) : t('Sent to {n} recipients from {f}.', { n, f: r.from })); }}
+        />
+      )}
       {!data.ready && <p className="callout rpt-noprint" role="status" data-testid="report-loading">{t('Loading the data for the report…')}</p>}
       {data.ready && !model && <p className="callout rpt-noprint" role="status" data-testid="report-building">{t('Building the report…')}</p>}
       {model && <ReportDocument model={model} onLayout={onLayout} />}

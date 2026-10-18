@@ -259,12 +259,26 @@ function countMailSend_(userId) {
 // ---------------------------------------------------------------- actions
 
 /**
- * sendReport: { to: [], cc: [], subject, html, attachments: [{ name, mimeType, base64 }], kind }.
+ * sendReport: { to: [], users: [user_id], cc: [], subject, html, attachments: [{ name, mimeType, base64 }], kind }. `users`: people
+ * picked in the app; their addresses join To.
  * kind: 'report' | 'actions' (only for the log). Returns { from, via, recipients }.
  */
 function sendReport_(session, p) {
   requireObject_(p, 'The email');
-  var to = cleanAddressList_(p.to, 'To', 1, MAIL_LIMITS.maxTo);
+  // people picked in the app by user id: their addresses are looked up here, so the browser never needs them
+  var picked = [];
+  if (p.users !== undefined && p.users !== null) {
+    if (!Array.isArray(p.users) || p.users.length > MAIL_LIMITS.maxTo) throw apiError_(ERR.BAD_REQUEST, 'The people picked must be a list of at most ' + MAIL_LIMITS.maxTo + '.');
+    var byId = {};
+    readUsers_().forEach(function (u) { byId[u.user_id] = u; });
+    p.users.forEach(function (id) {
+      var u = byId[String(id)];
+      if (!u || !u.active || !EMAIL_PATTERN_.test(String(u.email || ''))) throw apiError_(ERR.BAD_REQUEST, 'There is no active user ' + String(id).slice(0, 40) + ' with an email address.');
+      picked.push(String(u.email).toLowerCase());
+    });
+  }
+  if (p.to !== undefined && p.to !== null && !Array.isArray(p.to)) throw apiError_(ERR.BAD_REQUEST, 'To must be a list of email addresses.');
+  var to = cleanAddressList_([].concat(p.to || [], picked), 'To', 1, MAIL_LIMITS.maxTo);
   var cc = cleanAddressList_(p.cc, 'Cc', 0, MAIL_LIMITS.maxCc).filter(function (e) { return to.indexOf(e) < 0; });
   var subject = cleanText_(p.subject, 'The subject', true, MAIL_LIMITS.maxSubject).replace(/[\r\n]+/g, ' ');
   var html = sanitizeMailHtml_(p.html);
