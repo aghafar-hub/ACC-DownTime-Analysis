@@ -6,6 +6,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
 import { isNotificationsPath, isSettingsPath, pageForPath, pageLabel, ROLE_LABELS, sectionLabel, settingsSubFromPath, settingsSubLabel } from '../navigation';
+import { pageNameForPath } from '../util/docTitle';
 import { useOnlineStatus } from '../useOnlineStatus';
 import './TopBar.css';
 
@@ -24,7 +25,8 @@ export default function TopBar() {
   const onSettings = isSettingsPath(location.pathname);
   const sub = onSettings ? settingsSubFromPath(location.pathname) : undefined;
   const onInbox = isNotificationsPath(location.pathname);
-  const pageName = onSettings ? t('Settings') : onInbox ? t('Notifications') : page ? pageLabel(page) : '';
+  // an address with no page (old bookmark, typo) is named as such, not as the app
+  const pageName = onSettings ? t('Settings') : onInbox ? t('Notifications') : page ? pageLabel(page) : location.pathname !== '/' ? pageNameForPath(location.pathname) : '';
   const subName = sub ? settingsSubLabel(sub) : '';
 
   useEffect(() => {
