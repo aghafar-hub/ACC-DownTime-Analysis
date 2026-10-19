@@ -69,7 +69,9 @@ var ACTION_RULES = {
   sendTestEmail: { auth: 'admin' },
   // 1.10.0: anyone may end their own sessions everywhere; ending another person's is for the Admin role
   signOutEverywhere: { auth: 'session', mustChangeOk: true },
-  signOutUserEverywhere: { auth: 'admin' }
+  signOutUserEverywhere: { auth: 'admin' },
+  // 1.10.0: 'keep as entered' for many records in one call
+  acceptEventFlagsBulk: { auth: 'tabs', tabs: ['events'], level: 'Edit' }
 };
 
 function levelRank_(level) { return LEVELS.indexOf(level); }

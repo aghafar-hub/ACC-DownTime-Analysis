@@ -126,10 +126,17 @@ function fromSheet_(v, type) {
   return v === null || v === undefined ? '' : String(v);
 }
 
+/**
+ * 1.10.0: text that starts with = + - or @ could run as a formula if its cell ever loses the Plain Text format. A leading
+ * apostrophe keeps it text; Sheets does not return the apostrophe, so reading gives the text back unchanged.
+ */
+var FORMULA_START_ = /^\s*[=+\-@]/;
+
 function toSheet_(v, type) {
   if (type === 'bool') return v === true || v === 'TRUE' || v === 1;
   if (type === 'int' || type === 'float') return v === null || v === undefined || v === '' ? '' : Number(v);
-  return v === null || v === undefined ? '' : String(v);
+  var s = v === null || v === undefined ? '' : String(v);
+  return FORMULA_START_.test(s) ? "'" + s : s;
 }
 
 function rowToObject_(types, headers, row, rowNum) {
@@ -186,11 +193,16 @@ function findBy_(table, field, value) {
 
 // ---------- writes (caller holds the lock) ----------
 
+/** A value read from the sheet, written back unchanged: formula-like text gets its apostrophe again (1.10.0). */
+function keepCell_(v) {
+  return typeof v === 'string' && FORMULA_START_.test(v) ? "'" + v : v;
+}
+
 function objectToRow_(table, headers, obj, existing) {
   var types = columnTypes_(table);
   return headers.map(function (h, i) {
     if (Object.prototype.hasOwnProperty.call(obj, h)) return toSheet_(obj[h], types[h] || 'text');
-    return existing ? existing[i] : '';
+    return existing ? keepCell_(existing[i]) : '';
   });
 }
 

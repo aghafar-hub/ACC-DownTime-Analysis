@@ -76,7 +76,8 @@ var HANDLERS = {
   sendTestEmail: function (s) { return sendTestEmail_(s); },
   // 1.10.0
   signOutEverywhere: function (s) { return signOutEverywhere_(s); },
-  signOutUserEverywhere: function (s, p) { return signOutUserEverywhere_(s, p.userId); }
+  signOutUserEverywhere: function (s, p) { return signOutUserEverywhere_(s, p.userId); },
+  acceptEventFlagsBulk: function (s, p) { return acceptEventFlagsBulk_(s, p.items, p.note); }
 };
 
 /** Runs one request and returns the response envelope (an object, never throws). */

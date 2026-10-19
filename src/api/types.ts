@@ -742,6 +742,11 @@ export interface Api {
   signOutEverywhere(token: string): Promise<null>;
   /** Ends every session of another person (Admin role only). */
   signOutUserEverywhere(token: string, userId: string): Promise<null>;
+  /**
+   * "Keep as entered" (or its undo) for up to 200 records with one note in one call (events Edit). `flags` of each item is
+   * that record's FULL new kept set. Records that cannot be changed come back in `failed` with the reason.
+   */
+  acceptEventFlagsBulk(token: string, items: { eventId: string; flags: string[] }[], note: string): Promise<{ saved: EventRow[]; failed: { event_id: string; message: string }[] }>;
 
   // --- admin only (backend 1.6.0, the Admin role ROLE-ADMIN whatever the tab access says) ---
   /** Every user with when they were last seen, the page open and the device; online ones first. */

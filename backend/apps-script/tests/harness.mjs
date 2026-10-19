@@ -23,6 +23,8 @@ class MockRange {
     Object.assign(this, { sheet, row, col, nr, nc });
   }
   getValues() {
+    // 1.10.0 speed checks: a read of several rows of more than a few columns (e.g. the whole events sheet)
+    if (this.nr > 1 && this.nc > 3) this.sheet.stats.wideReads = (this.sheet.stats.wideReads || 0) + 1;
     const out = [];
     for (let r = 0; r < this.nr; r++) {
       const line = [];
@@ -83,6 +85,8 @@ class MockSheet {
     const line = this.data[r - 1];
     while (line.length < c) line.push('');
     const fmt = this.formats.get(`${r},${c}`);
+    // like Google Sheets: a leading apostrophe forces text and is not part of the value
+    if (typeof v === 'string' && v.startsWith("'")) { line[c - 1] = v.slice(1); this.stats.apostrophes = (this.stats.apostrophes || 0) + 1; return; }
     let stored = v;
     if (fmt === '@') {
       if (typeof v === 'number') stored = String(v);

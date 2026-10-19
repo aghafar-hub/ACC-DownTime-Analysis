@@ -135,10 +135,22 @@ function editText_(v) {
   return v === null || v === undefined ? '' : String(v);
 }
 
-function eventOrThrow_(eventId) {
+/**
+ * 1.10.0: the sheet row of each event id, from the event_id column alone (one narrow read instead of the whole events
+ * sheet). Read inside the lock, so the rows cannot move before they are written.
+ */
+function eventRowIndex_() {
+  var ids = readColumn_(T.EVENTS, 'event_id');
+  var at = {};
+  for (var i = 0; i < ids.length; i++) if (ids[i] && !(ids[i] in at)) at[ids[i]] = i + 2;
+  return at;
+}
+
+function eventOrThrow_(eventId, index) {
   var id = typeof eventId === 'string' ? eventId.trim() : '';
-  var ev = id ? findBy_(T.EVENTS, 'event_id', id) : null;
-  if (!ev) throw apiError_(ERR.NOT_FOUND, 'Event not found.');
+  var rowNum = id ? (index || eventRowIndex_())[id] : undefined;
+  var ev = rowNum ? readRowAt_(T.EVENTS, rowNum) : null;
+  if (!ev || ev.event_id !== id) throw apiError_(ERR.NOT_FOUND, 'Event not found.');
   return ev;
 }
 
@@ -267,9 +279,13 @@ function voidEvent_(session, eventId, isVoid, note) {
  * accepted set (fewer = undo, empty = undo all). Nothing else about the record changes and no flag is recalculated.
  * One history row (field accepted_flags) says who, when and why.
  */
-function acceptEventFlags_(session, eventId, flags, note) {
+function acceptNote_(note) {
   var why = cleanText_(note, 'A note explaining why', true, 500);
   if (why.length < ACCEPT_NOTE_MIN) throw apiError_(ERR.BAD_REQUEST, 'The note must be at least ' + ACCEPT_NOTE_MIN + ' characters.');
+  return why;
+}
+
+function acceptFlagList_(flags) {
   if (!Array.isArray(flags)) throw apiError_(ERR.BAD_REQUEST, 'Flags must be a list.');
   if (flags.length > KNOWN_FLAG_NAMES.length * 2) throw apiError_(ERR.BAD_REQUEST, 'Too many flags.');
   flags.forEach(function (f) {
@@ -277,27 +293,104 @@ function acceptEventFlags_(session, eventId, flags, note) {
       throw apiError_(ERR.BAD_REQUEST, 'Unknown flag: ' + String(f).slice(0, 40) + '.');
     }
   });
-  var wanted = canonFlags_(flags);
+  return canonFlags_(flags);
+}
+
+/** The change "keep as entered" makes to one event: { patch, current } or throws a plain-English error. */
+function acceptPatch_(session, ev, wanted, at) {
+  if (ev.is_void) throw apiError_(ERR.CONFLICT, 'This event is void. Restore it before changing it.');
+  var current = canonFlags_(ev.accepted_flags);
+  var stored = canonFlags_(ev.flags);
+  wanted.forEach(function (f) {
+    if (current.indexOf(f) < 0 && stored.indexOf(f) < 0 && DERIVED_FLAG_NAMES.indexOf(f) < 0) {
+      throw apiError_(ERR.BAD_REQUEST, 'This record does not have the problem "' + f + '".');
+    }
+  });
+  if (wanted.join(',') === current.join(',')) throw apiError_(ERR.BAD_REQUEST, 'Nothing was changed.');
+  var patch = wanted.length
+    ? { accepted_flags: wanted.join(','), accepted_by: session.user.user_id, accepted_at: at }
+    : { accepted_flags: '', accepted_by: '', accepted_at: '' };
+  return { patch: patch, current: current };
+}
+
+function acceptAuditText_(wanted, current, why) {
+  return (wanted.length ? 'Kept as entered: ' + wanted.join(', ') : 'Undid keep as entered (was: ' + current.join(', ') + ')') + '. Note: ' + why;
+}
+
+/**
+ * "Keep as entered": the person has checked the record and says its flagged problems are fine. `flags` is the FULL new
+ * accepted set (fewer = undo, empty = undo all). Nothing else about the record changes and no flag is recalculated.
+ * One history row (field accepted_flags) says who, when and why.
+ */
+function acceptEventFlags_(session, eventId, flags, note) {
+  var why = acceptNote_(note);
+  var wanted = acceptFlagList_(flags);
   return withLock_(function () {
     var ev = eventOrThrow_(eventId);
-    if (ev.is_void) throw apiError_(ERR.CONFLICT, 'This event is void. Restore it before changing it.');
-    var current = canonFlags_(ev.accepted_flags);
-    var stored = canonFlags_(ev.flags);
-    wanted.forEach(function (f) {
-      if (current.indexOf(f) < 0 && stored.indexOf(f) < 0 && DERIVED_FLAG_NAMES.indexOf(f) < 0) {
-        throw apiError_(ERR.BAD_REQUEST, 'This record does not have the problem "' + f + '".');
+    var p = acceptPatch_(session, ev, wanted, nowTs_());
+    updateRow_(T.EVENTS, ev._row, p.patch);
+    appendRows_(T.EDITS, editRows_(session, ev, [{ field: 'accepted_flags', oldValue: p.current.join(','), newValue: wanted.join(',') }], why));
+    auditLog_(session.user.user_id, 'accept_event_flags', T.EVENTS, ev.event_id, acceptAuditText_(wanted, p.current, why));
+    return readRowAt_(T.EVENTS, ev._row);
+  });
+}
+
+var ACCEPT_BULK_MAX_ = 200;
+var ACCEPT_COLS_ = ['accepted_flags', 'accepted_by', 'accepted_at'];
+
+/**
+ * 1.10.0 acceptEventFlagsBulk: "keep as entered" (or its undo) for up to 200 records with one note, in one lock: one read
+ * of the event_id column, one read per record, the changed rows written together and the history appended at once.
+ * `items`: [{ eventId, flags }] (flags = the record's FULL new accepted set). A record that cannot be changed is reported
+ * in `failed` with the reason; the others are saved. Returns { saved: [event rows], failed: [{ event_id, message }] }.
+ */
+function acceptEventFlagsBulk_(session, items, note) {
+  var why = acceptNote_(note);
+  if (!Array.isArray(items) || !items.length) throw apiError_(ERR.BAD_REQUEST, 'Send at least one record.');
+  if (items.length > ACCEPT_BULK_MAX_) throw apiError_(ERR.BAD_REQUEST, 'At most ' + ACCEPT_BULK_MAX_ + ' records at once.');
+  var clean = items.map(function (it) {
+    if (!plainObject_(it)) throw apiError_(ERR.BAD_REQUEST, 'Each record must be an object.');
+    return { id: typeof it.eventId === 'string' ? it.eventId.trim() : '', wanted: acceptFlagList_(it.flags) };
+  });
+  return withLock_(function () {
+    var index = eventRowIndex_();
+    var sheet = getSheet_(T.EVENTS);
+    var headers = sheetHeaders_(sheet);
+    var types = columnTypes_(T.EVENTS);
+    var at = nowTs_();
+    var stamp = compactTs_('yyyyMMddHHmmssSSS');
+    var writes = [], history = [], audits = [], saved = [], failed = [], seen = {};
+    clean.forEach(function (c) {
+      try {
+        if (seen[c.id]) throw apiError_(ERR.BAD_REQUEST, 'This record is listed twice.');
+        seen[c.id] = true;
+        var rowNum = index[c.id];
+        if (!rowNum) throw apiError_(ERR.NOT_FOUND, 'Event not found.');
+        var raw = sheet.getRange(rowNum, 1, 1, headers.length).getValues()[0];
+        var ev = rowToObject_(types, headers, raw, rowNum);
+        var p = acceptPatch_(session, ev, c.wanted, at);
+        var values = objectToRow_(T.EVENTS, headers, p.patch, raw);
+        writes.push({ rowNum: rowNum, values: values, cells: ACCEPT_COLS_.map(function (h) { return values[headers.indexOf(h)]; }) });
+        history.push({
+          edit_id: 'ED-' + stamp + '-B' + (history.length + 1), event_id: ev.event_id, edited_at: at, edited_by: session.user.user_id,
+          field: 'accepted_flags', old_value: p.current.join(','), new_value: c.wanted.join(','), note: why
+        });
+        audits.push(auditEntry_(session.user.user_id, 'accept_event_flags', T.EVENTS, ev.event_id, acceptAuditText_(c.wanted, p.current, why)));
+        saved.push(rowToObject_(types, headers, values.map(function (v) { return typeof v === 'string' && v.charAt(0) === "'" ? v.slice(1) : v; }), rowNum));
+      } catch (e) {
+        failed.push({ event_id: c.id, message: e && e.message ? e.message : String(e) });
       }
     });
-    if (wanted.join(',') === current.join(',')) throw apiError_(ERR.BAD_REQUEST, 'Nothing was changed.');
-    var at = nowTs_();
-    var patch = wanted.length
-      ? { accepted_flags: wanted.join(','), accepted_by: session.user.user_id, accepted_at: at }
-      : { accepted_flags: '', accepted_by: '', accepted_at: '' };
-    updateRow_(T.EVENTS, ev._row, patch);
-    appendRows_(T.EDITS, editRows_(session, ev, [{ field: 'accepted_flags', oldValue: current.join(','), newValue: wanted.join(',') }], why));
-    auditLog_(session.user.user_id, 'accept_event_flags', T.EVENTS, ev.event_id,
-      (wanted.length ? 'Kept as entered: ' + wanted.join(', ') : 'Undid keep as entered (was: ' + current.join(', ') + ')') + '. Note: ' + why);
-    return readRowAt_(T.EVENTS, ev._row);
+    writes.sort(function (a, b) { return a.rowNum - b.rowNum; });
+    // only the three accepted_* columns change: written as a narrow block when they sit side by side (they do in a
+    // database made by ensureSchema), else as whole rows
+    var first = headers.indexOf(ACCEPT_COLS_[0]);
+    var together = first >= 0 && ACCEPT_COLS_.every(function (h, k) { return headers[first + k] === h; });
+    if (together) writeCellRuns_(sheet, first + 1, ACCEPT_COLS_.length, writes.map(function (w) { return { rowNum: w.rowNum, values: w.cells }; }));
+    else writeRowRuns_(sheet, headers.length, writes);
+    appendRows_(T.EDITS, history);
+    auditLogMany_(audits);
+    return { saved: saved, failed: failed };
   });
 }
 
@@ -360,6 +453,28 @@ function revalidateEvents_(session, year) {
   });
 }
 
+/**
+ * 1.10.0: writes the same few side-by-side columns (from `col`, `width` wide) of many rows (rowNum ascending): consecutive
+ * rows go together; with many separate pieces the span of just these columns is read once and written once.
+ */
+function writeCellRuns_(sheet, col, width, rows) {
+  if (!rows.length) return;
+  var runs = [];
+  rows.forEach(function (r) {
+    var run = runs[runs.length - 1];
+    if (run && r.rowNum === run.start + run.rows.length) run.rows.push(r.values);
+    else runs.push({ start: r.rowNum, rows: [r.values] });
+  });
+  if (runs.length > 20) {
+    var first = rows[0].rowNum, lastRow = rows[rows.length - 1].rowNum;
+    var span = sheet.getRange(first, col, lastRow - first + 1, width).getValues().map(function (line) { return line.map(keepCell_); });
+    rows.forEach(function (r) { span[r.rowNum - first] = r.values; });
+    sheet.getRange(first, col, span.length, width).setValues(span);
+    return;
+  }
+  runs.forEach(function (run) { sheet.getRange(run.start, col, run.rows.length, width).setValues(run.rows); });
+}
+
 /** Writes full rows (rowNum ascending) with as few setValues calls as sensible: consecutive rows go together. */
 function writeRowRuns_(sheet, width, rows) {
   if (!rows.length) return;
@@ -373,6 +488,7 @@ function writeRowRuns_(sheet, width, rows) {
     // Too many separate pieces: rewrite the span from the first to the last changed row once.
     var first = rows[0].rowNum, lastRow = rows[rows.length - 1].rowNum;
     var span = sheet.getRange(first, 1, lastRow - first + 1, width).getValues();
+    span = span.map(function (line) { return line.map(keepCell_); });
     rows.forEach(function (r) { span[r.rowNum - first] = r.values; });
     sheet.getRange(first, 1, span.length, width).setValues(span);
     return;

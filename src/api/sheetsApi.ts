@@ -119,6 +119,7 @@ export function createSheetsApi(url: string): Api {
     sendTestEmail: (token) => call('sendTestEmail', token),
     signOutEverywhere: (token) => call('signOutEverywhere', token),
     signOutUserEverywhere: (token, userId) => call('signOutUserEverywhere', token, { userId }),
+    acceptEventFlagsBulk: (token, items, note) => call('acceptEventFlagsBulk', token, { items, note }),
 
     listActiveUsers: (token) => call('listActiveUsers', token),
     listAuditLog: (token, filter, cursor) => call('listAuditLog', token, { filter: filter ?? {}, ...(cursor ? { cursor } : {}) }),

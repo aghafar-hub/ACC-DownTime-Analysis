@@ -27,7 +27,7 @@ const REQ = {
   setAreaActive: 'admin',
   logout: 'session', listActiveUsers: 'admin', listAuditLog: 'admin',
   sendReport: [['reports'], 'Edit'], sendTestEmail: 'admin',
-  signOutEverywhere: 'session', signOutUserEverywhere: 'admin',
+  signOutEverywhere: 'session', signOutUserEverywhere: 'admin', acceptEventFlagsBulk: [['events'], 'Edit'],
   addTask: [['actions'], 'Edit'], updateTask: [['actions'], 'Edit'], applyTemplate: [['actions'], 'Edit'], listTasks: [['actions'], 'View'],
   listTaskTemplates: 'session', saveTaskTemplates: [['settings'], 'Edit'],
 };

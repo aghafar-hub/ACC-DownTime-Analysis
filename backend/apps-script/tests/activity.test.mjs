@@ -239,6 +239,7 @@ function writeCases(w) {
     ['editEvent', () => ({ params: { eventId: w.clean.event_id, changes: { description: 'covered' }, note: 'audit coverage' } }), 'edit_event', /description: synthetic -> covered\. Note: audit coverage/],
     ['voidEvent', () => ({ params: { eventId: w.clean.event_id, isVoid: true, note: 'audit coverage' } }), 'void_event'],
     ['acceptEventFlags', () => ({ params: { eventId: w.warn.event_id, flags: ['unknown_code'], note: 'audit coverage' } }), 'accept_event_flags'],
+    ['acceptEventFlagsBulk', () => ({ params: { items: [{ eventId: w.warn.event_id, flags: [] }], note: 'audit coverage' } }), 'accept_event_flags', /^Undid keep as entered/],
     ['saveEquipment', () => ({ params: { row: { equipment_id: '100.AA01', description: 'Renamed fan', criticality: 'High', status: 'Active' }, areaIds: ['K.1'] } }), 'update_equipment', /description: Test fan -> Renamed fan/],
     ['saveEquipment', () => ({ params: { row: { equipment_id: '300.NEW1', description: 'New', criticality: 'Low', status: 'Active' }, areaIds: ['K.1'] } }), 'add_equipment'],
     ['saveArea', () => ({ params: { row: { area_id: 'K.1', name: 'Kiln one', line_id: 'L.1', sort_order: 1, active: true, in_downtime_sheet: true } } }), 'update_area', /name: .* -> Kiln one/],
