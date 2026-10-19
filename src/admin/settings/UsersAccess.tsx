@@ -3,6 +3,7 @@ import { dateText, tsText } from '../../util/dates';
 import { api, describeError } from '../../api';
 import type { AdminUser } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
+import { SERVER_1_10, versionAtLeast } from '../../auth/serverVersion';
 import AccessBadge from '../../components/AccessBadge';
 import { Tile } from '../../components/Tile';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -28,7 +29,9 @@ function Badges({ u }: { u: AdminUser }) {
 
 /** Settings > Users and access: the accounts, roles, one-time passwords and per-page access exceptions. */
 export default function UsersAccess() {
-  const { token, user: me, canEdit } = useAuth();
+  const { token, user: me, canEdit, serverVersion } = useAuth();
+  // backend 1.10.0: only an Admin manages Admins (the server refuses it too)
+  const meAdmin = me?.role_id === 'ROLE-ADMIN';
   const mobile = useIsMobile();
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -103,13 +106,15 @@ export default function UsersAccess() {
       {open && (
         <UserModal
           key={open.user_id + JSON.stringify(open.overrides ?? {}) + open.display_name + open.role_id + open.active}
-          user={open} self={open.user_id === me?.user_id} activeAdmins={activeAdmins} canEdit={edit}
+          user={open} self={open.user_id === me?.user_id} activeAdmins={activeAdmins} canEdit={edit} meAdmin={meAdmin}
+          canSignOutAll={meAdmin && versionAtLeast(serverVersion, SERVER_1_10)}
           onClose={() => setOpenId(null)} onChanged={replace} toast={toast}
           onTempPassword={(who, password) => { load(); setSecret({ who, password }); }}
         />
       )}
       {creating && (
         <CreateUserModal
+          meAdmin={meAdmin}
           onClose={() => setCreating(false)}
           onCreated={(u, password) => { setCreating(false); setUsers((cur) => [...(cur ?? []), u]); setSecret({ who: `${u.display_name} · ${u.email}`, password }); }}
         />

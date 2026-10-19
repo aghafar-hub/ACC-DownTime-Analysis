@@ -1026,6 +1026,22 @@ export function createMockApi(opts: { seed?: number; demoActions?: boolean; keep
       const a = need(token, ['events'], 'Edit');
       return clone(applyAccept(a.user.user_id, eventId, flags, note, nowTs()));
     },
+    async acceptEventFlagsBulk(token, items, note) {
+      const a = need(token, ['events'], 'Edit');
+      if (!Array.isArray(items) || !items.length) throw new ApiError('Send at least one record.', 'bad_request');
+      if (items.length > 200) throw new ApiError('At most 200 records at once.', 'bad_request');
+      const at = nowTs();
+      const saved: EventRow[] = [];
+      const failed: { event_id: string; message: string }[] = [];
+      for (const it of items) {
+        try {
+          saved.push(applyAccept(a.user.user_id, it.eventId, it.flags, note, at));
+        } catch (e) {
+          failed.push({ event_id: it.eventId, message: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      return clone({ saved, failed });
+    },
 
     // --- master data
     async saveEquipment(token, row, areaIds) {

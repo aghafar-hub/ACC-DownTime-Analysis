@@ -115,7 +115,7 @@ test.describe('desktop 1280x720', () => {
     await expect(page.getByTestId('page-title')).toHaveText('Dashboard');
   });
 
-  test('five wrong passwords lock the account and the lockout message is shown', async ({ page }) => {
+  test('five wrong passwords make the next try wait, and the message says how long (backend 1.10.0: no lock)', async ({ page }) => {
     await open(page);
     await page.getByTestId('login-email').fill('manager@demo.test');
     for (let i = 0; i < 5; i++) {
@@ -125,7 +125,8 @@ test.describe('desktop 1280x720', () => {
     }
     await page.getByTestId('login-password').fill(PASSWORD);
     await page.getByTestId('login-submit').click();
-    await expect(page.getByTestId('login-error')).toContainText('locked');
+    // even the right password waits: it is not checked before the wait is over
+    await expect(page.getByTestId('login-error')).toContainText('Too many attempts');
     await expect(page.getByTestId('login-error')).toContainText('Try again in');
   });
 

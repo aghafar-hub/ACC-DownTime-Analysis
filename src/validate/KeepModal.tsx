@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { api } from '../api';
 import type { EventRow } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
+import { SERVER_1_10, versionAtLeast } from '../auth/serverVersion';
 import { SAVE_BLOCKED_EVENT } from '../components/SaveBlockedToast';
 import ShellModal, { FormSection } from '../components/ShellModal';
 import { t } from '../i18n/t';
@@ -34,7 +35,7 @@ export default function KeepModal({ mode, targets: given, onClose, onSaved, onFi
   /** the run ended */
   onFinished: (result: BulkResult) => void;
 }) {
-  const { token } = useAuth();
+  const { token, serverVersion } = useAuth();
   const online = useOnlineStatus();
   const undo = mode === 'undo';
   // the records as they were when the sheet opened: saved ones leave the list while the run is going on
@@ -69,6 +70,34 @@ export default function KeepModal({ mode, targets: given, onClose, onSaved, onFi
     setBusy(true);
     setProgress({ at: 0, total: run.length });
     const byId = new Map(run.map((x) => [x.event.event_id, x]));
+    const setOf = (id: string) => { const tg = byId.get(id)!; return undo ? undoSetFor(tg, ticked) : keepSetFor(tg, ticked); };
+    const noneTicked = t(undo ? 'It has none of the kept problems you ticked.' : 'It has none of the problems you ticked.');
+    if (run.length > 1 && versionAtLeast(serverVersion, SERVER_1_10)) {
+      // backend 1.10.0: every record in one call, written together on the server
+      const failed: BulkResult['failed'] = [];
+      const items = run.flatMap((x) => {
+        const set = setOf(x.event.event_id);
+        if (set === null) { failed.push({ id: x.event.event_id, reason: noneTicked }); return []; }
+        return [{ eventId: x.event.event_id, flags: set }];
+      });
+      const done: string[] = [];
+      if (items.length) {
+        try {
+          const out = await api.acceptEventFlagsBulk(token, items, note.trim());
+          for (const row of out.saved) { onSaved(row); done.push(row.event_id); }
+          for (const f of out.failed) failed.push({ id: f.event_id, reason: plainKeepReason(f.message) });
+        } catch (err) {
+          const reason = plainKeepReason(err instanceof Error ? err.message : String(err));
+          for (const it of items) failed.push({ id: it.eventId, reason });
+        }
+      }
+      setProgress({ at: run.length, total: run.length });
+      const res: BulkResult = { done, failed };
+      setBusy(false);
+      setResult(res);
+      onFinished(res);
+      return;
+    }
     const res = await runBulk(
       run.map((x) => x.event.event_id),
       async (id) => {

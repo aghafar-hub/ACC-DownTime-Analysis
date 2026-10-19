@@ -18,10 +18,19 @@ export const roleName = (id: string): string => t(ROLE_LABELS[id] ?? id);
 
 type Overrides = Partial<Record<TabId, AccessLevel>>;
 
-export default function UserModal({ user, self, activeAdmins, canEdit, onClose, onChanged, onTempPassword, toast }: {
-  user: AdminUser; self: boolean; activeAdmins: number; canEdit: boolean; onClose: () => void;
+export default function UserModal({ user, self, activeAdmins, canEdit: canEditTab, meAdmin = true, canSignOutAll = false, onClose, onChanged, onTempPassword, toast }: {
+  user: AdminUser; self: boolean; activeAdmins: number; canEdit: boolean;
+  /** backend 1.10.0: the person using the app is an Admin (only Admins manage Admins) */
+  meAdmin?: boolean;
+  /** backend 1.10.0 and an Admin: 'Sign out on all devices' for this person */
+  canSignOutAll?: boolean;
+  onClose: () => void;
   onChanged: (u: AdminUser) => void; onTempPassword: (who: string, pw: string) => void; toast: (s: string) => void;
 }) {
+  // an Admin's account is managed by Admins only
+  const adminOnly = user.role_id === 'ROLE-ADMIN' && !meAdmin;
+  const canEdit = canEditTab && !adminOnly;
+  const signOut = useAction();
   const details = useAction();
   const reset = useAction();
   const access = useAction();
@@ -30,7 +39,7 @@ export default function UserModal({ user, self, activeAdmins, canEdit, onClose, 
   const [active, setActive] = useState(user.active);
   const [nameError, setNameError] = useState('');
   const [ov, setOv] = useState<Overrides>({ ...(user.overrides ?? {}) });
-  const [confirm, setConfirm] = useState<null | 'deactivate' | 'reset' | 'clear'>(null);
+  const [confirm, setConfirm] = useState<null | 'deactivate' | 'reset' | 'clear' | 'signout'>(null);
 
   const lastAdmin = user.role_id === 'ROLE-ADMIN' && user.active && activeAdmins <= 1;
   const lockRole = self || lastAdmin;
@@ -58,6 +67,11 @@ export default function UserModal({ user, self, activeAdmins, canEdit, onClose, 
     const res = await reset.run((tok) => api.resetPassword(tok, user.user_id));
     if (res.ok) onTempPassword(`${user.display_name} · ${user.email}`, res.value.temp_password);
   }
+  async function doSignOutAll() {
+    setConfirm(null);
+    const res = await signOut.run((tok) => api.signOutUserEverywhere(tok, user.user_id));
+    if (res.ok) toast(t('{name} was signed out on all devices.', { name: user.display_name }));
+  }
   async function saveAccess(next: Overrides, text: string) {
     const res = await access.run((tok) => api.setUserTabAccess(tok, user.user_id, next));
     if (res.ok) { onChanged(res.value); setOv({ ...(res.value.overrides ?? {}) }); toast(text); }
@@ -76,6 +90,7 @@ export default function UserModal({ user, self, activeAdmins, canEdit, onClose, 
       footer={<button type="button" className="btn" onClick={onClose} data-testid="user-close">{t('Close')}</button>}
     >
       <FormSection icon="edit" title={t('Details')}>
+        {adminOnly && canEditTab && <p className="adm-note" data-testid="admin-only-note"><span aria-hidden="true">⊘ </span>{t('Only an Admin can change an Admin.')}</p>}
         {details.error && <div className="callout callout--danger" role="alert" data-testid="details-error"><Icon name="alert" size={16} /><span>{details.error}</span></div>}
         <fieldset disabled={!canEdit || details.busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
           <div className="form-grid">
@@ -91,7 +106,7 @@ export default function UserModal({ user, self, activeAdmins, canEdit, onClose, 
             <div className="field">
               <span className="field-label">{t('Role')}</span>
               <ChipRow label={t('Role')}>
-                {ROLE_IDS.map((r) => <button key={r} type="button" className={role === r ? 'chip chip--on' : 'chip'} aria-pressed={role === r} disabled={lockRole} onClick={() => setRole(r)} data-testid={`u-role-${r}`}>{roleName(r)}</button>)}
+                {ROLE_IDS.map((r) => <button key={r} type="button" className={role === r ? 'chip chip--on' : 'chip'} aria-pressed={role === r} disabled={lockRole || (r === 'ROLE-ADMIN' && !meAdmin)} onClick={() => setRole(r)} data-testid={`u-role-${r}`}>{roleName(r)}</button>)}
               </ChipRow>
               {self && <span className="field-hint" data-testid="hint-self-role">{t('You cannot change your own role.')}</span>}
               {!self && lastAdmin && <span className="field-hint" data-testid="hint-last-admin">{t('This is the only active Admin, so the role cannot be changed.')}</span>}
@@ -116,7 +131,11 @@ export default function UserModal({ user, self, activeAdmins, canEdit, onClose, 
           {' '}{user.last_login_at ? t('Last sign-in: {when}.', { when: tsText(user.last_login_at) }) : t('Has not signed in yet.')}
         </p>
         {reset.error && <div className="callout callout--danger" role="alert"><Icon name="alert" size={16} /><span>{reset.error}</span></div>}
-        {canEdit && <button type="button" className="btn" onClick={() => setConfirm('reset')} disabled={reset.busy} data-testid="reset-password"><Icon name="sync" size={15} /> {t('Reset password')}</button>}
+        {signOut.error && <div className="callout callout--danger" role="alert"><Icon name="alert" size={16} /><span>{signOut.error}</span></div>}
+        <div className="chip-row">
+          {canEdit && <button type="button" className="btn" onClick={() => setConfirm('reset')} disabled={reset.busy} data-testid="reset-password"><Icon name="sync" size={15} /> {t('Reset password')}</button>}
+          {canSignOutAll && !self && <button type="button" className="btn" onClick={() => setConfirm('signout')} disabled={signOut.busy} data-testid="user-sign-out-all"><Icon name="logout" size={15} /> {t('Sign out on all devices')}</button>}
+        </div>
       </FormSection>
 
       <FormSection icon="list" title={t('Page access')} hint={t('Role: {r}', { r: roleName(user.role_id) })} right={<span className="badge" data-testid="override-count">{t('{n} exceptions', { n: ovCount })}</span>}>
@@ -162,6 +181,11 @@ export default function UserModal({ user, self, activeAdmins, canEdit, onClose, 
       {confirm === 'reset' && (
         <ConfirmDialog title={t('Reset the password of {name}?', { name: user.display_name })} danger confirmLabel={t('Reset password')} busy={reset.busy} onCancel={() => setConfirm(null)} onConfirm={() => void doReset()}>
           {t('The old password stops working at once. You will see a new temporary password once, to give to the person.')}
+        </ConfirmDialog>
+      )}
+      {confirm === 'signout' && (
+        <ConfirmDialog title={t('Sign {name} out on all devices?', { name: user.display_name })} danger confirmLabel={t('Sign out everywhere')} busy={signOut.busy} testid="user-sign-out-all-dialog" onCancel={() => setConfirm(null)} onConfirm={() => void doSignOutAll()}>
+          {t('Every place this person is signed in ends now: phones, tablets and computers. Their password stays the same; use it when a device was lost or shared.')}
         </ConfirmDialog>
       )}
       {confirm === 'clear' && (

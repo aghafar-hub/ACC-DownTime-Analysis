@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import ConfirmDialog from '../admin/ConfirmDialog';
 import { useAuth } from '../auth/AuthContext';
+import { SERVER_1_10, versionAtLeast } from '../auth/serverVersion';
 import BellButton from '../notifications/BellButton';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { t } from '../i18n/t';
@@ -13,7 +15,12 @@ import './TopBar.css';
 // shortcut to the Event Explorer, the Settings button (gear, every page, every
 // role), the notification bell and the avatar menu.
 export default function TopBar() {
-  const { user, logout, canView } = useAuth();
+  const { user, logout, canView, serverVersion, signOutEverywhere } = useAuth();
+  // backend 1.10.0: 'sign out of all devices'
+  const [askAll, setAskAll] = useState(false);
+  const [allBusy, setAllBusy] = useState(false);
+  const [allError, setAllError] = useState<string | null>(null);
+  const canSignOutAll = versionAtLeast(serverVersion, SERVER_1_10);
   const location = useLocation();
   const navigate = useNavigate();
   const mobile = useIsMobile();
@@ -153,9 +160,27 @@ export default function TopBar() {
               <button type="button" role="menuitem" className="shell-topbar-user-menu-item" onClick={() => logout()} data-testid="sign-out">
                 <Icon name="logout" size={15} /> {t('Sign out')}
               </button>
+              {canSignOutAll && (
+                <button type="button" role="menuitem" className="shell-topbar-user-menu-item" onClick={() => { setMenuOpen(false); setAllError(null); setAskAll(true); }} data-testid="sign-out-all">
+                  <Icon name="logout" size={15} /> {t('Sign out of all devices')}
+                </button>
+              )}
             </div>
           )}
         </div>
+        {askAll && (
+          <ConfirmDialog
+            title={t('Sign out of all devices?')} danger confirmLabel={t('Sign out everywhere')} busy={allBusy} testid="sign-out-all-dialog"
+            onCancel={() => setAskAll(false)}
+            onConfirm={() => {
+              setAllBusy(true);
+              signOutEverywhere().catch((e: unknown) => { setAllBusy(false); setAllError(e instanceof Error ? e.message : String(e)); });
+            }}
+          >
+            {t('Every place you are signed in ends now: phones, tablets, other computers and this one. Use it when a device was lost or shared. You sign in again with your password.')}
+            {allError && <p className="at-bad-text" role="alert" data-testid="sign-out-all-error">{allError}</p>}
+          </ConfirmDialog>
+        )}
       </div>
     </header>
   );

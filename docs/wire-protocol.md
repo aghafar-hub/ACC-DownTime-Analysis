@@ -226,6 +226,9 @@ are excluded from analysis.
   rounds are below the current default). Comparison is constant-time.
 - Failed sign-ins: counter per user; at `lockout_attempts` set `locked_until`
   (`lockout_minutes`). Error for a bad email and a bad password is the same message.
+  1.10.0: no lock any more: from the limit on each further try waits 1, 2, 4, 8, 16 minutes, then `lockout_minutes` (the
+  longest wait, default 30); a try before `locked_until` is refused (`locked`, "Too many attempts. Try again in N minutes.")
+  without checking the password; a wait never ends an open session (requireSession no longer checks `locked_until`).
 - Minimum length from `settings.min_password_length`; the new password must differ
   from the temporary one. A user with `must_change = TRUE` can only call
   `changePassword`, `getMyAccess` and `login`.
@@ -682,3 +685,35 @@ line); the HTML summary is cleaned (scripts, styles blocks, frames, forms, event
 15 MB together; at most 30 sends per person per plant day (Script Property `MAILCOUNT_<user_id>`). Audit: `send_report` with
 "Report to N recipients: subject (files)" or "Actions report to ..."; `send_test_email` with "Test email to address (gmail|mailapp)".
 Both are in the Notifications group of the activity log.
+
+## 15. Security and speed (backend 1.10.0)
+
+### 15.1 Calls
+
+| Action | Access | Params | Returns |
+|---|---|---|---|
+| `signOutEverywhere` | any session (also with a temporary password) | `{}` | `null`; every session of the caller issued before now is refused from then on ("You were signed out on all devices.") |
+| `signOutUserEverywhere` | Admin role | `{ userId }` | `null`; the same for another person |
+| `acceptEventFlagsBulk` | events Edit | `{ items: [{ eventId, flags: string[] }], note }` (1-200 items) | `{ saved: EventRow[], failed: [{ event_id, message }] }` |
+
+`login`, `changePassword` and `getMyAccess` also return `server_version` ('1.10.0'); the app shows the 1.10.0 features
+only when it is there. The end of all sessions is a script property `SIGNED_OUT_<user_id>` (ms); a token whose `iat` is
+earlier is refused. Audit: `sign_out_everywhere` (Sign-in group), `sign_out_user_everywhere` (Users group),
+`login_throttled` (Sign-in group) for a wrong password from the limit on.
+
+### 15.2 Rules
+
+- **Only Admins manage Admins.** `createUser` with `ROLE-ADMIN`, `updateUser` of an Admin or to `ROLE-ADMIN`,
+  `resetPassword` and `setUserTabAccess` of an Admin are refused (`forbidden`, "Only an Admin can ...") for anyone but the
+  Admin role.
+- **Sessions:** `session_hours_keep` defaults to 336 (14 days). `seedDefaults` moves 720 -> 336 and `lockout_minutes`
+  15 -> 30 only on rows still written by setup.
+- **Formula-safe text:** text values starting with `=`, `+`, `-` or `@` are written with a leading apostrophe (also when a
+  row is rewritten with its untouched values); reads give the text without it.
+- **Single-record changes** (`editEvent`, `voidEvent`, `acceptEventFlags`) read the `event_id` column and their own row,
+  never the whole events sheet. `acceptEventFlagsBulk` writes only the three `accepted_*` columns, in as few writes as
+  possible, and appends the history and audit rows at once.
+- **After an upload** the alert and action checks run in a one-off trigger (`afterUploadJob`, about 5 s later) for every
+  upload finished since the last run, each with its `upload_done` update; without triggers they run inside `uploadFinish`.
+- **Daily clean-up** (`notificationDailyJob`): notifications resolved or expired more than `notif_retention_days` ago are
+  removed together with their `notification_state` rows (one read and one write per sheet).

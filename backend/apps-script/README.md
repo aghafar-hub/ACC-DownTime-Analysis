@@ -463,6 +463,41 @@ mail goes through `Mail.js`. Who may send: Edit on the Reports tab, or an Admin.
 6. **Check.** `?action=ping` answers version `1.9.0`. Run **seedDefaults** once if you want the two new settings rows to show
    in the sheet (the app works without them).
 
+## 18. Security and speed (1.10.0)
+
+Version 1.10.0 hardens sign-in and user management and makes edits and uploads faster. Nothing in the sheet changes
+shape: no new sheets or columns.
+
+- **Only Admins manage Admins.** Someone with Edit on the Users tab who is not an Admin can still add and change other
+  people, but cannot create an Admin, give the Admin role, or change, reset, sign out or set the page access of an Admin.
+- **No more account lock.** After `lockout_attempts` wrong passwords (5) each further try for that email must wait 1, 2, 4,
+  8, 16 minutes, then `lockout_minutes` (now the longest wait, 30). A try that comes too early is refused without checking
+  the password. Wrong passwords never end a session that is already open, so a stranger who knows an email cannot lock its
+  owner out.
+- **Sign out of all devices.** Everyone has it in the user menu; an Admin also has it in a person's details (lost or shared
+  phone). It ends every session issued before that moment (kept as a script property `SIGNED_OUT_<user id>`; nothing in the
+  sheet).
+- **Keep me signed in: 14 days** (`session_hours_keep` 336) instead of 30.
+- **Formula-safe text.** Text that starts with `=`, `+`, `-` or `@` is written with a leading apostrophe, so it can never run
+  as a formula even if a cell loses its Plain Text format. Sheets hides the apostrophe; the app sees the text unchanged.
+- **Faster edits.** Editing, voiding and "keep as entered" find the record through the `event_id` column instead of reading
+  the whole events sheet; "keep as entered" for many records (Validate) is one call that writes all of them together
+  (`acceptEventFlagsBulk`).
+- **Uploads answer at once.** The alert and action checks after an upload run a few seconds later in the background (a
+  one-off trigger, `afterUploadJob`, that removes itself). Without that permission they run inside the upload as before.
+- **Clean-up.** The daily job also removes alerts that were resolved or expired more than `notif_retention_days` ago, with
+  their seen / dismissed rows.
+
+Steps:
+
+1. **Copy the files.** Changed: `Access.js`, `Audit.js`, `Auth.js`, `Code.js`, `Config.js`, `Events.js`, `Notifications.js`,
+   `Schema.js`, `Setup.js`, `Users.js`, `Utils.js`. `appsscript.json` does not change.
+2. **Deploy** a new version (Deploy › Manage deployments › edit › New version).
+3. **Run `seedDefaults` once.** It sets "keep me signed in" to 14 days and the longest wait to 30 minutes, but only where
+   nobody changed those two settings since setup; a value someone saved stays.
+4. **Check.** `?action=ping` answers version `1.10.0`. The app shows "Sign out of all devices" in the user menu once it talks
+   to 1.10.0; before that it works as with 1.9.0.
+
 ## Good to know
 
 - **Access levels** are per tab: Hidden, View, Edit, from the role with optional

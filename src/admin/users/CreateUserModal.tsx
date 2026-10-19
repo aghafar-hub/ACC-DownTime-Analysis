@@ -11,7 +11,11 @@ import { roleName } from './UserModal';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreated: (u: AdminUser, tempPassword: string) => void }) {
+export default function CreateUserModal({ onClose, onCreated, meAdmin = true }: {
+  onClose: () => void; onCreated: (u: AdminUser, tempPassword: string) => void;
+  /** backend 1.10.0: only an Admin may create an Admin */
+  meAdmin?: boolean;
+}) {
   const { run, busy, error } = useAction();
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
@@ -46,7 +50,7 @@ export default function CreateUserModal({ onClose, onCreated }: { onClose: () =>
           <div className="field span-2">
             <span className="field-label">{t('Role')}</span>
             <ChipRow label={t('Role')}>
-              {ROLE_IDS.map((r) => <button key={r} type="button" className={role === r ? 'chip chip--on' : 'chip'} aria-pressed={role === r} onClick={() => setRole(r)} data-testid={`cu-role-${r}`}>{roleName(r)}</button>)}
+              {ROLE_IDS.map((r) => <button key={r} type="button" className={role === r ? 'chip chip--on' : 'chip'} aria-pressed={role === r} disabled={r === 'ROLE-ADMIN' && !meAdmin} title={r === 'ROLE-ADMIN' && !meAdmin ? t('Only an Admin can create an Admin.') : undefined} onClick={() => setRole(r)} data-testid={`cu-role-${r}`}>{roleName(r)}</button>)}
             </ChipRow>
           </div>
         </div>

@@ -42,6 +42,8 @@ interface Stored {
   access: Access;
   /** the theme saved with the account (backend 1.5.0); '' when none or from an older server */
   theme?: string;
+  /** the server's version (backend 1.10.0); '' from an older server */
+  server_version?: string;
 }
 
 function readStored(): { stored: Stored; remember: boolean } | null {
@@ -94,6 +96,10 @@ export interface AuthState {
   accountTheme: string;
   /** After the account's theme was saved: remember it with the session (a refresh started earlier cannot undo it). */
   setAccountTheme: (name: string) => void;
+  /** The server's version ('' before backend 1.10.0). */
+  serverVersion: string;
+  /** Backend 1.10.0: ends every session of this person on every device (this one too), then signs out here. */
+  signOutEverywhere: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -124,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const applySession = useCallback((s: Session) => {
-    persist({ token: s.token, expires_at: s.expires_at, user: s.user, must_change: s.must_change, access: s.access, theme: s.theme ?? '' });
+    persist({ token: s.token, expires_at: s.expires_at, user: s.user, must_change: s.must_change, access: s.access, theme: s.theme ?? '', server_version: s.server_version ?? '' });
   }, [persist]);
 
   const login = useCallback(async (email: string, password: string, keep: boolean) => {
@@ -162,8 +168,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!now || now.token !== cur.token) return;
       // an older server sends no theme: keep what we have
       const theme = r.theme === undefined || epoch !== themeEpoch.current ? now.theme : r.theme;
-      const same = JSON.stringify([r.user, r.access, r.must_change, theme ?? '']) === JSON.stringify([now.user, now.access, now.must_change, now.theme ?? '']);
-      if (!same) persist({ ...now, user: r.user, access: r.access, must_change: r.must_change, theme });
+      const sv = r.server_version ?? '';
+      const same = JSON.stringify([r.user, r.access, r.must_change, theme ?? '', sv]) === JSON.stringify([now.user, now.access, now.must_change, now.theme ?? '', now.server_version ?? '']);
+      if (!same) persist({ ...now, user: r.user, access: r.access, must_change: r.must_change, theme, server_version: sv });
     } catch {
       /* offline or a server hiccup: keep what we have; an ended session is reported by the api event */
     }
@@ -204,6 +211,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [expiresAt, logout]);
 
+  const signOutEverywhere = useCallback(async () => {
+    const tok = storedRef.current?.token;
+    if (!tok) return;
+    await api.signOutEverywhere(tok);
+    // the server already wrote it to the activity log: no separate 'signed out' entry
+    logout(t('You were signed out on all devices.'));
+  }, [logout]);
+
   const value = useMemo<AuthState>(() => {
     const levelOf = (tab: TabId): AccessLevel => stored?.access[tab] ?? 'Hidden';
     return {
@@ -213,12 +228,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mustChange: stored?.must_change ?? false,
       notice,
       accountTheme: stored?.theme ?? '',
-      login, changePassword, logout, refreshAccess, setAccountTheme,
+      serverVersion: stored?.server_version ?? '',
+      login, changePassword, logout, refreshAccess, setAccountTheme, signOutEverywhere,
       levelOf,
       canView: (tab) => levelOf(tab) !== 'Hidden',
       canEdit: (tab) => levelOf(tab) === 'Edit',
     };
-  }, [stored, notice, login, changePassword, logout, refreshAccess, setAccountTheme]);
+  }, [stored, notice, login, changePassword, logout, refreshAccess, setAccountTheme, signOutEverywhere]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

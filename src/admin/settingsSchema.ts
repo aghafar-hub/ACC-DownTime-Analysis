@@ -125,12 +125,12 @@ export function groups(): Group[] {
     },
     {
       id: 'signin', title: t('Sign-in rules'), icon: 'shield', when: 'signin',
-      intro: t('How long sessions last and when an account is locked.'),
+      intro: t('How long sessions last and how long someone must wait after too many wrong passwords. A wait never signs anyone out.'),
       fields: [
         { key: 'session_hours', kind: 'int', min: 1, max: 168, label: t('Session length'), unit: t('hours'), help: t('Without "Keep me signed in" (1 to 168).') },
-        { key: 'session_hours_keep', kind: 'int', min: 1, max: 8760, label: t('Session length when kept signed in'), unit: t('hours'), help: t('With "Keep me signed in" (up to 8,760, one year).') },
-        { key: 'lockout_attempts', kind: 'int', min: 1, max: 100, label: t('Wrong passwords before a lock'), unit: t('attempts'), help: t('After this many wrong passwords in a row the account is locked for a while.') },
-        { key: 'lockout_minutes', kind: 'int', min: 1, max: 1440, label: t('Lock time'), unit: t('minutes'), help: t('How long a locked account must wait (up to 1,440, one day).') },
+        { key: 'session_hours_keep', kind: 'int', min: 1, max: 8760, label: t('Session length when kept signed in'), unit: t('hours'), help: t('With "Keep me signed in" (up to 8,760, one year). 336 hours = 14 days.') },
+        { key: 'lockout_attempts', kind: 'int', min: 1, max: 100, label: t('Wrong passwords before a wait'), unit: t('attempts'), help: t('After this many wrong passwords in a row, each further try for that email must wait: 1, 2, 4, 8, 16 minutes, then the longest wait below.') },
+        { key: 'lockout_minutes', kind: 'int', min: 1, max: 1440, label: t('Longest wait'), unit: t('minutes'), help: t('The longest wait between tries after too many wrong passwords (up to 1,440, one day). Sessions already open stay open.') },
         { key: 'min_password_length', kind: 'int', min: 8, max: 128, label: t('Minimum password length'), unit: t('characters'), help: t('Applies when someone chooses a new password (8 or more).') },
       ],
     },
