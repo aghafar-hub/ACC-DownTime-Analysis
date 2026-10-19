@@ -66,6 +66,20 @@ export default function ColumnChart({
   const every = labelEvery(n, pw, 30);
   const peak = totals.reduce<number>((b, v, i) => (v !== null && (b < 0 || v > totals[b]!) ? i : b), -1);
   const roomy = band >= 34;
+  // band labels share one line above the plot: a label is written only where it fits beside the ones already placed and
+  // clear of the average's end label; the others stay as the shaded band with its name on hover (and in the summary)
+  const textW = (txt: string) => txt.length * 6.6 + 12;
+  const endLeft = line?.endLabel ? m.l + pw - textW(line.endLabel) : Infinity;
+  const taken: [number, number][] = [];
+  const bandLabels = bands.map((b) => {
+    const x = m.l + band * (b.from + b.to + 1) / 2;
+    const half = textW(b.label) / 2;
+    const lo = Math.max(m.l, x - half);
+    const hi = lo + half * 2;
+    if (hi > Math.min(m.l + pw, endLeft) || taken.some(([a, z]) => lo < z && hi > a)) return null;
+    taken.push([lo, hi]);
+    return lo + half;
+  });
   const showTotal = (i: number): boolean => {
     if (totals[i] === null || totals[i]! <= 0) return false;
     if (i === selected || i === peak) return true;
@@ -97,10 +111,11 @@ export default function ColumnChart({
         ? <rect key={`hl${s.key}`} x={m.l + band * i + 1} y={m.t - 18} width={band - 2} height={ph + 18 + 34} rx={6} fill={i === selected ? 'var(--tk-nav-active)' : 'var(--tk-info-bar-bg)'} opacity={i === selected ? 1 : 0.7} />
         : null))}
       {highlightAll && selected !== null && <rect x={m.l + band * selected + 1} y={m.t - 18} width={band - 2} height={ph + 18 + 34} rx={6} fill="var(--tk-nav-active)" />}
-      {bands.map((b) => (
+      {bands.map((b, k) => (
         <g key={`band${b.from}`} data-testid="col-band">
+          <title>{b.label}</title>
           <rect x={m.l + band * b.from + 1} y={m.t - 4} width={band * (b.to - b.from + 1) - 2} height={ph + 4} rx={4} fill="var(--tk-info-bar-bg)" />
-          <text x={m.l + band * (b.from + b.to + 1) / 2} y={m.t - 26} textAnchor="middle" className="col-band-text">{b.label}</text>
+          {bandLabels[k] !== null && <text x={bandLabels[k]} y={m.t - 26} textAnchor="middle" className="col-band-text" data-testid="col-band-label">{b.label}</text>}
         </g>
       ))}
       <line x1={m.l} x2={m.l + pw} y1={y(0)} y2={y(0)} stroke={AXIS} />

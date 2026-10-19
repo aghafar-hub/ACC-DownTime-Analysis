@@ -386,7 +386,7 @@ export function DailyCard({ ctx, model, filters, dark, onOpen }: { ctx: DashCtx;
       id="daily" testid="chart-daily" span="full" title={t('Which days were worst?')}
       help={{ id: 'daily', vars: peak ? { d: dayText(peak.date), h: fh(peak.downtimeHours) } : {} }}
       subtitle={t('Daily stopped hours (area-h) by type · {p} · line = {k}-day average of all types', { p: periodText(range), k: ROLLING_DAYS })}
-      legend={[...paints.map((p) => ({ kind: 'paint' as const, paint: p, label: mobile ? p.short : p.label })), { kind: 'line', color: 'var(--tk-text-primary)', label: t('{k}-day average', { k: ROLLING_DAYS }) }]}
+      legend={[...paints.map((p) => ({ kind: 'paint' as const, paint: p, label: mobile ? p.short : p.label })), { kind: 'line', color: 'var(--tk-text-primary)', label: t('{k}-day average', { k: ROLLING_DAYS }) }, ...(runs.length ? [{ kind: 'box' as const, className: 'lg-box--band', label: t('Shaded = mostly planned days') }] : [])]}
       summary={summary} scope={scopeText(range, filters, 'none')} open={{ ids, label: t('Daily stoppage {p}', { p: periodText(range) }) }} onOpen={onOpen}
     >
       {more || (mobile && allDays) ? (

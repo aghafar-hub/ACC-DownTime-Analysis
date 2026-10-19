@@ -153,6 +153,11 @@ export default function Repeats() {
       {ctx && !model && <NoData reason={t('No data covers the selected period.')} />}
       {model && res && !empty && (
         <>
+          {/* owner: the failure timeline of the selected equipment first, the investigation table under it */}
+          <div ref={timelineRef}>{!mobile && timeline}</div>
+          {mobile && sheet && <BottomSheet title={t('Failure timeline: {c}', { c: selCode })} onClose={() => setSheet(false)} testid="timeline-sheet">{timeline}</BottomSheet>}
+          {mobile && !sheet && selCode && <button type="button" className="btn" style={{ width: '100%', marginBottom: 12 }} onClick={() => setSheet(true)} data-testid="timeline-show">{t('Show failure timeline: {c}', { c: selCode })}</button>}
+
           <section className="card" data-testid="repeat-table-card">
             <div className="card-title-row"><h2>{t('Investigation table')}</h2><ChartInfo help={{ id: 'repeat-table', vars: { n: settings?.repeatMinEvents, d: settings?.repeatWindowDays, ...(groups[0] ? { c: groups[0].equipmentId, r: groups[0].reasonLabel, h: fh(groups[0].totalHours), o: fint(groups[0].occurrences), a: fh2(groups[0].avgHours) } : {}) } }} title={t('Investigation table')} /></div>
             <p className="chart-sub" style={{ marginBottom: 8 }}>{t('Select a row to see the failure timeline of that equipment. N/A and blank reasons are excluded. The small timeline shows when each occurrence happened across the range.')}</p>
@@ -217,10 +222,6 @@ export default function Repeats() {
             <p className="chart-foot" data-testid="repeat-burst-note">{t('One occurrence = the same code and reason; when it stops several areas within 10 minutes it counts once. A burst is an occurrence less than 1 h after the previous one restarted in the same area: it still counts as an occurrence, and the Bursts column shows how many of them were quick re-trips.')}</p>
             {singles > 0 && <p className="chart-foot" data-testid="repeat-singles">{t('{n} more groups have only one occurrence in this range (the earlier ones are before it); they are not counted as repeated failures here or on the Dashboard.', { n: fint(singles) })}</p>}
           </section>
-
-          <div ref={timelineRef}>{!mobile && timeline}</div>
-          {mobile && sheet && <BottomSheet title={t('Failure timeline: {c}', { c: selCode })} onClose={() => setSheet(false)} testid="timeline-sheet">{timeline}</BottomSheet>}
-          {mobile && !sheet && selCode && <button type="button" className="btn" style={{ width: '100%', marginBottom: 12 }} onClick={() => setSheet(true)} data-testid="timeline-show">{t('Show failure timeline: {c}', { c: selCode })}</button>}
 
           <div className="chart-grid">
             <ChartCard

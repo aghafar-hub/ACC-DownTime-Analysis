@@ -1702,3 +1702,8 @@ button.hb-row:hover {
 .areas-table td {
   vertical-align: middle;
 }
+/* the shaded runs of mostly planned days in "Which days were worst?" */
+.lg-box--band {
+  background: var(--tk-info-bar-bg);
+  border: 1px solid var(--tk-border);
+}
