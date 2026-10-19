@@ -4,6 +4,7 @@
 import { TASK_CLOSED_STATUSES, isTerminalStatus, type Action, type ActionLog, type ActionPerson, type ActionStatus, type ActionTask, type Contractor } from '../../api/types';
 import { contractorName, dueOf, isOverdue, personName, ROOT_CAUSE_LABEL, SOURCE_LABEL } from '../../actions/model';
 import { t } from '../../i18n/t';
+import { dateText, tsText } from '../../util/dates';
 
 /** 'open' = not Closed or Cancelled; 'all'; or one status. */
 export type ActionsReportStatus = 'open' | 'all' | ActionStatus;
@@ -157,13 +158,13 @@ export function buildActionsReport(input: ActionsReportInput): ActionsReportMode
     const facts: [string, string][] = [
       [t('Status'), a.status], [t('Priority'), a.priority], [t('Area'), a.area_id || '—'], [t('Equipment'), a.equipment_id || '—'],
       [t('Contractor / team'), row.owner || '—'], [t('Owner'), row.assignee || '—'],
-      [t('Due'), row.due ? `${row.due}${row.overdue ? ` (${t('overdue')})` : ''}` : '—'],
+      [t('Due'), row.due ? `${dateText(row.due)}${row.overdue ? ` (${t('overdue')})` : ''}` : '—'],
       [t('Tasks'), row.tasksTotal ? t('{d} of {n} done', { d: row.tasksDone, n: row.tasksTotal }) : t('none')],
       [t('Needs a stoppage'), a.needs_stop ? t('Yes') : t('No')],
       [t('Root cause'), a.root_cause ? (ROOT_CAUSE_LABEL[a.root_cause] ?? a.root_cause) : '—'],
       [t('Source'), SOURCE_LABEL[a.source] ?? a.source],
-      [t('Created'), `${a.created_at.slice(0, 16)} · ${personName(people, a.created_by)}`],
-      ...(a.closed_at ? [[t('Closed'), `${a.closed_at.slice(0, 16)} · ${personName(people, a.closed_by)}${a.closure_note ? ` · ${a.closure_note}` : ''}`] as [string, string]] : []),
+      [t('Created'), `${shownTs(a.created_at)} · ${personName(people, a.created_by)}`],
+      ...(a.closed_at ? [[t('Closed'), `${shownTs(a.closed_at)} · ${personName(people, a.closed_by)}${a.closure_note ? ` · ${a.closure_note}` : ''}`] as [string, string]] : []),
       ...(a.effectiveness ? [[t('Effect after closing'), a.effectiveness] as [string, string]] : []),
     ];
     const evidence = a.evidence.map((e) => [e.event_id ? t('Record {id}', { id: e.event_id }) : '', e.note ?? ''].filter(Boolean).join(' · ')).filter(Boolean);
@@ -199,9 +200,13 @@ export function buildActionsReport(input: ActionsReportInput): ActionsReportMode
 
 /** The table heads of the list (also the Excel 'Actions' sheet). */
 export const ACTION_HEAD = (): string[] => [t('Action'), t('Title'), t('Area'), t('Equipment'), t('Status'), t('Priority'), t('Contractor / team'), t('Owner'), t('Due'), t('Tasks done')];
-export const actionCells = (r: ActionRow): string[] => [r.id, r.title, r.area, r.equipment, r.status, r.priority, r.owner, r.assignee, r.due ? `${r.due}${r.overdue ? ' !' : ''}` : '', r.tasksTotal ? `${r.tasksDone}/${r.tasksTotal}` : '—'];
+/** The cells of one action row. `screen`: dates as the app shows them ('26 Aug 2026'); the Excel file keeps ISO dates. */
+export const actionCells = (r: ActionRow, screen = false): string[] => [r.id, r.title, r.area, r.equipment, r.status, r.priority, r.owner, r.assignee, r.due ? `${screen ? dateText(r.due) : r.due}${r.overdue ? ' !' : ''}` : '', r.tasksTotal ? `${r.tasksDone}/${r.tasksTotal}` : '—'];
 export const TASK_HEAD = (): string[] => ['#', t('Task'), t('Contractor / team'), t('Owner'), t('Due'), t('Status'), t('Note')];
-export const taskCells = (x: TaskRow): string[] => [String(x.seq), x.title, x.owner, x.assignee, x.due ? `${x.due}${x.overdue ? ' !' : ''}` : '', x.status, x.note];
+export const taskCells = (x: TaskRow, screen = false): string[] => [String(x.seq), x.title, x.owner, x.assignee, x.due ? `${screen ? dateText(x.due) : x.due}${x.overdue ? ' !' : ''}` : '', x.status, x.note];
+
+/** A stored time ('2026-08-26 14:05:00' or ISO) as the app shows it: '26 Aug 2026 14:05'. */
+export const shownTs = (ts: string): string => tsText(String(ts ?? '').replace('T', ' ').slice(0, 16));
 
 /** "Actions report Area K.1 2026-10-18" as a file name base. */
 export function actionsFileBase(m: Pick<ActionsReportModel, 'title' | 'scope' | 'generatedAt'>): string {
@@ -210,7 +215,7 @@ export function actionsFileBase(m: Pick<ActionsReportModel, 'title' | 'scope' | 
 
 /** The Excel sheets: Actions (one row each), Tasks (one row per task), History. */
 export function actionsSheets(m: ActionsReportModel): { name: string; rows: (string | number)[][]; headerRow: number }[] {
-  const actions = [ACTION_HEAD(), ...m.rows.map(actionCells)];
+  const actions = [ACTION_HEAD(), ...m.rows.map((r) => actionCells(r))];
   const tasks = [[t('Action'), ...TASK_HEAD()], ...m.details.flatMap((d) => d.tasks.map((x) => [d.row.id, ...taskCells(x)]))];
   const history = [[t('Action'), t('When'), t('Who'), t('What')], ...m.details.flatMap((d) => d.history.map((h) => [d.row.id, h.at, h.by, h.what]))];
   const out = [{ name: t('Actions'), rows: actions, headerRow: 0 }];

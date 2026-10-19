@@ -210,7 +210,8 @@ function Preview({ setup, data, generatedBy, onEdit, onCopyLink, copied }: {
   useEffect(() => {
     if (!model) return undefined;
     const before = document.title;
-    const period = model.range.from.slice(0, 7) === model.range.to.slice(0, 7) ? model.range.from.slice(0, 7) : `${model.range.from} to ${model.range.to}`;
+    // the printed PDF's suggested name comes from the title: the app's dates ('Aug 2026', '1 Jan – 31 Aug 2026')
+    const period = model.range.from.slice(0, 7) === model.range.to.slice(0, 7) ? monthText(model.range.from) : rangeText(model.range);
     document.title = `${model.title} ${period} - ${model.plant}`;
     return () => { document.title = before; };
   }, [model]);

@@ -180,6 +180,20 @@
   min-height: 84px;
   resize: vertical;
 }
+/* phase 5: a field the person may not change reads as text, not as a box waiting for input (no border, no fill, no
+   text cursor, no resize handle); it stays selectable and keeps its place in the layout */
+.input[readonly],
+.textarea[readonly] {
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+  resize: none;
+  padding-inline: 0;
+}
+.input[readonly]:focus-visible,
+.textarea[readonly]:focus-visible {
+  border-color: transparent;
+}
 .input.mono {
   font-family: var(--mono);
 }

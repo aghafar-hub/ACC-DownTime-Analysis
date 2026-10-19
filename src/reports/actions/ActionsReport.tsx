@@ -18,7 +18,7 @@ import { buildXlsx, XLSX_MIME } from '../../export/xlsx';
 import { t } from '../../i18n/t';
 import { Icon } from '../../icons';
 import {
-  ACTION_HEAD, actionCells, actionsFileBase, actionsSheets, buildActionsReport, parseActionsFilters, TASK_HEAD, taskCells, writeActionsFilters,
+  ACTION_HEAD, actionCells, actionsFileBase, shownTs, actionsSheets, buildActionsReport, parseActionsFilters, TASK_HEAD, taskCells, writeActionsFilters,
   type ActionsReportFilters, type ActionsReportModel,
 } from './model';
 import './actionsReport.css';
@@ -36,7 +36,7 @@ function Document({ m }: { m: ActionsReportModel }) {
         <p className="arp-plant">{m.plant}</p>
         <h2 className="arp-title" data-testid="arp-title">{m.title}</h2>
         <p className="arp-scope" data-testid="arp-scope">{m.scope}</p>
-        <p className="arp-meta">{t('Prepared by {who} · {when}', { who: m.generatedBy, when: m.generatedAt })}</p>
+        <p className="arp-meta">{t('Prepared by {who} · {when}', { who: m.generatedBy, when: shownTs(m.generatedAt) })}</p>
         <dl className="arp-counts" data-testid="arp-counts">
           <div><dt>{t('Actions')}</dt><dd>{m.counts.total}</dd></div>
           {m.counts.byStatus.map(([s, n]) => <div key={s}><dt>{s}</dt><dd>{n}</dd></div>)}
@@ -54,7 +54,7 @@ function Document({ m }: { m: ActionsReportModel }) {
                 <tbody>
                   {m.rows.map((r) => (
                     <tr key={r.id} data-testid="arp-row">
-                      {actionCells(r).map((c, i) => <td key={i} className={[i === 0 || i === 8 ? 'arp-nowrap' : '', i === 8 && r.overdue ? 'arp-bad' : ''].join(' ').trim() || undefined}>{c}</td>)}
+                      {actionCells(r, true).map((c, i) => <td key={i} className={[i === 0 || i === 8 ? 'arp-nowrap' : '', i === 8 && r.overdue ? 'arp-bad' : ''].join(' ').trim() || undefined}>{c}</td>)}
                     </tr>
                   ))}
                 </tbody>
@@ -83,7 +83,7 @@ function Document({ m }: { m: ActionsReportModel }) {
             <div className="arp-table-wrap">
               <table className="arp-table" data-testid="arp-tasks">
                 <thead><tr>{TASK_HEAD().map((h) => <th key={h} scope="col">{h}</th>)}</tr></thead>
-                <tbody>{d.tasks.map((x) => <tr key={x.seq}>{taskCells(x).map((c, i) => <td key={i} className={[i === 4 ? 'arp-nowrap' : '', i === 4 && x.overdue ? 'arp-bad' : ''].join(' ').trim() || undefined}>{c}</td>)}</tr>)}</tbody>
+                <tbody>{d.tasks.map((x) => <tr key={x.seq}>{taskCells(x, true).map((c, i) => <td key={i} className={[i === 4 ? 'arp-nowrap' : '', i === 4 && x.overdue ? 'arp-bad' : ''].join(' ').trim() || undefined}>{c}</td>)}</tr>)}</tbody>
               </table>
             </div>
           )}
@@ -91,7 +91,7 @@ function Document({ m }: { m: ActionsReportModel }) {
             <>
               <h4 className="arp-h4">{t('History')}</h4>
               <ul className="arp-history" data-testid="arp-history">
-                {d.history.map((h, i) => <li key={i}><span className="arp-when">{h.at} · {h.by}</span> {h.what}</li>)}
+                {d.history.map((h, i) => <li key={i}><span className="arp-when">{shownTs(h.at)} · {h.by}</span> {h.what}</li>)}
               </ul>
             </>
           )}

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { noSidewaysScroll, signInAndWait, smallTargets, smallText, stubFonts, watchConsole, type Role } from './helpers';
+import { noSidewaysScroll, signInAndWait, smallTargets, smallText, stubFonts, watchConsole, type Role, fontsLoaded } from './helpers';
 
 // The Actions page in mock mode (docs/actions-design.md): the board and its filters, creating actions (manual, from a
 // Pareto bar, from a report, from a record, from a repeated-failure row) incl. the merge into an open action, status
@@ -354,6 +354,7 @@ test.describe('desktop', () => {
     await expect(detail(page)).toHaveAttribute('data-id', id!);
     await page.getByTestId('action-close').click();
     await expect(detail(page)).toHaveCount(0);
+    await fontsLoaded(page);
     await context.setOffline(true);
     await expect(page.getByTestId('new-action')).toBeDisabled();
     await openCard(page, 'Diaphragm');

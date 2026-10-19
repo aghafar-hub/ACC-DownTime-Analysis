@@ -95,3 +95,9 @@ export async function openType(page: Page) {
 export async function closePanel(page: Page) {
   await page.keyboard.press('Escape');
 }
+
+/** The app's latin font faces are loaded (src/fonts.ts preloads them when idle): wait before going offline in a test,
+ * where the service worker that keeps them is blocked. */
+export async function fontsLoaded(page: Page) {
+  await page.waitForFunction(() => [...document.fonts].filter((f) => /U\+0000/i.test(f.unicodeRange)).every((f) => f.status === 'loaded'), undefined, { timeout: 15_000 });
+}

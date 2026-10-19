@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { closePanel, noSidewaysScroll, openType, PASSWORD, pickPeriod, signIn, signInAndWait, smallTargets, stubFonts, watchConsole, type Role } from './helpers';
+import { closePanel, noSidewaysScroll, openType, PASSWORD, pickPeriod, signIn, signInAndWait, smallTargets, stubFonts, watchConsole, type Role, fontsLoaded } from './helpers';
 
 // Runs against `vite preview` of a production build in mock mode (made-up data).
 
@@ -315,6 +315,7 @@ test.describe('desktop', () => {
 
   test('offline: a banner says the data is read-only', async ({ page, context }) => {
     await signInAndWait(page, 'engineer');
+    await fontsLoaded(page);
     await context.setOffline(true);
     await expect(page.getByTestId('offline-banner')).toContainText('Offline');
     await expect(page.getByTestId('offline-banner')).toContainText('Uploads and edits need a connection');

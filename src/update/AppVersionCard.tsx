@@ -4,6 +4,7 @@ import { APP_BUILD, APP_BUILD_DATE } from './buildInfo';
 import { statusOf, statusText } from './updateLogic';
 import { applyUpdate, checkForUpdates, useUpdateState } from './updateService';
 import './update.css';
+import { dateText } from '../util/dates';
 
 /** Settings > Appearance: which build this is, whether a newer one is waiting, and a button to look. */
 export default function AppVersionCard() {
@@ -14,7 +15,7 @@ export default function AppVersionCard() {
       <h3>{t('App version')}</h3>
       <p>
         {t('Build')} <span className="app-version-build" data-testid="app-build">{APP_BUILD}</span>
-        {APP_BUILD_DATE ? <> · <span data-testid="app-build-date">{APP_BUILD_DATE}</span></> : null}
+        {APP_BUILD_DATE ? <> · <span data-testid="app-build-date">{/^\d{4}-\d{2}-\d{2}$/.test(APP_BUILD_DATE) ? dateText(APP_BUILD_DATE) : APP_BUILD_DATE}</span></> : null}
       </p>
       <p className={`app-version-status app-version-status--${status}`} role="status" aria-live="polite" data-testid="update-status">
         {t(statusText(status))}

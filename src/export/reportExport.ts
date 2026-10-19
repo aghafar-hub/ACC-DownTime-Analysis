@@ -12,7 +12,7 @@ import { exportFileName, periodSlug } from './files';
 import { exportCol, tableToCsv, tableToSheet, type ColFormat, type ExportTable, type ExportValue } from './table';
 import { buildXlsx, sheetNames, type XCell, type XSheet } from './xlsx';
 
-const KIND: Record<ReportTable['columns'][number]['kind'], ColFormat> = { text: 'text', hours: 'h1', hours2: 'h2', count: 'int', pct: 'pct' };
+const KIND: Record<ReportTable['columns'][number]['kind'], ColFormat> = { text: 'text', date: 'text', datetime: 'datetime', hours: 'h1', hours2: 'h2', count: 'int', pct: 'pct' };
 
 /** Sheet names of the sections (short, so they fit 31 characters and read well in a tab). */
 export const SHEET_TITLES: Record<ReportSectionId, string> = {

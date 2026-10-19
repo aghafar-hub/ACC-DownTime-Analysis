@@ -12,7 +12,6 @@ import { ScopeSlotContext } from './components/ScopeSlot';
 import SaveBlockedToast from './components/SaveBlockedToast';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
-import { Tile } from './components/Tile';
 import { ENV_LABEL } from './config';
 import { useIsMobile } from './hooks/useIsMobile';
 import { useVisiblePages } from './hooks/useVisiblePages';
@@ -23,6 +22,8 @@ import MoreSheet, { OPEN_MORE_EVENT } from './mobile/MoreSheet';
 import ScrollKeeper from './mobile/ScrollKeeper';
 import ChangePassword from './pages/ChangePassword';
 import Login from './pages/Login';
+import NotFound from './pages/NotFound';
+import { documentTitle } from './util/docTitle';
 import {
   ActionsPage, DashboardPage, EventExplorerPage, MasterPage, NotificationsPage, ParetoPage, preloadPath, ReliabilityPage, ReportsPage, RepeatsPage,
   SettingsPage, UploadPage, ValidatePage, whenIdle,
@@ -160,12 +161,12 @@ function NoPages() {
   );
 }
 
-function NotFound() {
-  return (
-    <div className="page" data-testid="not-found">
-      <Tile icon="info" label={t('Page not found')} value="404" sub={t('Use the tabs above to find your page.')} />
-    </div>
-  );
+// The browser tab's title follows the page ('Causes · ACC Downtime'). It sits before the routes, so a page that sets
+// its own title (the report, for printing) runs after it and wins while it is open.
+function DocumentTitle() {
+  const { pathname } = useLocation();
+  useEffect(() => { document.title = documentTitle(pathname); }, [pathname]);
+  return null;
 }
 
 function LoginRoute() {
@@ -213,6 +214,7 @@ export default function App() {
         <SharePrompt />
         <AuthProvider>
           <AccountThemeSync />
+          <DocumentTitle />
           <Routes>
             <Route path="/login" element={<LoginRoute />} />
             <Route element={<RequireAuth />}>
