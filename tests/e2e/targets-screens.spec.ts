@@ -39,15 +39,6 @@ for (const theme of ONLY) {
       await expect(page.getByTestId('chart-summary').first()).toBeVisible();
       await page.getByTestId('hero-kpis').evaluate((el) => el.scrollIntoView({ block: 'start' }));
       await shot('overview-hero');
-      await page.getByTestId('overview-mvm-toggle').click();
-      await expect(page.getByTestId('chart-mvm-hours')).toBeVisible();
-      await page.getByTestId('overview-mvm').scrollIntoViewIfNeeded();
-      await page.getByTestId('overview-mvm').evaluate((el) => el.scrollIntoView({ block: 'start' }));
-      await shot('overview-month-vs-month');
-      await page.getByTestId('chart-mvm-hours').evaluate((el) => el.scrollIntoView({ block: 'start' }));
-      await shot('overview-month-vs-month-chart');
-      await page.getByTestId('quality-mini').evaluate((el) => el.scrollIntoView({ block: 'center' }));
-      await shot('overview-quality-card');
       await page.getByTestId('chart-area-availability').evaluate((el) => el.scrollIntoView({ block: 'start' }));
       await shot('overview-availability-per-area');
       await checks('overview');
@@ -59,6 +50,13 @@ for (const theme of ONLY) {
       await shot('reliability-by-area');
       await page.getByTestId('chart-area-mtbf').evaluate((el) => el.scrollIntoView({ block: 'start' }));
       await shot('reliability-mtbf-mttr');
+      // Month vs month moved here from the Dashboard (owner)
+      await page.getByTestId('reliability-mvm-toggle').click();
+      await expect(page.getByTestId('chart-mvm-hours')).toBeVisible();
+      await page.getByTestId('reliability-mvm').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+      await shot('reliability-month-vs-month');
+      await page.getByTestId('chart-mvm-hours').evaluate((el) => el.scrollIntoView({ block: 'start' }));
+      await shot('reliability-month-vs-month-chart');
       await checks('reliability');
 
       await page.goto('/#/validate');

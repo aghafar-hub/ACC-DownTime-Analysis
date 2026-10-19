@@ -1,5 +1,5 @@
 // "Month vs month": two calendar months side by side, with a comparison table and a grouped bar chart per area.
-// Same section on the Dashboard and Reliability. The month pair lives in the address (?mvm=YYYY-MM,YYYY-MM), so a view can be
+// On the Reliability page (removed from the Dashboard by the owner; the compact form stays for that layout). The month pair lives in the address (?mvm=YYYY-MM,YYYY-MM), so a view can be
 // shared; the other dashboard filters apply, the date range and the comparison do not.
 import { monthText } from '../util/dates';
 import { useEffect, useMemo, useState } from 'react';
@@ -191,7 +191,7 @@ export default function MonthCompare({ dash, page, compact = false }: {
     </button>
   ) : (
     <button type="button" className="more-head" aria-expanded={open} aria-controls={`${id}-body`} onClick={() => setOpen((x) => !x)} data-testid={`${id}-toggle`}>
-      <span className="dup-text"><span className="dup-title">{t('Month vs month')} {pair && <small>{la} {t('and')} {lb}</small>}</span> <small className="dup-note" data-testid={`${id}-also`}>{t('Also on the Dashboard')}</small></span>
+      <span className="dup-text"><span className="dup-title">{t('Month vs month')} {pair && <small>{la} {t('and')} {lb}</small>}</span></span>
       <Icon name={open ? 'chevronUp' : 'chevronDown'} size={16} />
     </button>
   );

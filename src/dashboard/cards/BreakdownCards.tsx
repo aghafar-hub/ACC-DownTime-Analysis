@@ -227,6 +227,8 @@ export function PlannedCard({ ctx, filters, dark, onOpen, wholeLines }: { ctx: D
       legend={paints.map((p) => ({ kind: 'paint' as const, paint: p, label: p.label }))}
       summary={summary} scope={scopeText(eff, filters, 'none')} open={{ ids, label: t('Planned or incidental, all lines') }} onOpen={onOpen}
     >
+      {/* the technical line is in the (i) now; this caveat changes what the numbers mean, so it stays visible */}
+      {wholeLines && <p className="dcard-note" data-testid="planned-whole-lines">{t('Whole lines: the Area and Equipment filters do not apply here.')}</p>}
       <div className="split-rows">
         {rows.map((r) => (
           <div key={r.key} className={r.key === 'all' ? 'split-row split-row--all' : 'split-row'} data-testid="split-row" data-line={r.key}>

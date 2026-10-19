@@ -53,9 +53,9 @@ test.describe('desktop', () => {
     for (const id of ['dup-rf-mtbf', 'dup-area-month-heat', 'dup-area-trend']) await expect(page.getByTestId(id)).toHaveAttribute('data-open', 'no');
     await page.getByTestId('dup-area-trend-toggle').click();
     await expect(page.getByTestId('chart-availability')).toBeVisible();
-    // Month vs month: folded, says it is also on the Dashboard
+    // Month vs month: folded; it is no longer on the Dashboard, so it does not say so
     await expect(page.getByTestId('reliability-mvm')).toHaveAttribute('data-open', 'no');
-    await expect(page.getByTestId('reliability-mvm-also')).toHaveText('Also on the Dashboard');
+    await expect(page.getByTestId('reliability-mvm-also')).toHaveCount(0);
     // Trends: Mean restoration time folded, the other monthly charts open
     await page.getByTestId('rel-tab-trends').click();
     await expect(page.getByTestId('chart-mtbf')).toBeVisible();
@@ -84,11 +84,12 @@ test.describe('desktop', () => {
     };
     await open(page, '/dashboard', 'page-overview');
     const all = await lineTotals();
+    await expect(page.getByTestId('planned-whole-lines')).toHaveCount(0); // no Area / Equipment filter: no note
     for (const area of ['K.1', 'RM.1']) {
       await open(page, `/dashboard?area=${area}`, 'page-overview');
       await expect(page.getByTestId('fb-chip-area-' + area)).toBeVisible();
       expect(await lineTotals(), area).toEqual(all);
-      await expect(page.getByTestId('chart-planned-line')).toContainText('whole lines');
+      await expect(page.getByTestId('chart-planned-line').getByTestId('planned-whole-lines')).toHaveText('Whole lines: the Area and Equipment filters do not apply here.');
     }
     expect(errors, errors.join('\n')).toEqual([]);
   });
@@ -146,9 +147,11 @@ test.describe('desktop', () => {
     const tops = await row.locator('.ktile').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
     expect(new Set(tops).size).toBe(1);
     expect((await noSidewaysScroll(page)).ok).toBe(true);
-    // the Repeats card subtitle no longer says 'dots = days'
+    // the Repeats card's technical line (now under the question as a tooltip and in the (i)) no longer says 'dots = days'
     await expect(page.getByTestId('chart-repeats')).not.toContainText('dots = days');
-    await expect(page.getByTestId('chart-repeats').locator('.dcard-sub')).toContainText('same code + reason');
+    await expect(page.getByTestId('chart-repeats').getByTestId('card-question')).toHaveText('What keeps failing again?');
+    await expect(page.getByTestId('chart-repeats').getByTestId('card-question')).toHaveAttribute('title', /same code \+ reason/);
+    await expect(page.getByTestId('chart-repeats').getByTestId('card-question')).not.toHaveAttribute('title', /dots = days/);
     expect(errors, errors.join('\n')).toEqual([]);
   });
 

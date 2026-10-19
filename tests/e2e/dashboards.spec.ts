@@ -537,7 +537,7 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     expect(num(await page.getByTestId('takeaway').textContent())).toBe(hours);
   });
 
-  test('Dashboard: the KPI row (six figures, monthly sparklines, info), then the twelve cards in order, then the compact sections', async ({ page }) => {
+  test('Dashboard: the KPI row (six figures, monthly sparklines, info), then the eleven cards in order (name, then the question); no compact sections', async ({ page }) => {
     const errors = watchConsole(page);
     await page.goto('/');
     await signInAndWait(page, 'engineer');
@@ -573,20 +573,26 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     await page.getByTestId('kpi-info-close').click();
     await expect(page.getByTestId('kpi-info')).toHaveCount(0);
 
-    // the cards: a question as the title, in this order
+    // the cards in this order: the card's name as the heading, its question under it in grey (owner)
     const order = await page.locator('[data-dash-card]').evaluateAll((els) => els.map((e) => e.getAttribute('data-dash-card')));
-    expect(order).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'planned-allowance', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);
+    expect(order).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);
     const titles = await page.locator('[data-dash-card] h2').allTextContents();
     expect(titles).toEqual([
+      'Stoppage trend', 'Stoppage by type', 'Top losses', 'Planned vs incidental', 'Stoppage by area', 'Availability by area',
+      'Failures and repair time', 'Reliability vs MTBF', 'Repeated failures', 'Area heat map', 'Daily stoppage',
+    ]);
+    const questions = await page.locator('[data-dash-card] [data-testid=card-question]').allTextContents();
+    expect(questions).toEqual([
       'How is stoppage moving month to month?', 'What kind of stoppage was it?', 'Where did we lose the most time?', 'Planned or incidental?',
-      'Which areas stopped the longest?', 'Which areas miss their availability target?', 'Planned hours vs allowance (year to date)', 'Are we failing more, or repairing slower?', 'Which areas need attention?',
+      'Which areas stopped the longest?', 'Which areas miss their availability target?', 'Are we failing more, or repairing slower?', 'Which areas need attention?',
       'What keeps failing again?', 'Is any area slipping over time?', 'Which days were worst?',
     ]);
+    // the technical line moved into the (i): first paragraph of the dialog
+    await page.getByTestId('chart-daily').getByTestId('chart-info').click();
+    await expect(page.getByTestId('chart-info-dialog')).toContainText('Daily stopped hours (area-h) by type');
+    await page.keyboard.press('Escape');
     const y = async (id: string) => (await page.getByTestId(id).boundingBox())!.y;
     expect(await y('hero-kpis')).toBeLessThan(await y('dash-cards'));
-    expect(await y('dash-cards')).toBeLessThan(await y('overview-mvm'));
-    expect(await y('overview-mvm')).toBeLessThan(await y('quality-mini'));
-    expect(await y('quality-mini')).toBeLessThan(await y('dash-areas'));
     // two cards side by side on a desktop (trend + class), the daily card full width
     const tb = await page.getByTestId('chart-monthly-stack').boundingBox();
     const cb = await page.getByTestId('chart-class').boundingBox();
@@ -627,14 +633,12 @@ test.describe('Phase 3: shared filters, compact bar, Overview rework (desktop)',
     await expect(loss.getByTestId('pareto-honest')).toContainText('of failures');
     await expect(page.getByText(/first \d+ bars reach/)).toHaveCount(0);
 
-    // the compact sections: Month vs month says what changed before it is opened
-    await expect(page.getByTestId('overview-mvm')).toHaveAttribute('data-open', 'no');
-    await expect(page.getByTestId('overview-mvm-summary')).toContainText(/Stoppage [▲▼■]/);
-    await expect(page.getByTestId('dash-areas-table').getByTestId('dash-area-row')).toHaveCount(5);
-    await page.getByTestId('areas-show-all').click();
-    expect(await page.getByTestId('dash-area-row').count()).toBeGreaterThan(5);
-    // removed from the Dashboard
-    for (const id of ['more-figures', 'chart-class-month', 'chart-top-equipment', 'sec-time', 'sec-where', 'open-events']) await expect(page.getByTestId(id)).toHaveCount(0);
+    // removed from the Dashboard (owner): Month vs month (Reliability), Data quality (Validate), the Areas table
+    // (Reliability › Areas) and Planned hours vs allowance (Reliability › Trends)
+    for (const id of ['more-figures', 'chart-class-month', 'chart-top-equipment', 'sec-time', 'sec-where', 'open-events', 'overview-mvm', 'quality-mini', 'dash-areas', 'chart-planned-allowance']) {
+      await expect(page.getByTestId(id)).toHaveCount(0);
+    }
+    await expect(page.locator('.dsecs')).toHaveCount(0);
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
@@ -976,7 +980,7 @@ for (const width of [360, 390]) {
       await expect(page.getByTestId('kpi-running-hours')).toHaveCount(0);
       // the cards one under the other, in the same order as on a desktop
       const cards = await page.locator('[data-dash-card]').evaluateAll((els) => els.map((e) => { const r = e.getBoundingClientRect(); return { id: e.getAttribute('data-dash-card'), x: r.x, y: r.y }; }));
-      expect(cards.map((c) => c.id)).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'planned-allowance', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);
+      expect(cards.map((c) => c.id)).toEqual(['trend', 'class', 'losses', 'planned', 'area-down', 'area-target', 'fail-mttr', 'attention', 'repeats', 'heat', 'daily']);
       for (let i = 1; i < cards.length; i++) {
         expect(cards[i]!.y).toBeGreaterThan(cards[i - 1]!.y);
         expect(Math.abs(cards[i]!.x - cards[0]!.x)).toBeLessThan(2);
@@ -996,10 +1000,9 @@ for (const width of [360, 390]) {
       await daily.getByTestId('daily-all').click();
       // the Pareto as horizontal bars with the cumulative share beside them
       await expect(page.getByTestId('chart-losses').getByTestId('loss-row')).toHaveCount(10);
-      // open the compact sections too, then check the whole page
-      await page.getByTestId('overview-mvm-toggle').click();
-      await expect(page.getByTestId('overview-mvm-cards')).toBeVisible();
-      await expect(page.getByTestId('dash-areas').getByTestId('dash-area-row')).toHaveCount(5);
+      // no compact sections under the cards any more (owner); check the whole page
+      await expect(page.getByTestId('overview-mvm')).toHaveCount(0);
+      await expect(page.getByTestId('dash-areas')).toHaveCount(0);
       expect((await noSidewaysScroll(page)).ok).toBe(true);
       expect(await smallText(page)).toEqual([]);
       expect(await smallTargets(page)).toEqual([]);

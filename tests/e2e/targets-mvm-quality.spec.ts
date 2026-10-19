@@ -69,7 +69,8 @@ test.describe('targets', () => {
     // availability per area: the count line, the target line and the striped bars
     await expect(page.getByTestId('below-target-count')).toHaveText(/^\d+ of \d+ areas below target/);
     const chart = page.getByTestId('chart-area-availability');
-    await expect(chart.getByRole('heading', { level: 2 })).toHaveText('Which areas miss the 99.9% target?');
+    await expect(chart.getByRole('heading', { level: 2 })).toHaveText('Availability by area');
+    await expect(chart.getByTestId('card-question')).toHaveText('Which areas miss the 99.9% target?');
     await expect(chart.getByTestId('chart-summary')).toContainText(/\d+ of \d+ areas below target \(99\.9%\)/);
     await expect(chart.getByTestId('chart-legend')).toContainText('99.9% target');
     await expect(chart.getByTestId('chart-legend')).toContainText('Below target');
@@ -152,16 +153,18 @@ test.describe('targets', () => {
 });
 
 test.describe('month vs month', () => {
-  test('collapsed by default; table, chart, URL and numbers equal the single-month dashboard', async ({ page }) => {
+  test('on Reliability (not the Dashboard any more): collapsed by default; table, chart, URL and numbers equal the single-month dashboard', async ({ page }) => {
     const errors = watchConsole(page);
     await as(page, 'engineer');
     await open(page, '/overview', 'page-overview');
-    const sec = page.getByTestId('overview-mvm');
+    await expect(page.getByTestId('reliability-mvm')).toHaveCount(0);
+    await open(page, '/reliability', 'page-reliability');
+    const sec = page.getByTestId('reliability-mvm');
     await expect(sec).toHaveAttribute('data-open', 'no');
-    await page.getByTestId('overview-mvm-toggle').click();
+    await page.getByTestId('reliability-mvm-toggle').click();
     await expect(sec).toHaveAttribute('data-open', 'yes');
-    const a = page.getByTestId('overview-mvm-a');
-    const b = page.getByTestId('overview-mvm-b');
+    const a = page.getByTestId('reliability-mvm-a');
+    const b = page.getByTestId('reliability-mvm-b');
     // defaults: the last two COMPLETE months (months are listed newest first; the demo data ends inside the latest one)
     const opts = await a.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
     expect(opts.length).toBeGreaterThan(3);
@@ -192,11 +195,11 @@ test.describe('month vs month', () => {
     await b.selectOption(opts[3] ?? opts[1]!);
     await expect(page).toHaveURL(new RegExp(`mvm=${opts[2]}%2C${opts[3] ?? opts[1]}|mvm=${opts[2]},${opts[3] ?? opts[1]}`));
     await page.reload();
-    await expect(page.getByTestId('overview-mvm')).toHaveAttribute('data-open', 'yes'); // the pair in the address opens it
-    await expect(page.getByTestId('overview-mvm-a')).toHaveValue(opts[2]!);
-    await expect(page.getByTestId('overview-mvm-b')).toHaveValue(opts[3] ?? opts[1]!);
+    await expect(page.getByTestId('reliability-mvm')).toHaveAttribute('data-open', 'yes'); // the pair in the address opens it
+    await expect(page.getByTestId('reliability-mvm-a')).toHaveValue(opts[2]!);
+    await expect(page.getByTestId('reliability-mvm-b')).toHaveValue(opts[3] ?? opts[1]!);
     // read after the reload: the table is drawn from the address alone (no earlier pair still on screen)
-    const first = page.getByTestId('overview-mvm').getByTestId('mvm-row').first();
+    const first = page.getByTestId('reliability-mvm').getByTestId('mvm-row').first();
     const stoppageA = num(await first.getByTestId('mvm-a').textContent());
     const stoppageB = num(await first.getByTestId('mvm-b').textContent());
 
@@ -208,30 +211,26 @@ test.describe('month vs month', () => {
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
-  test('respects the line filter and ignores the date range and comparison; mirrored on Reliability', async ({ page }) => {
+  test('respects the line filter and ignores the date range and comparison', async ({ page }) => {
     const errors = watchConsole(page);
     await as(page, 'engineer');
-    await open(page, '/overview', 'page-overview');
-    await page.getByTestId('overview-mvm-toggle').click();
-    const first = async () => num(await page.getByTestId('overview-mvm').getByTestId('mvm-row').first().getByTestId('mvm-a').textContent());
-    const month = await page.getByTestId('overview-mvm-a').inputValue();
+    await open(page, '/reliability', 'page-reliability');
+    await page.getByTestId('reliability-mvm-toggle').click();
+    const first = async () => num(await page.getByTestId('reliability-mvm').getByTestId('mvm-row').first().getByTestId('mvm-a').textContent());
+    const month = await page.getByTestId('reliability-mvm-a').inputValue();
     const all = await first();
     expect(all).toBeGreaterThan(0);
 
-    await open(page, `/overview?line=L.1&mvm=${month},${month}`, 'page-overview');
+    await open(page, `/reliability?line=L.1&mvm=${month},${month}`, 'page-reliability');
     const withLine = await first();
     expect(withLine).toBeLessThan(all);
     await open(page, `/overview?line=L.1&r=month&m=${month}`, 'page-overview');
     expect(num(await page.getByTestId('kpi-total-hours-value').textContent())).toBeCloseTo(withLine, 1);
 
     // another date range and no comparison: the section does not change
-    await open(page, `/overview?line=L.1&r=last7&cmp=none&mvm=${month},${month}`, 'page-overview');
-    expect(await first()).toBeCloseTo(withLine, 6);
-
-    // Reliability has the same section and the same numbers
-    await open(page, `/reliability?line=L.1&mvm=${month},${month}`, 'page-reliability');
+    await open(page, `/reliability?line=L.1&r=last7&cmp=none&mvm=${month},${month}`, 'page-reliability');
     await expect(page.getByTestId('reliability-mvm')).toHaveAttribute('data-open', 'yes');
-    expect(num(await page.getByTestId('reliability-mvm').getByTestId('mvm-row').first().getByTestId('mvm-a').textContent())).toBeCloseTo(withLine, 6);
+    expect(await first()).toBeCloseTo(withLine, 6);
     // changing a filter keeps the pair in the address
     await expect(page).toHaveURL(/mvm=/);
     expect(errors, errors.join('\n')).toEqual([]);
@@ -239,7 +238,7 @@ test.describe('month vs month', () => {
 });
 
 test.describe('data quality scorecard', () => {
-  test('Validate: a row per month with text and bar, links filter the list by month; Overview card links to Validate', async ({ page }) => {
+  test('Validate: a row per month with text and bar, links filter the list by month; the Dashboard has no card, its data line links to Validate', async ({ page }) => {
     const errors = watchConsole(page);
     await as(page, 'engineer');
     await page.goto('/#/validate');
@@ -267,19 +266,23 @@ test.describe('data quality scorecard', () => {
     expect(listed).toBeGreaterThan(0);
     expect(listed).toBeLessThanOrEqual(open);
 
+    // the scorecard is no longer on the Dashboard (owner); the data line's 'N to check' still leads to Validate
     await page.goto('/#/overview');
-    const mini = page.getByTestId('quality-mini');
-    await expect(mini).toBeVisible();
-    await expect(page.getByTestId('quality-mini-text')).toHaveText(/^Data quality: \d+\.\d% clean, [\d,]+ to check$/);
-    await page.getByTestId('quality-mini-open').click();
+    await expect(page.getByTestId('page-overview')).toBeVisible();
+    await expect(page.getByTestId('quality-mini')).toHaveCount(0);
+    await page.getByTestId('data-status-check').click();
     await expect(page.getByTestId('page-validate')).toBeVisible();
+    await expect(page.getByTestId('quality-summary')).toBeVisible();
     expect(errors, errors.join('\n')).toEqual([]);
   });
 
-  test('the Overview card is also there for a viewer, who can open Validate', async ({ page }) => {
+  test('a viewer reaches the scorecard on Validate from the Dashboard data line', async ({ page }) => {
     await as(page, 'viewer');
     await open(page, '/overview', 'page-overview');
-    await expect(page.getByTestId('quality-mini')).toBeVisible();
+    await expect(page.getByTestId('quality-mini')).toHaveCount(0);
+    await page.getByTestId('data-status-check').click();
+    await expect(page.getByTestId('page-validate')).toBeVisible();
+    await expect(page.getByTestId('quality-summary')).toBeVisible();
   });
 });
 
@@ -297,13 +300,7 @@ for (const width of [360, 390]) {
       };
       await open(page, '/overview', 'page-overview');
       await expect(page.getByTestId('kpi-reliability-target')).toBeVisible();
-      await expect(page.getByTestId('overview-mvm')).toHaveAttribute('data-open', 'no'); // collapsed on a phone
       await checks('overview');
-      await page.getByTestId('overview-mvm-toggle').click();
-      await expect(page.getByTestId('chart-mvm-hours')).toBeVisible();
-      await expect(page.getByTestId('overview-mvm-cards').getByTestId('mvm-row')).toHaveCount(12);
-      await expect(page.getByTestId('overview-mvm-cards').getByTestId('mvm-change').first()).toHaveText(/^[▲▼■] /);
-      await checks('overview + month vs month');
       await page.getByTestId('chart-area-availability').scrollIntoViewIfNeeded();
       await expect(page.getByTestId('chart-area-availability').getByTestId('target-line')).toContainText('99.9% target');
       await expect(page.getByTestId('chart-area-availability').getByTestId('at-gap').first()).toBeVisible();
@@ -311,6 +308,13 @@ for (const width of [360, 390]) {
       await open(page, '/reliability', 'page-reliability');
       await expect(page.getByTestId('status-availability').first()).toBeVisible();
       await checks('reliability');
+      // Month vs month lives on Reliability now (owner): folded, cards on a phone
+      await expect(page.getByTestId('reliability-mvm')).toHaveAttribute('data-open', 'no');
+      await page.getByTestId('reliability-mvm-toggle').click();
+      await expect(page.getByTestId('chart-mvm-hours')).toBeVisible();
+      await expect(page.getByTestId('reliability-mvm-cards').getByTestId('mvm-row')).toHaveCount(12);
+      await expect(page.getByTestId('reliability-mvm-cards').getByTestId('mvm-change').first()).toHaveText(/^[▲▼■] /);
+      await checks('reliability + month vs month');
       await page.goto('/#/validate');
       await expect(page.getByTestId('quality-details')).toBeVisible();
       await page.getByTestId('quality-details').locator('summary').click();

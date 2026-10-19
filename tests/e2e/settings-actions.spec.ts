@@ -145,6 +145,10 @@ test.describe('desktop', () => {
     // the Dashboard judges FM.1 against its own target now
     await page.goto('/#/dashboard');
     await expect(page.locator('[data-testid=at-row][data-area="FM.1"]')).toHaveAttribute('data-target', '85');
+    expect((await noSidewaysScroll(page)).ok).toBe(true);
+    // Planned hours vs allowance moved from the Dashboard to Reliability › Trends (owner)
+    await expect(page.getByTestId('chart-planned-allowance')).toHaveCount(0);
+    await page.goto('/#/reliability?tab=trends');
     await expect(page.getByTestId('chart-planned-allowance').locator('[data-testid=pa-row][data-area="FM.1"]')).toBeVisible();
     expect((await noSidewaysScroll(page)).ok).toBe(true);
   });

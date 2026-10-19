@@ -69,6 +69,9 @@ for (const theme of THEMES) {
       await page.getByTestId('edit-event').click();
       await shot('5-event-edit');
       await page.keyboard.press('Escape');
+      // a sheet's Back entry is dropped right after it closes (useBackClose): wait before navigating, or that Back
+      // lands after the next address and returns to Events
+      await expect.poll(() => page.evaluate(() => (history.state as { accSheet?: string } | null)?.accSheet ?? null)).toBeNull();
 
       await page.goto('/#/reports');
       await expect(page.getByTestId('builder')).toBeVisible();
