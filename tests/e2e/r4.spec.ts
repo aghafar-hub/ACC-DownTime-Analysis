@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { noSidewaysScroll, signInAndWait, smallTargets, smallText, stubFonts, watchConsole } from './helpers';
+import { noSidewaysScroll, signInAndWait, smallTargets, smallText, stubFonts, watchConsole, fontsLoaded } from './helpers';
 
 // R4 - phone and PWA: landscape chrome, the one-line update banner, report preview Fit / 100% / zoom, the share
 // sheet for files on an iPhone home-screen app, 44 px targets on touch tablets, side safe areas, the sideways
@@ -96,6 +96,7 @@ for (const width of [360, 390]) {
 
     test('offline banner names the time the data was last synced', async ({ page, context }) => {
       await signInAndWait(page, 'engineer');
+      await fontsLoaded(page);
       await context.setOffline(true);
       const banner = page.getByTestId('offline-banner');
       await expect(banner).toContainText(/Offline · data from \d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4} \d{2}:\d{2}\./);
@@ -268,6 +269,7 @@ test.describe('phone landscape 844 x 390', () => {
       document.documentElement.style.setProperty('--safe-r', '47px');
     });
     await page.evaluate(() => window.__accTestUpdate?.());
+    await fontsLoaded(page);
     await context.setOffline(true);
     await expect(page.getByTestId('offline-banner')).toBeVisible();
     const inside = async (sel: string) => {
