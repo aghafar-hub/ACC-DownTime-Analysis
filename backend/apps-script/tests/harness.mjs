@@ -79,6 +79,7 @@ class MockSheet {
   }
   getRange(r, c, nr = 1, nc = 1) { return new MockRange(this, r, c, nr, nc); }
   deleteRow(r) { this.data.splice(r - 1, 1); }
+  deleteRows(r, n) { this.data.splice(r - 1, n); }
   /** Mimics Google Sheets: without Plain Text format, date-like text becomes a Date, number-like text a number. */
   putCell(r, c, v) {
     while (this.data.length < r) this.data.push([]);
@@ -335,6 +336,7 @@ export function stubScriptApp(env, foreign = []) {
       const t = make(handler);
       const b = {
         timeBased() { t.kind = 'time'; return b; },
+        after(ms) { t.afterMs = ms; return b; },
         everyDays(n) { t.everyDays = n; return b; },
         atHour(h) { t.atHour = h; return b; },
         inTimezone(tz) { t.timezone = tz; return b; },

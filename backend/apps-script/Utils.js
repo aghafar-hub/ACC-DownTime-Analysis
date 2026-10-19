@@ -239,6 +239,25 @@ function updateRow_(table, rowNum, patch) {
   range.setValues([objectToRow_(table, headers, patch, existing)]);
 }
 
+/**
+ * 1.10.0: keeps the rows for which keep(typedRow) is true and removes the others with one write (and one delete of the
+ * rows left over at the end), instead of deleting row by row. Caller holds the lock. Returns how many were removed.
+ */
+function keepRows_(table, keep) {
+  var sheet = getSheet_(table);
+  var headers = sheetHeaders_(sheet);
+  var last = sheet.getLastRow();
+  if (last < 2 || !headers.length) return 0;
+  var values = sheet.getRange(2, 1, last - 1, headers.length).getValues();
+  var types = columnTypes_(table);
+  var kept = values.filter(function (v, i) { return keep(rowToObject_(types, headers, v, i + 2)); });
+  var removed = values.length - kept.length;
+  if (!removed) return 0;
+  if (kept.length) sheet.getRange(2, 1, kept.length, headers.length).setValues(kept.map(function (l) { return l.map(keepCell_); }));
+  sheet.deleteRows(2 + kept.length, removed);
+  return removed;
+}
+
 function deleteRows_(table, rowNums) {
   var sheet = getSheet_(table);
   rowNums.slice().sort(function (a, b) { return b - a; }).forEach(function (r) { sheet.deleteRow(r); });

@@ -583,7 +583,7 @@ function runNotificationChecks_(opts) {
       }
     });
 
-    var cands = notifCandidates_(notifLoadContext_(st));
+    var cands = opts.onlyBatch ? [] : notifCandidates_(notifLoadContext_(st));
     if (opts.batch) cands.push(uploadDoneCandidate_(opts.batch));
     var current = {};
     cands.forEach(function (c) {
@@ -607,7 +607,7 @@ function runNotificationChecks_(opts) {
     });
 
     existing.forEach(function (r) {
-      if (r.status === 'open' && NOTIF_RESOLVABLE_.indexOf(r.type) >= 0 && !current[r.dedupe_key]) {
+      if (!opts.onlyBatch && r.status === 'open' && NOTIF_RESOLVABLE_.indexOf(r.type) >= 0 && !current[r.dedupe_key]) {
         patches.push({ row: r, patch: { status: 'resolved', resolved_at: stamp } });
         r.status = 'resolved';
         res.resolved++;
@@ -632,12 +632,42 @@ function runNotificationChecksAction_(session) {
 
 /** Best effort after an upload: never throws, so an upload cannot fail because of notifications. */
 function notifyAfterUpload_(batch) {
-  try {
-    runNotificationChecks_({ batch: batch });
-  } catch (err) {
-    notifLogFailure_('upload', err);
-  }
+  // 1.10.0: the checks run in the background a moment later (a one-off trigger), so the upload answers at once;
+  // without triggers (or when one cannot be made) they run here as before
+  if (scheduleAfterUploadChecks_(batch.batch_id)) return;
+  runAfterUploadChecks_([batch]);
+}
+
+function runAfterUploadChecks_(batches) {
+  batches.forEach(function (batch, i) {
+    try {
+      // every rule runs once; each finished upload still gets its own 'upload done' update
+      runNotificationChecks_(i === batches.length - 1 ? { batch: batch } : { batch: batch, onlyBatch: true });
+    } catch (err) {
+      notifLogFailure_('upload', err);
+    }
+  });
   actionChecksSafely_('upload'); // after the alerts, so a new long stop already has its notification
+}
+
+var AFTER_UPLOAD_JOB_ = 'afterUploadJob';
+var PENDING_UPLOADS_PROP_ = 'PENDING_UPLOAD_CHECKS';
+
+/** Queues the batch for the background checks and makes sure one one-off trigger is waiting. False = run inline. */
+function scheduleAfterUploadChecks_(batchId) {
+  try {
+    if (typeof ScriptApp === 'undefined' || !ScriptApp.newTrigger) return false;
+    var props = PropertiesService.getScriptProperties();
+    var pending = JSON.parse(props.getProperty(PENDING_UPLOADS_PROP_) || '[]');
+    if (pending.indexOf(batchId) < 0) pending.push(batchId);
+    props.setProperty(PENDING_UPLOADS_PROP_, JSON.stringify(pending));
+    var waiting = ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === AFTER_UPLOAD_JOB_; });
+    if (!waiting) ScriptApp.newTrigger(AFTER_UPLOAD_JOB_).timeBased().after(5 * 1000).create();
+    return true;
+  } catch (err) {
+    notifLogFailure_('upload (schedule)', err);
+    return false;
+  }
 }
 
 /** Best effort 'user created / password reset / role changed' update, visible to people with access to Users. */

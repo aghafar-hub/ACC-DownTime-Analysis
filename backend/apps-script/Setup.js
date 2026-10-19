@@ -242,9 +242,46 @@ function removeNotificationTriggers() {
  * The daily job: runs the notification checks and the action checks, then sends the digests that are due. Each step is isolated, so a
  * failed check does not stop the digests and nothing here can throw into the trigger.
  */
+/**
+ * 1.10.0: the background run after an upload (a one-off trigger made by scheduleAfterUploadChecks_): the alerts and
+ * action checks for every upload finished since the last run, then the trigger removes itself.
+ */
+function afterUploadJob() {
+  try {
+    ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === AFTER_UPLOAD_JOB_) ScriptApp.deleteTrigger(t); });
+  } catch (e) { /* a leftover one-off trigger does nothing harmful */ }
+  var props = PropertiesService.getScriptProperties();
+  var ids = JSON.parse(props.getProperty(PENDING_UPLOADS_PROP_) || '[]');
+  props.deleteProperty(PENDING_UPLOADS_PROP_);
+  var batches = readTable_(T.BATCHES).filter(function (b) { return ids.indexOf(b.batch_id) >= 0; });
+  if (batches.length) runAfterUploadChecks_(batches);
+  return { uploads: batches.length };
+}
+
+/**
+ * 1.10.0: removes notifications that were resolved or expired more than notif_retention_days ago, and the seen /
+ * snoozed / dismissed rows that point at them. One read and one write per table, never row by row.
+ */
+function cleanupNotifications_() {
+  return withLock_(function () {
+    var st = notifSettings_();
+    var cutoff = fmtTsMs_(nowMs_() - st.retentionDays * MS_DAY_);
+    var gone = {};
+    var n = keepRows_(T.NOTIFICATIONS, function (r) {
+      var end = r.status === 'resolved' ? r.resolved_at : r.status === 'expired' ? r.expires_at : '';
+      var drop = !!end && end < cutoff;
+      if (drop) gone[r.notification_id] = true;
+      return !drop;
+    });
+    var s = n ? keepRows_(T.NOTIFICATION_STATE, function (r) { return !gone[r.notification_id]; }) : 0;
+    return { notifications: n, states: s };
+  });
+}
+
 function notificationDailyJob() {
-  var out = { checks: null, actions: null, digest: null };
+  var out = { checks: null, actions: null, digest: null, cleanup: null };
   try { out.checks = runNotificationChecks_({}); } catch (err) { notifLogFailure_('daily checks', err); }
+  try { out.cleanup = cleanupNotifications_(); } catch (err3) { notifLogFailure_('daily clean-up', err3); }
   out.actions = actionChecksSafely_('daily checks'); // drafts and effectiveness (1.4.0)
   try { out.digest = sendDigest_(); } catch (err2) { notifLogFailure_('daily digest', err2); }
   Logger.log('Notification job: ' + JSON.stringify(out));
