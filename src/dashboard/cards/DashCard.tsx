@@ -80,12 +80,15 @@ export function OpenLink({ spec, onOpen, label, testid = 'card-open', className 
 }
 
 export default function DashCard({
-  id, title, subtitle, controls, headLink, legend, summary, scope, open, onOpen, span = 'half', children, testid, footExtra, className, help,
+  id, name, title, subtitle, controls, headLink, legend, summary, scope, open, onOpen, span = 'half', children, testid, footExtra, className, help,
 }: {
   /** the (i) explanation (src/help/chartHelp.ts) */
   help?: HelpRef;
   /** the card's place in the order ('trend', 'class' ...) */
   id: string;
+  /** owner: the card's short name on the first line; `title` (the question) goes under it in grey and the technical
+   * `subtitle` moves into the (i) */
+  name?: string;
   title: string;
   subtitle?: ReactNode;
   controls?: ReactNode;
@@ -108,10 +111,12 @@ export default function DashCard({
     <section className={`card dcard dcard--${span}${className ? ` ${className}` : ''}`} aria-labelledby={`${hid}-t`} aria-describedby={`${hid}-s`} data-testid={testid} data-dash-card={id}>
       <header className={`dcard-head${controls ? ' dcard-head--ctl' : ''}`}>
         {help
-          ? <div className="dcard-title card-title-row"><h2 id={`${hid}-t`} className="dcard-title-text">{title}</h2><ChartInfo help={help} title={title} /></div>
-          : <h2 id={`${hid}-t`} className="dcard-title">{title}</h2>}
+          ? <div className="dcard-title card-title-row"><h2 id={`${hid}-t`} className="dcard-title-text">{name ?? title}</h2><ChartInfo help={help} title={name ?? title} lead={name && typeof subtitle === 'string' ? subtitle : undefined} /></div>
+          : <h2 id={`${hid}-t`} className="dcard-title">{name ?? title}</h2>}
         {headLink && <div className="dcard-headlink">{headLink}</div>}
-        {subtitle && <p className="dcard-sub">{subtitle}</p>}
+        {name
+          ? <p className="dcard-sub dcard-q" data-testid="card-question" title={typeof subtitle === 'string' ? subtitle : undefined}>{title}</p>
+          : subtitle && <p className="dcard-sub">{subtitle}</p>}
         {controls && <div className="dcard-controls">{controls}</div>}
       </header>
       {legend && <CardLegend items={legend} />}

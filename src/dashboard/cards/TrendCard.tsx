@@ -114,7 +114,7 @@ export default function TrendCard({ ctx, filters, dark, classNames, onOpen }: { 
     : t('Stopped hours (h) per day of the period, by {b}', { b: by === 'type' ? t('type') : t('class') });
   return (
     <DashCard
-      id="trend" testid="chart-monthly-stack" span="wide" title={t('How is stoppage moving month to month?')} subtitle={sub}
+      id="trend" testid="chart-monthly-stack" span="wide" name={t('Stoppage trend')} title={t('How is stoppage moving month to month?')} subtitle={sub}
       help={{ id: 'trend', vars: peak ? { slot: slotLabel(peak, grain), h: fh(peak.total) } : {} }}
       controls={(
         <>

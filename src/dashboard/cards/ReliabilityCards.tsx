@@ -128,7 +128,7 @@ export function FailMttrCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: 
     : t('No failures in this range.');
   return (
     <DashCard
-      id="fail-mttr" testid="chart-fail-mttr" title={t('Are we failing more, or repairing slower?')}
+      id="fail-mttr" testid="chart-fail-mttr" name={t('Failures and repair time')} title={t('Are we failing more, or repairing slower?')}
       help={{ id: 'fail-mttr', vars: lastFail && lastFail.failures && lastFail.mttr !== null ? { m: monthText(lastFail.key), h: fh(lastFail.mttr * lastFail.failures), n: fint(lastFail.failures), mttr: fh2(lastFail.mttr) } : {} }}
       subtitle={t('Failures and repair time by month · shared months, separate scales')}
       legend={[{ kind: 'paint', paint: { color: 'var(--dt-inc)', pattern: 'solid' }, label: t('Failures (count)') }, { kind: 'line', color: 'var(--dt-pl)', label: t('MTTR (h)'), marker: true }]}
@@ -170,7 +170,7 @@ export function AttentionCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters:
     : `${t('{n} areas plotted.', { n: rf.points.length })}${rfTarget !== null ? ` ${rf.below.length ? t('Below the RF target: {a}.', { a: rf.below.join(', ') }) : t('Every area plotted meets its RF target.')}` : ''}`;
   return (
     <DashCard
-      id="attention" testid="chart-dash-rf-mtbf" title={t('Which areas need attention?')}
+      id="attention" testid="chart-dash-rf-mtbf" name={t('Reliability vs MTBF')} title={t('Which areas need attention?')}
       help={{ id: 'rf-mtbf', vars: ex ? { a: ex.area_id, r: fpct(ex.rf), m: fh(ex.mtbf), n: ex.mttr !== null ? fh2(ex.mttr) : '–' } : {} }}
       subtitle={rfTarget !== null
         ? t('Reliability factor vs MTBF by area · below the dashed line = under the RF target ({x}%)', { x: targetNumber(rfTarget) })
@@ -222,7 +222,7 @@ export function RepeatsCard({ ctx, filters, onOpen, onAll }: { ctx: DashCtx; fil
     : t('No repeated failures in this period.');
   return (
     <DashCard
-      id="repeats" testid="chart-repeats" title={t('What keeps failing again?')}
+      id="repeats" testid="chart-repeats" name={t('Repeated failures')} title={t('What keeps failing again?')}
       help={{ id: 'repeats', vars: { n: s.repeatMinEvents, d: s.repeatWindowDays, ...(m.failureHours > 0 ? { h: fh(m.hours), t: fh(m.failureHours), p: `${share.toFixed(1)}%` } : {}) } }}
       subtitle={t('Repeated failures · same code + reason, {n}+ times in {d} days', { n: s.repeatMinEvents, d: s.repeatWindowDays })}
       headLink={<button type="button" className="dcard-link" onClick={onAll} data-testid="repeats-all">{t('All {n}', { n: m.listed })} <span aria-hidden="true">›</span></button>}
@@ -300,7 +300,7 @@ export function HeatCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Dash
   const names = !mobile && m.months.length <= 9;
   return (
     <DashCard
-      id="heat" testid="chart-avail-heat" title={t('Is any area slipping over time?')}
+      id="heat" testid="chart-avail-heat" name={t('Area heat map')} title={t('Is any area slipping over time?')}
       help={{ id: 'heat', vars: { b: basis } }}
       subtitle={`${metric === 'availability' ? t('Availability heatmap, area × month (basis {b}, %)', { b: basis }) : t('{w} heatmap, area × month (%)', { w: what })}${sortName ? ` · ${t('worst {m} first', { m: sortName })}` : ''}`}
       controls={<Seg value={metric} options={[{ value: 'availability', label: mobile ? t('Avail.') : t('Availability') }, { value: 'reliability', label: 'RF' }, { value: 'utilization', label: 'UF' }]} onChange={setMetric} label={t('Show')} testid="heat-metric" />}
@@ -383,7 +383,7 @@ export function DailyCard({ ctx, model, filters, dark, onOpen }: { ctx: DashCtx;
   const more = mobile && model.daily.length > 14;
   return (
     <DashCard
-      id="daily" testid="chart-daily" span="full" title={t('Which days were worst?')}
+      id="daily" testid="chart-daily" span="full" name={t('Daily stoppage')} title={t('Which days were worst?')}
       help={{ id: 'daily', vars: peak ? { d: dayText(peak.date), h: fh(peak.downtimeHours) } : {} }}
       subtitle={t('Daily stopped hours (area-h) by type · {p} · line = {k}-day average of all types', { p: periodText(range), k: ROLLING_DAYS })}
       legend={[...paints.map((p) => ({ kind: 'paint' as const, paint: p, label: mobile ? p.short : p.label })), { kind: 'line', color: 'var(--tk-text-primary)', label: t('{k}-day average', { k: ROLLING_DAYS }) }, ...(runs.length ? [{ kind: 'box' as const, className: 'lg-box--band', label: t('Shaded = mostly planned days') }] : [])]}

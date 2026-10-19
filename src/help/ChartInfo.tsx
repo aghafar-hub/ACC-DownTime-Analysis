@@ -10,10 +10,11 @@ export interface HelpRef {
   vars?: HelpVars;
 }
 
-export default function ChartInfo({ help, title }: { help: HelpRef; title?: string }) {
+/** `lead`: what the card shows right now (the line that used to stand under its title), first in the dialog */
+export default function ChartInfo({ help, title, lead }: { help: HelpRef; title?: string; lead?: string }) {
   return (
     <InfoButton
-      info={() => chartHelp(help.id, help.vars)} title={title ?? t(CHART_HELP[help.id].title)}
+      info={() => { const i = chartHelp(help.id, help.vars); return lead ? { ...i, paragraphs: [lead, ...i.paragraphs] } : i; }} title={title ?? t(CHART_HELP[help.id].title)}
       testid="chart-info" dialogTestid="chart-info-dialog" className="info-btn--card"
     />
   );

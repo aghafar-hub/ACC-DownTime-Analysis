@@ -1707,3 +1707,10 @@ button.hb-row:hover {
   background: var(--tk-info-bar-bg);
   border: 1px solid var(--tk-border);
 }
+
+/* owner: the card's name on line 1, its question under it in dark grey */
+.dcard-q {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--tk-text-secondary);
+}

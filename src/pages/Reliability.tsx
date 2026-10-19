@@ -25,6 +25,7 @@ import { Icon } from '../icons';
 import { useTheme } from '../theme/ThemeContext';
 import '../components/ui.css';
 import '../dashboard/dashboard.css';
+import PlannedAllowanceCard from '../dashboard/cards/PlannedAllowanceCard';
 
 type YoyMetric = 'failureHours' | 'failureCount' | 'mtbf' | 'rate';
 
@@ -250,6 +251,8 @@ export default function Reliability() {
                   ariaLabel={t('Line chart of the monthly reliability factor and utilization factor')} />
               )}
             </ChartCard>
+            {/* moved from the Dashboard (owner): the planned-stop budget month by month */}
+            <PlannedAllowanceCard ctx={ctx} filters={dash.filters} onOpenRows={(label, ids) => drill(label, { eventIds: ids, rowIds: ids })} />
             <AlsoOnDashboard title={t('Mean restoration time')} testid="dup-rel-mttr">
             <ChartCard title={t('Mean restoration time')} subtitle={t('Mean duration of failure events that started in the month')} testid="chart-mttr" help={{ id: 'mttr-month', vars: lastMttr ? { m: monthLabel(lastMttr.month), h: fh(lastMttr.mttrHours.available ? lastMttr.mttrHours.value * lastMttr.failureCount : 0), n: fint(lastMttr.failureCount), v: fh2(lastMttr.mttrHours.available ? lastMttr.mttrHours.value : 0) } : {} }}
               summary={t('{n} of {m} months have a value.', { n: months.length - gapCount(mttr), m: months.length })} footnote={gapNote(mttr)}

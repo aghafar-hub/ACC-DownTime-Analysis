@@ -6,18 +6,15 @@ import { typePaints } from '../charts/palette';
 import { useIsMobile } from '../hooks/useIsMobile';
 import DashTop from '../dashboard/DashTop';
 import { compareShort, kpiSparks } from '../dashboard/dashModels';
-import MonthCompare from '../dashboard/MonthCompare';
 import { overviewModel } from '../dashboard/models';
 import { EMPTY_SCOPE_TAKEAWAY, EmptyScope, NoData, rowsInRange, useDrill } from '../dashboard/parts';
 import { overviewTakeaway } from '../dashboard/takeaways';
 import { buildCtx } from '../dashboard/scope';
 import { useDash } from '../dashboard/useDash';
 import KpiRow from '../dashboard/cards/KpiRow';
-import PlannedAllowanceCard from '../dashboard/cards/PlannedAllowanceCard';
 import TrendCard from '../dashboard/cards/TrendCard';
 import { AreaDownCard, AreaTargetCard, ClassCard, LossesCard, PlannedCard } from '../dashboard/cards/BreakdownCards';
 import { AttentionCard, DailyCard, FailMttrCard, HeatCard, RepeatsCard } from '../dashboard/cards/ReliabilityCards';
-import { AreasSection, QualitySection } from '../dashboard/cards/Sections';
 import type { OpenSpec } from '../dashboard/cards/DashCard';
 import { t } from '../i18n/t';
 import { Icon } from '../icons';
@@ -37,7 +34,6 @@ export default function Dashboard() {
   const drill = useDrill(dash, 'Dashboard');
   const onOpen = useCallback((s: OpenSpec) => drill(s.label, { eventIds: s.ids }), [drill]);
   // planned rows need not head an event: they are opened as rows (and the events they head)
-  const onOpenRows = useCallback((label: string, ids: string[]) => drill(label, { eventIds: ids, rowIds: ids }), [drill]);
   const model = useMemo(() => (ctx ? overviewModel(ctx) : null), [ctx]);
   const sparks = useMemo(() => (ctx ? kpiSparks(ctx) : null), [ctx]);
   const rows = useMemo(() => (ctx ? rowsInRange(ctx.scope, ctx.win.range) : null), [ctx]);
@@ -85,7 +81,7 @@ export default function Dashboard() {
     <div className="page dash-page dash-v2" data-testid="page-overview" style={vars}>
       <DashTop title={t('Dashboard')} takeaway={takeaway} dash={dash} eventCount={rows ? rows.length : null} right={right} />
       {ctx && model && !kpi && <NoData reason={model.noDataReason ?? t('No data')} />}
-      {empty && <><EmptyScope dash={dash} /><MonthCompare dash={dash} page="overview" compact /></>}
+      {empty && <EmptyScope dash={dash} />}
       {ctx && model && kpi && !empty && (
         <>
           <KpiRow model={model} sparks={sparks} basis={basis} cmpLabel={cmpLabel} prevLabel={prevLabel} dark={dark} />
@@ -98,17 +94,11 @@ export default function Dashboard() {
             <PlannedCard ctx={lineCtx ?? ctx} filters={lineFilters} wholeLines={lineCtx !== ctx} dark={dark} onOpen={onOpen} />
             <AreaDownCard ctx={ctx} filters={dash.filters} dark={dark} onOpen={onOpen} />
             <AreaTargetCard ctx={ctx} filters={dash.filters} onOpen={onOpen} />
-            <PlannedAllowanceCard ctx={ctx} filters={dash.filters} onOpenRows={onOpenRows} />
             <FailMttrCard ctx={ctx} filters={dash.filters} onOpen={onOpen} />
             <AttentionCard ctx={ctx} filters={dash.filters} onOpen={onOpen} />
             <RepeatsCard ctx={ctx} filters={dash.filters} onOpen={onOpen} onAll={() => navigate('/repeats')} />
             <HeatCard ctx={ctx} filters={dash.filters} onOpen={onOpen} />
             <DailyCard ctx={ctx} model={model} filters={dash.filters} dark={dark} onOpen={onOpen} />
-          </div>
-          <div className="dsecs">
-            <MonthCompare dash={dash} page="overview" compact />
-            <QualitySection />
-            <AreasSection ctx={ctx} filters={dash.filters} onOpen={onOpen} />
           </div>
         </>
       )}

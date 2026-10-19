@@ -60,7 +60,7 @@ export function ClassCard({ ctx, filters, dark, classNames, onOpen }: { ctx: Das
   );
   return (
     <DashCard
-      id="class" testid="chart-class" span="narrow" title={t('What kind of stoppage was it?')}
+      id="class" testid="chart-class" span="narrow" name={t('Stoppage by type')} title={t('What kind of stoppage was it?')}
       help={{ id: 'class', vars: topCls && m.total > 0 ? { c: topCls, h: fh(m.hours[topCls]!), t: fh(m.total), p: pct1(m.hours[topCls]!, m.total) } : {} }}
       subtitle={t('Stoppage by classification · area-hours (h)')}
       summary={summary} scope={scopeText(eff, filters, 'none')} open={{ ids, label: t('Stoppage by classification') }} onOpen={onOpen}
@@ -120,7 +120,7 @@ export function LossesCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters: Da
   const cx = (p: number) => 4 + (p / 100) * 92;
   return (
     <DashCard
-      id="losses" testid="chart-losses" span="wide" title={t('Where did we lose the most time?')}
+      id="losses" testid="chart-losses" span="wide" name={t('Top losses')} title={t('Where did we lose the most time?')}
       help={{ id: 'losses', vars: m && top[0] ? { top: top[0].label || t('(blank)'), v: `${f(top[0].value)} ${unit}`, t: `${f(m.all.total)} ${unit}`, p: `${top[0].sharePct.toFixed(1)}%` } : {} }}
       subtitle={t('Top 10 {d} by {w} (Incidental)', { d: t(DIM_LABEL[dim]).toLowerCase(), w: what })}
       controls={(
@@ -221,7 +221,7 @@ export function PlannedCard({ ctx, filters, dark, onOpen, wholeLines }: { ctx: D
   const summary = rows.map((r) => `${r.label}: ${t('incidental {a}%, planned {b}%, CIR {c}%, {h} h', { a: pct0(r.inc, r.total), b: pct0(r.pl, r.total), c: pct0(r.cir, r.total), h: fh(r.total) })}`).join('. ');
   return (
     <DashCard
-      id="planned" testid="chart-planned-line" span="narrow" title={t('Planned or incidental?')}
+      id="planned" testid="chart-planned-line" span="narrow" name={t('Planned vs incidental')} title={t('Planned or incidental?')}
       help={{ id: 'planned', vars: { i: fh(m.all.inc), p: fh(m.all.pl), o: fh(m.all.cir), t: fh(m.all.total) } }}
       subtitle={wholeLines ? t('Stopped hours by line and type · % of the line total · whole lines: the Area and Equipment filters do not apply here') : t('Stopped hours by line and type · % of the line total')}
       legend={paints.map((p) => ({ kind: 'paint' as const, paint: p, label: p.label }))}
@@ -268,7 +268,7 @@ export function AreaDownCard({ ctx, filters, dark, onOpen }: { ctx: DashCtx; fil
     : t('No downtime in this period.');
   return (
     <DashCard
-      id="area-down" testid="chart-downtime-area" title={t('Which areas stopped the longest?')}
+      id="area-down" testid="chart-downtime-area" name={t('Stoppage by area')} title={t('Which areas stopped the longest?')}
       help={{ id: 'area-down', vars: rows[0] ? { a: rows[0].key, h: fh(rows[0].total), i: fh(rows[0].inc), p: fh(rows[0].pl), o: fh(rows[0].cir) } : {} }}
       subtitle={mobile && rows.length > 8 && !all ? t('Stopped hours (h) by type · top 8 of {n}', { n: rows.length }) : t('Downtime by area · stopped hours (h) by type · most first')}
       headLink={mobile && rows.length > 8 ? <button type="button" className="dcard-link" onClick={() => setAll((v) => !v)} aria-expanded={all} data-testid="area-down-all">{all ? t('Top 8') : t('All {n}', { n: rows.length })} <span aria-hidden="true">›</span></button> : undefined}
@@ -329,7 +329,7 @@ export function AreaTargetCard({ ctx, filters, onOpen }: { ctx: DashCtx; filters
   };
   return (
     <DashCard
-      id="area-target" testid="chart-area-availability" title={title}
+      id="area-target" testid="chart-area-availability" name={t('Availability by area')} title={title}
       help={{ id: 'area-target', vars: { b: basis, ...(m.rows[0] && m.rows[0].pct != null && (m.rows[0].target ?? tg) != null ? { a: m.rows[0].area_id, v: `${m.rows[0].pct.toFixed(1)}%`, x: `${m.rows[0].target ?? tg}%` } : {}) } }}
       subtitle={own ? t('Availability by area (basis {b}, %) · worst first · dashed line = the target of the area (Settings › Actions & targets){g}', { b: basis, g: m.target !== null ? t(', else {x}%', { x: m.target }) : '' }) : m.target !== null ? t('Availability by area (basis {b}, %) · worst first · dashed line = {x}% target', { b: basis, x: m.target }) : t('Availability by area (basis {b}, %) · worst first', { b: basis })}
       headLink={mobile && m.rows.length > 6 ? <button type="button" className="dcard-link" onClick={() => setAll((v) => !v)} aria-expanded={all} data-testid="area-target-all">{all ? t('Worst 6') : t('All {n}', { n: m.rows.length })} <span aria-hidden="true">›</span></button> : undefined}
