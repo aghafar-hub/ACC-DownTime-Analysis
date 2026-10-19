@@ -27,6 +27,15 @@ export default function UpdateBanner() {
   const visible = bannerVisible(state);
   const formOpen = useFormOpen(visible);
   const ref = useRef<HTMLDivElement>(null);
+  // the new version takes a few seconds to take over the page: say so at once (phase 5: no feedback for 4 s before)
+  const [reloading, setReloading] = useState(false);
+  const reload = () => {
+    if (reloading) return;
+    setReloading(true);
+    applyUpdate();
+    // the page reloads within 4 s; should it ever stay, the button works again
+    window.setTimeout(() => setReloading(false), 10_000);
+  };
 
   useEffect(() => {
     startUpdates();
@@ -64,8 +73,8 @@ export default function UpdateBanner() {
             <span data-testid="update-banner-reason">{t(bannerReason(formOpen))}</span>
           </p>
           <div className="update-banner-actions">
-            <button type="button" className="update-banner-reload" data-testid="update-reload" onClick={applyUpdate}>
-              {t('Reload now')}
+            <button type="button" className="update-banner-reload" data-testid="update-reload" onClick={reload} disabled={reloading} aria-busy={reloading || undefined}>
+              {reloading ? <><span className="update-spin" aria-hidden="true" /> {t('Reloading…')}</> : t('Reload now')}
             </button>
             <button type="button" className="update-banner-later" data-testid="update-later" onClick={hideBannerForNow}>
               {t('Later')}

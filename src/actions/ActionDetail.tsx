@@ -59,8 +59,8 @@ function SavedText({ value, onSave, disabled, rows = 3, label, testid, max = 200
   return (
     <div className="ad-text">
       {single
-        ? <input className="input" aria-label={label} value={draft} onChange={(e) => setDraft(e.target.value)} readOnly={disabled} maxLength={max} data-testid={testid} />
-        : <textarea className="textarea" aria-label={label} rows={rows} value={draft} onChange={(e) => setDraft(e.target.value)} readOnly={disabled} maxLength={max} data-testid={testid} placeholder={disabled ? '' : t('Not written yet')} />}
+        ? <input className="input" aria-label={label} value={draft} onChange={(e) => setDraft(e.target.value)} readOnly={disabled} aria-readonly={disabled || undefined} maxLength={max} data-testid={testid} />
+        : <textarea className="textarea" aria-label={label} rows={rows} value={draft} onChange={(e) => setDraft(e.target.value)} readOnly={disabled} aria-readonly={disabled || undefined} maxLength={max} data-testid={testid} placeholder={disabled ? '' : t('Not written yet')} />}
       {!disabled && dirty && (
         <span className="ad-text-btns">
           <button type="button" className="btn btn-sm" onClick={() => setDraft(value)} disabled={busy}>{t('Undo')}</button>
@@ -400,7 +400,9 @@ export default function ActionDetail({ id, onClose, taskId }: { id: string; onCl
               </div>
             )}
 
-            <Section title={t('Problem statement')} right={<span className="muted">{a.source.startsWith('auto_') ? t('auto-written · editable') : t('editable')}</span>} testid="action-problem">
+            <Section title={t('Problem statement')} right={<span className="muted" data-testid="action-problem-note">{disabled
+              ? (a.source.startsWith('auto_') ? t('auto-written · view only') : t('view only'))
+              : (a.source.startsWith('auto_') ? t('auto-written · editable') : t('editable'))}</span>} testid="action-problem">
               <SavedText single value={a.title} label={t('Title')} testid="action-edit-title" max={200} disabled={disabled} onSave={(val) => save({ title: val })} />
               <SavedText value={a.detail} label={t('Problem statement')} testid="action-edit-detail" disabled={disabled} onSave={(val) => save({ detail: val })} />
             </Section>

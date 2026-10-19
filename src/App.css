@@ -111,3 +111,47 @@ body.has-env-ribbon .app-shell-right {
     padding-right: max(16px, var(--safe-r, 0px));
   }
 }
+
+/* ---------------------------------------------------------------- page not found (phase 5) */
+.nf-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 640px;
+}
+.nf-code {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--tk-text-secondary);
+}
+.nf-path {
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+.nf-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.nf-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+.nf-pages ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.nf-pages a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+}

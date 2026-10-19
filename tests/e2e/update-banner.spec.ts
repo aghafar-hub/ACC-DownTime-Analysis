@@ -126,6 +126,12 @@ test.describe('login screen', () => {
     await flip(page);
     await page.getByTestId('update-reload').click();
     expect(await page.evaluate(() => (window as unknown as { __applied: number }).__applied)).toBe(1);
+    // phase 5: busy at once (the new version takes a few seconds to take over), and a second tap does nothing
+    await expect(page.getByTestId('update-reload')).toHaveText('Reloading…');
+    await expect(page.getByTestId('update-reload')).toBeDisabled();
+    await expect(page.getByTestId('update-reload')).toHaveAttribute('aria-busy', 'true');
+    await page.getByTestId('update-reload').click({ force: true });
+    expect(await page.evaluate(() => (window as unknown as { __applied: number }).__applied)).toBe(1);
     expect(errors).toEqual([]);
   });
 });
