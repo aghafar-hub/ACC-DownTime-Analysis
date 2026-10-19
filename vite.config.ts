@@ -65,6 +65,9 @@ export default defineConfig({
         // The bundled fonts (src/fonts.ts) too, as woff2 only: every browser that installs the app reads woff2, so the
         // woff copies the font packages also ship are never fetched and stay out of the precache.
         globPatterns: ['**/*.{js,css,html}', 'assets/*.{webp,png,svg,woff2}', 'brand/*.png'],
+        // VITE_NAV_DENY (CI only): a sub-folder that holds another copy of the app (the plant-system test at ./plant/).
+        // This copy's offline worker must not answer page loads there, or it would open this app instead of that one.
+        navigateFallbackDenylist: process.env.VITE_NAV_DENY ? [new RegExp(`/${process.env.VITE_NAV_DENY}/`)] : [],
       },
     }),
   ],
