@@ -487,7 +487,7 @@ export default function EventDetail({ row, startup, canEdit, onClose, onChanged,
               <dt>{t('File')}</dt><dd>{row.source_file || '-'}{row.source_row ? <span className="muted"> · {t('row {n}', { n: row.source_row })}</span> : null}</dd>
               <dt>{t('Upload')}</dt><dd className="mono">{row.batch_id}</dd>
               <dt>{t('Fingerprint')}</dt><dd className="mono">{row.fingerprint.slice(0, 24)}…</dd>
-              <dt>{t('Added to the app')}</dt><dd className="mono">{row.created_at}</dd>
+              <dt>{t('Added to the app')}</dt><dd className="mono">{tsText(String(row.created_at ?? '').replace('T', ' '))}</dd>
             </dl>
           </FormSection>
         </>

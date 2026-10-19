@@ -146,7 +146,10 @@ describe('actions report and its email', () => {
     const m = buildActionsReport({ ...input, filters: { ...defaultActionsFilters(), status: 'all' } });
     const html = actionsEmailHtml({ model: m, message: '', attached: ['a.pdf'] });
     expect(html).toContain('AC-202610-0002');
-    expect(html).toMatch(/color:#b3261e;font-weight:bold">2026-10-10 !</);
+    // phase 5: the app's date format in the email (the Excel file keeps ISO dates)
+    expect(html).toMatch(/color:#b3261e;font-weight:bold">10 Oct 2026 !</);
+    expect(html).toContain('Ali · 18 Oct 2026 10:00');
+    expect(html).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     const one = actionsEmailHtml({ model: buildActionsReport({ ...input, filters: { ...defaultActionsFilters(), id: 'AC-202610-0001' } }), message: 'see', attached: [] });
     expect(one).toContain('Replace the seal');
     expect(one).toContain('Step 2');

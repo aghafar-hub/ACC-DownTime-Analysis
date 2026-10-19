@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { cellText } from '../reports/model';
 import { documentTitle, pageNameForPath } from './docTitle';
 
 describe('browser tab title per page', () => {
@@ -22,5 +23,15 @@ describe('browser tab title per page', () => {
     expect(pageNameForPath('/login')).toBe('Sign in');
     expect(documentTitle('/nowhere')).toBe('Page not found · ACC Downtime');
     expect(documentTitle('/')).toBe('ACC Downtime');
+  });
+});
+
+describe('report cells show dates the app way (phase 5)', () => {
+  it('date, a list of dates and date-time columns', () => {
+    expect(cellText('date', '2026-09-01')).toBe('1 Sep 2026');
+    expect(cellText('date', '2026-09-04, 2026-09-08')).toBe('4 Sep 2026, 8 Sep 2026');
+    expect(cellText('date', 'Not uploaded')).toBe('Not uploaded');
+    expect(cellText('datetime', '2026-09-01 16:05')).toBe('1 Sep 2026 16:05');
+    expect(cellText('date', null)).toBe('–');
   });
 });

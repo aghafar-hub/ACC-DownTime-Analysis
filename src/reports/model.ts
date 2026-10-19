@@ -34,6 +34,7 @@ import { repeatsTop } from '../dashboard/dashModels';
 import { comparisonKindFor, resolvePeriod } from './period';
 import { SECTION_BY_ID, TEMPLATE_BY_ID, effectiveOptions } from './sections';
 import { resolvedOptions, toDashFilters, type ReportSetup } from './setup';
+import { dateText, tsText } from '../util/dates';
 
 // ---------------------------------------------------------------- input and shared shapes
 
@@ -54,7 +55,11 @@ export interface ReportInput {
 
 /** A table cell: text, a number (formatted by the column kind) or null (shown as a dash). */
 export type Cell = string | number | null;
-export type ColKind = 'text' | 'hours' | 'hours2' | 'count' | 'pct';
+/**
+ * 'date': ISO days ('2026-09-01', or a list '2026-09-01, 2026-09-04') shown as '1 Sep 2026'; 'datetime': '2026-09-01 16:05'
+ * shown as '1 Sep 2026 16:05'. On screen and in print; the Excel file keeps real dates and times.
+ */
+export type ColKind = 'text' | 'date' | 'datetime' | 'hours' | 'hours2' | 'count' | 'pct';
 export interface ReportColumn { label: string; kind: ColKind }
 export interface ReportTable { columns: ReportColumn[]; rows: Cell[][]; /** last row printed as a total */ total?: Cell[] }
 
@@ -63,6 +68,8 @@ export const col = (label: string, kind: ColKind = 'text'): ReportColumn => ({ l
 /** Text of a cell for the screen and the printout; numbers follow the column kind. */
 export function cellText(kind: ColKind, v: Cell): string {
   if (v === null || v === undefined || v === '') return '–';
+  if (kind === 'date' && typeof v === 'string') return v.split(/,\s*/).map((d) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? dateText(d) : d)).join(', ');
+  if (kind === 'datetime' && typeof v === 'string') return tsText(v);
   if (typeof v === 'string') return v;
   switch (kind) {
     case 'hours': return fh(v);
@@ -378,7 +385,7 @@ function dailySection(env: Env): DailySection {
   const all = days.length <= 31;
   const picked = all ? days : [...dataDays].sort((a, b) => b.downtimeHours - a.downtimeHours || (a.date < b.date ? -1 : 1)).slice(0, 10);
   const table: ReportTable = {
-    columns: [col(t('Day')), col(t('Failure h'), 'hours'), col(t('Planned h'), 'hours'), col(t('CIR h'), 'hours'), col(t('Total h'), 'hours'), col(t('{n}-day average h', { n: ROLLING_DAYS }), 'hours')],
+    columns: [col(t('Day'), 'date'), col(t('Failure h'), 'hours'), col(t('Planned h'), 'hours'), col(t('CIR h'), 'hours'), col(t('Total h'), 'hours'), col(t('{n}-day average h', { n: ROLLING_DAYS }), 'hours')],
     rows: picked.map((d) => (d.hasData ? [d.date, d.failureHours, d.plannedHours, d.otherHours, d.downtimeHours, d.rollingDowntimeHours] : [d.date, d.notUploaded ? t('Not uploaded') : null, null, null, null, null])),
   };
   const emptyText = env.noData ?? (dataDays.length === 0 ? t('No daily data in this period.') : null);
@@ -640,7 +647,7 @@ function repeatsSection(env: Env): RepeatsSection {
   const groupHours = rt?.hours ?? 0;
   const topGroup = groupsAll[0] ?? null;
   const table: ReportTable = {
-    columns: [col('#', 'count'), col(t('Equipment')), col(t('Area(s)')), col(t('Reason')), col(t('Timeline')), col(t('Times'), 'count'), col(t('Total h'), 'hours'), col(t('Avg h'), 'hours2'), col(t('Last failure')), col(t('Previous period'), 'count')],
+    columns: [col('#', 'count'), col(t('Equipment')), col(t('Area(s)')), col(t('Reason')), col(t('Timeline'), 'date'), col(t('Times'), 'count'), col(t('Total h'), 'hours'), col(t('Avg h'), 'hours2'), col(t('Last failure'), 'date'), col(t('Previous period'), 'count')],
     rows: groups.map((g, i) => [i + 1, g.equipmentId, g.areaIds.join(', '), g.reasonLabel, g.occurrenceDates.join(', '), g.occurrences, g.totalHours, g.avgHours, g.lastFailureDate, g.previousPeriodOccurrences]),
   };
   const facts = model ? {
@@ -667,7 +674,7 @@ function longestSection(env: Env): LongestSection {
   const window = ctx.win.effective;
   const events = window ? longestEvents(ctx.scope.chains, n, { failureOnly: true, window }) : [];
   const table: ReportTable = {
-    columns: [col('#', 'count'), col(t('Started')), col(t('Area')), col(t('Code')), col(t('Reason')), col(t('Hours'), 'hours2'), col(t('Rows'), 'count')],
+    columns: [col('#', 'count'), col(t('Started'), 'datetime'), col(t('Area')), col(t('Code')), col(t('Reason')), col(t('Hours'), 'hours2'), col(t('Rows'), 'count')],
     rows: events.map((e, i) => [i + 1, e.startTs.slice(0, 16), e.area_id, e.code || BLANK_CODE(), e.reason || t('(blank)'), e.hours, e.rowCount]),
   };
   const first = events[0];
@@ -750,7 +757,7 @@ function eventsSection(env: Env): EventsSection {
   const shownRows = sorted.slice(0, limit);
   const totalHours = rows.reduce((s, r) => s + hoursOf(r), 0);
   const table: ReportTable = {
-    columns: [col(t('Stopped')), col(t('Area')), col(t('Code')), col(t('Class')), col(t('Reason')), col(t('Hours'), 'hours2'), col(t('Failure'))],
+    columns: [col(t('Stopped'), 'datetime'), col(t('Area')), col(t('Code')), col(t('Class')), col(t('Reason')), col(t('Hours'), 'hours2'), col(t('Failure'))],
     rows: shownRows.map((r) => [r.stop_ts.slice(0, 16), r.area_id, r.code_raw || BLANK_CODE(), r.classification, (r.reason_raw ?? '').trim() || t('(blank)'), hoursOf(r), r.is_failure ? t('Yes') : t('No')]),
   };
   const capped = all && rows.length > EVENTS_ROW_CAP;

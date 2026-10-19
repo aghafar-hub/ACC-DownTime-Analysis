@@ -5,7 +5,7 @@ import { statusLine } from '../dashboard/targets';
 import { t } from '../i18n/t';
 import { changeText } from '../reports/format';
 import type { KpiCard, KpiId, ReportModel, SummarySection } from '../reports/model';
-import { ACTION_HEAD, actionCells, TASK_HEAD, taskCells, type ActionsReportModel } from '../reports/actions/model';
+import { ACTION_HEAD, actionCells, shownTs, TASK_HEAD, taskCells, type ActionsReportModel } from '../reports/actions/model';
 
 export const esc = (s: string): string => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -82,7 +82,7 @@ export function reportEmailHtml({ summary, message, attached }: { summary: Repor
     [t('Period'), periodText(summary)],
     [t('Scope'), summary.filterSummary || t('All lines and areas')],
     ...(summary.compare.on && summary.compare.label ? [[t('Compared with'), summary.compare.label] as [string, string]] : []),
-    [t('Prepared by'), `${summary.generatedBy} · ${summary.generatedAt}`],
+    [t('Prepared by'), `${summary.generatedBy} · ${shownTs(summary.generatedAt)}`],
   ];
   let content = messageHtml(message) + factsTable(facts);
   if (summary.noData || !kpis.length) {
@@ -128,7 +128,7 @@ export function actionsEmailHtml({ model, message, attached }: { model: ActionsR
     [t('Actions'), model.counts.byStatus.length ? model.counts.byStatus.map(([s, n]) => `${s} ${n}`).join(' · ') : t('none')],
     [t('Overdue'), String(model.counts.overdue)],
     [t('Tasks'), t('{o} open, {d} done', { o: model.counts.tasksOpen, d: model.counts.tasksDone })],
-    [t('Prepared by'), `${model.generatedBy} · ${model.generatedAt}`],
+    [t('Prepared by'), `${model.generatedBy} · ${shownTs(model.generatedAt)}`],
   ];
   let content = messageHtml(message) + factsTable(facts);
   if (model.single && model.details[0]) {
@@ -136,12 +136,12 @@ export function actionsEmailHtml({ model, message, attached }: { model: ActionsR
     content += `<p style="margin:0 0 6px;font-weight:bold">${esc(`${d.row.id} · ${d.row.title}`)}</p>` + factsTable(d.facts);
     if (d.required) content += `<p style="margin:0 0 12px"><b>${esc(t('Required action'))}:</b> ${esc(d.required)}</p>`;
     if (d.tasks.length) {
-      content += dataTable(TASK_HEAD(), d.tasks.map((x): MailCell[] => taskCells(x).map((c, i): MailCell => (
+      content += dataTable(TASK_HEAD(), d.tasks.map((x): MailCell[] => taskCells(x, true).map((c, i): MailCell => (
         i === 5 && (x.status === 'Done' || x.status === 'Not needed') ? { text: c, tone: 'good' } : i === 4 && x.overdue ? { text: c, tone: 'bad' } : c))));
     }
   } else if (model.rows.length) {
     const shown = model.rows.slice(0, 40);
-    content += dataTable(ACTION_HEAD(), shown.map((r): MailCell[] => actionCells(r).map((c, i): MailCell => (i === 8 && r.overdue ? { text: c, tone: 'bad' } : c))));
+    content += dataTable(ACTION_HEAD(), shown.map((r): MailCell[] => actionCells(r, true).map((c, i): MailCell => (i === 8 && r.overdue ? { text: c, tone: 'bad' } : c))));
     if (model.rows.length > shown.length) content += `<p style="margin:0 0 12px;color:${MUTED}">${esc(t('{n} more in the attached report.', { n: model.rows.length - shown.length }))}</p>`;
   } else {
     content += `<p style="margin:0 0 14px">${esc(t('No action matches these filters.'))}</p>`;
